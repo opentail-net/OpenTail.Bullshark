@@ -17,8 +17,12 @@ public sealed record SessionDigest(
     string? LastAssistantText,
     string? LastModel,
     long ContextTokensAtLastTurn,
-    TokenUsage Usage)
+    TokenUsage Usage,
+    string? FirstUserText = null)
 {
+    /// <summary>What the session was about: its first message, or the short id when it has none.</summary>
+    public string Title => FirstUserText is { Length: > 0 } text ? text : $"Session {SessionId[..Math.Min(8, SessionId.Length)]}";
+
     /// <summary>Time between the first and the last record. Not the time spent working: the gaps are included.</summary>
     public TimeSpan? Span => FirstActivity is { } first && LastActivity is { } last ? last - first : null;
 }
@@ -75,6 +79,7 @@ public sealed class TranscriptIndex
                 ToolNames: summary.ToolNames ?? new Dictionary<string, int>(),
                 FilesWritten: summary.FilesWritten ?? [],
                 LastAssistantText: summary.LastAssistantText,
+                FirstUserText: summary.FirstUserText,
                 LastModel: summary.LastModel,
                 ContextTokensAtLastTurn: summary.ContextTokensAtLastTurn,
                 Usage: summary.TotalUsage));

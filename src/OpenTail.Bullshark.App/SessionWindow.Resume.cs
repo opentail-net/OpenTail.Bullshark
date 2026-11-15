@@ -27,7 +27,7 @@ public partial class SessionWindow
         }
 
         var facts = $"{digest.Turns} turns · last active {AgeOf(digest.LastActivity)} · in {folder}";
-        var prompt = new ResumePrompt($"Resume {ShortId(digest.SessionId)}", facts, digest.ContextTokensAtLastTurn, Palette, startWith)
+        var prompt = new ResumePrompt($"Resume: {digest.Title}", facts, digest.ContextTokensAtLastTurn, Palette, startWith)
         {
             Owner = this,
         };

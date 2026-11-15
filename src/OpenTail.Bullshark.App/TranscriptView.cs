@@ -38,7 +38,7 @@ public sealed class TranscriptView : UserControl
         _digest = digest;
         _resumeFull.IsEnabled = true;
         _resumeSummary.IsEnabled = true;
-        _historyTitle.Text = $"{digest.SessionId}\n{digest.FilePath}";
+        _historyTitle.Text = $"{digest.Title}\n{digest.SessionId}\n{digest.FilePath}";
         _historyStats.Text = StatsText(digest);
 
         var pager = await Task.Run(() => TranscriptPager.Open(digest.FilePath));

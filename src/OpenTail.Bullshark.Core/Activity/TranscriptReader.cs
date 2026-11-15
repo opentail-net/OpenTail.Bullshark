@@ -25,7 +25,8 @@ public sealed record TranscriptSummary(
     DateTimeOffset? FirstTimestamp = null,
     IReadOnlyDictionary<string, int>? ToolNames = null,
     IReadOnlyList<string>? FilesWritten = null,
-    long ContextTokensAtLastTurn = 0)
+    long ContextTokensAtLastTurn = 0,
+    string? FirstUserText = null)
 {
     public TokenUsage TotalUsage => UsageByModel.Values.Aggregate(TokenUsage.Zero, (sum, next) => sum.Add(next));
 }
@@ -69,6 +70,7 @@ public static class TranscriptReader
         int records = 0, users = 0, assistants = 0, tools = 0, turns = 0, lineNumber = 0;
         string? lastText = null, lastModel = null;
         DateTimeOffset? lastTimestamp = null, firstTimestamp = null;
+        string? firstUserText = null;
         long contextAtLastTurn = 0;
         var seenInFile = new HashSet<string>(StringComparer.Ordinal);
         var toolNames = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -105,7 +107,11 @@ public static class TranscriptReader
                 var type = TryGetString(root, "type", out var t) ? t : null;
                 if (type == "system" && TryGetString(root, "subtype", out var subtype) && subtype == "turn_duration")
                     turns++;
-                if (type == "user") users++;
+                if (type == "user")
+                {
+                    users++;
+                    firstUserText ??= SessionTitle.FromUserRecord(root);
+                }
                 if (type != "assistant" || !root.TryGetProperty("message", out var message)) continue;
 
                 // The model of this record, not the last model seen: usage is attributed to the record's own model.
@@ -162,7 +168,7 @@ public static class TranscriptReader
         }
 
         return new TranscriptSummary(records, users, assistants, tools, turns, lastText, lastTimestamp, lastModel,
-            usageLedger.ByFile(file), firstTimestamp, toolNames, filesWritten, contextAtLastTurn);
+            usageLedger.ByFile(file), firstTimestamp, toolNames, filesWritten, contextAtLastTurn, firstUserText);
     }
 
     private static bool TryGetString(JsonElement element, string property, out string? value)

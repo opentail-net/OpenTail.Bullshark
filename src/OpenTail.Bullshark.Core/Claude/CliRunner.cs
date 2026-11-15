@@ -47,11 +47,12 @@ public sealed class ProcessCliRunner : ICliRunner
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             RedirectStandardInput = standardInput is not null,
-            StandardInputEncoding = Encoding.UTF8,
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8,
             WorkingDirectory = workingDirectory ?? Environment.CurrentDirectory,
         };
+        // Only meaningful when standard input is redirected; ProcessStartInfo refuses it otherwise.
+        if (standardInput is not null) info.StandardInputEncoding = Encoding.UTF8;
         foreach (var argument in arguments)
             info.ArgumentList.Add(argument);
 

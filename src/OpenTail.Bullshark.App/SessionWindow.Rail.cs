@@ -357,8 +357,8 @@ public partial class SessionWindow
         {
             var cache = CacheTextFor(digest.SessionId);
             folderItem.Items.Add(NewItem(
-                TwoLine($"Session {digest.SessionId[..Math.Min(8, digest.SessionId.Length)]}" + (digest.IsSubagent ? " · subagent" : string.Empty),
-                    $"{digest.AssistantMessages} msgs" + (cache.Short is null ? string.Empty : " · " + cache.Short),
+                TwoLine(digest.Title + (digest.IsSubagent ? " · subagent" : string.Empty),
+                    $"{digest.SessionId[..Math.Min(8, digest.SessionId.Length)]} · {digest.AssistantMessages} msgs" + (cache.Short is null ? string.Empty : " · " + cache.Short),
                     RelativeTime(digest.LastActivity)),
                 new RailTag(RailKind.History, digest.SessionId, digest),
                 cache.Full is null ? digest.FilePath : cache.Full + "\n" + digest.FilePath));
