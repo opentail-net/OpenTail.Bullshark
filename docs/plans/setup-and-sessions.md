@@ -24,7 +24,7 @@ One window that shows how sessions are set up (HOW) and what they did (WHAT), wi
 | A persisted run: pattern, folder, full spec list | assumed (D-S12) | `SessionRecord` holds none of it (SessionRecord.cs:7-15), so a restarted window cannot rebuild the run |
 | Several coders with unique names, and a name scheme | **D** (owner, 2026-11-15) | D-S13; F33 (duplicate names) |
 | Decision agent suggests the setup from a goal | later | `docs/later/dynamic-configuration.md`; never launches without the owner confirming |
-| Summary for resume | later | needs a decision on model use (summaries cost tokens) |
+| Summary for resume | built 2026-11-15 | Haiku at low effort for the summaries, one call each; the owner may change the model (D-S11) |
 
 ## 3. Contracts this must satisfy
 

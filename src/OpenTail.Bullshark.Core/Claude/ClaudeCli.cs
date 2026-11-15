@@ -105,6 +105,26 @@ public sealed class ClaudeCli
     public Task<CliResult> RemoveAsync(string id, CancellationToken cancellationToken = default) =>
         RunAsync(["rm", id], null, cancellationToken, requireSuccess: false);
 
+    /// <summary>
+    /// Asks the model for a summary of a transcript. The transcript goes in on standard input, because a long session does not
+    /// fit on the command line. Haiku at low effort: the cheapest model that writes a usable summary (D-S11). The model is the
+    /// owner's to change.
+    /// </summary>
+    public async Task<string> SummariseAsync(string instructions, string transcript, CancellationToken cancellationToken = default)
+    {
+        var result = await _runner.RunAsync(
+            ["-p", instructions, "--model", "haiku", "--effort", "low"],
+            null,
+            TimeSpan.FromMinutes(5),
+            cancellationToken,
+            transcript);
+        if (result.TimedOut) throw new ClaudeCliException("the summary timed out after five minutes");
+        if (result.ExitCode != 0) throw new ClaudeCliException($"the summary failed (exit {result.ExitCode}): {result.StdErr.Trim()}");
+        var text = result.StdOut.Trim();
+        if (text.Length == 0) throw new ClaudeCliException("the summary came back empty");
+        return text;
+    }
+
     private async Task<CliResult> RunAsync(
         IReadOnlyList<string> args,
         string? workingDirectory,

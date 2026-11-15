@@ -10,6 +10,9 @@ public sealed class FakeCliRunner : ICliRunner
 
     public List<(IReadOnlyList<string> Args, string? WorkingDirectory)> Calls { get; } = new();
 
+    /// <summary>What each call was given on standard input, in order (null when nothing was).</summary>
+    public List<string?> Inputs { get; } = new();
+
     public FakeCliRunner() { }
 
     public FakeCliRunner(Func<IReadOnlyList<string>, CliResult> rule)
@@ -27,9 +30,11 @@ public sealed class FakeCliRunner : ICliRunner
         IReadOnlyList<string> arguments,
         string? workingDirectory,
         TimeSpan timeout,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? standardInput = null)
     {
         Calls.Add((arguments.ToArray(), workingDirectory));
+        Inputs.Add(standardInput);
         if (_scripted.Count > 0) return Task.FromResult(_scripted.Dequeue());
         if (_rule is not null) return Task.FromResult(_rule(arguments));
         return Task.FromResult(Ok());

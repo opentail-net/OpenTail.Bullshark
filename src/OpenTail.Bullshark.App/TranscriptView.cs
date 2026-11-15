@@ -7,7 +7,7 @@ namespace OpenTail.Bullshark.App;
 
 /// <summary>
 /// Read-only view of one past session, shown in the pane (S3). It loads page by page: the last page first, and earlier
-/// pages on request. Resume is shown with the context it would load, and it is not wired in this phase (decision D14).
+/// pages on request. Resume asks first (the resume prompt shows what would be sent), then starts the session (D14, D-S11).
 /// The transcript rendering is the History tab's, moved here unchanged.
 /// </summary>
 public sealed class TranscriptView : UserControl
@@ -20,6 +20,9 @@ public sealed class TranscriptView : UserControl
     private readonly StackPanel _transcript = new();
     private readonly ScrollViewer _transcriptScroll = new();
     private TranscriptPager? _pager;
+    private SessionDigest? _digest;
+    private readonly Button _resumeFull = new();
+    private readonly Button _resumeSummary = new();
     private int _firstShown;
 
     public TranscriptView()
@@ -32,6 +35,9 @@ public sealed class TranscriptView : UserControl
     /// <summary>Shows a session's headline numbers at once, and its last page of transcript. Nothing else is loaded.</summary>
     public async Task ShowAsync(SessionDigest digest)
     {
+        _digest = digest;
+        _resumeFull.IsEnabled = true;
+        _resumeSummary.IsEnabled = true;
         _historyTitle.Text = $"{digest.SessionId}\n{digest.FilePath}";
         _historyStats.Text = StatsText(digest);
 
@@ -75,22 +81,20 @@ public sealed class TranscriptView : UserControl
         right.Children.Add(_historyStats);
 
         var resume = new WrapPanel { Margin = new Thickness(0, 0, 0, 8) };
-        resume.Children.Add(new Button
-        {
-            Content = "Resume in full (not wired yet)",
-            IsEnabled = false,
-            Padding = new Thickness(10, 2, 10, 2),
-            Margin = new Thickness(0, 0, 8, 4),
-            ToolTip = "Loads the whole conversation as context. Shown with its size; never run by default. Wired in a later phase.",
-        });
-        resume.Children.Add(new Button
-        {
-            Content = "Resume from summary (not wired yet)",
-            IsEnabled = false,
-            Padding = new Thickness(10, 2, 10, 2),
-            Margin = new Thickness(0, 0, 0, 4),
-            ToolTip = "Starts a new session from a short summary. Wired in a later phase, after the owner reviews the summary.",
-        });
+        _resumeFull.Content = "Resume in full…";
+        _resumeFull.IsEnabled = false;
+        _resumeFull.Padding = new Thickness(10, 2, 10, 2);
+        _resumeFull.Margin = new Thickness(0, 0, 8, 4);
+        _resumeFull.ToolTip = "Resumes the whole conversation as context. The prompt shows its size and cost before anything runs.";
+        _resumeFull.Click += (_, _) => RaiseResume(ResumeMode.Full);
+        resume.Children.Add(_resumeFull);
+        _resumeSummary.Content = "Resume from summary…";
+        _resumeSummary.IsEnabled = false;
+        _resumeSummary.Padding = new Thickness(10, 2, 10, 2);
+        _resumeSummary.Margin = new Thickness(0, 0, 0, 4);
+        _resumeSummary.ToolTip = "Starts a new session from a summary (minimal, normal or complete), or from the last turns only. Nothing runs before you confirm.";
+        _resumeSummary.Click += (_, _) => RaiseResume(ResumeMode.Summary);
+        resume.Children.Add(_resumeSummary);
         DockPanel.SetDock(resume, Dock.Top);
         right.Children.Add(resume);
 
@@ -109,6 +113,14 @@ public sealed class TranscriptView : UserControl
         right.Children.Add(_transcriptScroll);
 
         return right;
+    }
+
+    /// <summary>Raised when the owner asks to resume the session shown, with the way it was asked for preselected.</summary>
+    public event Action<SessionDigest, ResumeMode>? ResumeRequested;
+
+    private void RaiseResume(ResumeMode startWith)
+    {
+        if (_digest is not null) ResumeRequested?.Invoke(_digest, startWith);
     }
 
     private void LoadEarlier()

@@ -19,7 +19,8 @@ public interface ICliRunner
         IReadOnlyList<string> arguments,
         string? workingDirectory,
         TimeSpan timeout,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        string? standardInput = null);
 }
 
 /// <summary>Runs the real `claude` executable with redirected output and no window.</summary>
@@ -36,7 +37,8 @@ public sealed class ProcessCliRunner : ICliRunner
         IReadOnlyList<string> arguments,
         string? workingDirectory,
         TimeSpan timeout,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? standardInput = null)
     {
         var info = new ProcessStartInfo(_executable)
         {
@@ -44,6 +46,8 @@ public sealed class ProcessCliRunner : ICliRunner
             CreateNoWindow = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            RedirectStandardInput = standardInput is not null,
+            StandardInputEncoding = Encoding.UTF8,
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8,
             WorkingDirectory = workingDirectory ?? Environment.CurrentDirectory,
@@ -56,6 +60,20 @@ public sealed class ProcessCliRunner : ICliRunner
 
         var stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
         var stderr = process.StandardError.ReadToEndAsync(cancellationToken);
+
+        if (standardInput is not null)
+        {
+            // Written in full and then closed, so the command sees the end of its input. The output is already being read.
+            try
+            {
+                await process.StandardInput.WriteAsync(standardInput.AsMemory(), cancellationToken);
+                process.StandardInput.Close();
+            }
+            catch (IOException)
+            {
+                // The command stopped reading early; its exit code and output say why.
+            }
+        }
 
         using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutSource.CancelAfter(timeout);

@@ -59,6 +59,7 @@ Existing code this touches:
 - **D12 Counting rule.** Usage is counted once per `message.id:requestId`, first occurrence wins, across all transcript files. This matches ccusage exactly (F35). Records without either key are counted once each.
 - **D13 Context size.** The context a session carries = `input_tokens + cache_read_input_tokens + cache_creation_input_tokens` of its last assistant message. It is the size a resume would load on the next turn (estimate; verify against a resumed session in a later phase).
 - **D14 History tab is read-only.** Resume options are shown with their context size and are disabled ("wired in a later phase").
+- **Resume wired (owner, 2026-11-15; supersedes the disabled buttons in D14).** "Resume in full…" resumes the same session with its whole conversation, after the prompt shows its size. "Resume from summary…" starts a new solo session in the same folder, from a minimal, normal or complete summary (Haiku, low effort, one call), or from the last turns only (no model call). The turns are copied word for word, with tool results on one line each, and capped at about 4,000 tokens (D-S11). A full resume is recorded in the rail but is not supervised.
 - **D15 Paging.** The transcript view loads the last 200 records first, and earlier pages on request. Tool results are shown as one line unless expanded.
 - **D16 Session identity.** The index keys sessions by the UUID in the file name, not by the folder name.
 

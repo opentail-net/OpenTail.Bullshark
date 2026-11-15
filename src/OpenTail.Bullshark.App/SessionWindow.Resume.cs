@@ -1,0 +1,154 @@
+using OpenTail.Bullshark.Core.Activity;
+using OpenTail.Bullshark.Core.Claude;
+using OpenTail.Bullshark.Core.Folders;
+using OpenTail.Bullshark.Core.Resume;
+using OpenTail.Bullshark.Core.Setup;
+using OpenTail.Bullshark.Core.Supervisor;
+using OpenTail.Bullshark.Core.Trust;
+
+namespace OpenTail.Bullshark.App;
+
+/// <summary>
+/// Resuming a past session from the History view (D14, D-S11). Either the same session continues with its whole conversation,
+/// or a new session starts from a summary, or from the last turns. The prompt shows what would be sent first, and nothing
+/// runs until the owner presses Resume. A new session is started the way a setup run is: a solo run, so it is supervised.
+/// </summary>
+public partial class SessionWindow
+{
+    /// <summary>Opens the resume prompt for a past session, then does what the owner chose.</summary>
+    private async Task ResumeAsync(SessionDigest digest, ResumeMode startWith)
+    {
+        SetStatus($"Reading session {ShortId(digest.SessionId)}…");
+        var (lines, folder) = await Task.Run(() => ResumeSource.Load(digest.FilePath));
+        if (folder is null)
+        {
+            SetStatus("Not resumed: the session's folder is not in its transcript.");
+            return;
+        }
+
+        var facts = $"{digest.Turns} turns · last active {AgeOf(digest.LastActivity)} · in {folder}";
+        var prompt = new ResumePrompt($"Resume {ShortId(digest.SessionId)}", facts, digest.ContextTokensAtLastTurn, Palette, startWith)
+        {
+            Owner = this,
+        };
+        prompt.ShowDialog();
+        if (prompt.Choice is not { } choice)
+        {
+            SetStatus("Not resumed.");
+            return;
+        }
+
+        if (choice.Mode == ResumeMode.Full) await ResumeInFullAsync(digest, folder);
+        else await StartFromTextAsync(digest, folder, lines, choice);
+    }
+
+    /// <summary>
+    /// The same session continues, with its whole conversation as context: claude --bg --resume with the session's id. The
+    /// session is recorded so the rail shows it, but it is not supervised; if it stops, it stays stopped.
+    /// </summary>
+    private async Task ResumeInFullAsync(SessionDigest digest, string folder)
+    {
+        if (_store.Load().Values.Any(r => r.SessionId == digest.SessionId))
+        {
+            SetStatus($"Not resumed: session {ShortId(digest.SessionId)} is already open in the rail.");
+            return;
+        }
+
+        var check = FolderCheck.Check(folder, TrustCheck.DefaultClaudeJsonPath);
+        if (check.Status is FolderStatus.Missing or FolderStatus.NotTrusted)
+        {
+            SetStatus($"Not resumed: {check.Message}");
+            return;
+        }
+
+        var pattern = PatternStore.Beside(_options.StatePath).For("solo");
+        var taken = _store.Load().Keys.Concat(_agents.Select(a => a.Name)).ToList();
+        var name = "bullshark-resume-" + RunNames.NewRunId(taken);
+        SetStatus($"Resuming {ShortId(digest.SessionId)} in full as {name}…");
+        try
+        {
+            var shortId = await _cli.StartBackgroundAsync(new BackgroundLaunch(
+                Name: name,
+                WorkingDirectory: folder,
+                Model: pattern.PlannerModel,
+                Effort: pattern.PlannerEffort,
+                PermissionMode: "auto",
+                ResumeSessionId: digest.SessionId));
+            var sessionId = await _cli.ResolveSessionIdAsync(shortId, TimeSpan.FromSeconds(30));
+            var records = _store.Load().ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+            records[name] = new SessionRecord(SessionRole.Planner, sessionId, name, DateTimeOffset.UtcNow, 0, [], null, null);
+            _store.Save(records);
+        }
+        catch (ClaudeCliException ex)
+        {
+            AppLog.Write($"resume in full failed: {ex.Message}");
+            SetStatus($"Not resumed: {ex.Message}");
+            return;
+        }
+
+        RefreshRail();
+        SetStatus($"Resumed {ShortId(digest.SessionId)} in full as {name}. It is not supervised: if it stops, it stays stopped.");
+    }
+
+    /// <summary>
+    /// A new session starts from the chosen text: the summary (one model call, when the owner chose a level), then the last
+    /// turns word for word. It is a solo run in the session's own folder, so it is written, supervised and shown like any run.
+    /// </summary>
+    private async Task StartFromTextAsync(SessionDigest digest, string folder, IReadOnlyList<TranscriptLine> lines, ResumeChoice choice)
+    {
+        string? summary = null;
+        if (choice.Level is { } level)
+        {
+            SetStatus($"Summarising {ShortId(digest.SessionId)} ({level.ToString().ToLowerInvariant()}): one model call…");
+            try
+            {
+                var input = await Task.Run(() => ResumeText.SummaryInput(lines));
+                summary = await _cli.SummariseAsync(ResumeText.Instructions(level), input);
+            }
+            catch (ClaudeCliException ex)
+            {
+                AppLog.Write($"summary not made: {ex.Message}");
+                SetStatus($"Not started: {ex.Message}");
+                return;
+            }
+        }
+
+        var text = ResumeText.Compose(summary, choice.Level, ResumeText.Tail(lines, choice.Turns), choice.Turns);
+        var pattern = PatternStore.Beside(_options.StatePath).For("solo");
+        var request = new SetupRequest(
+            PatternKey: "solo",
+            Folder: folder,
+            Task: text,
+            Coders: 1,
+            PlannerModel: pattern.PlannerModel,
+            PlannerEffort: pattern.PlannerEffort,
+            CoderModel: pattern.CoderModel,
+            CoderEffort: pattern.CoderEffort);
+
+        var check = SetupPlan.Validate(request, TrustCheck.DefaultClaudeJsonPath);
+        if (!check.IsValid)
+        {
+            SetStatus("Not started: " + string.Join("  ", check.Errors));
+            return;
+        }
+        if (check.Folder?.Status == FolderStatus.NotTrusted)
+        {
+            SetStatus($"Not started: {check.Folder.Message}");
+            return;
+        }
+
+        var how = choice.Level is { } chosen ? $"a {chosen.ToString().ToLowerInvariant()} summary and the last {choice.Turns} turns" : $"the last {choice.Turns} turns";
+        await StartRunAsync(request);
+        SetStatus($"Resumed {ShortId(digest.SessionId)} from {how}. The new session starts on the next pass.");
+    }
+
+    /// <summary>How long ago a session was last active, in words for the prompt.</summary>
+    private static string AgeOf(DateTimeOffset? when)
+    {
+        if (when is not { } at) return "time unknown";
+        var span = DateTimeOffset.UtcNow - at;
+        if (span.TotalDays >= 1) return $"{(int)span.TotalDays} days ago";
+        if (span.TotalHours >= 1) return $"{(int)span.TotalHours} h ago";
+        return $"{Math.Max(0, (int)span.TotalMinutes)} min ago";
+    }
+}

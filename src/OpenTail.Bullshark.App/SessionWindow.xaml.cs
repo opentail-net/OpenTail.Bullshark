@@ -93,6 +93,7 @@ public partial class SessionWindow : Window
         _setup.RunRequested += OnRunRequested;
         _setup.TrustNeeded += root => ShowTrustStep(root, select: true);
         Pane.Children.Add(_transcript);
+        _transcript.ResumeRequested += (digest, startWith) => _ = ResumeAsync(digest, startWith);
         Pane.Children.Add(_setup);
 
         Loaded += async (_, _) =>
@@ -328,7 +329,10 @@ public partial class SessionWindow : Window
     /// Starts a run from the setup page: the run is written to runs.json, and the next pass starts its sessions. Its id
     /// and names avoid every name already in use, in the state file, in runs.json and in the agent listing (F33).
     /// </summary>
-    private async void OnRunRequested(SetupRequest request)
+    private async void OnRunRequested(SetupRequest request) => await StartRunAsync(request);
+
+    /// <summary>Writes a run from a request and starts its pass. Setup and resume both start runs this way.</summary>
+    private async Task StartRunAsync(SetupRequest request)
     {
         var taken = _store.Load().Keys
             .Concat(RunStore.SpecsOf(_runStore.Load()).Select(s => s.Name))
