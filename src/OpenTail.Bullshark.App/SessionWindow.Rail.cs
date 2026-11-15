@@ -153,6 +153,8 @@ public partial class SessionWindow
         ThemeMark.Text = _theme == RailTheme.Dark ? "☀ light" : "☾ dark";
         ThemeMark.Foreground = RailPalette.Brush(palette.Muted);
         FilterMark.Foreground = RailPalette.Brush(palette.Text);
+        Resources["ScrollThumb"] = RailPalette.Brush("#55" + palette.Muted.TrimStart('#'));
+        Resources["ScrollThumbHover"] = RailPalette.Brush("#99" + palette.Muted.TrimStart('#'));
         TabBar.Background = RailPalette.Brush(palette.Panel);
         _setup?.ApplyTheme(palette);
         FilterBox.Background = RailPalette.Brush(palette.Panel);
