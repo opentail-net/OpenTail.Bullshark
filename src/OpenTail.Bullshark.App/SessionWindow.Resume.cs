@@ -44,7 +44,7 @@ public partial class SessionWindow
 
     /// <summary>
     /// The same session continues, with its whole conversation as context: claude --bg --resume with the session's id. The
-    /// session is recorded so the rail shows it, but it is not supervised; if it stops, it stays stopped.
+    /// session is recorded so the rail shows it, and it is kept alive: if it goes, the supervisor resumes it under the same id.
     /// </summary>
     private async Task ResumeInFullAsync(SessionDigest digest, string folder)
     {
@@ -78,6 +78,7 @@ public partial class SessionWindow
             var records = _store.Load().ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
             records[name] = new SessionRecord(SessionRole.Planner, sessionId, name, DateTimeOffset.UtcNow, 0, [], null, null);
             _store.Save(records);
+            KeepAlive(name, folder, pattern);
         }
         catch (ClaudeCliException ex)
         {
@@ -87,7 +88,7 @@ public partial class SessionWindow
         }
 
         RefreshRail();
-        SetStatus($"Resumed {ShortId(digest.SessionId)} in full as {name}. It is not supervised: if it stops, it stays stopped.");
+        SetStatus($"Resumed {ShortId(digest.SessionId)} in full as {name}. It is kept alive: if it stops, the supervisor resumes it.");
     }
 
     /// <summary>
@@ -140,6 +141,25 @@ public partial class SessionWindow
         var how = choice.Level is { } chosen ? $"a {chosen.ToString().ToLowerInvariant()} summary and the last {choice.Turns} turns" : $"the last {choice.Turns} turns";
         await StartRunAsync(request);
         SetStatus($"Resumed {ShortId(digest.SessionId)} from {how}. The new session starts on the next pass.");
+    }
+
+    /// <summary>
+    /// Makes a resumed session a solo run, so the supervisor keeps it alive like any run: when the session is gone, it is resumed
+    /// under the same id, with the limit of restarts per hour. The run is written after the record (see ResumeInFullAsync).
+    /// </summary>
+    private void KeepAlive(string name, string folder, PatternSettings pattern)
+    {
+        var spec = new SessionSpec(
+            SessionRole.Planner,
+            name,
+            folder,
+            pattern.PlannerModel,
+            pattern.PlannerEffort,
+            "Continue the session you were resumed into, where it left off.",
+            "auto");
+        var runs = _runStore.Load().ToList();
+        runs.Add(new RunRecord(name, "resume", folder, "auto", DateTimeOffset.UtcNow, [spec]));
+        _runStore.Save(runs);
     }
 
     /// <summary>How long ago a session was last active, in words for the prompt.</summary>
