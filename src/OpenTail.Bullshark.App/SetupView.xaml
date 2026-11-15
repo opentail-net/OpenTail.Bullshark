@@ -40,34 +40,34 @@
         </Style>
 
         <!-- A combo box template drawn with the setup's own brushes. The default Windows 11 template takes its colours from the
-             system theme, so it stays light in dark mode. -->
+             system theme, so it stays light in dark mode. The whole box opens the list when clicked, not only the arrow. An
+             editable box (the folder) keeps just the arrow as its toggle, so its text can be typed in. -->
         <ControlTemplate x:Key="SetupComboTemplate" TargetType="ComboBox">
             <Grid>
                 <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
                         BorderThickness="1" CornerRadius="4" />
                 <Grid Margin="{TemplateBinding Padding}">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <ContentPresenter x:Name="ContentSite" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Left"
+                    <ContentPresenter x:Name="ContentSite" VerticalAlignment="Center" HorizontalAlignment="Left"
                                       IsHitTestVisible="False" Content="{TemplateBinding SelectionBoxItem}"
                                       ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
                                       ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}" />
-                    <TextBox x:Name="PART_EditableTextBox" Grid.Column="0" Visibility="Collapsed" Background="Transparent"
+                    <TextBox x:Name="PART_EditableTextBox" Visibility="Collapsed" Background="Transparent"
                              BorderThickness="0" Padding="0" VerticalAlignment="Center" Foreground="{DynamicResource SetupText}"
                              CaretBrush="{DynamicResource SetupText}" />
-                    <ToggleButton x:Name="ToggleButton" Grid.Column="1" Focusable="False" ClickMode="Press" Margin="8,0,0,0"
-                                  Cursor="Hand"
-                                  IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
-                        <ToggleButton.Template>
-                            <ControlTemplate TargetType="ToggleButton">
-                                <Path Data="M0,0 L4,4 L8,0" Stroke="{DynamicResource SetupMuted}" StrokeThickness="1.4"
-                                      Width="8" Height="5" Stretch="Fill" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                            </ControlTemplate>
-                        </ToggleButton.Template>
-                    </ToggleButton>
                 </Grid>
+                <ToggleButton x:Name="ToggleButton" Focusable="False" ClickMode="Press" Cursor="Hand"
+                              Background="Transparent" BorderThickness="0"
+                              IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                    <ToggleButton.Template>
+                        <ControlTemplate TargetType="ToggleButton">
+                            <Border Background="Transparent">
+                                <Path Data="M0,0 L4,4 L8,0" Stroke="{DynamicResource SetupMuted}" StrokeThickness="1.4"
+                                      Width="8" Height="5" Stretch="Fill" Margin="0,0,10,0"
+                                      HorizontalAlignment="Right" VerticalAlignment="Center" />
+                            </Border>
+                        </ControlTemplate>
+                    </ToggleButton.Template>
+                </ToggleButton>
                 <Popup x:Name="PART_Popup" Placement="Bottom" AllowsTransparency="True" Focusable="False" PopupAnimation="Fade"
                        IsOpen="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}}"
                        MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}" MaxHeight="300">
@@ -83,6 +83,8 @@
                 <Trigger Property="IsEditable" Value="True">
                     <Setter TargetName="ContentSite" Property="Visibility" Value="Collapsed" />
                     <Setter TargetName="PART_EditableTextBox" Property="Visibility" Value="Visible" />
+                    <Setter TargetName="ToggleButton" Property="HorizontalAlignment" Value="Right" />
+                    <Setter TargetName="ToggleButton" Property="Width" Value="32" />
                 </Trigger>
             </ControlTemplate.Triggers>
         </ControlTemplate>
