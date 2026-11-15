@@ -1,0 +1,122 @@
+using System.Text.RegularExpressions;
+
+namespace OpenTail.Bullshark.Core.Claude;
+
+/// <summary>Thrown when a `claude` command fails or prints something OpenTail.Bullshark cannot read.</summary>
+public sealed class ClaudeCliException : Exception
+{
+    public ClaudeCliException(string message) : base(message) { }
+}
+
+/// <summary>
+/// What to start in the background. `claude --bg` manages the session id itself and ignores --session-id
+/// (finding F18), so a new session's id is read back from `agents --json` after the launch.
+/// To continue an existing session, set <see cref="ResumeSessionId"/>; it then runs with the same id.
+/// </summary>
+public sealed record BackgroundLaunch(
+    string Name,
+    string WorkingDirectory,
+    string Model,
+    string Effort,
+    string? Prompt = null,
+    string? PermissionMode = null,
+    string? ResumeSessionId = null);
+
+/// <summary>
+/// The public `claude` commands the supervisor relies on. Each method maps to one command, and the
+/// argument lists are the ones checked against `claude --help` on 2026-11-14.
+/// </summary>
+public sealed class ClaudeCli
+{
+    private static readonly TimeSpan ShortTimeout = TimeSpan.FromSeconds(60);
+    private static readonly Regex BackgroundIdPattern =
+        new(@"backgrounded\s*·\s*([0-9a-f]{8})\s*·", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    private readonly ICliRunner _runner;
+
+    public ClaudeCli(ICliRunner runner)
+    {
+        _runner = runner;
+    }
+
+    public async Task<IReadOnlyList<AgentInfo>> ListAgentsAsync(CancellationToken cancellationToken = default)
+    {
+        var result = await RunAsync(["agents", "--json"], null, cancellationToken);
+        return AgentInfo.ParseList(result.StdOut);
+    }
+
+    /// <summary>Starts a background session and returns its 8-character id.</summary>
+    public async Task<string> StartBackgroundAsync(BackgroundLaunch launch, CancellationToken cancellationToken = default)
+    {
+        var args = new List<string> { "--bg", "--model", launch.Model, "--effort", launch.Effort, "--name", launch.Name };
+        if (launch.PermissionMode is not null) args.AddRange(["--permission-mode", launch.PermissionMode]);
+        if (launch.ResumeSessionId is not null) args.AddRange(["--resume", launch.ResumeSessionId]);
+        if (launch.Prompt is not null) args.Add(launch.Prompt);
+
+        var result = await RunAsync(args, launch.WorkingDirectory, cancellationToken);
+        return ParseBackgroundId(result.StdOut)
+            ?? throw new ClaudeCliException($"`claude --bg` did not print an id: {result.StdOut.Trim()}");
+    }
+
+    /// <summary>
+    /// Reads back the full session id of a background session that was just started, by its short id.
+    /// The session can take a moment to appear in the list, so this polls for a while before giving up.
+    /// </summary>
+    public async Task<string> ResolveSessionIdAsync(
+        string shortId,
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default)
+    {
+        var deadline = DateTimeOffset.UtcNow + timeout;
+        while (true)
+        {
+            var agent = (await ListAgentsAsync(cancellationToken)).FirstOrDefault(a => a.Id == shortId);
+            if (agent?.SessionId is { } sessionId) return sessionId;
+            if (DateTimeOffset.UtcNow >= deadline)
+                throw new ClaudeCliException($"session {shortId} did not appear in `claude agents --json` within {timeout.TotalSeconds:0}s");
+            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// The 8-character id that `claude logs`, `attach` and `stop` take. In every sample so far it is the first
+    /// 8 characters of the session id (checked 2026-11-14 on several sessions).
+    /// </summary>
+    public static string ShortIdOf(string sessionId) =>
+        sessionId.Length >= 8 ? sessionId[..8] : sessionId;
+
+    public static string? ParseBackgroundId(string output)
+    {
+        var match = BackgroundIdPattern.Match(output);
+        return match.Success ? match.Groups[1].Value : null;
+    }
+
+    /// <summary>Prints recent terminal output of a background session (escape codes included).</summary>
+    public async Task<string> LogsAsync(string idOrName, CancellationToken cancellationToken = default)
+    {
+        var result = await RunAsync(["logs", idOrName], null, cancellationToken);
+        return result.StdOut;
+    }
+
+    /// <summary>Stops a session. stop and rm take the id, not the name (finding F14).</summary>
+    public Task<CliResult> StopAsync(string id, CancellationToken cancellationToken = default) =>
+        RunAsync(["stop", id], null, cancellationToken, requireSuccess: false);
+
+    public Task<CliResult> RemoveAsync(string id, CancellationToken cancellationToken = default) =>
+        RunAsync(["rm", id], null, cancellationToken, requireSuccess: false);
+
+    private async Task<CliResult> RunAsync(
+        IReadOnlyList<string> args,
+        string? workingDirectory,
+        CancellationToken cancellationToken,
+        bool requireSuccess = true)
+    {
+        var result = await _runner.RunAsync(args, workingDirectory, ShortTimeout, cancellationToken);
+        if (requireSuccess && !result.Succeeded)
+        {
+            var reason = result.TimedOut ? "timed out" : $"exit {result.ExitCode}";
+            throw new ClaudeCliException($"`claude {string.Join(' ', args.Take(2))}` failed ({reason}): {result.StdErr.Trim()} {result.StdOut.Trim()}");
+        }
+        return result;
+    }
+}

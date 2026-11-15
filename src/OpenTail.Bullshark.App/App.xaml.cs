@@ -1,0 +1,42 @@
+﻿using System.Windows;
+
+namespace OpenTail.Bullshark.App;
+
+/// <summary>Application entry point. Builds the window from command-line options.</summary>
+public partial class App : Application
+{
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool FreeConsole();
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool SetStdHandle(int nStdHandle, IntPtr hHandle);
+
+    protected override void OnStartup(StartupEventArgs e)
+    {
+        if (!e.Args.Contains("--state")) OpenTail.Bullshark.Core.Storage.AppDataMigration.CopyPreviousIfMissing(AppLog.Write);
+
+        // Sessions must not write into the console or the redirected streams we were started with: their output
+        // belongs to the embedded terminal (finding F3). Detach from the console and clear the standard handles.
+        FreeConsole();
+        SetStdHandle(-10, IntPtr.Zero); // STD_INPUT_HANDLE
+        SetStdHandle(-11, IntPtr.Zero); // STD_OUTPUT_HANDLE
+        SetStdHandle(-12, IntPtr.Zero); // STD_ERROR_HANDLE
+        // WPF's hardware drawing paints blank on this machine's GPU, so its own controls (tabs, status bar) never show.
+        // Software rendering fixes that, and the embedded terminals still draw (finding F38).
+        System.Windows.Media.RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
+        base.OnStartup(e);
+        // With the standard handles cleared, nothing reaches a console, so unhandled errors go to the log.
+        DispatcherUnhandledException += (_, args) =>
+        {
+            AppLog.Write($"unhandled: {args.Exception}");
+            args.Handled = true;
+        };
+        // --smoke runs the P1 spike harness (used by scripts/Test-Spike.ps1). Otherwise open the OpenTail.Bullshark window.
+        Window window = e.Args.Contains("--smoke")
+            ? new MainWindow(SpikeOptions.Parse(e.Args))
+            : new SessionWindow(LaunchOptions.Parse(e.Args));
+        MainWindow = window;
+        window.Show();
+    }
+}
+

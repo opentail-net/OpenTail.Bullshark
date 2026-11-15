@@ -1,0 +1,10 @@
+﻿<Window x:Class="OpenTail.Bullshark.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:term="clr-namespace:Wpf.Ui.Terminal;assembly=Wpf.Ui.Terminal"
+        Title="OpenTail.Bullshark spike" Width="1000" Height="640"
+        Background="#1E1E1E">
+    <Grid>
+        <term:ExtendedTerminalControl x:Name="Term" />
+    </Grid>
+</Window>

@@ -1,0 +1,194 @@
+<UserControl x:Class="OpenTail.Bullshark.App.SetupView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="{DynamicResource SetupBg}" Foreground="{DynamicResource SetupText}">
+    <!-- The colours come from the rail's palette (ApplyTheme). Replacing a brush updates every control that uses it. -->
+    <UserControl.Resources>
+        <SolidColorBrush x:Key="SetupBg" Color="#111316" />
+        <SolidColorBrush x:Key="SetupPanel" Color="#0C0D10" />
+        <SolidColorBrush x:Key="SetupText" Color="#E6E6E6" />
+        <SolidColorBrush x:Key="SetupMuted" Color="#9AA3AE" />
+        <SolidColorBrush x:Key="SetupBorder" Color="#2A2F38" />
+        <SolidColorBrush x:Key="SetupSelection" Color="#2B3A4F" />
+
+        <Style TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource SetupText}" />
+        </Style>
+
+        <Style TargetType="TextBox">
+            <Setter Property="Background" Value="{DynamicResource SetupPanel}" />
+            <Setter Property="Foreground" Value="{DynamicResource SetupText}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource SetupBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="8,6" />
+            <Setter Property="CaretBrush" Value="{DynamicResource SetupText}" />
+            <Setter Property="SelectionBrush" Value="{DynamicResource SetupSelection}" />
+        </Style>
+
+        <Style TargetType="Button">
+            <Setter Property="Background" Value="{DynamicResource SetupPanel}" />
+            <Setter Property="Foreground" Value="{DynamicResource SetupText}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource SetupBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="12,5" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource SetupSelection}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- A combo box template drawn with the setup's own brushes. The default Windows 11 template takes its colours from the
+             system theme, so it stays light in dark mode. -->
+        <ControlTemplate x:Key="SetupComboTemplate" TargetType="ComboBox">
+            <Grid>
+                <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="1" CornerRadius="4" />
+                <Grid Margin="{TemplateBinding Padding}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <ContentPresenter x:Name="ContentSite" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Left"
+                                      IsHitTestVisible="False" Content="{TemplateBinding SelectionBoxItem}"
+                                      ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                      ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}" />
+                    <TextBox x:Name="PART_EditableTextBox" Grid.Column="0" Visibility="Collapsed" Background="Transparent"
+                             BorderThickness="0" Padding="0" VerticalAlignment="Center" Foreground="{DynamicResource SetupText}"
+                             CaretBrush="{DynamicResource SetupText}" />
+                    <ToggleButton x:Name="ToggleButton" Grid.Column="1" Focusable="False" ClickMode="Press" Margin="8,0,0,0"
+                                  Cursor="Hand"
+                                  IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                        <ToggleButton.Template>
+                            <ControlTemplate TargetType="ToggleButton">
+                                <Path Data="M0,0 L4,4 L8,0" Stroke="{DynamicResource SetupMuted}" StrokeThickness="1.4"
+                                      Width="8" Height="5" Stretch="Fill" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </ControlTemplate>
+                        </ToggleButton.Template>
+                    </ToggleButton>
+                </Grid>
+                <Popup x:Name="PART_Popup" Placement="Bottom" AllowsTransparency="True" Focusable="False" PopupAnimation="Fade"
+                       IsOpen="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}}"
+                       MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}" MaxHeight="300">
+                    <Border Background="{DynamicResource SetupPanel}" BorderBrush="{DynamicResource SetupBorder}"
+                            BorderThickness="1" CornerRadius="4" Padding="2" Margin="0,2,0,0">
+                        <ScrollViewer SnapsToDevicePixels="True">
+                            <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained" />
+                        </ScrollViewer>
+                    </Border>
+                </Popup>
+            </Grid>
+            <ControlTemplate.Triggers>
+                <Trigger Property="IsEditable" Value="True">
+                    <Setter TargetName="ContentSite" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="PART_EditableTextBox" Property="Visibility" Value="Visible" />
+                </Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate>
+
+        <Style TargetType="ComboBox">
+            <Setter Property="Background" Value="{DynamicResource SetupPanel}" />
+            <Setter Property="Foreground" Value="{DynamicResource SetupText}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource SetupBorder}" />
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="Template" Value="{StaticResource SetupComboTemplate}" />
+        </Style>
+
+        <Style TargetType="ComboBoxItem">
+            <Setter Property="Background" Value="{DynamicResource SetupPanel}" />
+            <Setter Property="Foreground" Value="{DynamicResource SetupText}" />
+            <Setter Property="Padding" Value="8,5" />
+            <Style.Triggers>
+                <Trigger Property="IsHighlighted" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource SetupSelection}" />
+                </Trigger>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource SetupSelection}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Background="{DynamicResource SetupBg}">
+        <StackPanel Margin="20,16" MaxWidth="860" HorizontalAlignment="Left">
+            <TextBlock Text="Setup" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,4" />
+            <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource SetupMuted}" Margin="0,0,0,16"
+                       Text="Choose a pattern, the folder, the models and the briefs. Nothing starts until you press Start. Start checks the run and saves these settings for the next launch. A running session keeps the brief it started with." />
+
+            <TextBlock Text="Pattern" FontWeight="SemiBold" Margin="0,0,0,4" />
+            <ComboBox x:Name="PatternBox" Margin="0,0,0,4" MaxWidth="420" HorizontalAlignment="Left"
+                      SelectionChanged="PatternBox_SelectionChanged">
+                <ComboBox.ItemTemplate>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding Title}" />
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
+            </ComboBox>
+            <TextBlock x:Name="PatternDescription" TextWrapping="Wrap" Foreground="{DynamicResource SetupMuted}" Margin="0,0,0,16" />
+
+            <TextBlock Text="Folder" FontWeight="SemiBold" Margin="0,0,0,4" />
+            <ComboBox x:Name="FolderBox" IsEditable="True" Margin="0,0,0,4" Width="520" HorizontalAlignment="Left"
+                      ToolTip="Trusted folders first, most recently used first. You can type a path." />
+            <TextBlock x:Name="FolderMessage" TextWrapping="Wrap" Foreground="{DynamicResource SetupMuted}" Margin="0,2,0,6" />
+            <Button x:Name="BrowseButton" Content="Browse…" HorizontalAlignment="Left" Margin="0,0,0,16"
+                    Click="Browse_Click" />
+
+            <StackPanel x:Name="CodersRow" Orientation="Horizontal" Margin="0,0,0,12">
+                <TextBlock Text="Coders" VerticalAlignment="Center" Margin="0,0,12,0" Width="80" />
+                <ComboBox x:Name="CodersBox" Width="90" SelectionChanged="OnSelectionChanged" />
+                <TextBlock Text="2 to 6" Foreground="{DynamicResource SetupMuted}" VerticalAlignment="Center" Margin="12,0,0,0" />
+            </StackPanel>
+
+            <TextBlock Text="Models and effort, per role" FontWeight="SemiBold" Margin="0,4,0,8" />
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                <TextBlock Text="Planner" Width="104" VerticalAlignment="Center" />
+                <ComboBox x:Name="PlannerModelBox" Width="130" SelectionChanged="OnSelectionChanged" />
+                <ComboBox x:Name="PlannerEffortBox" Width="130" Margin="8,0,0,0" SelectionChanged="OnSelectionChanged" />
+            </StackPanel>
+            <StackPanel x:Name="ReviewerRow" Orientation="Horizontal" Margin="24,0,0,6">
+                <TextBlock Text="↪ Reviewer" Width="104" VerticalAlignment="Center" />
+                <ComboBox x:Name="ReviewerBox" Width="210" SelectionChanged="OnSelectionChanged">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Label}" />
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+            </StackPanel>
+            <TextBlock x:Name="ReviewerFootnote" Margin="24,0,0,10" TextWrapping="Wrap" Foreground="{DynamicResource SetupMuted}"
+                       Text="* self: the planner reviews in its own session, and its context grows with every review, so it costs the most. Sonnet, the default, runs each review in a subagent, so the planner's own context stays small. For a one-batch task, self is enough." />
+            <StackPanel x:Name="CoderRow" Orientation="Horizontal" Margin="0,0,0,6">
+                <TextBlock Text="Coder" Width="104" VerticalAlignment="Center" />
+                <ComboBox x:Name="CoderModelBox" Width="130" SelectionChanged="OnSelectionChanged" />
+                <ComboBox x:Name="CoderEffortBox" Width="130" Margin="8,0,0,0" SelectionChanged="OnSelectionChanged" />
+            </StackPanel>
+            <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource SetupMuted}" Margin="0,0,0,18"
+                       Text="Fable is the most expensive model. Whether every model accepts every effort level is not verified yet (S9c)." />
+
+            <TextBlock Text="Task" FontWeight="SemiBold" Margin="0,0,0,4" />
+            <TextBox x:Name="TaskBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="64" Margin="0,0,0,16"
+                     TextChanged="OnTextChanged" />
+
+            <TextBlock x:Name="PlannerExtraLabel" Text="Extra for the planner's brief (optional)" FontWeight="SemiBold" Margin="0,0,0,4" />
+            <TextBox x:Name="PlannerExtraBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="44" Margin="0,0,0,12"
+                     TextChanged="OnTextChanged" />
+            <TextBlock x:Name="CoderExtraLabel" Text="Extra for the coders' briefs (optional)" FontWeight="SemiBold" Margin="0,0,0,4" />
+            <TextBox x:Name="CoderExtraBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="44" Margin="0,0,0,8"
+                     TextChanged="OnTextChanged" />
+            <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource SetupMuted}" Margin="0,0,0,16"
+                       Text="The extra text is added after the base brief, under 'From the owner'. The base brief keeps the peer names, the handoff by message, and 'do not ask questions'." />
+
+            <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource SetupMuted}" Margin="0,0,0,16"
+                       Text="Permission mode: auto, the same for every session in a run." />
+
+            <StackPanel Orientation="Horizontal">
+                <Button x:Name="StartButton" Content="Start" Padding="20,6" FontWeight="SemiBold" Click="Start_Click" />
+                <TextBlock x:Name="StartStatus" TextWrapping="Wrap" VerticalAlignment="Center" Margin="14,0,0,0" />
+            </StackPanel>
+
+            <TextBlock Text="Preview: what would start" FontWeight="SemiBold" Margin="0,22,0,6" />
+            <TextBlock x:Name="PreviewText" FontFamily="Consolas" FontSize="12" TextWrapping="Wrap" />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

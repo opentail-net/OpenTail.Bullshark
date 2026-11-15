@@ -1,0 +1,39 @@
+<Window x:Class="OpenTail.Bullshark.App.ClosePrompt"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Close session"
+        SizeToContent="WidthAndHeight" ResizeMode="NoResize" ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource PromptBg}" Foreground="{DynamicResource PromptText}" FontFamily="Segoe UI">
+    <Window.Resources>
+        <Style TargetType="Button">
+            <Setter Property="Background" Value="{DynamicResource PromptPanel}" />
+            <Setter Property="Foreground" Value="{DynamicResource PromptText}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource PromptBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="14,6" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource PromptSelection}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+    <StackPanel Margin="20">
+        <TextBlock x:Name="Heading" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,10" />
+        <TextBlock TextWrapping="Wrap" MaxWidth="440" Foreground="{DynamicResource PromptMuted}" Margin="0,0,0,18">
+            <Run FontWeight="SemiBold" Foreground="{DynamicResource PromptText}">Close Session and Tab</Run>
+            <Run>stops the session. Its conversation is kept, and attaching to it resumes it. It is not restarted.</Run>
+            <LineBreak /><LineBreak />
+            <Run FontWeight="SemiBold" Foreground="{DynamicResource PromptText}">Close Tab</Run>
+            <Run>hides the tab. The session keeps running.</Run>
+        </TextBlock>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="Close Session and Tab" Click="CloseSessionAndTab_Click" />
+            <Button Content="Close Tab" Click="CloseTab_Click" />
+            <Button Content="Cancel" IsDefault="True" IsCancel="True" Click="Cancel_Click" Margin="0" />
+        </StackPanel>
+    </StackPanel>
+</Window>

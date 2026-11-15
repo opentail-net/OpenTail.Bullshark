@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/OpenTail.Bullshark.App/OpenTail.Bullshark.App.csproj" />
+    <Project Path="src/OpenTail.Bullshark.Core/OpenTail.Bullshark.Core.csproj" />
+    <Project Path="src/OpenTail.Bullshark.Supervisor/OpenTail.Bullshark.Supervisor.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/OpenTail.Bullshark.Core.Tests/OpenTail.Bullshark.Core.Tests.csproj" />
+  </Folder>
+</Solution>
