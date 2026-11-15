@@ -74,7 +74,7 @@ public static class SetupPlan
         if (!Choices.Efforts.Contains(request.PlannerEffort)) errors.Add($"Planner effort '{request.PlannerEffort}' is not offered.");
         if (!Choices.Efforts.Contains(request.CoderEffort)) errors.Add($"Coder effort '{request.CoderEffort}' is not offered.");
         if (!Choices.Reviewers.Contains(request.Reviewer)) errors.Add($"Reviewer '{request.Reviewer}' is not offered.");
-        if (request.Assistant != "none" && !Choices.Models.Contains(request.Assistant))
+        if (request.Assistant is not ("none" or "reviewer") && !Choices.Models.Contains(request.Assistant))
             errors.Add($"Assistant model '{request.Assistant}' is not offered.");
         if (request.Assistant != "none" && !Choices.Efforts.Contains(request.AssistantEffort))
             errors.Add($"Assistant effort '{request.AssistantEffort}' is not offered.");
@@ -105,7 +105,7 @@ public static class SetupPlan
         var coders = pattern.Kind == PatternKind.PlanAndCode ? 1 : request.Coders;
 
         var sessions = RunPlan.Build(pattern, Path.GetFullPath(request.Folder.Trim()), request.Task.Trim(), runId,
-            coders, request.PermissionMode, request.Reviewer, request.Assistant != "none");
+            coders, request.PermissionMode, request.Reviewer, ChoiceOf(request));
 
         return sessions.Select(s => s.Role switch
         {
@@ -117,7 +117,7 @@ public static class SetupPlan
             },
             SessionRole.Assistant => s with
             {
-                Model = request.Assistant,
+                Model = request.Assistant == "reviewer" ? request.Reviewer : request.Assistant,
                 Effort = request.AssistantEffort,
             },
             _ => s with
@@ -141,7 +141,18 @@ public static class SetupPlan
             request.PermissionMode, now, specs);
     }
 
-    /// <summary>Appends the owner's text under a clear label. Blank text leaves the brief unchanged.</summary>
+    /// <summary>
+    /// How the assistant runs for a request (D-S41). "reviewer" uses the reviewer's setting: the planner when the reviewer is self,
+    /// otherwise a separate session on the reviewer's model.
+    /// </summary>
+    public static AssistantChoice ChoiceOf(SetupRequest request) => request.Assistant switch
+    {
+        "none" => AssistantChoice.None,
+        "reviewer" => request.Reviewer == "self" ? AssistantChoice.Planner : AssistantChoice.Session,
+        _ => AssistantChoice.Session,
+    };
+
+    /// <summary>Appends the owner''s text under a clear label. Blank text leaves the brief unchanged.</summary>
     public static string WithOwnerText(string brief, string extra) =>
         string.IsNullOrWhiteSpace(extra) ? brief : brief + "\n\nFrom the owner: " + extra.Trim();
 }

@@ -18,7 +18,7 @@ public sealed class AssistantTests
     [Fact]
     public void WithAnAssistantItJoinsTheRunAndTheCoderKnowsIt()
     {
-        var specs = RunPlan.Build(PatternSpec.Find("plan-code")!, @"C:\W", "task", "ab12", withAssistant: true);
+        var specs = RunPlan.Build(PatternSpec.Find("plan-code")!, @"C:\W", "task", "ab12", assistant: AssistantChoice.Session);
 
         var assistant = Assert.Single(specs, s => s.Role == SessionRole.Assistant);
         Assert.Equal("bullshark-assistant-ab12", assistant.Name);
@@ -29,7 +29,7 @@ public sealed class AssistantTests
     [Fact]
     public void TheAssistantAnswersInAFewLinesAndDoesNoWork()
     {
-        var specs = RunPlan.Build(PatternSpec.Find("plan-many")!, @"C:\W", "task", "ab12", coders: 2, withAssistant: true);
+        var specs = RunPlan.Build(PatternSpec.Find("plan-many")!, @"C:\W", "task", "ab12", coders: 2, assistant: AssistantChoice.Session);
 
         var assistant = Assert.Single(specs, s => s.Role == SessionRole.Assistant);
         Assert.Contains("answer it in a few lines", assistant.Brief);
@@ -39,7 +39,7 @@ public sealed class AssistantTests
     [Fact]
     public void SoloHasNoAssistant()
     {
-        var specs = RunPlan.Build(PatternSpec.Find("solo")!, @"C:\W", "task", "ab12", withAssistant: true);
+        var specs = RunPlan.Build(PatternSpec.Find("solo")!, @"C:\W", "task", "ab12", assistant: AssistantChoice.Session);
 
         Assert.Single(specs);
     }

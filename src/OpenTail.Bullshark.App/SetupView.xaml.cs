@@ -29,7 +29,7 @@ public partial class SetupView : UserControl
         Choices.Reviewers.Select(v => new ReviewerChoice(v, v == "self" ? "self *" : v)).ToList();
 
     /// <summary>The assistant choices: none, then the models on offer (D-S41). None is the default.</summary>
-    private static readonly IReadOnlyList<string> AssistantOptions = ["none", .. Choices.Models];
+    private static readonly IReadOnlyList<string> AssistantOptions = ["none", "reviewer", .. Choices.Models];
 
     /// <summary>Start was pressed on a valid run, and the settings are saved. The window writes the run and starts it.</summary>
     public event Action<SetupRequest>? RunRequested;
@@ -103,6 +103,15 @@ public partial class SetupView : UserControl
     private bool IsSolo => Pattern.Kind == PatternKind.Solo;
 
     /// <summary>One assistant choice, as a tab. Its hover text says what the choice does.</summary>
+    /// <summary>The hover text of an assistant choice.</summary>
+    private static string AssistantTip(string option) => option switch
+    {
+        "none" => "No assistant. The default: nothing extra runs or costs.",
+        "reviewer" => "The reviewer answers the coders' questions. A coder asks back when a question needs an answer, rather than guessing. " +
+                      "With reviewer self, the planner answers; with a model, a session on the reviewer's model does.",
+        _ => $"{option}: a helper the coders can ask a quick question. It answers in a few lines, and it costs only when a coder asks.",
+    };
+
     private RadioButton AssistantTab(string option)
     {
         var tab = new RadioButton
@@ -111,9 +120,7 @@ public partial class SetupView : UserControl
             Tag = option,
             GroupName = "Assistant",
             Style = (Style)Resources["AssistantTab"],
-            ToolTip = option == "none"
-                ? "No assistant. The default: nothing extra runs or costs."
-                : $"{option}: a helper the coders can ask a quick question. It answers in a few lines, and it costs only when a coder asks.",
+            ToolTip = AssistantTip(option),
         };
         tab.Checked += (_, _) => Refresh();
         return tab;

@@ -25,6 +25,17 @@ public sealed record PatternSpec(PatternKind Kind, string Key, string Title, str
         Shipped.FirstOrDefault(p => string.Equals(p.Key, key, StringComparison.Ordinal));
 }
 
+/// <summary>
+/// How a run's assistant works (D-S41). None: the coders have no assistant. Planner: the reviewer is self, so the planner answers
+/// the coders' questions in its own session, and no session is added. Session: a separate assistant session answers them.
+/// </summary>
+public enum AssistantChoice
+{
+    None,
+    Planner,
+    Session,
+}
+
 /// <summary>Names of the sessions in a run (D-S13). The default pair from before runs.json keeps its plain names.</summary>
 public static class RunNames
 {
@@ -87,7 +98,7 @@ public static class RunPlan
         int coders = 1,
         string permissionMode = "auto",
         string reviewer = "self",
-        bool withAssistant = false)
+        AssistantChoice assistant = AssistantChoice.None)
     {
         switch (pattern.Kind)
         {
@@ -109,7 +120,12 @@ public static class RunPlan
         }
 
         var coderNames = Enumerable.Range(1, coders).Select(i => RunNames.Coder(runId, i, coders)).ToList();
-        var helper = withAssistant ? RunNames.Assistant(runId) : null;
+        var helper = assistant switch
+        {
+            AssistantChoice.Session => RunNames.Assistant(runId),
+            AssistantChoice.Planner => planner,
+            _ => null,
+        };
 
         var specs = new List<SessionSpec>
         {
@@ -119,7 +135,7 @@ public static class RunPlan
         specs.AddRange(coderNames.Select(coder => new SessionSpec(
             SessionRole.Coder, coder, workDir, CoderModel, CoderEffort,
             CoderBrief(coder, planner, helper), permissionMode, CoderResumePrompt(planner))));
-        if (helper is not null)
+        if (assistant == AssistantChoice.Session)
             specs.Add(new SessionSpec(SessionRole.Assistant, helper, workDir, AssistantModel, AssistantEffort,
                 AssistantBrief(helper, coderNames, planner), permissionMode, AssistantResumePrompt));
         return specs;
@@ -168,7 +184,10 @@ public static class RunPlan
         $"When a batch is done, send a report to {planner} with SendMessage: what changed, the test results, and anything you decided. " +
         $"If you are stuck, or a choice changes the design, send {planner} one short question with SendMessage and carry on with the parts you can do. " +
         "Do not stop to wait for the answer. Otherwise make the sensible decision and say what you decided." +
-        (assistant is null ? string.Empty : $" Your assistant is {assistant}: for a quick question, send it one short message with SendMessage; it answers in a few lines.");
+        (assistant is null ? string.Empty
+            : assistant == planner
+                ? $" Your reviewer is {planner}: when a question needs an answer, send it one short message with SendMessage; it answers in a few lines. Ask rather than guess."
+                : $" Your assistant is {assistant}: when a question needs an answer, send it one short message with SendMessage; it answers in a few lines. Ask rather than guess.");
 
     /// <summary>
     /// The assistant's brief (D-S41). It answers the coders' short questions in a few lines, and does no work of its own. It
