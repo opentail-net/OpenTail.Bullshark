@@ -17,7 +17,9 @@ public sealed record PatternSettings(
     int Coders,
     string PlannerExtra,
     string CoderExtra,
-    string Reviewer = "sonnet");
+    string Reviewer = "sonnet",
+    string Assistant = "none",
+    string AssistantEffort = "medium");
 
 /// <summary>Reads and writes patterns.json. The file sits beside state.json, so a scratch state file isolates it too.</summary>
 public sealed class PatternStore
@@ -54,7 +56,9 @@ public sealed class PatternStore
             kind == PatternKind.PlanAndManyCoders ? Choices.MinManyCoders : 1,
             PlannerExtra: string.Empty,
             CoderExtra: string.Empty,
-            Reviewer: "sonnet");
+            Reviewer: "sonnet",
+            Assistant: "none",
+            AssistantEffort: "medium");
     }
 
     /// <summary>All saved settings. A missing or unreadable file gives none, and the defaults are used.</summary>

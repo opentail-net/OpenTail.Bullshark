@@ -30,6 +30,9 @@ public static class RunNames
 {
     public static string Planner(string runId) => $"{SessionSpec.RunPlannerPrefix}-{runId}";
 
+    /// <summary>The run's assistant, when it has one (D-S41).</summary>
+    public static string Assistant(string runId) => $"bullshark-assistant-{runId}";
+
     /// <summary>One coder is named with the run id alone. Several coders are numbered from 1.</summary>
     public static string Coder(string runId, int index, int count) =>
         count == 1 ? $"{SessionSpec.RunCoderPrefix}-{runId}" : $"{SessionSpec.RunCoderPrefix}-{runId}-{index}";
@@ -60,6 +63,10 @@ public static class RunPlan
     public const string CoderModel = "haiku";
     public const string CoderEffort = "medium";
 
+    /// <summary>The assistant's model and effort when the owner has not chosen them. The setup page always chooses.</summary>
+    public const string AssistantModel = "sonnet";
+    public const string AssistantEffort = "medium";
+
     public const string SoloResumePrompt =
         "You were restarted and are continuing where you left off. Do not ask questions: make the sensible decision. " +
         "Carry on with the current batch and its tests. If nothing is pending, reply with one line saying so.";
@@ -79,7 +86,8 @@ public static class RunPlan
         string runId,
         int coders = 1,
         string permissionMode = "auto",
-        string reviewer = "self")
+        string reviewer = "self",
+        bool withAssistant = false)
     {
         switch (pattern.Kind)
         {
@@ -101,6 +109,7 @@ public static class RunPlan
         }
 
         var coderNames = Enumerable.Range(1, coders).Select(i => RunNames.Coder(runId, i, coders)).ToList();
+        var helper = withAssistant ? RunNames.Assistant(runId) : null;
 
         var specs = new List<SessionSpec>
         {
@@ -109,7 +118,10 @@ public static class RunPlan
         };
         specs.AddRange(coderNames.Select(coder => new SessionSpec(
             SessionRole.Coder, coder, workDir, CoderModel, CoderEffort,
-            CoderBrief(coder, planner), permissionMode, CoderResumePrompt(planner))));
+            CoderBrief(coder, planner, helper), permissionMode, CoderResumePrompt(planner))));
+        if (helper is not null)
+            specs.Add(new SessionSpec(SessionRole.Assistant, helper, workDir, AssistantModel, AssistantEffort,
+                AssistantBrief(helper, coderNames, planner), permissionMode, AssistantResumePrompt));
         return specs;
     }
 
@@ -150,12 +162,29 @@ public static class RunPlan
     /// The coder's brief. Coders report to the planner only, so the brief names the planner and no other coder
     /// (decision D-S16).
     /// </summary>
-    public static string CoderBrief(string coder, string planner) =>
+    public static string CoderBrief(string coder, string planner, string? assistant = null) =>
         $"You are {coder}, the coder. Your peer is {planner}, the planner. " +
         $"Wait for batches from {planner}; they arrive as messages. Do each batch fully, with tests. " +
         $"When a batch is done, send a report to {planner} with SendMessage: what changed, the test results, and anything you decided. " +
         $"If you are stuck, or a choice changes the design, send {planner} one short question with SendMessage and carry on with the parts you can do. " +
-        "Do not stop to wait for the answer. Otherwise make the sensible decision and say what you decided.";
+        "Do not stop to wait for the answer. Otherwise make the sensible decision and say what you decided." +
+        (assistant is null ? string.Empty : $" Your assistant is {assistant}: for a quick question, send it one short message with SendMessage; it answers in a few lines.");
+
+    /// <summary>
+    /// The assistant's brief (D-S41). It answers the coders' short questions in a few lines, and does no work of its own. It
+    /// costs only when a coder asks it something.
+    /// </summary>
+    public static string AssistantBrief(string name, IReadOnlyList<string> coders, string planner)
+    {
+        var askers = coders.Count == 1 ? coders[0] : "the coders";
+        return $"You are {name}, the assistant to {askers}. Your peer is {planner}, the planner. " +
+               $"A coder sends you a short question with SendMessage: answer it in a few lines with SendMessage to that coder. " +
+               "Do not write code, take batches, or start work of your own. Do not ask questions back unless you cannot answer without one.";
+    }
+
+    public const string AssistantResumePrompt =
+        "You were restarted. Do not ask questions. If a coder has a question waiting, answer it with SendMessage; " +
+        "otherwise reply with one line saying you are waiting.";
 
     /// <summary>Solo's brief: one session, no peer, and no message to send.</summary>
     public static string SoloBrief(string name, string task) =>

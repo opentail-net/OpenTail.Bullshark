@@ -110,6 +110,32 @@
                 </Trigger>
             </Style.Triggers>
         </Style>
+
+        <!-- One option of the assistant (none, or a model) as a tab: the chosen one is lit, the rest sit quietly on the panel. -->
+        <Style x:Key="AssistantTab" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{DynamicResource SetupText}" />
+            <Setter Property="Margin" Value="0,0,4,0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Frame" Background="{DynamicResource SetupPanel}" BorderBrush="{DynamicResource SetupBorder}"
+                                BorderThickness="1" CornerRadius="4" Padding="10,4">
+                            <ContentPresenter VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource SetupMuted}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Frame" Property="Background" Value="{DynamicResource SetupSelection}" />
+                                <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource SetupText}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </UserControl.Resources>
 
     <ScrollViewer VerticalScrollBarVisibility="Auto" Background="{DynamicResource SetupBg}">
@@ -118,8 +144,10 @@
             <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource SetupMuted}" Margin="0,0,0,16"
                        Text="Choose a pattern, the folder, the models and the briefs. Nothing starts until you press Start. Start checks the run and saves these settings for the next launch. A running session keeps the brief it started with." />
 
-            <TextBlock Text="Pattern" FontWeight="SemiBold" Margin="0,0,0,4" />
+            <TextBlock Text="Pattern" FontWeight="SemiBold" Margin="0,0,0,4"
+                       ToolTip="The shape of the run: how many sessions there are and who reports to whom." />
             <ComboBox x:Name="PatternBox" Margin="0,0,0,4" MaxWidth="420" HorizontalAlignment="Left"
+                      ToolTip="The shape of the run. Each pattern keeps its own settings."
                       SelectionChanged="PatternBox_SelectionChanged">
                 <ComboBox.ItemTemplate>
                     <DataTemplate>
@@ -129,28 +157,35 @@
             </ComboBox>
             <TextBlock x:Name="PatternDescription" TextWrapping="Wrap" Foreground="{DynamicResource SetupMuted}" Margin="0,0,0,16" />
 
-            <TextBlock Text="Folder" FontWeight="SemiBold" Margin="0,0,0,4" />
+            <TextBlock Text="Folder" FontWeight="SemiBold" Margin="0,0,0,4"
+                       ToolTip="The folder the sessions work in. A folder must be trusted in Claude before its sessions can start." />
             <ComboBox x:Name="FolderBox" IsEditable="True" Margin="0,0,0,4" Width="520" HorizontalAlignment="Left"
                       ToolTip="Trusted folders first, most recently used first. You can type a path." />
             <TextBlock x:Name="FolderMessage" TextWrapping="Wrap" Foreground="{DynamicResource SetupMuted}" Margin="0,2,0,6" />
             <Button x:Name="BrowseButton" Content="Browse…" HorizontalAlignment="Left" Margin="0,0,0,16"
-                    Click="Browse_Click" />
+                    ToolTip="Pick the folder from disk." Click="Browse_Click" />
 
             <StackPanel x:Name="CodersRow" Orientation="Horizontal" Margin="0,0,0,12">
-                <TextBlock Text="Coders" VerticalAlignment="Center" Margin="0,0,12,0" Width="80" />
-                <ComboBox x:Name="CodersBox" Width="90" SelectionChanged="OnSelectionChanged" />
+                <TextBlock Text="Coders" VerticalAlignment="Center" Margin="0,0,12,0" Width="80"
+                           ToolTip="How many coders work in parallel. Each takes its own batches from the planner." />
+                <ComboBox x:Name="CodersBox" Width="90" ToolTip="Two to six coders, for plan > many coders." SelectionChanged="OnSelectionChanged" />
                 <TextBlock Text="2 to 6" Foreground="{DynamicResource SetupMuted}" VerticalAlignment="Center" Margin="12,0,0,0" />
             </StackPanel>
 
             <TextBlock Text="Models and effort, per role" FontWeight="SemiBold" Margin="0,4,0,8" />
             <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                <TextBlock Text="Planner" Width="104" VerticalAlignment="Center" />
-                <ComboBox x:Name="PlannerModelBox" Width="130" SelectionChanged="OnSelectionChanged" />
-                <ComboBox x:Name="PlannerEffortBox" Width="130" Margin="8,0,0,0" SelectionChanged="OnSelectionChanged" />
+                <TextBlock Text="Planner" Width="104" VerticalAlignment="Center"
+                           ToolTip="The planner plans the work, sends each batch to a coder, and reviews each report." />
+                <ComboBox x:Name="PlannerModelBox" Width="130" ToolTip="The model that plans and reviews. Opus is the default." SelectionChanged="OnSelectionChanged" />
+                <ComboBox x:Name="PlannerEffortBox" Width="130" Margin="8,0,0,0" ToolTip="How hard the planner thinks. High is the default."
+                          SelectionChanged="OnSelectionChanged" />
             </StackPanel>
             <StackPanel x:Name="ReviewerRow" Orientation="Horizontal" Margin="24,0,0,6">
-                <TextBlock Text="↪ Reviewer" Width="104" VerticalAlignment="Center" />
-                <ComboBox x:Name="ReviewerBox" Width="210" SelectionChanged="OnSelectionChanged">
+                <TextBlock Text="↪ Reviewer" Width="104" VerticalAlignment="Center"
+                           ToolTip="Who reviews each coder report: the planner itself, or a subagent on the chosen model." />
+                <ComboBox x:Name="ReviewerBox" Width="210"
+                          ToolTip="self: the planner reviews in its own session, and its context grows with each review. A model: a subagent reviews each report, so the planner's own context stays small."
+                          SelectionChanged="OnSelectionChanged">
                     <ComboBox.ItemTemplate>
                         <DataTemplate>
                             <TextBlock Text="{Binding Label}" />
@@ -161,22 +196,39 @@
             <TextBlock x:Name="ReviewerFootnote" Margin="24,0,0,10" TextWrapping="Wrap" Foreground="{DynamicResource SetupMuted}"
                        Text="* self: the planner reviews in its own session, and its context grows with every review, so it costs the most. Sonnet, the default, runs each review in a subagent, so the planner's own context stays small. For a one-batch task, self is enough." />
             <StackPanel x:Name="CoderRow" Orientation="Horizontal" Margin="0,0,0,6">
-                <TextBlock Text="Coder" Width="104" VerticalAlignment="Center" />
-                <ComboBox x:Name="CoderModelBox" Width="130" SelectionChanged="OnSelectionChanged" />
-                <ComboBox x:Name="CoderEffortBox" Width="130" Margin="8,0,0,0" SelectionChanged="OnSelectionChanged" />
+                <TextBlock Text="Coder" Width="104" VerticalAlignment="Center"
+                           ToolTip="The coder does each batch, with its tests, and reports back to the planner." />
+                <ComboBox x:Name="CoderModelBox" Width="130" ToolTip="The model that does the work. Haiku is the cheapest." SelectionChanged="OnSelectionChanged" />
+                <ComboBox x:Name="CoderEffortBox" Width="130" Margin="8,0,0,0" ToolTip="How hard the coder thinks. Medium is the default."
+                          SelectionChanged="OnSelectionChanged" />
             </StackPanel>
+
+            <!-- The optional assistant (D-S41): none by default. It answers the coders' quick questions, and costs only when asked. -->
+            <StackPanel x:Name="AssistantRow" Orientation="Horizontal" Margin="24,0,0,6">
+                <TextBlock Text="↪ Assistant" Width="104" VerticalAlignment="Center"
+                           ToolTip="An optional helper for the coders. It answers their short questions in a few lines, and costs only when asked. None is the default." />
+                <WrapPanel x:Name="AssistantTabs" Orientation="Horizontal" VerticalAlignment="Center" />
+                <ComboBox x:Name="AssistantEffortBox" Width="130" Margin="12,0,0,0"
+                          ToolTip="How hard the assistant thinks when it answers. Medium is the default."
+                          SelectionChanged="OnSelectionChanged" />
+            </StackPanel>
+
             <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource SetupMuted}" Margin="0,0,0,18"
                        Text="Fable is the most expensive model. Whether every model accepts every effort level is not verified yet (S9c)." />
 
-            <TextBlock Text="Task" FontWeight="SemiBold" Margin="0,0,0,4" />
+            <TextBlock Text="Task" FontWeight="SemiBold" Margin="0,0,0,4"
+                       ToolTip="What the run should do. The planner plans it in small batches." />
             <TextBox x:Name="TaskBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="64" Margin="0,0,0,16"
+                     ToolTip="What the run should do. The planner plans it in small batches."
                      TextChanged="OnTextChanged" />
 
             <TextBlock x:Name="PlannerExtraLabel" Text="Extra for the planner's brief (optional)" FontWeight="SemiBold" Margin="0,0,0,4" />
             <TextBox x:Name="PlannerExtraBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="44" Margin="0,0,0,12"
+                     ToolTip="Extra instructions added under 'From the owner' in the planner's brief. Optional."
                      TextChanged="OnTextChanged" />
             <TextBlock x:Name="CoderExtraLabel" Text="Extra for the coders' briefs (optional)" FontWeight="SemiBold" Margin="0,0,0,4" />
             <TextBox x:Name="CoderExtraBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="44" Margin="0,0,0,8"
+                     ToolTip="Extra instructions added under 'From the owner' in every coder's brief. Optional."
                      TextChanged="OnTextChanged" />
             <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource SetupMuted}" Margin="0,0,0,16"
                        Text="The extra text is added after the base brief, under 'From the owner'. The base brief keeps the peer names, the handoff by message, and 'do not ask questions'." />
@@ -185,7 +237,9 @@
                        Text="Permission mode: auto, the same for every session in a run." />
 
             <StackPanel Orientation="Horizontal">
-                <Button x:Name="StartButton" Content="Start" Padding="20,6" FontWeight="SemiBold" Click="Start_Click" />
+                <Button x:Name="StartButton" Content="Start" Padding="20,6" FontWeight="SemiBold"
+                        ToolTip="Checks the run and saves these settings. Nothing starts until you press Start; the sessions start on the next pass."
+                        Click="Start_Click" />
                 <TextBlock x:Name="StartStatus" TextWrapping="Wrap" VerticalAlignment="Center" Margin="14,0,0,0" />
             </StackPanel>
 

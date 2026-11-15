@@ -38,7 +38,9 @@ public sealed record SetupRequest(
     string PlannerExtra = "",
     string CoderExtra = "",
     string PermissionMode = "auto",
-    string Reviewer = "sonnet");
+    string Reviewer = "sonnet",
+    string Assistant = "none",
+    string AssistantEffort = "medium");
 
 /// <summary>The result of checking a request: the problems to show, and the folder check.</summary>
 public sealed record SetupCheck(IReadOnlyList<string> Errors, FolderCheckResult? Folder)
@@ -72,6 +74,12 @@ public static class SetupPlan
         if (!Choices.Efforts.Contains(request.PlannerEffort)) errors.Add($"Planner effort '{request.PlannerEffort}' is not offered.");
         if (!Choices.Efforts.Contains(request.CoderEffort)) errors.Add($"Coder effort '{request.CoderEffort}' is not offered.");
         if (!Choices.Reviewers.Contains(request.Reviewer)) errors.Add($"Reviewer '{request.Reviewer}' is not offered.");
+        if (request.Assistant != "none" && !Choices.Models.Contains(request.Assistant))
+            errors.Add($"Assistant model '{request.Assistant}' is not offered.");
+        if (request.Assistant != "none" && !Choices.Efforts.Contains(request.AssistantEffort))
+            errors.Add($"Assistant effort '{request.AssistantEffort}' is not offered.");
+        if (request.Assistant != "none" && pattern?.Kind == PatternKind.Solo)
+            errors.Add("A solo run has no coder, so it has no assistant.");
 
         if (pattern is not null)
         {
@@ -97,21 +105,28 @@ public static class SetupPlan
         var coders = pattern.Kind == PatternKind.PlanAndCode ? 1 : request.Coders;
 
         var sessions = RunPlan.Build(pattern, Path.GetFullPath(request.Folder.Trim()), request.Task.Trim(), runId,
-            coders, request.PermissionMode, request.Reviewer);
+            coders, request.PermissionMode, request.Reviewer, request.Assistant != "none");
 
-        return sessions.Select(s => s.Role == SessionRole.Planner
-            ? s with
+        return sessions.Select(s => s.Role switch
+        {
+            SessionRole.Planner => s with
             {
                 Model = request.PlannerModel,
                 Effort = request.PlannerEffort,
                 Brief = WithOwnerText(s.Brief, request.PlannerExtra),
-            }
-            : s with
+            },
+            SessionRole.Assistant => s with
+            {
+                Model = request.Assistant,
+                Effort = request.AssistantEffort,
+            },
+            _ => s with
             {
                 Model = request.CoderModel,
                 Effort = request.CoderEffort,
                 Brief = WithOwnerText(s.Brief, request.CoderExtra),
-            }).ToList();
+            },
+        }).ToList();
     }
 
     /// <summary>

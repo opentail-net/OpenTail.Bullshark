@@ -5,6 +5,9 @@ public enum SessionRole
 {
     Planner,
     Coder,
+
+    /// <summary>An optional helper for the coders (D-S41). It answers their short questions by message and does no work of its own.</summary>
+    Assistant,
 }
 
 /// <summary>

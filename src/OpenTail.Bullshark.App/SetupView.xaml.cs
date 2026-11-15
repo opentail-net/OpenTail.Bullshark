@@ -12,9 +12,9 @@ using OpenTail.Bullshark.Core.Trust;
 namespace OpenTail.Bullshark.App;
 
 /// <summary>
-/// The setup page (S4): the pattern, the folder, the models and efforts per role, the coder count, the task, and the
-/// owner's extra text per brief. Start checks the run and saves the settings for the next launch. It starts nothing:
-/// the launch is built in S5. Reading the folder list and checking a folder write nothing.
+/// The setup page (S4): the pattern, the folder, the models and efforts per role, the optional assistant for the coders (D-S41),
+/// the coder count, the task, and the owner's extra text per brief. Start checks the run and saves the settings for the next
+/// launch. It starts nothing: the launch is built in S5. Reading the folder list and checking a folder write nothing.
 /// </summary>
 public partial class SetupView : UserControl
 {
@@ -27,6 +27,9 @@ public partial class SetupView : UserControl
 
     private static readonly IReadOnlyList<ReviewerChoice> ReviewerChoices =
         Choices.Reviewers.Select(v => new ReviewerChoice(v, v == "self" ? "self *" : v)).ToList();
+
+    /// <summary>The assistant choices: none, then the models on offer (D-S41). None is the default.</summary>
+    private static readonly IReadOnlyList<string> AssistantOptions = ["none", .. Choices.Models];
 
     /// <summary>Start was pressed on a valid run, and the settings are saved. The window writes the run and starts it.</summary>
     public event Action<SetupRequest>? RunRequested;
@@ -45,6 +48,8 @@ public partial class SetupView : UserControl
         CoderModelBox.ItemsSource = Choices.Models;
         PlannerEffortBox.ItemsSource = Choices.Efforts;
         CoderEffortBox.ItemsSource = Choices.Efforts;
+        AssistantEffortBox.ItemsSource = Choices.Efforts;
+        foreach (var option in AssistantOptions) AssistantTabs.Children.Add(AssistantTab(option));
         TaskBox.Text = defaultTask;
         FolderBox.AddHandler(TextBoxBase.TextChangedEvent, new TextChangedEventHandler(OnTextChanged));
 
@@ -97,6 +102,33 @@ public partial class SetupView : UserControl
 
     private bool IsSolo => Pattern.Kind == PatternKind.Solo;
 
+    /// <summary>One assistant choice, as a tab. Its hover text says what the choice does.</summary>
+    private RadioButton AssistantTab(string option)
+    {
+        var tab = new RadioButton
+        {
+            Content = option,
+            Tag = option,
+            GroupName = "Assistant",
+            Style = (Style)Resources["AssistantTab"],
+            ToolTip = option == "none"
+                ? "No assistant. The default: nothing extra runs or costs."
+                : $"{option}: a helper the coders can ask a quick question. It answers in a few lines, and it costs only when a coder asks.",
+        };
+        tab.Checked += (_, _) => Refresh();
+        return tab;
+    }
+
+    /// <summary>The assistant choice on screen: the chosen tab, or none.</summary>
+    private string SelectedAssistant =>
+        AssistantTabs.Children.OfType<RadioButton>().FirstOrDefault(tab => tab.IsChecked == true)?.Tag as string ?? "none";
+
+    private void SelectAssistant(string value)
+    {
+        foreach (var tab in AssistantTabs.Children.OfType<RadioButton>())
+            tab.IsChecked = string.Equals(tab.Tag as string, value, StringComparison.Ordinal);
+    }
+
     /// <summary>Loads the saved settings for the chosen pattern, and shows only the rows that pattern uses.</summary>
     private void LoadPattern()
     {
@@ -122,6 +154,12 @@ public partial class SetupView : UserControl
         ReviewerFootnote.Visibility = ReviewerRow.Visibility;
         ReviewerBox.SelectedItem = ReviewerChoices.FirstOrDefault(c => c.Value == saved.Reviewer) ?? ReviewerChoices[1];
         CoderRow.Visibility = IsSolo ? Visibility.Collapsed : Visibility.Visible;
+
+        // The assistant helps the coders, so it shows only where there are coders. Solo has none.
+        AssistantRow.Visibility = IsSolo ? Visibility.Collapsed : Visibility.Visible;
+        SelectAssistant(saved.Assistant);
+        AssistantEffortBox.SelectedItem = saved.AssistantEffort;
+
         CoderExtraLabel.Visibility = IsSolo ? Visibility.Collapsed : Visibility.Visible;
         CoderExtraBox.Visibility = IsSolo ? Visibility.Collapsed : Visibility.Visible;
         PlannerExtraLabel.Text = IsSolo ? "Extra for the solo session's brief (optional)" : "Extra for the planner's brief (optional)";
@@ -141,7 +179,9 @@ public partial class SetupView : UserControl
         CoderEffort: CoderEffortBox.SelectedItem as string ?? RunPlan.CoderEffort,
         PlannerExtra: PlannerExtraBox.Text,
         CoderExtra: CoderExtraBox.Text,
-        Reviewer: (ReviewerBox.SelectedItem as ReviewerChoice)?.Value ?? "sonnet");
+        Reviewer: (ReviewerBox.SelectedItem as ReviewerChoice)?.Value ?? "sonnet",
+        Assistant: IsSolo ? "none" : SelectedAssistant,
+        AssistantEffort: AssistantEffortBox.SelectedItem as string ?? RunPlan.AssistantEffort);
 
     /// <summary>Checks the folder as the owner types, and shows the preview when the run would be valid.</summary>
     private void Refresh()
@@ -198,7 +238,8 @@ public partial class SetupView : UserControl
         try
         {
             _patterns.Save(new PatternSettings(request.PatternKey, request.PlannerModel, request.PlannerEffort,
-                request.CoderModel, request.CoderEffort, request.Coders, request.PlannerExtra, request.CoderExtra, request.Reviewer));
+                request.CoderModel, request.CoderEffort, request.Coders, request.PlannerExtra, request.CoderExtra, request.Reviewer,
+                request.Assistant, request.AssistantEffort));
         }
         catch (IOException ex)
         {
