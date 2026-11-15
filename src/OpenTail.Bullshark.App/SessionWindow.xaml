@@ -55,7 +55,7 @@
         </Style>
     </Window.Resources>
     <DockPanel>
-        <Border DockPanel.Dock="Bottom" Background="#252526" Padding="10,4">
+        <Border x:Name="StatusBar" DockPanel.Dock="Bottom" Padding="10,4">
             <DockPanel>
                 <Button x:Name="TrustButton" DockPanel.Dock="Right" Visibility="Collapsed" Padding="10,2" Margin="10,0,0,0"
                         Content="Restart trust step" Click="TrustButton_Click" />
