@@ -71,6 +71,32 @@
             </Setter>
         </Style>
 
+        <!-- A segment of a row of choices (the model and the effort): the chosen one shows pressed. -->
+        <Style x:Key="Segment" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{DynamicResource PromptText}" />
+            <Setter Property="Margin" Value="0,0,6,6" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Frame" Background="{DynamicResource PromptPanel}"
+                                BorderBrush="{DynamicResource PromptBorder}" BorderThickness="1" CornerRadius="3" Padding="10,4">
+                            <ContentPresenter VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource PromptMuted}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Frame" Property="Background" Value="{DynamicResource PromptSelection}" />
+                                <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource PromptText}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="Section" TargetType="TextBlock">
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Margin" Value="0,14,0,6" />
@@ -98,8 +124,19 @@
         <StackPanel Orientation="Horizontal" Margin="22,6,0,0">
             <TextBlock Text="Keep the last" VerticalAlignment="Center" Margin="0,0,8,0" />
             <TextBox x:Name="TurnsBox" Width="56" Padding="6,3" VerticalContentAlignment="Center" />
-            <TextBlock Text="turns, word for word, with tool results on one line each (at most about 4,000 tokens)"
-                       Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="8,0,0,0" />
+            <TextBlock Text="turns" VerticalAlignment="Center" Margin="8,0,0,0" />
+        </StackPanel>
+        <TextBlock Style="{StaticResource Muted}" Margin="22,2,0,0"
+                   Text="Word for word, with tool results on one line each, and at most about 4,000 tokens. The oldest turn goes first." />
+
+        <TextBlock Style="{StaticResource Section}" Text="Model and effort for the session that continues" />
+        <StackPanel Orientation="Horizontal">
+            <TextBlock Text="Model" Width="60" VerticalAlignment="Center" Style="{StaticResource Muted}" />
+            <WrapPanel x:Name="ModelRow" Orientation="Horizontal" />
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+            <TextBlock Text="Effort" Width="60" VerticalAlignment="Center" Style="{StaticResource Muted}" />
+            <WrapPanel x:Name="EffortRow" Orientation="Horizontal" />
         </StackPanel>
 
         <TextBlock x:Name="CostText" Style="{StaticResource Muted}" Margin="0,16,0,0" />

@@ -11,7 +11,8 @@ namespace OpenTail.Bullshark.App;
 /// <summary>
 /// Resuming a past session from the History view (D14, D-S11). Either the same session continues with its whole conversation,
 /// or a new session starts from a summary, or from the last turns. The prompt shows what would be sent first, and nothing
-/// runs until the owner presses Resume. A new session is started the way a setup run is: a solo run, so it is supervised.
+/// runs until the owner presses Resume. The owner also chooses the model and effort of the resumed session. A new session is
+/// started the way a setup run is: a solo run, so it is supervised.
 /// </summary>
 public partial class SessionWindow
 {
@@ -27,7 +28,9 @@ public partial class SessionWindow
         }
 
         var facts = $"{digest.Turns} turns · last active {AgeOf(digest.LastActivity)} · in {folder}";
-        var prompt = new ResumePrompt($"Resume: {digest.Title}", facts, digest.ContextTokensAtLastTurn, Palette, startWith)
+        var defaults = PatternStore.Beside(_options.StatePath).For("solo");
+        var prompt = new ResumePrompt($"Resume: {digest.Title}", facts, digest.ContextTokensAtLastTurn, Palette, startWith,
+            defaults.PlannerModel, defaults.PlannerEffort)
         {
             Owner = this,
         };
@@ -38,15 +41,16 @@ public partial class SessionWindow
             return;
         }
 
-        if (choice.Mode == ResumeMode.Full) await ResumeInFullAsync(digest, folder);
+        if (choice.Mode == ResumeMode.Full) await ResumeInFullAsync(digest, folder, choice);
         else await StartFromTextAsync(digest, folder, lines, choice);
     }
 
     /// <summary>
-    /// The same session continues, with its whole conversation as context: claude --bg --resume with the session's id. The
-    /// session is recorded so the rail shows it, and it is kept alive: if it goes, the supervisor resumes it under the same id.
+    /// The same session continues, with its whole conversation as context: claude --bg --resume with the session's id, at the
+    /// chosen model and effort. The session is recorded so the rail shows it, and it is kept alive: if it goes, the supervisor
+    /// resumes it under the same id.
     /// </summary>
-    private async Task ResumeInFullAsync(SessionDigest digest, string folder)
+    private async Task ResumeInFullAsync(SessionDigest digest, string folder, ResumeChoice choice)
     {
         if (_store.Load().Values.Any(r => r.SessionId == digest.SessionId))
         {
@@ -61,24 +65,23 @@ public partial class SessionWindow
             return;
         }
 
-        var pattern = PatternStore.Beside(_options.StatePath).For("solo");
         var taken = _store.Load().Keys.Concat(_agents.Select(a => a.Name)).ToList();
         var name = "bullshark-resume-" + RunNames.NewRunId(taken);
-        SetStatus($"Resuming {ShortId(digest.SessionId)} in full as {name}…");
+        SetStatus($"Resuming {ShortId(digest.SessionId)} in full as {name} ({choice.Model} {choice.Effort})…");
         try
         {
             var shortId = await _cli.StartBackgroundAsync(new BackgroundLaunch(
                 Name: name,
                 WorkingDirectory: folder,
-                Model: pattern.PlannerModel,
-                Effort: pattern.PlannerEffort,
+                Model: choice.Model,
+                Effort: choice.Effort,
                 PermissionMode: "auto",
                 ResumeSessionId: digest.SessionId));
             var sessionId = await _cli.ResolveSessionIdAsync(shortId, TimeSpan.FromSeconds(30));
             var records = _store.Load().ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
             records[name] = new SessionRecord(SessionRole.Planner, sessionId, name, DateTimeOffset.UtcNow, 0, [], null, null);
             _store.Save(records);
-            KeepAlive(name, folder, pattern);
+            KeepAlive(name, folder, choice.Model, choice.Effort);
         }
         catch (ClaudeCliException ex)
         {
@@ -92,8 +95,9 @@ public partial class SessionWindow
     }
 
     /// <summary>
-    /// A new session starts from the chosen text: the summary (one model call, when the owner chose a level), then the last
-    /// turns word for word. It is a solo run in the session's own folder, so it is written, supervised and shown like any run.
+    /// A new session starts from the chosen text: the summary (one Haiku call, when the owner chose a level), then the last turns
+    /// word for word. The new session runs at the chosen model and effort. It is a solo run in the session's own folder, so it is
+    /// written, supervised and shown like any run.
     /// </summary>
     private async Task StartFromTextAsync(SessionDigest digest, string folder, IReadOnlyList<TranscriptLine> lines, ResumeChoice choice)
     {
@@ -121,8 +125,8 @@ public partial class SessionWindow
             Folder: folder,
             Task: text,
             Coders: 1,
-            PlannerModel: pattern.PlannerModel,
-            PlannerEffort: pattern.PlannerEffort,
+            PlannerModel: choice.Model,
+            PlannerEffort: choice.Effort,
             CoderModel: pattern.CoderModel,
             CoderEffort: pattern.CoderEffort);
 
@@ -138,23 +142,26 @@ public partial class SessionWindow
             return;
         }
 
-        var how = choice.Level is { } chosen ? $"a {chosen.ToString().ToLowerInvariant()} summary and the last {choice.Turns} turns" : $"the last {choice.Turns} turns";
+        var how = choice.Level is { } chosen
+            ? $"a {chosen.ToString().ToLowerInvariant()} summary and the last {choice.Turns} turns"
+            : $"the last {choice.Turns} turns";
         await StartRunAsync(request);
-        SetStatus($"Resumed {ShortId(digest.SessionId)} from {how}. The new session starts on the next pass.");
+        SetStatus($"Resumed {ShortId(digest.SessionId)} from {how}, at {choice.Model} {choice.Effort}. The new session starts on the next pass.");
     }
 
     /// <summary>
     /// Makes a resumed session a solo run, so the supervisor keeps it alive like any run: when the session is gone, it is resumed
-    /// under the same id, with the limit of restarts per hour. The run is written after the record (see ResumeInFullAsync).
+    /// under the same id, at the same model and effort, with the limit of restarts per hour. The run is written after the record
+    /// (see ResumeInFullAsync).
     /// </summary>
-    private void KeepAlive(string name, string folder, PatternSettings pattern)
+    private void KeepAlive(string name, string folder, string model, string effort)
     {
         var spec = new SessionSpec(
             SessionRole.Planner,
             name,
             folder,
-            pattern.PlannerModel,
-            pattern.PlannerEffort,
+            model,
+            effort,
             "Continue the session you were resumed into, where it left off.",
             "auto");
         var runs = _runStore.Load().ToList();
@@ -167,7 +174,7 @@ public partial class SessionWindow
     {
         if (when is not { } at) return "time unknown";
         var span = DateTimeOffset.UtcNow - at;
-        if (span.TotalDays >= 1) return $"{(int)span.TotalDays} days ago";
+        if (span.TotalDays >= 1) return (int)span.TotalDays == 1 ? "1 day ago" : $"{(int)span.TotalDays} days ago";
         if (span.TotalHours >= 1) return $"{(int)span.TotalHours} h ago";
         return $"{Math.Max(0, (int)span.TotalMinutes)} min ago";
     }
