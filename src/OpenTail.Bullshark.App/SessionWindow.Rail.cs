@@ -280,7 +280,7 @@ public partial class SessionWindow
                     }
                     var cache = CacheTextFor(record.SessionId);
                     folderItem.Items.Add(NewItem(
-                        TwoLine(record.Name, state + (cache.Short is null ? string.Empty : " · " + cache.Short), RelativeTime(record.StartedAt)),
+                        TwoLine(record.Name, ActivityLine(record.SessionId, state, record.StartedAt, state == "working"), string.Empty),
                         new RailTag(RailKind.Session, record.SessionId),
                         cache.Full ?? record.SessionId));
                 }
@@ -358,8 +358,9 @@ public partial class SessionWindow
             var cache = CacheTextFor(digest.SessionId);
             folderItem.Items.Add(NewItem(
                 TwoLine(digest.Title + (digest.IsSubagent ? " · subagent" : string.Empty),
-                    $"{digest.SessionId[..Math.Min(8, digest.SessionId.Length)]} · {digest.AssistantMessages} msgs" + (cache.Short is null ? string.Empty : " · " + cache.Short),
-                    RelativeTime(digest.LastActivity)),
+                    ActivityLine(digest.SessionId, null, digest.LastActivity, running: false)
+                        + $" · {digest.SessionId[..Math.Min(8, digest.SessionId.Length)]} · {digest.AssistantMessages} msgs",
+                    string.Empty),
                 new RailTag(RailKind.History, digest.SessionId, digest),
                 cache.Full is null ? digest.FilePath : cache.Full + "\n" + digest.FilePath));
         }
@@ -512,6 +513,26 @@ public partial class SessionWindow
     /// A row in the style of the Claude app: the title on the first line with the time on the right, and the details below,
     /// muted. A long title or detail is cut off with an ellipsis, like every rail row.
     /// </summary>
+    /// <summary>
+    /// The start of a row's second line: the mark, then how long ago the session was last active, then (for a live session) its
+    /// state. The mark is 🚀 for a running session, otherwise the cache's temperature. The time comes from the cache when it is
+    /// known, otherwise from the fallback time.
+    /// </summary>
+    private string ActivityLine(string sessionId, string? state, DateTimeOffset? fallback, bool running)
+    {
+        var facts = _runningFacts.TryGetValue(sessionId, out var live) ? live
+                  : _historyFacts.TryGetValue(sessionId, out var past) ? past
+                  : null;
+        var verdict = facts is null ? null : CacheRule.Classify(facts.LastRequest, DateTimeOffset.UtcNow, facts.Ttl, facts.ContextTokens);
+        var known = verdict is { State: not CacheState.Unknown } ? verdict : null;
+
+        var mark = CacheRule.Mark(known?.State ?? CacheState.Unknown, running);
+        var ago = known is { } seen ? RelativeTime(DateTimeOffset.UtcNow - seen.Idle) : RelativeTime(fallback);
+        var when = ago.Length == 0 ? string.Empty : ago + " ago";
+        var head = string.Join(" ", new[] { mark, when }.Where(part => part.Length > 0));
+        return string.IsNullOrEmpty(state) ? head : head + " · " + state;
+    }
+
     private UIElement TwoLine(string title, string details, string time)
     {
         var top = new Grid();

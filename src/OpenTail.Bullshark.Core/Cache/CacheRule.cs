@@ -46,6 +46,18 @@ public static class CacheRule
     }
 
     /// <summary>The short form for a rail row: the state and the idle minutes.</summary>
+    /// <summary>
+    /// The mark that leads a rail row: 🚀 for a running session, otherwise the cache's temperature: 🔥 warm, 🌡️ cooling, ❄️ cold.
+    /// Nothing when the cache is not known.
+    /// </summary>
+    public static string Mark(CacheState state, bool running) => running ? "🚀" : (state switch
+    {
+        CacheState.Warm => "🔥",
+        CacheState.Cooling => "🌡️",
+        CacheState.Cold => "❄️",
+        _ => string.Empty,
+    });
+
     public static string Short(CacheVerdict verdict) => verdict.State switch
     {
         CacheState.Warm => $"warm {Minutes(verdict.Idle)}",
