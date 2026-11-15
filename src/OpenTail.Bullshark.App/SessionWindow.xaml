@@ -68,8 +68,8 @@
         </Border>
         <Grid>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="0.3*" MinWidth="180" />
-                <ColumnDefinition Width="5" />
+                <ColumnDefinition x:Name="RailColumn" Width="0.3*" MinWidth="180" />
+                <ColumnDefinition x:Name="SplitterColumn" Width="5" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
@@ -104,9 +104,15 @@
 
                 <!-- One tab per live session, the setup tab, and "+" for a new session. -->
                 <Border Grid.Row="0" x:Name="TabBar" Background="#1A1B1E" Padding="6,4,6,0">
-                    <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
-                        <StackPanel x:Name="TabStrip" Orientation="Horizontal" />
-                    </ScrollViewer>
+                    <DockPanel>
+                        <!-- Hides the whole sessions rail, or shows it again. The tab bar is always there, so the toggle always is too. -->
+                        <TextBlock x:Name="RailToggle" DockPanel.Dock="Left" Cursor="Hand" FontSize="11"
+                                   Margin="0,0,4,0" Padding="8,4,6,4" Background="Transparent" VerticalAlignment="Center"
+                                   MouseLeftButtonUp="RailToggle_Click" />
+                        <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                            <StackPanel x:Name="TabStrip" Orientation="Horizontal" />
+                        </ScrollViewer>
+                    </DockPanel>
                 </Border>
 
                 <!-- Every terminal lives here in one cell. Only the chosen one is Visible; the others are Hidden,

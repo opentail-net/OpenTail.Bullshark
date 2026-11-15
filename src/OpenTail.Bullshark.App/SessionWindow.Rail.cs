@@ -156,6 +156,8 @@ public partial class SessionWindow
         Resources["ScrollThumb"] = RailPalette.Brush("#55" + palette.Muted.TrimStart('#'));
         Resources["ScrollThumbHover"] = RailPalette.Brush("#99" + palette.Muted.TrimStart('#'));
         TabBar.Background = RailPalette.Brush(palette.Panel);
+        RailToggle.Foreground = RailPalette.Brush(palette.Muted);
+        UpdateRailToggle();
         Background = RailPalette.Brush(palette.Background);
         StatusBar.Background = RailPalette.Brush(palette.Panel);
         StatusText.Foreground = RailPalette.Brush(palette.Muted);
