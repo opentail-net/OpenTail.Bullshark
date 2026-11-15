@@ -27,7 +27,12 @@ public sealed record AgentInfo(
     {
         // A daemon start can print a line before the JSON. Begin at the first array bracket.
         var start = json.IndexOf('[');
-        if (start < 0) return Array.Empty<AgentInfo>();
+        // Nothing printed is no sessions. Something printed without a list is a failed listing, not an empty one.
+        if (start < 0)
+        {
+            if (string.IsNullOrWhiteSpace(json)) return Array.Empty<AgentInfo>();
+            throw new FormatException("the agent listing has no list");
+        }
 
         using var document = JsonDocument.Parse(json[start..]);
         var list = new List<AgentInfo>();

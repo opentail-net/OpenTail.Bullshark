@@ -52,7 +52,7 @@ if (options.Error is not null)
     return 2;
 }
 
-var logPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenTail.Bullshark", "logs", "supervisor.log");
+var logPath = Path.Combine(Path.GetDirectoryName(options.StatePath)!, "logs", "supervisor.log");
 Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
 void Log(string message)
 {
@@ -101,8 +101,13 @@ do
         var actions = await loop.RunPassAsync(runnable, cancel.Token);
         if (actions > 0) Log($"pass done: {actions} action(s)");
     }
-    catch (ClaudeCliException ex)
+    catch (OperationCanceledException) when (cancel.IsCancellationRequested)
     {
+        break;
+    }
+    catch (Exception ex)
+    {
+        // Any failure ends this pass only. A state file that cannot be read is reported and left alone: nothing is written from it.
         Log($"pass failed: {ex.Message}");
     }
 
@@ -134,7 +139,10 @@ sealed record SupervisorOptions(string WorkDir, string Task, int IntervalSeconds
             {
                 case "--workdir": workdir = i + 1 < args.Length ? args[++i] : null; break;
                 case "--task": task = i + 1 < args.Length ? args[++i] : null; break;
-                case "--state": state = i + 1 < args.Length ? args[++i] : null; break;
+                case "--state":
+                    if (i + 1 >= args.Length) return Failed("--state needs the path of a state file");
+                    state = args[++i];
+                    break;
                 case "--interval":
                     if (i + 1 < args.Length && int.TryParse(args[++i], out var seconds) && seconds >= 5) interval = seconds;
                     else return Failed("--interval needs a number of seconds, at least 5");

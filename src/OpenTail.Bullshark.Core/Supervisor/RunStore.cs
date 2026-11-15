@@ -36,23 +36,40 @@ public sealed class RunStore
 
     public string Path => _path;
 
-    /// <summary>All runs in the file. A missing file gives an empty list.</summary>
+    /// <summary>
+    /// All runs in the file. A missing file gives an empty list. An unreadable file throws <see cref="StoreUnreadableException"/>.
+    /// </summary>
     public IReadOnlyList<RunRecord> Load()
     {
-        if (!File.Exists(_path)) return [];
-        return JsonSerializer.Deserialize<List<RunRecord>>(File.ReadAllText(_path), Options) ?? [];
+        using var _ = FileLock.Hold(_path);
+        return Read();
     }
 
-    public void Save(IReadOnlyList<RunRecord> runs)
+    /// <summary>Applies a change under the file lock. The file is read again inside the lock first.</summary>
+    public void Update(Func<IReadOnlyList<RunRecord>, IReadOnlyList<RunRecord>> change)
     {
-        var directory = System.IO.Path.GetDirectoryName(_path);
-        if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
-
-        var json = JsonSerializer.Serialize(runs.OrderBy(r => r.CreatedAt).ToList(), Options);
-        var temporary = _path + ".tmp";
-        File.WriteAllText(temporary, json);
-        File.Move(temporary, _path, overwrite: true);
+        using var _ = FileLock.Hold(_path);
+        Write(change(Read()));
     }
+
+    /// <summary>Replaces every run. Callers that add or remove one run use <see cref="Update"/>.</summary>
+    public void Save(IReadOnlyList<RunRecord> runs) => Update(_ => runs);
+
+    private List<RunRecord> Read()
+    {
+        if (!File.Exists(_path)) return [];
+        try
+        {
+            return JsonSerializer.Deserialize<List<RunRecord>>(File.ReadAllText(_path), Options) ?? [];
+        }
+        catch (Exception ex) when (ex is JsonException or IOException or NotSupportedException)
+        {
+            throw new StoreUnreadableException(_path, ex.Message);
+        }
+    }
+
+    private void Write(IReadOnlyList<RunRecord> runs) =>
+        FileLock.WriteAtomic(_path, JsonSerializer.Serialize(runs.OrderBy(r => r.CreatedAt).ToList(), Options));
 
     /// <summary>
     /// Creates the legacy run (D-S13), once. It is created only when runs.json does not exist and the state file holds the

@@ -58,12 +58,28 @@ public static class TrustCheck
         return new TrustResult(IsRecordedTrusted(root, claudeJsonPath) ? TrustState.Trusted : TrustState.NotTrusted, root);
     }
 
+    /// <summary>
+    /// The file Claude keeps its settings in. Claude may be writing it, so a read that fails or is half written gives an empty
+    /// document: nothing is trusted, and no session starts because of it.
+    /// </summary>
+    private static JsonDocument ReadClaudeJson(string path)
+    {
+        try
+        {
+            return JsonDocument.Parse(File.ReadAllText(path));
+        }
+        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
+        {
+            return JsonDocument.Parse("{}");
+        }
+    }
+
     /// <summary>True when the project entry for this path has <c>hasTrustDialogAccepted</c> set to true.</summary>
     public static bool IsRecordedTrusted(string path, string claudeJsonPath)
     {
         if (!File.Exists(claudeJsonPath)) return false;
 
-        using var document = JsonDocument.Parse(File.ReadAllText(claudeJsonPath));
+        using var document = ReadClaudeJson(claudeJsonPath);
         if (!document.RootElement.TryGetProperty("projects", out var projects) || projects.ValueKind != JsonValueKind.Object)
             return false;
 
@@ -85,7 +101,7 @@ public static class TrustCheck
     {
         if (!File.Exists(claudeJsonPath)) return [];
 
-        using var document = JsonDocument.Parse(File.ReadAllText(claudeJsonPath));
+        using var document = ReadClaudeJson(claudeJsonPath);
         if (!document.RootElement.TryGetProperty("projects", out var projects) || projects.ValueKind != JsonValueKind.Object)
             return [];
 

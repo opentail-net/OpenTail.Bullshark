@@ -257,8 +257,12 @@ public partial class SetupView : UserControl
 
         PreviewText.Text = PreviewOf(request);
         StartStatus.Text = "Starting…";
+        StartButton.IsEnabled = false;
         RunRequested?.Invoke(request);
     }
+
+    /// <summary>Called when a run request is finished or refused: the Start button works again.</summary>
+    public void RunFinished() => StartButton.IsEnabled = true;
 
     /// <summary>Shows the outcome of a started run. The window calls this after it writes the run.</summary>
     public void ShowStarted(string text) => StartStatus.Text = text;

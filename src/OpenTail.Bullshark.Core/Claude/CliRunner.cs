@@ -62,29 +62,32 @@ public sealed class ProcessCliRunner : ICliRunner
         var stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
         var stderr = process.StandardError.ReadToEndAsync(cancellationToken);
 
-        if (standardInput is not null)
-        {
-            // Written in full and then closed, so the command sees the end of its input. The output is already being read.
-            try
-            {
-                await process.StandardInput.WriteAsync(standardInput.AsMemory(), cancellationToken);
-                process.StandardInput.Close();
-            }
-            catch (IOException)
-            {
-                // The command stopped reading early; its exit code and output say why.
-            }
-        }
-
+        // The timeout covers the whole call, including the standard input: a stuck command could block its writing.
         using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutSource.CancelAfter(timeout);
         try
         {
+            if (standardInput is not null)
+            {
+                // Written in full and then closed, so the command sees the end of its input. The output is already being read.
+                try
+                {
+                    await process.StandardInput.WriteAsync(standardInput.AsMemory(), timeoutSource.Token);
+                    process.StandardInput.Close();
+                }
+                catch (IOException)
+                {
+                    // The command stopped reading early; its exit code and output say why.
+                }
+            }
+
             await process.WaitForExitAsync(timeoutSource.Token);
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
+            // A timeout or a cancel: the command and whatever it started are stopped, so nothing is left running.
             try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+            if (cancellationToken.IsCancellationRequested) throw;
             return new CliResult(-1, await stdout, await stderr, TimedOut: true);
         }
 

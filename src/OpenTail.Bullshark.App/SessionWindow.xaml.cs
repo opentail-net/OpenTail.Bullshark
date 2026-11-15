@@ -116,7 +116,43 @@ public partial class SessionWindow : Window
     /// Every session of every run in runs.json. Reading only: the run file is written when a run starts, and once at the
     /// first pass when the default pair is migrated.
     /// </summary>
-    private IReadOnlyList<SessionSpec> Specs => RunStore.SpecsOf(_runStore.Load());
+    private IReadOnlyList<SessionSpec> Specs => RunStore.SpecsOf(ReadRuns());
+
+    /// <summary>
+    /// The sessions' records as they are on disk. A file that cannot be read shows as nothing, and the status line says so.
+    /// Nothing is written from what is shown: every write reads the file again under the lock, and refuses a file it cannot read.
+    /// </summary>
+    private IReadOnlyDictionary<string, SessionRecord> ReadRecords()
+    {
+        try
+        {
+            return _store.Load();
+        }
+        catch (StoreUnreadableException ex)
+        {
+            _storeProblem = ex.Message;
+            AppLog.Write(ex.Message);
+            return new Dictionary<string, SessionRecord>(StringComparer.Ordinal);
+        }
+    }
+
+    /// <summary>The runs as they are on disk. An unreadable file shows as no runs, as ReadRecords does.</summary>
+    private IReadOnlyList<RunRecord> ReadRuns()
+    {
+        try
+        {
+            return _runStore.Load();
+        }
+        catch (StoreUnreadableException ex)
+        {
+            _storeProblem = ex.Message;
+            AppLog.Write(ex.Message);
+            return [];
+        }
+    }
+
+    /// <summary>The last store problem seen by a read in the current pass, or null.</summary>
+    private string? _storeProblem;
 
     /// <summary>
     /// Runs one supervisor pass off the UI thread, then refreshes the rail. Untrusted folders get a Trust step and their
@@ -126,13 +162,14 @@ public partial class SessionWindow : Window
     {
         if (_passRunning) return;
         _passRunning = true;
+        _storeProblem = null;
         try
         {
             _agents = await Task.Run(() => _cli.ListAgentsAsync());
 
             // The cache facts of the running sessions are read here, off the UI thread, on every pass: a warm session turns cold
             // with no new record, so the labels are recomputed each time.
-            var ids = _store.Load().Values.Select(r => r.SessionId).Where(id => id.Length > 0).ToList();
+            var ids = ReadRecords().Values.Select(r => r.SessionId).Where(id => id.Length > 0).ToList();
             var (facts, paths) = await Task.Run(() => ReadRunningFacts(ids,
                 new Dictionary<string, string>(_transcriptPaths, StringComparer.Ordinal)));
             _runningFacts = facts;
@@ -142,7 +179,7 @@ public partial class SessionWindow : Window
             if (!_migrated)
             {
                 _migrated = true;
-                var legacy = _runStore.MigrateLegacyIfNeeded(_store.Load(), _agents, _options.WorkDir, _options.Task, DateTimeOffset.UtcNow);
+                var legacy = _runStore.MigrateLegacyIfNeeded(ReadRecords(), _agents, _options.WorkDir, _options.Task, DateTimeOffset.UtcNow);
                 if (legacy is not null) AppLog.Write($"legacy run created for {legacy.WorkingDirectory}");
             }
 
@@ -160,11 +197,12 @@ public partial class SessionWindow : Window
             var actions = _options.NoPass ? 0 : await Task.Run(() => _loop.RunPassAsync(runnable));
             RefreshRail();
 
-            var failed = _store.Load().Values.Count(r => string.IsNullOrEmpty(r.SessionId));
+            var failed = ReadRecords().Values.Count(r => string.IsNullOrEmpty(r.SessionId));
             RetryButton.Visibility = failed > 0 ? Visibility.Visible : Visibility.Collapsed;
             var parts = new List<string> { $"{DateTime.Now:HH:mm:ss}  {actions} action(s) this pass" };
             if (waiting > 0) parts.Add($"{waiting} session(s) wait for trust (see the Trust step)");
             if (failed > 0) parts.Add($"{failed} start(s) failed: see the rail, then Retry failed starts");
+            if (_storeProblem is { } problem) parts.Add($"state file cannot be read, nothing is changed: {problem}");
             parts.Add("closing the window detaches the terminals; the sessions keep running");
             SetStatus(string.Join("  ·  ", parts));
         }
@@ -334,25 +372,51 @@ public partial class SessionWindow : Window
     /// <summary>Writes a run from a request and starts its pass. Setup and resume both start runs this way.</summary>
     private async Task StartRunAsync(SetupRequest request)
     {
-        var taken = _store.Load().Keys
-            .Concat(RunStore.SpecsOf(_runStore.Load()).Select(s => s.Name))
+        var taken = ReadRecords().Keys
+            .Concat(RunStore.SpecsOf(ReadRuns()).Select(s => s.Name))
             .Concat(_agents.Select(a => a.Name))
             .ToList();
-        var runs = _runStore.Load().ToList();
         var run = SetupPlan.CreateRun(request, taken, DateTimeOffset.UtcNow);
-        runs.Add(run);
-        _runStore.Save(runs);
+        try
+        {
+            _runStore.Update(runs => runs.Append(run).ToList());
+        }
+        catch (Exception ex) when (ex is StoreUnreadableException or TimeoutException or IOException)
+        {
+            AppLog.Write($"run not written: {ex.Message}");
+            _setup.ShowStarted($"Not started: {ex.Message}");
+            _setup.RunFinished();
+            return;
+        }
         AppLog.Write($"run {run.RunId} written: {run.Specs.Count} session(s) in {run.WorkingDirectory}");
         _setup.ShowStarted($"Run {run.RunId} written: {run.Specs.Count} session(s). They start on the next pass, within about 15 seconds.");
-        await PassAndRefreshAsync();
+        try
+        {
+            await PassAndRefreshAsync();
+        }
+        finally
+        {
+            _setup.RunFinished();
+        }
     }
 
     /// <summary>Forgets the starts that failed, so the next pass tries them again. Only the owner asks for this.</summary>
     private async void RetryButton_Click(object sender, RoutedEventArgs e)
     {
-        var kept = _store.Load().Where(pair => !string.IsNullOrEmpty(pair.Value.SessionId))
-            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
-        _store.Save(kept);
+        try
+        {
+            _store.Update(records =>
+            {
+                foreach (var name in records.Where(pair => string.IsNullOrEmpty(pair.Value.SessionId)).Select(pair => pair.Key).ToList())
+                    records.Remove(name);
+            });
+        }
+        catch (Exception ex) when (ex is StoreUnreadableException or TimeoutException or IOException)
+        {
+            AppLog.Write($"failed starts not forgotten: {ex.Message}");
+            SetStatus($"Not changed: {ex.Message}");
+            return;
+        }
         AppLog.Write("failed starts forgotten at the owner's request; the next pass tries them again");
         await PassAndRefreshAsync();
     }
@@ -374,6 +438,7 @@ public sealed record LaunchOptions(
         string? workdir = null, task = null, state = null, shot = null, selfTest = null, filterName = null;
         double shotAfter = 8;
         var inv = System.Globalization.CultureInfo.InvariantCulture;
+        if (args.Length > 0 && args[^1] == "--state") throw new ArgumentException("--state needs the path of a state file.");
         for (int i = 0; i < args.Length - 1; i++)
         {
             switch (args[i])

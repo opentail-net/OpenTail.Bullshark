@@ -9,6 +9,7 @@ namespace OpenTail.Bullshark.Core.Supervisor;
 /// specs (sessions of other runs) are kept as they are.
 /// A failed start or resume is recorded and reported, and it does not stop the other sessions of the pass. A failed
 /// start leaves a record with no session id; the policy does not retry it until the owner asks (see <see cref="StateStore"/>).
+/// The pass saves only what it changed for its own sessions, under the file lock, so a change the owner made meanwhile is kept.
 /// </summary>
 public sealed class SupervisorRunner
 {
@@ -41,8 +42,12 @@ public sealed class SupervisorRunner
         CancellationToken cancellationToken = default)
     {
         var agents = await _cli.ListAgentsAsync(cancellationToken);
-        var records = _store.Load().ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+
+        // Read first: an unreadable state file stops the pass before anything is started or written.
+        var before = _store.Load().ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        var records = new Dictionary<string, SessionRecord>(before, StringComparer.Ordinal);
         var performed = new List<SupervisorAction>();
+        var processed = new List<string>();
         var now = _clock.GetUtcNow();
 
         // Saved in a finally: a session started earlier in this pass keeps its record even if a later step throws.
@@ -50,6 +55,7 @@ public sealed class SupervisorRunner
         {
             foreach (var spec in specs)
             {
+                processed.Add(spec.Name);
                 records.TryGetValue(spec.Name, out var record);
                 var actions = SupervisorPolicy.Decide(spec, record, agents, now, _rules);
 
@@ -60,8 +66,9 @@ public sealed class SupervisorRunner
                         await Carry(action, spec, records, now, cancellationToken);
                         performed.Add(action);
                     }
-                    catch (ClaudeCliException ex) when (action is SupervisorAction.Start or SupervisorAction.Resume)
+                    catch (Exception ex) when (ex is not OperationCanceledException && action is SupervisorAction.Start or SupervisorAction.Resume)
                     {
+                        // Any failure to start or resume is a failed start for this session only: the pass goes on (F48).
                         performed.Add(Failed(action, spec, records, now, ex.Message));
                     }
                 }
@@ -76,10 +83,35 @@ public sealed class SupervisorRunner
         }
         finally
         {
-            _store.Save(records);
+            Merge(before, records, processed);
         }
 
         return performed;
+    }
+
+    /// <summary>
+    /// Writes only what this pass changed for its own sessions, under the file lock. A session the owner forgot during the pass
+    /// stays forgotten: it was in the file when the pass began, and it is gone now.
+    /// </summary>
+    private void Merge(
+        IReadOnlyDictionary<string, SessionRecord> before,
+        IReadOnlyDictionary<string, SessionRecord> after,
+        IReadOnlyList<string> names)
+    {
+        var changed = names.Distinct(StringComparer.Ordinal)
+            .Where(name => after.TryGetValue(name, out var now)
+                           && (!before.TryGetValue(name, out var was) || !now.Equals(was)))
+            .ToList();
+        if (changed.Count == 0) return;
+
+        _store.Update(current =>
+        {
+            foreach (var name in changed)
+            {
+                if (before.ContainsKey(name) && !current.ContainsKey(name)) continue;
+                current[name] = after[name];
+            }
+        });
     }
 
     private async Task Carry(
@@ -103,6 +135,11 @@ public sealed class SupervisorRunner
                 var sessionId = await _cli.ResolveSessionIdAsync(shortId, _resolveTimeout, cancellationToken);
                 records[spec.Name] = new SessionRecord(spec.Role, sessionId, spec.Name, now, 0, [], null, null);
                 _log($"{spec.Name}: started {shortId} (session {sessionId})");
+                break;
+
+            case SupervisorAction.Adopt adopt:
+                records[spec.Name] = new SessionRecord(spec.Role, adopt.SessionId, spec.Name, now, 0, [], adopt.State, null);
+                _log($"{spec.Name}: adopted the listed session {adopt.SessionId}");
                 break;
 
             case SupervisorAction.Resume resume:

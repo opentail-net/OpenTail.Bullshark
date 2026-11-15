@@ -1,3 +1,4 @@
+using System.IO;
 using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Claude;
 using OpenTail.Bullshark.Core.Folders;
@@ -52,7 +53,19 @@ public partial class SessionWindow
     /// </summary>
     private async Task ResumeInFullAsync(SessionDigest digest, string folder, ResumeChoice choice)
     {
-        if (_store.Load().Values.Any(r => r.SessionId == digest.SessionId))
+        // A fresh listing decides: a session that is listed is already running, and a second start would be a second session.
+        try
+        {
+            _agents = await _cli.ListAgentsAsync();
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Not resumed: the sessions could not be read. {ex.Message}");
+            return;
+        }
+
+        if (_agents.Any(a => string.Equals(a.SessionId, digest.SessionId, StringComparison.OrdinalIgnoreCase))
+            || ReadRecords().Values.Any(r => r.SessionId == digest.SessionId))
         {
             SetStatus($"Not resumed: session {ShortId(digest.SessionId)} is already open in the rail.");
             return;
@@ -65,9 +78,11 @@ public partial class SessionWindow
             return;
         }
 
-        var taken = _store.Load().Keys.Concat(_agents.Select(a => a.Name)).ToList();
+        var taken = ReadRecords().Keys.Concat(_agents.Select(a => a.Name)).ToList();
         var name = "bullshark-resume-" + RunNames.NewRunId(taken);
         SetStatus($"Resuming {ShortId(digest.SessionId)} in full as {name} ({choice.Model} {choice.Effort})…");
+
+        string sessionId;
         try
         {
             var shortId = await _cli.StartBackgroundAsync(new BackgroundLaunch(
@@ -77,16 +92,27 @@ public partial class SessionWindow
                 Effort: choice.Effort,
                 PermissionMode: "auto",
                 ResumeSessionId: digest.SessionId));
-            var sessionId = await _cli.ResolveSessionIdAsync(shortId, TimeSpan.FromSeconds(30));
-            var records = _store.Load().ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
-            records[name] = new SessionRecord(SessionRole.Planner, sessionId, name, DateTimeOffset.UtcNow, 0, [], null, null);
-            _store.Save(records);
-            KeepAlive(name, folder, choice.Model, choice.Effort);
+            sessionId = await _cli.ResolveSessionIdAsync(shortId, TimeSpan.FromSeconds(30));
         }
-        catch (ClaudeCliException ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             AppLog.Write($"resume in full failed: {ex.Message}");
             SetStatus($"Not resumed: {ex.Message}");
+            return;
+        }
+
+        // The record first, then the run that keeps it alive. If the record cannot be written the session is running but not kept
+        // alive, and the log and the status say so, so the owner can attach to it or stop it.
+        try
+        {
+            _store.Update(records => records[name] = new SessionRecord(SessionRole.Planner, sessionId, name, DateTimeOffset.UtcNow, 0, [], null, null));
+            _runStore.Update(runs => runs.Append(RunPlan.ResumedRun(name, folder, choice.Model, choice.Effort, DateTimeOffset.UtcNow)).ToList());
+        }
+        catch (Exception ex) when (ex is StoreUnreadableException or TimeoutException or IOException)
+        {
+            AppLog.Write($"resumed {sessionId} as {name} but it is not kept alive: {ex.Message}");
+            SetStatus($"Resumed as {name} but not recorded: {ex.Message}. Check the log.");
+            RefreshRail();
             return;
         }
 
@@ -147,26 +173,6 @@ public partial class SessionWindow
             : $"the last {choice.Turns} turns";
         await StartRunAsync(request);
         SetStatus($"Resumed {ShortId(digest.SessionId)} from {how}, at {choice.Model} {choice.Effort}. The new session starts on the next pass.");
-    }
-
-    /// <summary>
-    /// Makes a resumed session a solo run, so the supervisor keeps it alive like any run: when the session is gone, it is resumed
-    /// under the same id, at the same model and effort, with the limit of restarts per hour. The run is written after the record
-    /// (see ResumeInFullAsync).
-    /// </summary>
-    private void KeepAlive(string name, string folder, string model, string effort)
-    {
-        var spec = new SessionSpec(
-            SessionRole.Planner,
-            name,
-            folder,
-            model,
-            effort,
-            "Continue the session you were resumed into, where it left off.",
-            "auto");
-        var runs = _runStore.Load().ToList();
-        runs.Add(new RunRecord(name, "resume", folder, "auto", DateTimeOffset.UtcNow, [spec]));
-        _runStore.Save(runs);
     }
 
     /// <summary>How long ago a session was last active, in words for the prompt.</summary>

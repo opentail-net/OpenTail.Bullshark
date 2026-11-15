@@ -13,6 +13,9 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        // A run with --state keeps its log beside its state file, so it never writes into the default folder.
+        var stateAt = Array.IndexOf(e.Args, "--state");
+        if (stateAt >= 0 && stateAt + 1 < e.Args.Length) AppLog.FollowStateFile(e.Args[stateAt + 1]);
         if (!e.Args.Contains("--state")) OpenTail.Bullshark.Core.Storage.AppDataMigration.CopyPreviousIfMissing(AppLog.Write);
 
         // Sessions must not write into the console or the redirected streams we were started with: their output
@@ -32,9 +35,19 @@ public partial class App : Application
             args.Handled = true;
         };
         // --smoke runs the P1 spike harness (used by scripts/Test-Spike.ps1). Otherwise open the OpenTail.Bullshark window.
-        Window window = e.Args.Contains("--smoke")
-            ? new MainWindow(SpikeOptions.Parse(e.Args))
-            : new SessionWindow(LaunchOptions.Parse(e.Args));
+        Window window;
+        try
+        {
+            window = e.Args.Contains("--smoke")
+                ? new MainWindow(SpikeOptions.Parse(e.Args))
+                : new SessionWindow(LaunchOptions.Parse(e.Args));
+        }
+        catch (ArgumentException ex)
+        {
+            MessageBox.Show(ex.Message, "OpenTail.Bullshark", MessageBoxButton.OK, MessageBoxImage.Error);
+            Shutdown(2);
+            return;
+        }
         MainWindow = window;
         window.Show();
     }

@@ -7,9 +7,16 @@ public static class AppLog
 {
     private static readonly object Gate = new();
 
-    public static string FilePath { get; } = Path.Combine(
+    public static string FilePath { get; private set; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "OpenTail.Bullshark", "logs", "app.log");
+
+    /// <summary>Puts the log beside a state file: the logs folder next to it, so a run with its own state keeps its own log.</summary>
+    public static void FollowStateFile(string statePath)
+    {
+        var folder = Path.GetDirectoryName(Path.GetFullPath(statePath));
+        if (!string.IsNullOrEmpty(folder)) FilePath = Path.Combine(folder, "logs", "app.log");
+    }
 
     public static void Write(string message)
     {

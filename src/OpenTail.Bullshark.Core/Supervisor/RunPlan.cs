@@ -205,6 +205,14 @@ public static class RunPlan
         "You were restarted. Do not ask questions. If a coder has a question waiting, answer it with SendMessage; " +
         "otherwise reply with one line saying you are waiting.";
 
+    /// <summary>
+    /// The run that keeps a session resumed in full alive: one solo session with the same name, folder and model. If it goes, the
+    /// supervisor resumes it with the solo restart prompt, not the pair's.
+    /// </summary>
+    public static RunRecord ResumedRun(string name, string folder, string model, string effort, DateTimeOffset now) =>
+        new(name, "resume", folder, "auto", now, [new SessionSpec(SessionRole.Planner, name, folder, model, effort,
+            "Continue the session you were resumed into, where it left off.", "auto", SoloResumePrompt)]);
+
     /// <summary>Solo's brief: one session, no peer, and no message to send.</summary>
     public static string SoloBrief(string name, string task) =>
         $"You are {name}, the only session in this run. There is no peer, so send no messages. " +

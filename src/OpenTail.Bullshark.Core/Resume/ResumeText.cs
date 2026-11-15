@@ -21,6 +21,9 @@ public static class ResumeText
     /// <summary>The default number of turns kept verbatim.</summary>
     public const int DefaultTurns = 10;
 
+    /// <summary>The longest summary a start text carries, in characters. A session starts from a command-line argument.</summary>
+    public const int MaxSummaryChars = 6000;
+
     /// <summary>The most tokens the verbatim tail may take (D-S11).</summary>
     public const int TailTokenCap = 4000;
 
@@ -102,7 +105,7 @@ public static class ResumeText
         {
             text.AppendLine();
             text.AppendLine($"## Summary ({level.Value.ToString().ToLowerInvariant()})");
-            text.AppendLine(summary.Trim());
+            text.AppendLine(Cap(summary.Trim()));
         }
         if (turns > 0 && tail.Length > 0)
         {
@@ -111,9 +114,12 @@ public static class ResumeText
             text.AppendLine(tail);
         }
         text.AppendLine();
-        text.Append("Carry on from this. Ask one short question if something is unclear.");
+        text.Append("Carry on from this. Where something is unclear, make the sensible decision and say what you decided.");
         return text.ToString();
     }
+
+    private static string Cap(string summary) =>
+        summary.Length <= MaxSummaryChars ? summary : summary[..MaxSummaryChars] + " (the rest of the summary is left out)";
 
     private static string Render(IEnumerable<TranscriptLine> turn) =>
         string.Join("\n", turn.Select(RenderLine).OfType<string>());

@@ -216,7 +216,7 @@ public partial class SessionWindow
     /// <summary>Rebuilds the rail from the state file, the last agent listing, the cache facts and the history read so far.</summary>
     private void RefreshRail()
     {
-        var records = _store.Load().Values.OrderBy(r => r.Name, StringComparer.Ordinal).ToList();
+        var records = ReadRecords().Values.OrderBy(r => r.Name, StringComparer.Ordinal).ToList();
         // A start that failed has no session, so it gets no terminal (it is listed as a failure below).
         foreach (var record in records.Where(r => !string.IsNullOrEmpty(r.SessionId))) EnsureTerminal(record);
 
@@ -234,11 +234,12 @@ public partial class SessionWindow
         }
 
         // The folders of this window's sessions come first, so a folder is listed before its sessions start.
-        foreach (var spec in Specs) Folder(spec.WorkingDirectory);
+        var specs = Specs;
+        foreach (var spec in specs) Folder(spec.WorkingDirectory);
 
         foreach (var record in records)
         {
-            var spec = Specs.FirstOrDefault(s => string.Equals(s.Name, record.Name, StringComparison.Ordinal));
+            var spec = specs.FirstOrDefault(s => string.Equals(s.Name, record.Name, StringComparison.Ordinal));
             var state = _agents.FirstOrDefault(a => string.Equals(a.SessionId, record.SessionId, StringComparison.OrdinalIgnoreCase))
                             ?.EffectiveState ?? "not listed";
             if (spec is null)

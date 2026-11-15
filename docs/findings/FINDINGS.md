@@ -347,3 +347,25 @@ Each finding has an ID (F1, F2, ...), the date, what was tested, the evidence, a
 - The test's wait condition (every session "done") would never be met on success either: a planner waiting on a peer shows as blocked (F29). The fix is to wait for the coder's report message in the planner's transcript.
 - Both leftover planners were stopped and removed by folder. No test sessions remain.
 - Not established: whether a resume prompt wakes a waiting planner, and whether a Haiku planner will use the Agent tool when told to.
+
+## F53 Phase 1 of the review: lost writes, adoption, start failures, close and resume (built and tested by code and unit tests, 2026-11-15; live sessions not run)
+
+Source: the review in `docs/plans/review-2026-11-15.md`, Phase 1 only. Phases 2 to 4 wait for the owner.
+
+- **Stores:** every change to `state.json` and `runs.json` reads the file again under a named lock (`FileLock`), changes it, and writes it to a temporary file with its own name, then moves it over. A file that cannot be read throws `StoreUnreadableException` and is not overwritten. Verified by `ACorruptStateFileIsLeftAloneAndNothingIsStarted`.
+- **Supervisor pass:** writes only the records it changed for its own sessions, under the lock. A session the owner forgot during the pass stays forgotten. Verified by `ARecordForgottenDuringAPassStaysForgotten`.
+- **Adoption:** a listed session with the spec's name is adopted, not started a second time. Verified by `AListedNameIsAdoptedNotStartedTwice`.
+- **Failed start:** any exception from a start or resume is a failed start for that session; the other sessions of the pass still run. Verified by `APassSurvivesAStartThatThrowsAnyException`.
+- **Listing:** output with no list is an error. Empty output is still no sessions. Verified by `ListAgentsTests`.
+- **Trust:** an unreadable `~/.claude.json` counts as untrusted, and nothing starts because of it. Code only.
+- **Process runner:** the timeout covers writing stdin; a timeout or a cancel kills the process tree. Code only.
+- **Full resume:** refused when the session is listed. The kept-alive run gets the solo restart prompt. Verified by `AFullResumeGetsTheSoloRestartPrompt`.
+- **Close:** lists the sessions first and stops only a listed session that is not done. A failed stop puts back the runs and the record. A closed tab stays closed until the owner selects the session in the rail. Code only.
+- **Start:** the Start button is disabled while the run is written. The rail reads `runs.json` once per refresh. The log follows `--state`. A `--state` with no path is an error.
+- **Supervisor host:** a pass survives any exception. Ctrl+C ends the loop. Its log sits beside the state file.
+- **Resume text:** the closing line no longer invites questions the brief forbids. The summary is capped at 6000 characters.
+
+Result: 242 Core tests pass. The app and the supervisor host build.
+
+Not verified: the close and resume flows with real sessions, the Trust fallback and the timeout kill against the real CLI, and the UI on screen. These need the owner present (Phase 3).
+

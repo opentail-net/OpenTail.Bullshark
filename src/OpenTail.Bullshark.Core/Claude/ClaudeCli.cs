@@ -42,7 +42,15 @@ public sealed class ClaudeCli
     public async Task<IReadOnlyList<AgentInfo>> ListAgentsAsync(CancellationToken cancellationToken = default)
     {
         var result = await RunAsync(["agents", "--json"], null, cancellationToken);
-        return AgentInfo.ParseList(result.StdOut);
+        try
+        {
+            return AgentInfo.ParseList(result.StdOut);
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException or FormatException)
+        {
+            // Not a list: treated as a failed listing, so no session is judged gone (and resumed) because of it.
+            throw new ClaudeCliException($"`claude agents --json` did not print a list: {ex.Message}");
+        }
     }
 
     /// <summary>Starts a background session and returns its 8-character id.</summary>

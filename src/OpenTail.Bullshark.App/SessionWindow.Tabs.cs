@@ -37,6 +37,9 @@ public partial class SessionWindow
     }
 
     private readonly List<OpenTab> _tabs = new();
+
+    /// <summary>Sessions whose tab the owner closed. Their tab stays closed until the owner selects the session in the rail.</summary>
+    private readonly HashSet<string> _hiddenSessions = new(StringComparer.Ordinal);
     private OpenTab? _activeTab;
 
     /// <summary>Called when the rail selection changes: a session or a transcript gets its tab, and a folder shows the setup tab.</summary>
@@ -45,6 +48,7 @@ public partial class SessionWindow
         switch (tag.Kind)
         {
             case RailKind.Session:
+                _hiddenSessions.Remove(tag.Key);
                 SetActive(TabFor(TabKind.Session, tag.Key, () => TitleOfSession(tag.Key)));
                 break;
 
@@ -118,6 +122,7 @@ public partial class SessionWindow
     {
         var index = _tabs.IndexOf(tab);
         _tabs.Remove(tab);
+        if (tab.Kind == TabKind.Session) _hiddenSessions.Add(tab.Key);
         if (!ReferenceEquals(_activeTab, tab))
         {
             RefreshTabStrip();
@@ -166,14 +171,33 @@ public partial class SessionWindow
     private async Task CloseSessionAndTabAsync(OpenTab tab, string name)
     {
         var sessionId = tab.Key;
-        var runsBefore = _runStore.Load();
-        var recordBefore = _store.Load().TryGetValue(name, out var found) ? found : null;
+
+        // Whether the session still runs is read now, not from the last pass. If the sessions cannot be read, nothing is changed:
+        // the session may be running, and only a listing says so.
+        try
+        {
+            _agents = await _cli.ListAgentsAsync();
+        }
+        catch (Exception ex)
+        {
+            AppLog.Write($"session not closed: the sessions could not be read: {ex.Message}");
+            SetStatus($"Not closed: {name} is unchanged, because the sessions could not be read. {ex.Message}");
+            return;
+        }
+
         var listed = _agents.FirstOrDefault(a => a.SessionId == sessionId);
         var needsStop = listed is not null && listed.EffectiveState != "done";
 
+        // What the close takes out is kept, so a failed stop can put it back.
+        var runsBefore = ReadRuns();
+        var affected = runsBefore.Where(run => run.Specs.Any(spec => spec.Name == name)).Select(run => run.RunId)
+            .ToHashSet(StringComparer.Ordinal);
+        var originals = runsBefore.Where(run => affected.Contains(run.RunId)).ToList();
+        var recordBefore = ReadRecords().TryGetValue(name, out var found) ? found : null;
+
         try
         {
-            _runStore.Save(RunStore.WithoutSession(runsBefore, name));
+            _runStore.Update(runs => RunStore.WithoutSession(runs, name));
             _store.Forget(name);
             if (needsStop)
             {
@@ -182,15 +206,9 @@ public partial class SessionWindow
                     throw new ClaudeCliException(string.IsNullOrWhiteSpace(stop.StdErr) ? "claude stop failed" : stop.StdErr.Trim());
             }
         }
-        catch (Exception ex) when (ex is IOException or ClaudeCliException)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _runStore.Save(runsBefore);
-            if (recordBefore is not null)
-            {
-                var current = _store.Load().ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
-                current[name] = recordBefore;
-                _store.Save(current);
-            }
+            RestoreAfterFailedClose(affected, originals, name, recordBefore);
             AppLog.Write($"session not closed: {ex.Message}");
             SetStatus($"Not closed: {name} is still running. {ex.Message}");
             RefreshRail();
@@ -201,6 +219,23 @@ public partial class SessionWindow
         CloseTab(tab);
         RefreshRail();
         SetStatus($"Stopped {name}. Its conversation is kept; attach to it to resume.");
+    }
+
+    /// <summary>Puts back what a failed close took out: the runs that held the session's spec, and its record.</summary>
+    private void RestoreAfterFailedClose(HashSet<string> affected, List<RunRecord> originals, string name, SessionRecord? recordBefore)
+    {
+        try
+        {
+            if (affected.Count > 0)
+                _runStore.Update(runs => runs.Where(run => !affected.Contains(run.RunId)).Concat(originals).ToList());
+            if (recordBefore is not null)
+                _store.Update(records => records[name] = recordBefore);
+        }
+        catch (Exception ex) when (ex is StoreUnreadableException or TimeoutException or IOException)
+        {
+            AppLog.Write($"restore after the failed close not written: {ex.Message}");
+            SetStatus($"{name} may be missing from the rail: see the log. {ex.Message}");
+        }
     }
 
     /// <summary>Takes a session's terminal out of the pane and detaches it, the way the window's close detaches every terminal.</summary>
@@ -226,9 +261,10 @@ public partial class SessionWindow
     /// </summary>
     private void SyncSessionTabs()
     {
-        var records = _store.Load().Values.Where(r => !string.IsNullOrEmpty(r.SessionId)).ToList();
+        var records = ReadRecords().Values.Where(r => !string.IsNullOrEmpty(r.SessionId)).ToList();
         foreach (var record in records.OrderBy(r => r.Name, StringComparer.Ordinal))
         {
+            if (_hiddenSessions.Contains(record.SessionId)) continue;
             if (!_tabs.Any(t => t.Kind == TabKind.Session && t.Key == record.SessionId))
                 AddTab(TabKind.Session, record.SessionId, record.Name);
         }
@@ -352,7 +388,7 @@ public partial class SessionWindow
     }
 
     private string TitleOfSession(string sessionId) =>
-        _store.Load().Values.FirstOrDefault(r => r.SessionId == sessionId)?.Name ?? $"Session {ShortId(sessionId)}";
+        ReadRecords().Values.FirstOrDefault(r => r.SessionId == sessionId)?.Name ?? $"Session {ShortId(sessionId)}";
 
     private static string ShortId(string sessionId) => sessionId[..Math.Min(8, sessionId.Length)];
 }

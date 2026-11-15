@@ -26,6 +26,9 @@ public abstract record SupervisorAction(SessionRole Role)
     /// <summary>Start a session for the first time, with its brief. The session id is read back after the launch.</summary>
     public sealed record Start(SessionRole Role, SessionSpec Spec) : SupervisorAction(Role);
 
+    /// <summary>A session of this name is already listed: its record is written from the listing, and nothing is started.</summary>
+    public sealed record Adopt(SessionRole Role, SessionSpec Spec, string SessionId, string State) : SupervisorAction(Role);
+
     /// <summary>The session is gone from `agents --json`: resume it under the same session id.</summary>
     public sealed record Resume(SessionRole Role, SessionSpec Spec, string SessionId) : SupervisorAction(Role);
 
@@ -52,6 +55,15 @@ public static class SupervisorPolicy
         DateTimeOffset now,
         SupervisorRules rules)
     {
+        // Adoption first: a session of this name is already listed, because the record was lost or the start was not read back.
+        // Starting it again would be a second paid session.
+        if (record is null || string.IsNullOrEmpty(record.SessionId))
+        {
+            var listed = agents.FirstOrDefault(a => string.Equals(a.Name, spec.Name, StringComparison.Ordinal));
+            if (listed?.SessionId is { Length: > 0 } adoptId)
+                return [new SupervisorAction.Adopt(spec.Role, spec, adoptId, listed.EffectiveState)];
+        }
+
         // First start: nothing is remembered for this role.
         if (record is null)
             return [new SupervisorAction.Start(spec.Role, spec)];

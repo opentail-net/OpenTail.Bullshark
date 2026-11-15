@@ -17,7 +17,11 @@ public sealed record SessionRecord(
     string? LastState,
     string? LastAlert);
 
-/// <summary>Reads and writes the state file. Writes go to a temporary file first, so a crash never leaves half a file.</summary>
+/// <summary>
+/// Reads and writes the state file. Every change goes through <see cref="Update"/>: the file is read again under the lock,
+/// changed, and written. So a change made by the other process (the window or the supervisor) since the change was prepared
+/// is kept, and a file that cannot be read is never overwritten.
+/// </summary>
 public sealed class StateStore
 {
     private static readonly JsonSerializerOptions Options = new()
@@ -40,15 +44,52 @@ public sealed class StateStore
     /// <summary>
     /// Returns the records keyed by session name. If two records share a name, the one with the later StartedAt is
     /// kept, and the other is logged and left out of the result. Ties keep the first record in the file.
+    /// An unreadable file throws <see cref="StoreUnreadableException"/>.
     /// </summary>
     public IReadOnlyDictionary<string, SessionRecord> Load()
     {
-        if (!File.Exists(_path)) return new Dictionary<string, SessionRecord>(StringComparer.Ordinal);
-        var json = File.ReadAllText(_path);
-        var records = JsonSerializer.Deserialize<List<SessionRecord>>(json, Options) ?? [];
+        using var _ = FileLock.Hold(_path);
+        return Read();
+    }
 
+    /// <summary>
+    /// Applies a change under the file lock. The file is read again inside the lock first. If it cannot be read, the change
+    /// is not applied and <see cref="StoreUnreadableException"/> is thrown.
+    /// </summary>
+    public void Update(Action<Dictionary<string, SessionRecord>> change)
+    {
+        using var _ = FileLock.Hold(_path);
+        var records = Read();
+        change(records);
+        Write(records);
+    }
+
+    /// <summary>Removes one session's record, so the rail and the supervisor stop tracking it. Other records are kept.</summary>
+    public void Forget(string name) => Update(records => records.Remove(name));
+
+    /// <summary>Replaces every record. Callers that change one or two records use <see cref="Update"/>.</summary>
+    public void Save(IReadOnlyDictionary<string, SessionRecord> records) => Update(current =>
+    {
+        current.Clear();
+        foreach (var pair in records) current[pair.Key] = pair.Value;
+    });
+
+    private Dictionary<string, SessionRecord> Read()
+    {
         var byName = new Dictionary<string, SessionRecord>(StringComparer.Ordinal);
-        foreach (var record in records)
+        if (!File.Exists(_path)) return byName;
+
+        List<SessionRecord>? records;
+        try
+        {
+            records = JsonSerializer.Deserialize<List<SessionRecord>>(File.ReadAllText(_path), Options);
+        }
+        catch (Exception ex) when (ex is JsonException or IOException or NotSupportedException)
+        {
+            throw new StoreUnreadableException(_path, ex.Message);
+        }
+
+        foreach (var record in records ?? [])
         {
             if (!byName.TryGetValue(record.Name, out var kept))
             {
@@ -65,22 +106,10 @@ public sealed class StateStore
         return byName;
     }
 
-    /// <summary>Removes one session's record, so the rail and the supervisor stop tracking it. Other records are kept.</summary>
-    public void Forget(string name)
+    private void Write(IReadOnlyDictionary<string, SessionRecord> records)
     {
-        var records = Load().ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
-        if (records.Remove(name)) Save(records);
-    }
-
-    public void Save(IReadOnlyDictionary<string, SessionRecord> records)
-    {
-        var directory = System.IO.Path.GetDirectoryName(_path);
-        if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
-
         var json = JsonSerializer.Serialize(
             records.Values.OrderBy(r => r.Role).ThenBy(r => r.Name, StringComparer.Ordinal).ToList(), Options);
-        var temporary = _path + ".tmp";
-        File.WriteAllText(temporary, json);
-        File.Move(temporary, _path, overwrite: true);
+        FileLock.WriteAtomic(_path, json);
     }
 }
