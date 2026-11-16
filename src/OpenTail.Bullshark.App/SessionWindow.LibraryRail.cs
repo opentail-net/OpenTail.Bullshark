@@ -88,7 +88,7 @@ public partial class SessionWindow
         var row = NewItem(
             ColourEdge(TwoLine(title + (digest.IsSubagent ? " · subagent" : string.Empty),
                     ActivityLine(digest.SessionId, null, digest.LastActivity, running: false)
-                        + $" · {ShortId(digest.SessionId)} · {digest.AssistantMessages} msgs" + TagsSuffix(mark),
+                        + $" · {digest.AssistantMessages} msgs" + TagsSuffix(mark),
                     string.Empty, resume, MatchBadge(match), leadSlot: true),
                 mark?.Colour),
             new RailTag(RailKind.History, digest.SessionId, digest),

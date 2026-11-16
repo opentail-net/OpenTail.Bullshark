@@ -4,7 +4,7 @@ using System.Text.Json;
 namespace OpenTail.Bullshark.Core.Activity;
 
 /// <summary>One record of a transcript as a person reads it. Tool results are collapsed to a short preview.</summary>
-public sealed record TranscriptLine(int Number, string Kind, DateTimeOffset? Time, string Text, bool Collapsed)
+public sealed record TranscriptLine(int Number, string Kind, DateTimeOffset? Time, string Text, bool Collapsed, bool Failed = false)
 {
     private const int PreviewLength = 120;
 
@@ -44,6 +44,9 @@ public sealed record TranscriptLine(int Number, string Kind, DateTimeOffset? Tim
                         : 0;
                     return new TranscriptLine(number, "turn", time, $"turn finished ({seconds:0.#} s)", Collapsed: false);
 
+                case "system" when Str(root, "subtype") == "compact_boundary":
+                    return CompactLine(number, root, time);
+
                 default:
                     return null;
             }
@@ -67,7 +70,7 @@ public sealed record TranscriptLine(int Number, string Kind, DateTimeOffset? Tim
                 if (Str(block, "type") != "tool_result") continue;
                 var preview = ResultText(block);
                 var shown = preview.Length > PreviewLength ? preview[..PreviewLength] + "…" : preview;
-                return new TranscriptLine(number, "result", time, $"result: {shown}", Collapsed: true);
+                return new TranscriptLine(number, "result", time, $"result: {shown}", Collapsed: true, Failed: IsFailedResult(block));
             }
             foreach (var block in content.EnumerateArray())
             {
@@ -116,6 +119,38 @@ public sealed record TranscriptLine(int Number, string Kind, DateTimeOffset? Tim
         }
         return string.Empty;
     }
+
+    /// <summary>
+    /// A compaction: the context was cut here (D-A3). The text gives the trigger and the token counts when the record has them
+    /// (observed on 2026-11-16: <c>compactMetadata</c> with <c>trigger</c>, <c>preTokens</c>, <c>postTokens</c>).
+    /// </summary>
+    private static TranscriptLine CompactLine(int number, JsonElement root, DateTimeOffset? time)
+    {
+        var meta = root.TryGetProperty("compactMetadata", out var m) && m.ValueKind == JsonValueKind.Object ? m : default;
+        var trigger = Str(meta, "trigger");
+        var before = Num(meta, "preTokens");
+        var after = Num(meta, "postTokens");
+        var head = trigger is null ? "conversation compacted" : $"conversation compacted ({trigger})";
+        var culture = System.Globalization.CultureInfo.InvariantCulture;
+        var text = before is { } pre && after is { } post
+            ? $"{head}: {pre.ToString("N0", culture)} → {post.ToString("N0", culture)} tokens"
+            : head;
+        return new TranscriptLine(number, "compact", time, text, Collapsed: false);
+    }
+
+    /// <summary>
+    /// True when a tool result says it failed: <c>is_error</c> is true on the block (observed on 78 transcript files on
+    /// 2026-11-16). The reader and the turn facts both use this one test.
+    /// </summary>
+    public static bool IsFailedResult(JsonElement block) =>
+        block.ValueKind == JsonValueKind.Object &&
+        block.TryGetProperty("is_error", out var error) && error.ValueKind == JsonValueKind.True;
+
+    private static long? Num(JsonElement element, string property) =>
+        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var v) &&
+        v.ValueKind == JsonValueKind.Number && v.TryGetInt64(out var n)
+            ? n
+            : null;
 
     private static string Short(string value) => value.Length > 100 ? "…" + value[^99..] : value;
 

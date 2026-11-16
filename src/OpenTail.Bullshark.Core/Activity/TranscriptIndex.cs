@@ -24,7 +24,8 @@ public sealed record SessionDigest(
     string? LastRecap = null,
     DateTimeOffset? LastRecapAt = null,
     int Compactions = 0,
-    string? ContinuesSessionId = null)
+    string? ContinuesSessionId = null,
+    int FailedToolCalls = 0)
 {
     /// <summary>
     /// The title (D-L1; the owner's own name comes in L3). Claude Code's title when the transcript has one, else the first
@@ -100,7 +101,8 @@ public sealed class TranscriptIndex
                 ContinuesSessionId: summary.ContinuesSessionId,
                 LastModel: summary.LastModel,
                 ContextTokensAtLastTurn: summary.ContextTokensAtLastTurn,
-                Usage: summary.TotalUsage));
+                Usage: summary.TotalUsage,
+                FailedToolCalls: summary.FailedToolCalls));
         }
 
         return new TranscriptIndex(digests, new IndexTotals(ledger.Total, ledger.ByModel(), ledger.Count));

@@ -497,6 +497,24 @@ public partial class SessionWindow
         await ShowRailItemAsync(tag);
     }
 
+    /// <summary>
+    /// Opens a past session's transcript by its full id or the start of it (the test hook <c>--open-transcript</c>, TA4).
+    /// A session that is not in the history is reported in the status line.
+    /// </summary>
+    private async Task OpenHistorySessionAsync(string sessionId)
+    {
+        var digest = _history?.FirstOrDefault(d =>
+            d.SessionId.StartsWith(sessionId, StringComparison.OrdinalIgnoreCase));
+        if (digest is null)
+        {
+            AppLog.Write($"open transcript: no session {sessionId}");
+            SetStatus($"No transcript for session {sessionId}.");
+            return;
+        }
+        AppLog.Write($"open transcript: {digest.SessionId}");
+        await ShowRailItemAsync(new RailTag(RailKind.History, digest.SessionId, digest));
+    }
+
     private async Task ShowRailItemAsync(RailTag tag)
     {
         switch (tag.Kind)
@@ -646,6 +664,8 @@ public partial class SessionWindow
             lines.Add($"Custom title: {custom}");
         if (digest.Compactions > 0)
             lines.Add($"Compacted {digest.Compactions} time{(digest.Compactions == 1 ? string.Empty : "s")}");
+        if (digest.FailedToolCalls > 0)
+            lines.Add($"{digest.FailedToolCalls} tool call{(digest.FailedToolCalls == 1 ? string.Empty : "s")} failed");
         return lines.Count == 0 ? string.Empty : string.Join("\n", lines) + "\n";
     }
 

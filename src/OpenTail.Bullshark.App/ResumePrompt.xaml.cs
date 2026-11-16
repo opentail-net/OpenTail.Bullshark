@@ -60,8 +60,8 @@ public partial class ResumePrompt : Window
             ? $"Recommended: in full. The context is about {_contextTokens:N0} tokens, small enough to re-read before the first reply."
             : $"Recommended: from a summary. The context is about {_contextTokens:N0} tokens; a full resume would re-read all of it " +
               "before the first reply.";
-        FullChoice.Content = "In full: the whole conversation as context" + (fullRecommended ? "  · recommended" : string.Empty);
-        SummaryChoice.Content = "From a summary, then a new session" + (fullRecommended ? string.Empty : "  · recommended");
+        FullChoice.Content = "In full: the whole conversation as context" + (fullRecommended ? " 👍 (recommended)" : string.Empty);
+        SummaryChoice.Content = "From a summary, then a new session" + (fullRecommended ? string.Empty : " 👍 (recommended)");
         (fullRecommended ? FullChoice : SummaryChoice).IsChecked = true;
 
         foreach (var (level, label) in new[]

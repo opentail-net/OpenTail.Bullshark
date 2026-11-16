@@ -32,7 +32,8 @@ public sealed record TranscriptSummary(
     string? LastRecap = null,
     DateTimeOffset? LastRecapAt = null,
     int Compactions = 0,
-    string? ContinuesSessionId = null)
+    string? ContinuesSessionId = null,
+    int FailedToolCalls = 0)
 {
     public TokenUsage TotalUsage => UsageByModel.Values.Aggregate(TokenUsage.Zero, (sum, next) => sum.Add(next));
 }
@@ -45,7 +46,7 @@ public sealed record TranscriptSummary(
 public static class TranscriptReader
 {
     /// <summary>Tools whose input names a file they change.</summary>
-    private static readonly HashSet<string> FileWritingTools = new(StringComparer.Ordinal)
+    internal static readonly HashSet<string> FileWritingTools = new(StringComparer.Ordinal)
     {
         "Write", "Edit", "MultiEdit", "NotebookEdit",
     };
@@ -81,6 +82,9 @@ public static class TranscriptReader
         DateTimeOffset? lastRecapAt = null;
         int compactions = 0;
         string? continuesSessionId = null;
+        // Failed tool calls (TA1): a tool_result that says is_error, counted once per call id.
+        int failedCalls = 0;
+        var failedIds = new HashSet<string>(StringComparer.Ordinal);
         long contextAtLastTurn = 0;
         var seenInFile = new HashSet<string>(StringComparer.Ordinal);
         var toolNames = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -143,6 +147,19 @@ public static class TranscriptReader
                     firstUserText ??= SessionTitle.FromUserRecord(root);
                     // Only the first user message can name the session this one continues (D-L8).
                     if (users == 1) continuesSessionId = SessionTitle.ContinuesIdOf(root);
+                    if (root.TryGetProperty("message", out var userMessage) &&
+                        userMessage.TryGetProperty("content", out var userContent) && userContent.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var resultBlock in userContent.EnumerateArray())
+                        {
+                            if (TryGetString(resultBlock, "type", out var resultType) && resultType == "tool_result" &&
+                                TranscriptLine.IsFailedResult(resultBlock) &&
+                                TryGetString(resultBlock, "tool_use_id", out var failedId) && failedIds.Add(failedId!))
+                            {
+                                failedCalls++;
+                            }
+                        }
+                    }
                 }
                 if (type != "assistant" || !root.TryGetProperty("message", out var message)) continue;
 
@@ -201,7 +218,7 @@ public static class TranscriptReader
 
         return new TranscriptSummary(records, users, assistants, tools, turns, lastText, lastTimestamp, lastModel,
             usageLedger.ByFile(file), firstTimestamp, toolNames, filesWritten, contextAtLastTurn, firstUserText,
-            aiTitle, customTitle, lastRecap, lastRecapAt, compactions, continuesSessionId);
+            aiTitle, customTitle, lastRecap, lastRecapAt, compactions, continuesSessionId, failedCalls);
     }
 
     private static bool TryGetString(JsonElement element, string property, out string? value)
