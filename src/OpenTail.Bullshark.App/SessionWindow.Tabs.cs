@@ -337,8 +337,18 @@ public partial class SessionWindow
             var isActive = ReferenceEquals(tab, active);
             var content = new StackPanel { Orientation = Orientation.Horizontal };
 
-            var dot = StateDot(tab.State);
-            if (dot is not null) content.Children.Add(dot);
+            // The mark at the start of the title: what the session is doing, or that it is closed.
+            if (StateGlyph(tab) is { } mark)
+            {
+                content.Children.Add(new TextBlock
+                {
+                    Text = mark.Glyph,
+                    FontSize = 11,
+                    Margin = new Thickness(0, 0, 6, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    ToolTip = mark.Meaning,
+                });
+            }
 
             content.Children.Add(new TextBlock
             {
@@ -415,22 +425,21 @@ public partial class SessionWindow
     }
 
     /// <summary>The state dot: small, and muted green when working, muted amber when blocked, grey otherwise.</summary>
-    private static TextBlock? StateDot(string state)
+    /// <summary>
+    /// The mark at the start of a tab's title. A running session is 🚀 when busy and 💤 when idle; a session waiting for input is 🙋;
+    /// a session that is not running, or a past session, is ⏹️. Setup and search tabs have none, and a session tab has none until its
+    /// state is known.
+    /// </summary>
+    private static (string Glyph, string Meaning)? StateGlyph(OpenTab tab)
     {
-        if (string.IsNullOrEmpty(state)) return null;
-        var colour = state switch
+        if (tab.Kind == TabKind.Transcript) return ("⏹️", "Closed: a past session, not running");
+        if (tab.Kind != TabKind.Session || string.IsNullOrEmpty(tab.State)) return null;
+        return tab.State switch
         {
-            "working" => "#5BA86B",
-            "blocked" => "#C9A227",
-            _ => "#7C828C",
-        };
-        return new TextBlock
-        {
-            Text = "●",
-            FontSize = 7,
-            Margin = new Thickness(0, 0, 6, 0),
-            Foreground = RailPalette.Brush(colour),
-            VerticalAlignment = VerticalAlignment.Center,
+            "working" or "busy" => ("🚀", "Running and busy"),
+            "done" => ("💤", "Running and idle"),
+            "blocked" => ("🙋", "Waiting for input: a permission, a question, or a reply from another session"),
+            _ => ("⏹️", "Closed: not running"),
         };
     }
 
