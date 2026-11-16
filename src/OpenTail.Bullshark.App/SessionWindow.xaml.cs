@@ -93,7 +93,7 @@ public partial class SessionWindow : Window
         _setup.RunRequested += OnRunRequested;
         _setup.TrustNeeded += root => ShowTrustStep(root, select: true);
         Pane.Children.Add(_transcript);
-        _transcript.ResumeRequested += (digest, startWith) => _ = ResumeAsync(digest, startWith);
+        _transcript.ResumeRequested += digest => _ = ResumeAsync(digest);
         Pane.Children.Add(_setup);
 
         Loaded += async (_, _) =>

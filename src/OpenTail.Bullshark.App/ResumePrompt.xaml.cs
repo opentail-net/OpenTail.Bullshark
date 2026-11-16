@@ -27,17 +27,16 @@ public enum ResumeMode
 public sealed record ResumeChoice(ResumeMode Mode, SummaryLevel? Level, int Turns, string Model, string Effort);
 
 /// <summary>
-/// The resume prompt (D14, D-S11). It shows what a resume would send before anything runs. A full resume re-reads the whole
-/// context. A summary makes one model call. The last turns cost nothing extra. The owner picks the model and effort of the
-/// session that continues. Cancel is the default.
+/// The resume prompt (D14, D-S11). One list of ways to continue, with the recommended one already selected: a full resume only
+/// when the context is small (ResumeAdvice), otherwise a summary. It shows what each choice would send before anything runs.
+/// The owner picks the model and effort of the session that continues. Cancel is the default.
 /// </summary>
 public partial class ResumePrompt : Window
 {
     private const int MaxTurns = 200;
     private readonly int _contextTokens;
 
-    public ResumePrompt(string heading, string facts, long contextTokens, RailPalette palette, ResumeMode startWith,
-        string defaultModel, string defaultEffort)
+    public ResumePrompt(string heading, string facts, long contextTokens, RailPalette palette, string defaultModel, string defaultEffort)
     {
         InitializeComponent();
         Resources["PromptBg"] = RailPalette.Brush(palette.Background);
@@ -52,14 +51,34 @@ public partial class ResumePrompt : Window
         _contextTokens = (int)Math.Min(contextTokens, int.MaxValue);
         TurnsBox.Text = ResumeText.DefaultTurns.ToString(CultureInfo.InvariantCulture);
 
-        foreach (var radio in new[] { FullChoice, MinimalChoice, NormalChoice, CompleteChoice, TailChoice })
-            radio.Checked += (_, _) => UpdateCost();
+        var fullRecommended = ResumeAdvice.FullIsRecommended(contextTokens);
+        Recommendation.Text = fullRecommended
+            ? $"Recommended: in full. The context is about {_contextTokens:N0} tokens, small enough to re-read before the first reply."
+            : $"Recommended: from a summary. The context is about {_contextTokens:N0} tokens; a full resume would re-read all of it " +
+              "before the first reply.";
+        FullChoice.Content = "In full: the whole conversation as context" + (fullRecommended ? "  · recommended" : string.Empty);
+        SummaryChoice.Content = "From a summary, then a new session" + (fullRecommended ? string.Empty : "  · recommended");
+        (fullRecommended ? FullChoice : SummaryChoice).IsChecked = true;
+
+        foreach (var (level, label) in new[]
+                 {
+                     (SummaryLevel.Minimal, "Minimal · about 120 words"),
+                     (SummaryLevel.Normal, "Normal · about 400 words"),
+                     (SummaryLevel.Complete, "Complete · about 1,200 words"),
+                 })
+        {
+            var segment = Segment(label, "Level", level == SummaryLevel.Normal);
+            segment.Tag = level.ToString();
+            segment.Checked += (_, _) => UpdateCost();
+            LevelRow.Children.Add(segment);
+        }
+
+        foreach (var radio in new[] { FullChoice, SummaryChoice, TailChoice }) radio.Checked += (_, _) => UpdateCost();
         TurnsBox.TextChanged += (_, _) => UpdateCost();
 
         foreach (var model in Choices.Models) ModelRow.Children.Add(Segment(model, "Model", model == defaultModel));
         foreach (var effort in Choices.Efforts) EffortRow.Children.Add(Segment(effort, "Effort", effort == defaultEffort));
 
-        (startWith == ResumeMode.Full ? FullChoice : NormalChoice).IsChecked = true;
         UpdateCost();
     }
 
@@ -79,6 +98,10 @@ public partial class ResumePrompt : Window
     private static string? SelectedTag(Panel row) =>
         row.Children.OfType<RadioButton>().FirstOrDefault(radio => radio.IsChecked == true)?.Tag as string;
 
+    /// <summary>The summary level on screen. Normal when none is chosen.</summary>
+    private SummaryLevel SelectedLevel() =>
+        Enum.TryParse<SummaryLevel>(SelectedTag(LevelRow), out var level) ? level : SummaryLevel.Normal;
+
     /// <summary>The choice on screen, or null when none is selected. turnsValid is false when the turns are not a whole number in range.</summary>
     private ResumeChoice? Selected(out bool turnsValid)
     {
@@ -89,30 +112,35 @@ public partial class ResumePrompt : Window
         var effort = SelectedTag(EffortRow) ?? Choices.Efforts[0];
 
         if (FullChoice.IsChecked == true) return new ResumeChoice(ResumeMode.Full, null, 0, model, effort);
-        if (MinimalChoice.IsChecked == true) return new ResumeChoice(ResumeMode.Summary, SummaryLevel.Minimal, kept, model, effort);
-        if (NormalChoice.IsChecked == true) return new ResumeChoice(ResumeMode.Summary, SummaryLevel.Normal, kept, model, effort);
-        if (CompleteChoice.IsChecked == true) return new ResumeChoice(ResumeMode.Summary, SummaryLevel.Complete, kept, model, effort);
+        if (SummaryChoice.IsChecked == true) return new ResumeChoice(ResumeMode.Summary, SelectedLevel(), kept, model, effort);
         if (TailChoice.IsChecked == true) return new ResumeChoice(ResumeMode.TailOnly, null, kept, model, effort);
         return null;
     }
 
-    /// <summary>Says what the selected choice costs and sends, before the owner presses Resume.</summary>
+    /// <summary>
+    /// Says what the selected choice costs and sends, before the owner presses Resume. It also shows only the options that apply to
+    /// the choice: the summary levels for a summary, and the turns for anything but a full resume.
+    /// </summary>
     private void UpdateCost()
     {
         var choice = Selected(out var turnsValid);
+        LevelBlock.Visibility = SummaryChoice.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        TurnsBlock.Visibility = FullChoice.IsChecked == true ? Visibility.Collapsed : Visibility.Visible;
+
         var sizes = turnsValid ? string.Empty : $" Enter a whole number from 0 to {MaxTurns} for the turns.";
         var runs = choice is null ? string.Empty : $" The new session runs at {choice.Model} {choice.Effort}.";
         CostText.Text = (choice?.Mode switch
         {
             ResumeMode.Full =>
                 $"Resuming in full re-reads all of the context, about {_contextTokens:N0} tokens, before the first reply. " +
-                "The cache has gone cold, so that is charged at full price. Nothing runs until you press Resume.",
+                "A warm cache makes that cheap; a cold one charges it at full price. Nothing runs until you press Resume.",
             ResumeMode.Summary =>
-                $"One Haiku call (low effort) reads up to about {ResumeText.SummaryInputChars / 4:N0} tokens of this " +
-                "session and writes the summary. Then a new session starts from it.",
+                $"One Haiku call (low effort) reads your messages and Claude's replies, not the tool output, up to about " +
+                $"{ResumeText.SummaryInputChars / 4:N0} tokens, and writes the {(choice.Level ?? SummaryLevel.Normal).ToString().ToLowerInvariant()} " +
+                "summary. Then a new session starts from it and from the last turns.",
             ResumeMode.TailOnly =>
                 "No model call. The last turns are copied word for word into a new session.",
-            _ => "Choose one of the ways to resume.",
+            _ => "Choose one of the ways to continue.",
         }) + runs + sizes;
     }
 

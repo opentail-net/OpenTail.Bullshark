@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using OpenTail.Bullshark.Core.Activity;
+using OpenTail.Bullshark.Core.Resume;
 
 namespace OpenTail.Bullshark.App;
 
@@ -21,8 +22,8 @@ public sealed class TranscriptView : UserControl
     private readonly ScrollViewer _transcriptScroll = new();
     private TranscriptPager? _pager;
     private SessionDigest? _digest;
-    private readonly Button _resumeFull = new();
-    private readonly Button _resumeSummary = new();
+    private readonly Button _resume = new();
+    private readonly TextBlock _resumeHint = new();
     private int _firstShown;
 
     public TranscriptView()
@@ -36,8 +37,8 @@ public sealed class TranscriptView : UserControl
     public async Task ShowAsync(SessionDigest digest)
     {
         _digest = digest;
-        _resumeFull.IsEnabled = true;
-        _resumeSummary.IsEnabled = true;
+        _resume.IsEnabled = true;
+        _resumeHint.Text = ResumeHint(digest);
         _historyTitle.Text = $"{digest.Title}\n{digest.SessionId}\n{digest.FilePath}";
         _historyStats.Text = StatsText(digest);
 
@@ -80,24 +81,6 @@ public sealed class TranscriptView : UserControl
         DockPanel.SetDock(_historyStats, Dock.Top);
         right.Children.Add(_historyStats);
 
-        var resume = new WrapPanel { Margin = new Thickness(0, 0, 0, 8) };
-        _resumeFull.Content = "Resume in full…";
-        _resumeFull.IsEnabled = false;
-        _resumeFull.Padding = new Thickness(10, 2, 10, 2);
-        _resumeFull.Margin = new Thickness(0, 0, 8, 4);
-        _resumeFull.ToolTip = "Resumes the whole conversation as context. The prompt shows its size and cost before anything runs.";
-        _resumeFull.Click += (_, _) => RaiseResume(ResumeMode.Full);
-        resume.Children.Add(_resumeFull);
-        _resumeSummary.Content = "Resume from summary…";
-        _resumeSummary.IsEnabled = false;
-        _resumeSummary.Padding = new Thickness(10, 2, 10, 2);
-        _resumeSummary.Margin = new Thickness(0, 0, 0, 4);
-        _resumeSummary.ToolTip = "Starts a new session from a summary (minimal, normal or complete), or from the last turns only. Nothing runs before you confirm.";
-        _resumeSummary.Click += (_, _) => RaiseResume(ResumeMode.Summary);
-        resume.Children.Add(_resumeSummary);
-        DockPanel.SetDock(resume, Dock.Top);
-        right.Children.Add(resume);
-
         _earlier.Content = "Load earlier";
         _earlier.Padding = new Thickness(10, 2, 10, 2);
         _earlier.HorizontalAlignment = HorizontalAlignment.Left;
@@ -107,6 +90,24 @@ public sealed class TranscriptView : UserControl
         DockPanel.SetDock(_earlier, Dock.Top);
         right.Children.Add(_earlier);
 
+        // The one way to resume sits at the bottom, where a reply would be typed. It shows what is recommended and opens the choices.
+        var bottom = new DockPanel { Margin = new Thickness(0, 8, 0, 0) };
+        _resume.Content = "Resume…";
+        _resume.IsEnabled = false;
+        _resume.Padding = new Thickness(14, 4, 14, 4);
+        _resume.Margin = new Thickness(12, 0, 0, 0);
+        _resume.ToolTip = "Opens the ways to continue this session. Nothing runs until you confirm there.";
+        _resume.Click += (_, _) => RaiseResume();
+        DockPanel.SetDock(_resume, Dock.Right);
+        bottom.Children.Add(_resume);
+        _resumeHint.Foreground = Brush("#BBBBBB");
+        _resumeHint.FontSize = 12;
+        _resumeHint.TextWrapping = TextWrapping.Wrap;
+        _resumeHint.VerticalAlignment = VerticalAlignment.Center;
+        bottom.Children.Add(_resumeHint);
+        DockPanel.SetDock(bottom, Dock.Bottom);
+        right.Children.Add(bottom);
+
         _transcript.Margin = new Thickness(0, 0, 12, 0);
         _transcriptScroll.Content = _transcript;
         _transcriptScroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
@@ -115,13 +116,19 @@ public sealed class TranscriptView : UserControl
         return right;
     }
 
-    /// <summary>Raised when the owner asks to resume the session shown, with the way it was asked for preselected.</summary>
-    public event Action<SessionDigest, ResumeMode>? ResumeRequested;
+    /// <summary>Raised when the owner asks to resume the session shown. The resume prompt decides how, and shows the cost first.</summary>
+    public event Action<SessionDigest>? ResumeRequested;
 
-    private void RaiseResume(ResumeMode startWith)
+    private void RaiseResume()
     {
-        if (_digest is not null) ResumeRequested?.Invoke(_digest, startWith);
+        if (_digest is not null) ResumeRequested?.Invoke(_digest);
     }
+
+    /// <summary>What is recommended for the session, from its context size. The owner still chooses.</summary>
+    private static string ResumeHint(SessionDigest digest) =>
+        ResumeAdvice.FullIsRecommended(digest.ContextTokensAtLastTurn)
+            ? $"Recommended: in full · context {digest.ContextTokensAtLastTurn:N0} tokens"
+            : $"Recommended: from a summary · context {digest.ContextTokensAtLastTurn:N0} tokens";
 
     private void LoadEarlier()
     {

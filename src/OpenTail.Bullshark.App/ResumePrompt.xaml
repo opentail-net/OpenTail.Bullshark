@@ -112,22 +112,29 @@
         <TextBlock x:Name="Heading" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" />
         <TextBlock x:Name="Facts" Style="{StaticResource Muted}" Margin="0,6,0,0" />
 
-        <TextBlock Style="{StaticResource Section}" Text="Resume the same session" />
-        <RadioButton x:Name="FullChoice" GroupName="Resume" Content="In full: the whole conversation as context" />
+        <TextBlock x:Name="Recommendation" Style="{StaticResource Muted}" Margin="0,10,0,0" />
 
-        <TextBlock Style="{StaticResource Section}" Text="Or start a new session from" />
-        <RadioButton x:Name="MinimalChoice" GroupName="Resume" Content="A minimal summary (about 120 words, Haiku)" />
-        <RadioButton x:Name="NormalChoice" GroupName="Resume" Content="A normal summary (about 400 words, Haiku)" />
-        <RadioButton x:Name="CompleteChoice" GroupName="Resume" Content="A complete summary (about 1,200 words, Haiku)" />
+        <TextBlock Style="{StaticResource Section}" Text="How to continue" />
+        <RadioButton x:Name="FullChoice" GroupName="Resume" Content="In full" />
+        <RadioButton x:Name="SummaryChoice" GroupName="Resume" Content="From a summary, then a new session" />
+
+        <StackPanel x:Name="LevelBlock" Margin="22,0,0,4">
+            <WrapPanel x:Name="LevelRow" Orientation="Horizontal" />
+            <TextBlock Style="{StaticResource Muted}" Margin="0,0,0,4"
+                       Text="Haiku writes it from your messages and Claude's replies. The tool output is left out." />
+        </StackPanel>
+
         <RadioButton x:Name="TailChoice" GroupName="Resume" Content="The last turns only (no model call)" />
 
-        <StackPanel Orientation="Horizontal" Margin="22,6,0,0">
-            <TextBlock Text="Keep the last" VerticalAlignment="Center" Margin="0,0,8,0" />
-            <TextBox x:Name="TurnsBox" Width="56" Padding="6,3" VerticalContentAlignment="Center" />
-            <TextBlock Text="turns" VerticalAlignment="Center" Margin="8,0,0,0" />
+        <StackPanel x:Name="TurnsBlock">
+            <StackPanel Orientation="Horizontal" Margin="22,6,0,0">
+                <TextBlock Text="Keep the last" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <TextBox x:Name="TurnsBox" Width="56" Padding="6,3" VerticalContentAlignment="Center" />
+                <TextBlock Text="turns" VerticalAlignment="Center" Margin="8,0,0,0" />
+            </StackPanel>
+            <TextBlock Style="{StaticResource Muted}" Margin="22,2,0,0"
+                       Text="Word for word, with tool results on one line each, and at most about 4,000 tokens. The oldest turn goes first." />
         </StackPanel>
-        <TextBlock Style="{StaticResource Muted}" Margin="22,2,0,0"
-                   Text="Word for word, with tool results on one line each, and at most about 4,000 tokens. The oldest turn goes first." />
 
         <TextBlock Style="{StaticResource Section}" Text="Model and effort for the session that continues" />
         <StackPanel Orientation="Horizontal">

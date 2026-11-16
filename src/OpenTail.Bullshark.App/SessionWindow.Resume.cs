@@ -18,7 +18,7 @@ namespace OpenTail.Bullshark.App;
 public partial class SessionWindow
 {
     /// <summary>Opens the resume prompt for a past session, then does what the owner chose.</summary>
-    private async Task ResumeAsync(SessionDigest digest, ResumeMode startWith)
+    private async Task ResumeAsync(SessionDigest digest)
     {
         SetStatus($"Reading session {ShortId(digest.SessionId)}…");
         var (lines, folder) = await Task.Run(() => ResumeSource.Load(digest.FilePath));
@@ -30,11 +30,12 @@ public partial class SessionWindow
 
         var facts = $"{digest.Turns} turns · last active {AgeOf(digest.LastActivity)} · in {folder}";
         var defaults = PatternStore.Beside(_options.StatePath).For("solo");
-        var prompt = new ResumePrompt($"Resume: {digest.Title}", facts, digest.ContextTokensAtLastTurn, Palette, startWith,
+        var prompt = new ResumePrompt($"Resume: {digest.Title}", facts, digest.ContextTokensAtLastTurn, Palette,
             defaults.PlannerModel, defaults.PlannerEffort)
         {
             Owner = this,
         };
+        SetStatus("Choose how to continue. Nothing runs until you press Resume.");
         prompt.ShowDialog();
         if (prompt.Choice is not { } choice)
         {
