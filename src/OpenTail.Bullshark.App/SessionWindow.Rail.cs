@@ -173,6 +173,10 @@ public partial class SessionWindow
         UpdateRailToggle();
         Background = RailPalette.Brush(palette.Background);
         StatusBar.Background = RailPalette.Brush(palette.Panel);
+        // The bottom bar's text, icons and hover tint follow the theme (the defaults are in SessionWindow.xaml).
+        Resources["BarText"] = RailPalette.Brush(palette.Text);
+        Resources["BarMuted"] = RailPalette.Brush(palette.Muted);
+        Resources["BarHover"] = RailPalette.Brush(palette.IsLight ? "#22000000" : "#33FFFFFF");
         StatusText.Foreground = RailPalette.Brush(palette.Muted);
         RailSplitter.Background = RailPalette.Brush(palette.Border);
         Pane.Background = RailPalette.Brush(palette.Background);
