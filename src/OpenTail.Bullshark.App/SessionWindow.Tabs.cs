@@ -128,7 +128,7 @@ public partial class SessionWindow
         var index = _tabs.IndexOf(tab);
         _tabs.Remove(tab);
         if (tab.Kind == TabKind.Session) _hiddenSessions.Add(tab.Key);
-        if (tab.Kind == TabKind.Search) _searchCancel?.Cancel();
+        if (tab.Kind == TabKind.Search) ClearSearchFilter();
         if (!ReferenceEquals(_activeTab, tab))
         {
             RefreshTabStrip();

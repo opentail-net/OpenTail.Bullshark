@@ -86,12 +86,14 @@
                     <TextBlock x:Name="SessionsTitle" Text="Sessions" FontWeight="SemiBold" VerticalAlignment="Center" />
                 </DockPanel>
                 <!-- Search what was said in past sessions (docs/plans/history-search.md). Three letters or more per word. -->
-                <Grid DockPanel.Dock="Top" Margin="8,0,8,6">
-                    <TextBox x:Name="SearchBox" Padding="6,3" VerticalContentAlignment="Center" FontSize="12" BorderThickness="1"
+                <Grid DockPanel.Dock="Bottom" Margin="8,4,8,8">
+                    <TextBox x:Name="SearchBox" Padding="6,3,26,3" VerticalContentAlignment="Center" FontSize="12" BorderThickness="1"
                              ToolTip="Search what was said in your past sessions. Each word needs three letters or more. Enter searches at once."
                              KeyDown="SearchBox_KeyDown" TextChanged="SearchBox_TextChanged" />
                     <TextBlock x:Name="SearchHint" Text="Search what was said (3+ letters per word)" IsHitTestVisible="False"
                                FontSize="12" Margin="8,0,0,0" VerticalAlignment="Center" />
+                    <TextBlock x:Name="SearchBusy" Text="⏳" FontSize="12" HorizontalAlignment="Right" Margin="0,0,8,0"
+                               VerticalAlignment="Center" IsHitTestVisible="False" Visibility="Collapsed" ToolTip="Searching…" />
                 </Grid>
                 <TreeView x:Name="Rail" Background="#111316" Foreground="#E6E6E6" BorderThickness="0"
                           ScrollViewer.HorizontalScrollBarVisibility="Disabled"

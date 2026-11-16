@@ -8,9 +8,10 @@ using OpenTail.Bullshark.Core.Search;
 namespace OpenTail.Bullshark.App;
 
 /// <summary>
-/// The history search in the window (docs/plans/history-search.md). Typing in the box above the rail starts a search 400 ms after the
-/// last key; Enter starts it at once; Escape clears the box. The results open in their own tab, newest first. Clearing the box closes
-/// the tab. A result opens its session's transcript at the line that matched, as a history row does.
+/// The history search in the window (docs/plans/history-search.md). Typing in the box at the foot of the rail starts a search 400 ms after
+/// the last key; Enter starts it at once; Escape clears the box. While a search runs the list stays as it is, and an hourglass shows. When
+/// it ends, the history list shows only the sessions that matched, each with a count of its matching messages, and the results tab gives
+/// their matching messages. Live sessions are not filtered. Clearing the box, or closing the results tab, shows the whole list again.
 /// </summary>
 public partial class SessionWindow
 {
@@ -18,6 +19,9 @@ public partial class SessionWindow
     private readonly SearchView _search = new() { Visibility = Visibility.Hidden };
     private readonly DispatcherTimer _searchDelay = new() { Interval = TimeSpan.FromMilliseconds(400) };
     private CancellationTokenSource? _searchCancel;
+
+    /// <summary>The sessions the last search found, by session id. Null when the history is not filtered.</summary>
+    private Dictionary<string, SessionMatch>? _searchMatches;
 
     private void InitSearch()
     {
@@ -65,9 +69,11 @@ public partial class SessionWindow
 
         if (!HistorySearch.IsUsable(query))
         {
-            SetStatus("Each word of a search needs three letters or more.");
+            // Too short to search: the whole list is shown again, and the results tab says why.
+            SetStatus("Each word of a search needs three letters or more. The whole list is shown.");
             if (_tabs.Any(t => t.Kind == TabKind.Search))
                 _search.ShowMessage(query, "Each word needs three letters or more. Shorter words match almost every message.");
+            ClearSearchFilter();
             return;
         }
         if (_history is null)
@@ -85,6 +91,10 @@ public partial class SessionWindow
         SetActive(tab);
         ShowOnly(_search);
         _search.ShowSearching(query);
+
+        // The list stays as it is while the search runs. The hourglass shows that it is running.
+        SetBusy(true);
+        SetStatus($"Searching for \"{query}\"…");
         _ = RunSearchAsync(query, _history.ToList(), cancel);
     }
 
@@ -96,8 +106,15 @@ public partial class SessionWindow
             var results = await Task.Run(() => HistorySearch.Run(sessions, query, cancellationToken: cancel.Token), cancel.Token);
             if (cancel.IsCancellationRequested) return;
 
+            var matches = new Dictionary<string, SessionMatch>(StringComparer.OrdinalIgnoreCase);
+            foreach (var match in results) matches[match.Session.SessionId] = match;
+            _searchMatches = matches;
+            SetBusy(false);
+
             _search.ShowResults(query, results);
-            SetStatus($"{results.Count} session(s) say every word of \"{query}\". Newest first." +
+            RefreshRail();
+            var total = sessions.Count(s => !s.IsSubagent);
+            SetStatus($"{results.Count} of {total} sessions say every word of \"{query}\". Newest first." +
                       (results.Count == HistorySearch.MaxResults ? $" The first {HistorySearch.MaxResults} are shown." : string.Empty));
         }
         catch (OperationCanceledException)
@@ -106,17 +123,29 @@ public partial class SessionWindow
         }
         catch (Exception ex)
         {
+            SetBusy(false);
             AppLog.Write($"search failed: {ex.Message}");
             SetStatus($"Search failed: {ex.Message}");
         }
     }
 
-    /// <summary>Closes the results tab and stops its search, if one is open or running.</summary>
-    private void CloseSearchTab()
+    /// <summary>Stops a running search and shows the whole history again.</summary>
+    private void ClearSearchFilter()
     {
         _searchCancel?.Cancel();
+        SetBusy(false);
+        if (_searchMatches is null) return;
+
+        _searchMatches = null;
+        RefreshRail();
+    }
+
+    /// <summary>Closes the results tab. Closing it shows the whole history again.</summary>
+    private void CloseSearchTab()
+    {
         var tab = _tabs.FirstOrDefault(t => t.Kind == TabKind.Search);
         if (tab is not null) CloseTab(tab);
+        else ClearSearchFilter();
     }
 
     /// <summary>A result opens its session's transcript at the matching line, in the transcript tab.</summary>
@@ -127,6 +156,17 @@ public partial class SessionWindow
         ShowOnly(_transcript);
         await _transcript.ShowAsync(digest, line);
     }
+
+    /// <summary>True when a history session is shown: every one, unless a search filters the history.</summary>
+    private bool IsShownInHistory(SessionDigest digest) =>
+        _searchMatches is null || _searchMatches.ContainsKey(digest.SessionId);
+
+    /// <summary>The match of a session in the last search, or null when it did not match or there is no search.</summary>
+    private SessionMatch? MatchOf(string sessionId) =>
+        _searchMatches is not null && _searchMatches.TryGetValue(sessionId, out var match) ? match : null;
+
+    /// <summary>The hourglass at the right of the search box, shown while a search runs.</summary>
+    private void SetBusy(bool busy) => SearchBusy.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
 
     private static string ShortenForTab(string text, int length) =>
         text.Length <= length ? text : text[..length] + "…";

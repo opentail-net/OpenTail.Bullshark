@@ -9,6 +9,7 @@ using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Cache;
 using OpenTail.Bullshark.Core.Claude;
 using OpenTail.Bullshark.Core.Folders;
+using OpenTail.Bullshark.Core.Search;
 using OpenTail.Bullshark.Core.Supervisor;
 
 namespace OpenTail.Bullshark.App;
@@ -289,9 +290,10 @@ public partial class SessionWindow
                     }
                     var cache = CacheTextFor(record.SessionId);
                     folderItem.Items.Add(NewItem(
-                        TwoLine(record.Name, ActivityLine(record.SessionId, state, record.StartedAt, state == "working"), string.Empty),
+                        TwoLine(record.Name, ActivityLine(record.SessionId, state, record.StartedAt, state == "working"), string.Empty,
+                            badge: MatchBadge(MatchOf(record.SessionId))),
                         new RailTag(RailKind.Session, record.SessionId),
-                        cache.Full ?? record.SessionId));
+                        SearchTip(MatchOf(record.SessionId), cache.Full ?? record.SessionId)));
                 }
                 Rail.Items.Add(folderItem);
             }
@@ -335,6 +337,7 @@ public partial class SessionWindow
         }
 
         var folders = _history
+            .Where(IsShownInHistory)
             .GroupBy(d => d.ProjectFolder, StringComparer.OrdinalIgnoreCase)
             .OrderByDescending(g => g.Max(d => d.LastActivity ?? DateTimeOffset.MinValue))
             .ToList();
@@ -378,13 +381,14 @@ public partial class SessionWindow
             var cache = CacheTextFor(digest.SessionId);
             // The ⏩ resumes a past session. It is not offered for a subagent, nor for a session that is already open.
             var resume = digest.IsSubagent || openIds.Contains(digest.SessionId) ? null : ResumeMark(digest);
+            var match = MatchOf(digest.SessionId);
             folderItem.Items.Add(NewItem(
                 TwoLine(digest.Title + (digest.IsSubagent ? " · subagent" : string.Empty),
                     ActivityLine(digest.SessionId, null, digest.LastActivity, running: false)
                         + $" · {digest.SessionId[..Math.Min(8, digest.SessionId.Length)]} · {digest.AssistantMessages} msgs",
-                    string.Empty, resume),
+                    string.Empty, resume, MatchBadge(match)),
                 new RailTag(RailKind.History, digest.SessionId, digest),
-                cache.Full is null ? digest.FilePath : cache.Full + "\n" + digest.FilePath));
+                SearchTip(match, cache.Full is null ? digest.FilePath : cache.Full + "\n" + digest.FilePath)));
         }
         return folderItem;
     }
@@ -588,11 +592,34 @@ public partial class SessionWindow
         return mark;
     }
 
-    /// <summary>A row of two lines. The optional trailing element sits at the right end of the second line.</summary>
-    private UIElement TwoLine(string title, string details, string time, UIElement? trailing = null)
+    /// <summary>
+    /// The mark of a row that matched the search: a magnifier and the count of its matching messages, at the right of its title. Null
+    /// when there is no match.
+    /// </summary>
+    private UIElement? MatchBadge(SessionMatch? match)
+    {
+        if (match is null) return null;
+        return new TextBlock
+        {
+            Text = $"🔎 {match.MatchingMessages}",
+            FontSize = 11,
+            Foreground = RailPalette.Brush("#9CDCFE"),
+            Margin = new Thickness(8, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            ToolTip = "Messages in this session that match the search",
+        };
+    }
+
+    /// <summary>A row's tooltip: the newest matching message first, when the row matched the search.</summary>
+    private static string SearchTip(SessionMatch? match, string tip) =>
+        match?.Hits.LastOrDefault() is { } newest ? $"Newest match: {newest.Snippet}\n{tip}" : tip;
+
+    /// <summary>A row of two lines. The optional trailing element sits at the right end of the second line; the badge at the right of the first.</summary>
+    private UIElement TwoLine(string title, string details, string time, UIElement? trailing = null, UIElement? badge = null)
     {
         var top = new Grid();
         top.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         var titleText = Label(title);
@@ -611,6 +638,11 @@ public partial class SessionWindow
         Grid.SetColumn(timeText, 1);
         top.Children.Add(titleText);
         top.Children.Add(timeText);
+        if (badge is not null)
+        {
+            Grid.SetColumn(badge, 2);
+            top.Children.Add(badge);
+        }
 
         var detailText = new TextBlock
         {

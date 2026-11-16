@@ -57,6 +57,28 @@ Found by those checks, and fixed in the same commit:
       "bullshark" 1.2 s (1 session), "transcript" 1.6 s (36 sessions), "claude code" 2.3 s (87 sessions), a word that matches
       nothing 1.2 s (scans all). "the and" stops at the 100-session cap after 1.4 s. No index is needed yet.
 
+## Rail filter (owner, 2026-11-16)
+
+The search also narrows the rail. The owner's session names are not descriptive, so a title filter is not wanted; a search by what was
+said is.
+
+Decisions:
+- The search box sits at the foot of the rail, pinned under the list, as the prompt does.
+- While a search runs, the list stays on screen, and an hourglass shows at the right of the box.
+- When a search ends, the history list shows only the sessions that matched. Each matching row shows a 🔎 badge with its count of
+  matching messages, and a tooltip with its newest matching message.
+- Live sessions are not filtered. They are what the owner acts on. (Recommended by the assistant; the owner was not sure. Easy to change.)
+- The results tab stays. The rail says which sessions; the tab says why.
+- Clearing the box, or closing the results tab, shows the whole list again.
+
+Steps:
+- [x] The box moves to the foot of the rail.
+- [x] The hourglass shows while a search runs, and the list stays on screen (checked on screen).
+- [x] The history list filters to the matches, with the badge and tooltip (checked on screen: one matching session, badge 27).
+- [x] Clearing the box or closing the tab restores the list (checked on screen: Escape clears the box and brings the list back).
+
+Known: a startup pass can overwrite the search's status line ("N of M sessions") with its own. Harmless, but it hides the count.
+
 ## Not verified yet
 
 - Speed inside the app: measured in a script (see Steps). The first search after a restart may be slower while the disk cache is cold.
