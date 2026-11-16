@@ -23,8 +23,7 @@ public static class SetupCheck
 {
     private const int MaxDetail = 160;
 
-    public static string DefaultClaudeDir =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude");
+    public static string DefaultClaudeDir => OpenTail.Bullshark.Core.Instructions.ClaudeConfig.Dir;
 
     public static string DefaultClaudeJsonPath =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude.json");
