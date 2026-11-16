@@ -415,3 +415,14 @@ Source: the review in `docs/plans/review-2026-11-15.md`, Phase 2.
 - **Result:** 259 Core tests pass. That count includes `tests/OpenTail.Bullshark.Core.Tests/Tabs/TabOrderTests.cs` (15 tests), an untracked file in the owner's working tree that this pass did not write. The supervisor builds. The app compiles into a scratch folder: the owner's running `OpenTail.Bullshark.App` holds its DLLs, so the normal build failed on a file lock. The process was not stopped.
 - **Checked after the cut (2026-11-16):** the supervisor, with a temporary state file and no run, starts nothing and exits cleanly; `--workdir` is rejected. The pane self-test (`scripts/Test-Pane.ps1`, four checks) passes 4 of 4 on a fresh build of the tree at 09:38, which includes two uncommitted App files.
 - **Not verified:** the supervisor and the window with real sessions (Phase 3).
+
+## F57 Session library L1: the facts Claude Code writes into transcripts (built and tested by unit tests, 2026-11-16; not committed)
+
+Source: `docs/plans/session-library.md`, slice L1 only.
+
+- **Built:** `TranscriptSummary` and `SessionDigest` gain optional members: `AiTitle`, `CustomTitle`, `LastRecap`, `LastRecapAt` and `Compactions`. `SessionDigest.Title` is now the Claude Code title, else the first message, else "Session" and the short id. The custom title is shown in the tooltip only (L2), because it is a role name. Files: `Core/Activity/TranscriptReader.cs` and `TranscriptIndex.cs`.
+- **Verified by unit tests:** `TranscriptFactsTests.cs`, eight tests, the five the plan names and three on the title order. The Core suite passes 262 with the Live tests filtered out (254 before this slice).
+- **Verified on the real folder, read-only:** `scripts/Check-Titles.ps1`. 137 transcript files; 70 with an `ai-title`; 46 with a `custom-title`; 39 with an `away_summary` recap; 23 with a `compact_boundary`. The counts are in the plan.
+- **Finding, not changed:** many sessions open with a `<local-command-caveat>` user record from `/model` or `/effort`. A session with no `ai-title` takes that text as its title. Question 6 of the plan.
+- **Not verified:** the four record shapes in other CLI versions (this check is CLI 2.1.325); the title, tooltip and recap on screen (L2).
+- **Not done:** no commit, no change to the rail or the tabs (L2), no session started or resumed, no model call.

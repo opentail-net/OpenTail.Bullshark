@@ -26,7 +26,12 @@ public sealed record TranscriptSummary(
     IReadOnlyDictionary<string, int>? ToolNames = null,
     IReadOnlyList<string>? FilesWritten = null,
     long ContextTokensAtLastTurn = 0,
-    string? FirstUserText = null)
+    string? FirstUserText = null,
+    string? AiTitle = null,
+    string? CustomTitle = null,
+    string? LastRecap = null,
+    DateTimeOffset? LastRecapAt = null,
+    int Compactions = 0)
 {
     public TokenUsage TotalUsage => UsageByModel.Values.Aggregate(TokenUsage.Zero, (sum, next) => sum.Add(next));
 }
@@ -71,6 +76,9 @@ public static class TranscriptReader
         string? lastText = null, lastModel = null;
         DateTimeOffset? lastTimestamp = null, firstTimestamp = null;
         string? firstUserText = null;
+        string? aiTitle = null, customTitle = null, lastRecap = null;
+        DateTimeOffset? lastRecapAt = null;
+        int compactions = 0;
         long contextAtLastTurn = 0;
         var seenInFile = new HashSet<string>(StringComparer.Ordinal);
         var toolNames = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -96,10 +104,12 @@ public static class TranscriptReader
                 var root = document.RootElement;
                 records++;
 
+                DateTimeOffset? recordTime = null;
                 if (TryGetString(root, "timestamp", out var timestamp) &&
                     DateTimeOffset.TryParse(timestamp, System.Globalization.CultureInfo.InvariantCulture,
                         System.Globalization.DateTimeStyles.AssumeUniversal, out var parsed))
                 {
+                    recordTime = parsed;
                     lastTimestamp = parsed;
                     firstTimestamp ??= parsed;
                 }
@@ -107,6 +117,24 @@ public static class TranscriptReader
                 var type = TryGetString(root, "type", out var t) ? t : null;
                 if (type == "system" && TryGetString(root, "subtype", out var subtype) && subtype == "turn_duration")
                     turns++;
+
+                // Facts Claude Code writes itself (observed 2026-11-16; the shape is not documented). A blank value is ignored.
+                if (type == "ai-title" && TryGetString(root, "aiTitle", out var aiTitleText) && !string.IsNullOrWhiteSpace(aiTitleText))
+                    aiTitle = aiTitleText.Trim();
+                if (type == "custom-title" && TryGetString(root, "customTitle", out var customTitleText) && !string.IsNullOrWhiteSpace(customTitleText))
+                    customTitle = customTitleText.Trim();
+                if (type == "system" && TryGetString(root, "subtype", out var libraryKind))
+                {
+                    if (libraryKind == "away_summary" && TryGetString(root, "content", out var recapText) && !string.IsNullOrWhiteSpace(recapText))
+                    {
+                        lastRecap = recapText.Trim();
+                        lastRecapAt = recordTime;
+                    }
+                    else if (libraryKind == "compact_boundary")
+                    {
+                        compactions++;
+                    }
+                }
                 if (type == "user")
                 {
                     users++;
@@ -168,7 +196,8 @@ public static class TranscriptReader
         }
 
         return new TranscriptSummary(records, users, assistants, tools, turns, lastText, lastTimestamp, lastModel,
-            usageLedger.ByFile(file), firstTimestamp, toolNames, filesWritten, contextAtLastTurn, firstUserText);
+            usageLedger.ByFile(file), firstTimestamp, toolNames, filesWritten, contextAtLastTurn, firstUserText,
+            aiTitle, customTitle, lastRecap, lastRecapAt, compactions);
     }
 
     private static bool TryGetString(JsonElement element, string property, out string? value)

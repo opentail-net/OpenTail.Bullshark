@@ -18,10 +18,21 @@ public sealed record SessionDigest(
     string? LastModel,
     long ContextTokensAtLastTurn,
     TokenUsage Usage,
-    string? FirstUserText = null)
+    string? FirstUserText = null,
+    string? AiTitle = null,
+    string? CustomTitle = null,
+    string? LastRecap = null,
+    DateTimeOffset? LastRecapAt = null,
+    int Compactions = 0)
 {
-    /// <summary>What the session was about: its first message, or the short id when it has none.</summary>
-    public string Title => FirstUserText is { Length: > 0 } text ? text : $"Session {SessionId[..Math.Min(8, SessionId.Length)]}";
+    /// <summary>
+    /// The title (D-L1; the owner's own name comes in L3). Claude Code's title when the transcript has one, else the first
+    /// message, else "Session" and the short id. The custom title is a role name, so it is not used here.
+    /// </summary>
+    public string Title =>
+        AiTitle is { Length: > 0 } aiTitle ? aiTitle
+        : FirstUserText is { Length: > 0 } text ? text
+        : $"Session {SessionId[..Math.Min(8, SessionId.Length)]}";
 
     /// <summary>Time between the first and the last record. Not the time spent working: the gaps are included.</summary>
     public TimeSpan? Span => FirstActivity is { } first && LastActivity is { } last ? last - first : null;
@@ -80,6 +91,11 @@ public sealed class TranscriptIndex
                 FilesWritten: summary.FilesWritten ?? [],
                 LastAssistantText: summary.LastAssistantText,
                 FirstUserText: summary.FirstUserText,
+                AiTitle: summary.AiTitle,
+                CustomTitle: summary.CustomTitle,
+                LastRecap: summary.LastRecap,
+                LastRecapAt: summary.LastRecapAt,
+                Compactions: summary.Compactions,
                 LastModel: summary.LastModel,
                 ContextTokensAtLastTurn: summary.ContextTokensAtLastTurn,
                 Usage: summary.TotalUsage));

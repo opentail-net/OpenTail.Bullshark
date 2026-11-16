@@ -393,7 +393,7 @@ public partial class SessionWindow
                         + $" · {digest.SessionId[..Math.Min(8, digest.SessionId.Length)]} · {digest.AssistantMessages} msgs",
                     string.Empty, resume, MatchBadge(match), leadSlot: true),
                 new RailTag(RailKind.History, digest.SessionId, digest),
-                SearchTip(match, cache.Full is null ? digest.FilePath : cache.Full + "\n" + digest.FilePath)));
+                SearchTip(match, FactsTip(digest) + (cache.Full is null ? digest.FilePath : cache.Full + "\n" + digest.FilePath))));
         }
         return folderItem;
     }
@@ -622,6 +622,22 @@ public partial class SessionWindow
     /// <summary>A row's tooltip: the newest matching message first, when the row matched the search.</summary>
     private static string SearchTip(SessionMatch? match, string tip) =>
         match?.Hits.LastOrDefault() is { } newest ? $"Newest match: {newest.Snippet}\n{tip}" : tip;
+
+    /// <summary>
+    /// The facts a history row's tooltip adds (session library, L2): the recap with its age, the custom title when there is one,
+    /// and how often the context was compacted. A session with none of them adds nothing.
+    /// </summary>
+    private static string FactsTip(SessionDigest digest)
+    {
+        var lines = new List<string>();
+        if (digest.LastRecap is { Length: > 0 } recap)
+            lines.Add($"Recap, {AgeOf(digest.LastRecapAt)}: {(recap.Length <= 400 ? recap : recap[..400] + "…")}");
+        if (digest.CustomTitle is { Length: > 0 } custom)
+            lines.Add($"Custom title: {custom}");
+        if (digest.Compactions > 0)
+            lines.Add($"Compacted {digest.Compactions} time{(digest.Compactions == 1 ? string.Empty : "s")}");
+        return lines.Count == 0 ? string.Empty : string.Join("\n", lines) + "\n";
+    }
 
     /// <summary>A row of two lines. The optional trailing element sits at the right end of the second line; the badge at the right of the first.</summary>
     private UIElement TwoLine(string title, string details, string time, UIElement? trailing = null, UIElement? badge = null,

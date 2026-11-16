@@ -1,6 +1,7 @@
 # Session library (2026-11-16)
 
-Status: plan only. Nothing in this plan is built.
+Status (2026-11-16): L1 and L3 are built and checked. L2 is built and partly checked on screen (see its boxes). L4 and L5 are not
+started. L6 is not to be built (its trigger is not met). Nothing is committed.
 
 Make past sessions easy to recognise, sort and find again: better titles and a recap taken from the transcripts for free, then the
 owner's own name, pin, archive, tags and note for each session, then a link from a resumed session to the one it came from.
@@ -112,33 +113,54 @@ Recommended by the assistant. The owner has not confirmed them.
 
 ### L1 Free facts from the transcripts (Core)
 
-- [ ] `TranscriptSummary` and `SessionDigest` gain optional members: `AiTitle` (the last `ai-title`), `CustomTitle` (the last
+- [x] `TranscriptSummary` and `SessionDigest` gain optional members: `AiTitle` (the last `ai-title`), `CustomTitle` (the last
       `custom-title`), `LastRecap` and `LastRecapAt` (the newest `away_summary`), `Compactions` (count of `compact_boundary`).
-- [ ] `SessionDigest.Title` follows D-L1 without the owner's name (that comes in L3): `AiTitle`, else `FirstUserText`, else the id.
-- [ ] Tests on fixtures: `TheLastAiTitleWins`, `ATranscriptWithNoAiTitleKeepsTheFirstMessage`, `TheNewestRecapIsKept`,
-      `CompactionsAreCounted`, `AnAiTitleRecordWithNoTextIsIgnored`.
-- [ ] A check on the real folder, in a script, not a unit test: how many sessions get an `ai-title`, and ten titles read by eye.
+- [x] `SessionDigest.Title` follows D-L1 without the owner's name (that comes in L3): `AiTitle`, else `FirstUserText`, else the id.
+- [x] Tests on fixtures: `TheLastAiTitleWins`, `ATranscriptWithNoAiTitleKeepsTheFirstMessage`, `TheNewestRecapIsKept`,
+      `CompactionsAreCounted`, `AnAiTitleRecordWithNoTextIsIgnored`. Checked in `tests/.../Activity/TranscriptFactsTests.cs`, with
+      three more: `TheTitleIsTheAiTitleThenTheFirstMessage`, `TheCustomTitleIsNotTheTitle`, `TheTitleFallsBackToTheShortId`.
+- [x] A check on the real folder, in a script, not a unit test: `scripts/Check-Titles.ps1` (read-only; see below).
 
-Check: `dotnet test` passes; the script's counts are written here.
+Check: `dotnet test` passes. Checked 2026-11-16: `dotnet test tests/OpenTail.Bullshark.Core.Tests --filter "FullyQualifiedName!~Live"`
+passes 262 (254 before this slice, plus the 8 new tests).
+
+Real folder, read-only, `scripts/Check-Titles.ps1`, 2026-11-16 (7 seconds):
+- transcript files: 137, of which 11 are in subagents folders (the grep count in "What the transcripts already hold" was 126 files;
+  the folder has grown since, and the title and custom-title counts did not change)
+- files with an `ai-title`: 70 of 137; with a `custom-title`: 46; with an `away_summary` recap: 39 (grep: 40); with a
+  `compact_boundary`: 23 (grep: 24); with a user message: 137
+- the ten newest titles were read by eye: all ten read as fair descriptions of their sessions. Their content is not written here.
+- finding: many sessions open with a `<local-command-caveat>` user record (written by `/model` or `/effort`).
+  `SessionTitle.FromUserRecord` does not skip it, so a session with no `ai-title` takes that text as its title. L1 does not change
+  this: it is question 6.
 
 ### L2 The rail shows them (App)
 
-- [ ] The row title uses the new `Title`. The tooltip adds the recap (with its age), the `custom-title` when there is one, and
-      "compacted N times" when N is above 0.
-- [ ] The transcript view's heading and the resume prompt's heading use the same title.
-- [ ] Checked on screen with a temporary state folder: a session with an `ai-title`, one without, and a subagent row.
+- [x] The row title uses the new `Title`: seen on screen. The tooltip adds the recap (with its age), the `custom-title` when there
+      is one, and "compacted N times" when N is above 0. Built as `FactsTip` in `SessionWindow.Rail.cs`. Not seen on screen: a
+      tooltip needs a hover, and hovering was not done. Keep this box open until a hover is checked.
+- [ ] The transcript view's heading and the resume prompt's heading use the same title. By code reading only: both read
+      `digest.Title`. Not seen on screen: a transcript opens with a click, and clicks were not simulated.
+- [ ] Checked on screen with a temporary state folder: a session with an `ai-title`, one without, and a subagent row. Partly: an
+      `ai-title` row and a row without one were seen. No subagent row is in the screenshot.
 
-Check: the screenshot shows the three rows; the titles of the first two differ as expected.
+Check: the screenshot shows the three rows; the titles of the first two differ as expected. Result, 2026-11-16 (a scratch
+state folder, `--no-pass`, `--shot`): the row "OpenTail.Bullshark review..." (session 29b84a3b, has an `ai-title`) and the row
+"Hello from git-86..." (session f8045ed8, has no `ai-title`; its first message is the title) differ, as expected. No subagent
+row is visible, so the three-row check is not complete.
 
 ### L3 The library store (Core)
 
-- [ ] `SessionLibrary` in `Core/Library/`: `Load()`, `Update(change)`, the entry record, following `RunStore` (lock, atomic
-      write, missing file is empty, unreadable file throws `StoreUnreadableException`). `Beside(stateFile)` gives its path.
-- [ ] `TitleFor(digest, entry)` applies D-L1 in full. `TagsOf(text)` parses the typed tags (D-L6).
-- [ ] Tests: `AMissingFileIsAnEmptyLibrary`, `AnUnreadableFileThrowsAndIsNotOverwritten`, `AnEmptyEntryIsRemoved`,
+- [x] `SessionLibrary` in `Core/Library/`: `Load()`, `Update(change)`, the entry record, following `RunStore` (lock, atomic
+      write, missing file is empty, unreadable file throws `StoreUnreadableException`). `Beside(stateFile)` gives its path. Built: the property is `FilePath`, because `Path` would hide `System.IO.Path`.
+- [x] `TitleFor(digest, entry)` applies D-L1 in full. `TagsOf(text)` parses the typed tags (D-L6). Both are static methods on
+      `SessionLibrary`.
+- [x] Tests: `AMissingFileIsAnEmptyLibrary`, `AnUnreadableFileThrowsAndIsNotOverwritten`, `AnEmptyEntryIsRemoved`,
       `TwoUpdatesBothLand`, `TheOwnersNameComesFirst`, `TagsAreSplitAndLowerCased`.
 
-Check: `dotnet test` passes.
+Check: `dotnet test` passes. Checked 2026-11-16: the Core suite passes 270 with the Live tests filtered out. The eight tests are in
+`tests/.../Library/SessionLibraryTests.cs`: the six named, plus `TheEntryIsKeptAcrossALoad` and
+`BesideTheStateFileIsLibraryJsonInTheSameFolder`.
 
 ### L4 Organise in the rail (App)
 
@@ -182,12 +204,13 @@ Reading every transcript took 3.6 s for 137 files (830 MB), measured 2026-11-16 
 
 ## Questions for the owner
 
-1. Is `ai-title` wanted as the default title (D-L1)? It is Claude Code's wording, not yours.
-2. One row per pinned session, under Pinned only (D-L4)?
-3. Should a search list archived sessions (D-L5)?
-4. May L5 run one real resume in a scratch folder as its check?
-5. The working tree has uncommitted changes in six App files from the search work of 2026-11-16 (`RailTheme`, `SearchView`,
-   `SessionWindow.Rail`, `.Search`, `.xaml.cs`, `TranscriptView`). L2 and L4 edit the same files. Commit or drop them first?
+1. Is `ai-title` wanted as the default title (D-L1)? It is Claude Code's wording, not yours. *Used as recommended; not yet confirmed
+   by the owner.*
+2. One row per pinned session, under Pinned only (D-L4)? *Used as recommended; not yet confirmed.*
+3. Should a search list archived sessions (D-L5)? *Used as recommended; not yet confirmed.*
+4. May L5 run one real resume in a scratch folder as its check? *Open. The L5 resume box stays unticked until the owner says yes.*
+6. The first user message is often a `<local-command-caveat>` record (from `/model` or `/effort`). Should the title fallback skip
+   it (L1 finding, 2026-11-16)? *Open. L1 does not change it.*
 
 ## Not verified
 
