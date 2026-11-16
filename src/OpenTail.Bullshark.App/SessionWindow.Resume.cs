@@ -143,6 +143,7 @@ public partial class SessionWindow
                 SetStatus($"Not started: {ex.Message}");
                 return;
             }
+            await SaveSummaryFileAsync(digest, level, summary);
         }
 
         // The start text names the session it continues, on its first line (D-L8). The new session's transcript carries it.
@@ -175,6 +176,25 @@ public partial class SessionWindow
             : $"the last {choice.Turns} turns";
         await StartRunAsync(request);
         SetStatus($"Resumed {ShortId(digest.SessionId)} from {how}, at {choice.Model} {choice.Effort}. The new session starts on the next pass.");
+    }
+
+    /// <summary>
+    /// Keeps a copy of a summary as a file in the Summaries folder beside the state file (review of 2026-11-15, Phase 2, step 1).
+    /// The start text is unchanged: it still carries the summary. A file that cannot be written is logged, and the resume goes on.
+    /// </summary>
+    private async Task SaveSummaryFileAsync(SessionDigest digest, SummaryLevel level, string summary)
+    {
+        var folder = SummaryFiles.FolderBeside(_options.StatePath);
+        var name = DisplayTitle(digest);
+        try
+        {
+            var path = await Task.Run(() => SummaryFiles.Save(folder, name, level, digest.SessionId, summary, DateTimeOffset.Now));
+            AppLog.Write($"summary saved: {path}");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            AppLog.Write($"summary not saved as a file: {ex.Message}");
+        }
     }
 
     /// <summary>How long ago a session was last active, in words for the prompt.</summary>

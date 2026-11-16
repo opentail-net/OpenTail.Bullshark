@@ -181,7 +181,11 @@ public partial class SessionWindow : Window
 
             // Read the specs once, on the UI thread, before the pass runs on a pool thread.
             var specs = Specs;
-            var (runnable, untrusted) = TrustGate.Filter(specs, TrustCheck.DefaultClaudeJsonPath);
+            // While ~/.claude.json cannot be read, trust is unknown: nothing is judged untrusted, and no run starts or restarts.
+            var trustProblem = TrustCheck.UnreadableProblem(TrustCheck.DefaultClaudeJsonPath);
+            var (runnable, untrusted) = trustProblem is null
+                ? TrustGate.Filter(specs, TrustCheck.DefaultClaudeJsonPath)
+                : (new List<SessionSpec>(), new List<string>());
             var needed = untrusted.Select(FolderKey.From).ToHashSet(StringComparer.OrdinalIgnoreCase);
             foreach (var root in untrusted) ShowTrustStep(root, select: false);
             foreach (var key in _trustSteps.Keys.Where(k => !needed.Contains(k)).ToList()) HideTrustStep(key);
@@ -190,7 +194,7 @@ public partial class SessionWindow : Window
             TrustButton.Visibility = _trustSteps.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
             if (_searchMatches is null && SearchBusy.Visibility != Visibility.Visible) SetStatus("checking sessions…");
-            var actions = _options.NoPass ? 0 : await Task.Run(() => _loop.RunPassAsync(runnable));
+            var actions = _options.NoPass || trustProblem is not null ? 0 : await Task.Run(() => _loop.RunPassAsync(runnable));
             RefreshRail();
 
             var failed = ReadRecords().Values.Count(r => string.IsNullOrEmpty(r.SessionId));
@@ -199,6 +203,7 @@ public partial class SessionWindow : Window
             if (waiting > 0) parts.Add($"{waiting} session(s) wait for trust (see the Trust step)");
             if (failed > 0) parts.Add($"{failed} start(s) failed: see the rail, then Retry failed starts");
             if (_storeProblem is { } problem) parts.Add($"state file cannot be read, nothing is changed: {problem}");
+            if (trustProblem is not null) parts.Add(trustProblem);
             parts.Add("closing the window detaches the terminals; the sessions keep running");
 
             // A search owns the status line while it runs or while its results are shown: the pass's summary waits for it to end.

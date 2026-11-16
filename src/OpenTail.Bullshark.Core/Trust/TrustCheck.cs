@@ -111,6 +111,25 @@ public static class TrustCheck
             .ToList();
     }
 
+    /// <summary>
+    /// The problem with reading Claude's settings file, or null when it can be read or does not exist. A file that cannot be
+    /// parsed (Claude may be writing it) gives no trust, and it is reported so that the owner is not told to accept trust that
+    /// may already be recorded. Phase 1 of the review, bad JSON in ~/.claude.json.
+    /// </summary>
+    public static string? UnreadableProblem(string claudeJsonPath)
+    {
+        if (!File.Exists(claudeJsonPath)) return null;
+        try
+        {
+            using var _ = JsonDocument.Parse(File.ReadAllText(claudeJsonPath));
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
+        {
+            return $"{claudeJsonPath} cannot be read ({ex.GetType().Name}): no session starts or restarts until it can.";
+        }
+    }
+
     /// <summary>Claude writes both forward-slash and back-slash spellings of the same path. Compare them as one.</summary>
     public static string Normalise(string path) =>
         path.Replace('\\', '/').TrimEnd('/').ToLowerInvariant();
