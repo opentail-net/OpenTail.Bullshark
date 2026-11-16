@@ -1,6 +1,6 @@
 # Plan: setup, sessions rail and history
 
-Status (2026-11-16): the checkboxes below say what is built (S0 to S3 at least). The rest is open or was superseded by the review of 2026-11-15 ([review-2026-11-15.md](review-2026-11-15.md)). Read the checkboxes, not this line, for what is true now. Owner decisions are marked **D**; ideas that are still assumptions are marked **assumed**.
+Status (2026-11-16): the checkboxes below say what is built (S0 to S6 are ticked; S7 to S9 are open). The rest is open or was superseded by the review of 2026-11-15 ([review-2026-11-15.md](review-2026-11-15.md)). Read the checkboxes, not this line, for what is true now. Owner decisions are marked **D**; ideas that are still assumptions are marked **assumed**.
 
 ## 1. Goal
 

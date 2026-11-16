@@ -54,7 +54,7 @@ public partial class SessionWindow
         _selfTestTerminal = new ExtendedTerminalControl
         {
             StartupCommandLine = $"powershell -NoProfile -ExecutionPolicy Bypass -File \"{ticker}\"",
-            WorkingDirectory = Path.GetDirectoryName(ticker),
+            WorkingDirectory = Path.GetDirectoryName(ticker)!, // the ticker is written under the temp folder, so its folder is a full path
             LogConPTYOutput = true,
             Visibility = Visibility.Hidden,
         };

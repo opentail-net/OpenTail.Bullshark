@@ -1,6 +1,6 @@
 # Phase: history and usage
 
-Status: in progress (2026-11-14). Owner away; the phase runs without questions. Decisions are recorded here and in `docs/findings/FINDINGS.md`.
+Status: done (checked 2026-11-16: all seven boxes are ticked; the file was renamed to DONE_ in 39eaf53). Decisions are recorded here and in `docs/findings/FINDINGS.md`.
 
 ## Goal
 

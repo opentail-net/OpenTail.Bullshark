@@ -85,7 +85,7 @@ public sealed class TranscriptView : UserControl
         }
         _earlier.IsEnabled = _firstShown > 0;
         if (_focus is null) _transcriptScroll.ScrollToBottom();
-        else Dispatcher.BeginInvoke(new Action(() => _focus?.BringIntoView()), System.Windows.Threading.DispatcherPriority.Loaded);
+        else _ = Dispatcher.BeginInvoke(new Action(() => _focus?.BringIntoView()), System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
     private UIElement BuildContent()

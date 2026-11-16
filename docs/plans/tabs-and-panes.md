@@ -1,6 +1,6 @@
 # Tabs and panes (2026-11-16)
 
-Status: T1 and T2 are built (2026-11-16), tested with counters in place of sessions, and not committed. T3 is not built. What was
+Status: T1 and T2 are built (2026-11-16), tested with counters in place of sessions, and committed in 39eaf53. T3 is not built. What was
 not checked on screen is listed under "Not verified". Results: finding F55.
 
 The owner asked for dockable, reorderable tabs, "a bit similar to a browser", and whether that is a real pain to build. It comes
@@ -83,7 +83,11 @@ Check: `dotnet test` passes; the on-screen steps are seen.
 
 Check: the spike's finding is written; the on-screen steps are seen; no terminal is restarted by a move.
 
-### T3 Second window (later)
+### T3 Second window (parked)
+
+Decided 2026-11-16 (the owner left the choice to the planner): not built. The split covers two sessions side by side, which was
+the need. T3 also rests on two `claude attach` clients on one session, which is untested. Taken up again only when the owner wants
+a session on a second monitor.
 
 - [ ] Test by hand, with the owner's word: two `claude attach` clients on one session. Record what each shows and whether
       input from both is taken.
