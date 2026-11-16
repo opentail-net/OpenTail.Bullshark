@@ -1,6 +1,7 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Media;
 using System.Windows.Input;
 using OpenTail.Bullshark.Core.Activity;
@@ -17,11 +18,13 @@ public sealed class TranscriptView : UserControl
 {
     private const int PageSize = 200;
 
-    private readonly TextBlock _topLabel = new();
     private readonly TextBlock _historyTitle = new();
 
     /// <summary>The title's row: the title and a small mark beside it that carries the session's id and file path on its tooltip.</summary>
     private readonly StackPanel _titleRow = new();
+
+    /// <summary>The header card: the title, the stats, the tokens, the files and the lineage links, in one block with an edge.</summary>
+    private readonly Border _card = new();
     private readonly TextBlock _historyInfo = new();
     private readonly TextBlock _usageCaption = new();
     private readonly Grid _usageGrid = new() { Margin = new Thickness(0, 0, 0, 6) };
@@ -72,8 +75,9 @@ public sealed class TranscriptView : UserControl
         _palette = palette;
         Background = Brush(palette.Background);
         Foreground = Brush(palette.Text);
-        _topLabel.Foreground = Brush(palette.Muted);
         _historyTitle.Foreground = Brush(palette.Text);
+        _card.Background = Brush(palette.Panel);
+        _card.BorderBrush = Brush(palette.Border);
         _historyInfo.Foreground = Brush(palette.Muted);
         _usageCaption.Foreground = Brush(palette.Muted);
         _resumeHint.Foreground = Brush(palette.Muted);
@@ -90,7 +94,7 @@ public sealed class TranscriptView : UserControl
         _resume.IsEnabled = true;
         _resumeHint.Text = ResumeHint(digest);
         // The title is the owner's name when there is one (session library, D-L1); the transcript's own title otherwise.
-        _historyTitle.Text = title ?? digest.Title;
+        SetTitle(title ?? digest.Title);
         // The id and the file path are for reference, so they sit on the tooltip, not in the text.
         var details = $"Session {digest.SessionId}\n{digest.FilePath}";
         _historyTitle.ToolTip = details;
@@ -132,14 +136,24 @@ public sealed class TranscriptView : UserControl
         foreach (var block in _transcript.Children.OfType<TextBlock>()) block.FontSize = TerminalFont.Size * scale;
     }
 
+    /// <summary>
+    /// The title, with the note that this is a past session on the same line: smaller and muted, so the title is still the first thing read.
+    /// </summary>
+    private void SetTitle(string title)
+    {
+        _historyTitle.Inlines.Clear();
+        _historyTitle.Inlines.Add(new Run(title));
+        _historyTitle.Inlines.Add(new Run("   ·   past session, read-only, local")
+        {
+            FontSize = 12,
+            FontWeight = FontWeights.Normal,
+            Foreground = Brush(_palette.Muted),
+        });
+    }
+
     private UIElement BuildContent()
     {
         var right = new DockPanel { Margin = new Thickness(10) };
-
-        _topLabel.Text = "Past session (read-only, local)";
-        _topLabel.Margin = new Thickness(0, 0, 0, 6);
-        DockPanel.SetDock(_topLabel, Dock.Top);
-        right.Children.Add(_topLabel);
 
         _historyTitle.FontSize = 17;
         _historyTitle.FontWeight = FontWeights.SemiBold;
@@ -155,29 +169,28 @@ public sealed class TranscriptView : UserControl
         _historyInfo.VerticalAlignment = VerticalAlignment.Center;
         _historyInfo.Visibility = Visibility.Collapsed;
         _titleRow.Orientation = Orientation.Horizontal;
-        _titleRow.Margin = new Thickness(0, 8, 0, 0);
         _titleRow.Children.Add(_historyTitle);
         _titleRow.Children.Add(_historyInfo);
-        DockPanel.SetDock(_titleRow, Dock.Top);
-        right.Children.Add(_titleRow);
 
-        DockPanel.SetDock(_statsGrid, Dock.Top);
-        right.Children.Add(_statsGrid);
-
+        // The header is one card: the title (with the past-session note on its line), the stats, the tokens, the files and the links.
+        var header = new StackPanel();
+        header.Children.Add(_titleRow);
+        header.Children.Add(_statsGrid);
         _usageCaption.FontSize = 11;
         _usageCaption.Margin = new Thickness(0, 0, 0, 2);
-        DockPanel.SetDock(_usageCaption, Dock.Top);
-        right.Children.Add(_usageCaption);
-        DockPanel.SetDock(_usageGrid, Dock.Top);
-        right.Children.Add(_usageGrid);
-
+        header.Children.Add(_usageCaption);
+        header.Children.Add(_usageGrid);
         _files.FontSize = 12;
         _files.Margin = new Thickness(0, 0, 0, 6);
-        DockPanel.SetDock(_files, Dock.Top);
-        right.Children.Add(_files);
-
-        DockPanel.SetDock(_lineage, Dock.Top);
-        right.Children.Add(_lineage);
+        header.Children.Add(_files);
+        header.Children.Add(_lineage);
+        _card.Child = header;
+        _card.CornerRadius = new CornerRadius(6);
+        _card.BorderThickness = new Thickness(1);
+        _card.Padding = new Thickness(12, 8, 12, 6);
+        _card.Margin = new Thickness(0, 8, 0, 4);
+        DockPanel.SetDock(_card, Dock.Top);
+        right.Children.Add(_card);
 
         _earlier.Content = "Load earlier";
         _earlier.Padding = new Thickness(10, 2, 10, 2);
