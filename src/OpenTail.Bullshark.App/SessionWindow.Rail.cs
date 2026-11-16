@@ -2,6 +2,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using OpenTail.Bullshark.Core.Activity;
@@ -336,13 +337,24 @@ public partial class SessionWindow
         // Test and scratch folders under the Windows temp folder are shown only by the Temporary filter (owner, 2026-11-15).
         var tempPrefix = FolderKey.From(Path.GetTempPath());
         var shown = folders.Where(f => IsTemporary(f.Key, tempPrefix) == (_filter == RailFilter.Temporary)).ToList();
+
+        // The sessions open now, listed by the agents or recorded. A history row for one of them gets no ⏩: it is already running.
+        var openIds = _agents.Select(a => a.SessionId)
+            .Concat(ReadRecords().Values.Select(r => r.SessionId))
+            .Where(id => !string.IsNullOrEmpty(id))
+            .Select(id => id!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         for (int i = 0; i < shown.Count; i++)
-            section.Items.Add(HistoryFolderItem(shown[i], liveNames, expandByDefault: i == 0));
+            section.Items.Add(HistoryFolderItem(shown[i], liveNames, openIds, expandByDefault: i == 0));
         return section;
     }
 
     /// <summary>One folder of the History section, with its past sessions, newest first.</summary>
-    private TreeViewItem HistoryFolderItem(IGrouping<string, SessionDigest> folder, IReadOnlyDictionary<string, string> liveNames, bool expandByDefault = false)
+    private TreeViewItem HistoryFolderItem(
+        IGrouping<string, SessionDigest> folder,
+        IReadOnlyDictionary<string, string> liveNames,
+        ISet<string> openIds,
+        bool expandByDefault = false)
     {
         var key = HistoryKey + ":" + folder.Key;
         var name = liveNames.TryGetValue(folder.Key, out var live) ? live : folder.Key;
@@ -359,11 +371,13 @@ public partial class SessionWindow
                      .Take(MaxHistoryPerFolder))
         {
             var cache = CacheTextFor(digest.SessionId);
+            // The ⏩ resumes a past session. It is not offered for a subagent, nor for a session that is already open.
+            var resume = digest.IsSubagent || openIds.Contains(digest.SessionId) ? null : ResumeMark(digest);
             folderItem.Items.Add(NewItem(
                 TwoLine(digest.Title + (digest.IsSubagent ? " · subagent" : string.Empty),
                     ActivityLine(digest.SessionId, null, digest.LastActivity, running: false)
                         + $" · {digest.SessionId[..Math.Min(8, digest.SessionId.Length)]} · {digest.AssistantMessages} msgs",
-                    string.Empty),
+                    string.Empty, resume),
                 new RailTag(RailKind.History, digest.SessionId, digest),
                 cache.Full is null ? digest.FilePath : cache.Full + "\n" + digest.FilePath));
         }
@@ -536,7 +550,33 @@ public partial class SessionWindow
         return string.IsNullOrEmpty(state) ? head : head + " · " + state;
     }
 
-    private UIElement TwoLine(string title, string details, string time)
+    /// <summary>
+    /// The ⏩ at the end of a history row's second line. A click resumes that session through the resume prompt, which shows the
+    /// choices and their cost before anything runs. The click is handled before the row sees it, so the row is not selected and
+    /// the transcript stays as it is.
+    /// </summary>
+    private UIElement ResumeMark(SessionDigest digest)
+    {
+        var mark = new TextBlock
+        {
+            Text = "⏩",
+            FontSize = 11,
+            Margin = new Thickness(10, 0, 2, 0),
+            Cursor = Cursors.Hand,
+            VerticalAlignment = VerticalAlignment.Center,
+            ToolTip = "Resume this session. The resume prompt shows the choices first.",
+        };
+        mark.PreviewMouseLeftButtonDown += (_, e) => e.Handled = true;
+        mark.MouseLeftButtonUp += (_, e) =>
+        {
+            e.Handled = true;
+            _ = ResumeAsync(digest);
+        };
+        return mark;
+    }
+
+    /// <summary>A row of two lines. The optional trailing element sits at the right end of the second line.</summary>
+    private UIElement TwoLine(string title, string details, string time, UIElement? trailing = null)
     {
         var top = new Grid();
         top.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -544,6 +584,7 @@ public partial class SessionWindow
 
         var titleText = Label(title);
         titleText.Margin = new Thickness(0);
+        titleText.TextTrimming = TextTrimming.CharacterEllipsis;
         Grid.SetColumn(titleText, 0);
 
         var timeText = new TextBlock
@@ -569,9 +610,25 @@ public partial class SessionWindow
             Margin = new Thickness(0, 1, 0, 0),
         };
 
+        UIElement detailRow = detailText;
+        if (trailing is not null)
+        {
+            var second = new Grid();
+            second.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            second.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            Grid.SetColumn(detailText, 0);
+            Grid.SetColumn(trailing, 1);
+            second.Children.Add(detailText);
+            second.Children.Add(trailing);
+            detailRow = second;
+        }
+
+        // A row is no wider than the rail, so a long title is trimmed and the trailing element stays in view.
         var stack = new StackPanel { Margin = new Thickness(0, 3, 0, 3) };
+        BindingOperations.SetBinding(stack, FrameworkElement.MaxWidthProperty,
+            new Binding("ActualWidth") { Source = Rail, Converter = RailRowWidth.Instance });
         stack.Children.Add(top);
-        stack.Children.Add(detailText);
+        stack.Children.Add(detailRow);
         return stack;
     }
 
