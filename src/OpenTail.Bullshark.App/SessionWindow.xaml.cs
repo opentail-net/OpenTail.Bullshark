@@ -83,6 +83,7 @@ public partial class SessionWindow : Window
         InitRail();
         _store = new StateStore(options.StatePath, AppLog.Write);
         _runStore = new RunStore(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(options.StatePath))!, "runs.json"));
+        InitLibrary(options.StatePath);
         var runner = new SupervisorRunner(_cli, _store, TimeProvider.System, log: AppLog.Write);
         _loop = new SupervisorLoop(runner, _cli, _store, AppLog.Write);
 

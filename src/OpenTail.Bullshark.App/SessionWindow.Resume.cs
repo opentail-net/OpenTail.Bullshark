@@ -30,7 +30,7 @@ public partial class SessionWindow
 
         var facts = $"{digest.Turns} {(digest.Turns == 1 ? "turn" : "turns")} · last active {AgeOf(digest.LastActivity)} · in {folder}";
         var defaults = PatternStore.Beside(_options.StatePath).For("solo");
-        var prompt = new ResumePrompt($"Resume: {digest.Title}", facts, digest.ContextTokensAtLastTurn, Palette,
+        var prompt = new ResumePrompt($"Resume: {DisplayTitle(digest)}", facts, digest.ContextTokensAtLastTurn, Palette,
             defaults.PlannerModel, defaults.PlannerEffort)
         {
             Owner = this,
@@ -145,7 +145,8 @@ public partial class SessionWindow
             }
         }
 
-        var text = ResumeText.Compose(summary, choice.Level, ResumeText.Tail(lines, choice.Turns), choice.Turns);
+        // The start text names the session it continues, on its first line (D-L8). The new session's transcript carries it.
+        var text = ResumeText.Compose(summary, choice.Level, ResumeText.Tail(lines, choice.Turns), choice.Turns, digest.SessionId);
         var pattern = PatternStore.Beside(_options.StatePath).For("solo");
         var request = new SetupRequest(
             PatternKey: "solo",

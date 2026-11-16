@@ -35,6 +35,33 @@ public sealed record RailPalette(string Panel, string Background, string Text, s
 
     public string GoText => "#FFFFFF";
 
+    /// <summary>
+    /// The eight colours a session may have (session library, D-L11): a name, a shade for the dark theme and one for the light.
+    /// None of them is green, amber or grey: those are the tab's state dots (working, blocked, other).
+    /// </summary>
+    public static readonly (string Name, string Dark, string Light)[] SessionColours =
+    [
+        ("Red", "#E5534B", "#B83227"),
+        ("Pink", "#E86AA6", "#B03B76"),
+        ("Violet", "#A97BE8", "#6E43B8"),
+        ("Indigo", "#7C86E8", "#3F4AAE"),
+        ("Blue", "#4DA3FF", "#1B66C9"),
+        ("Cyan", "#4DD0E1", "#0C7F93"),
+        ("Brown", "#C08A5E", "#7A4C2A"),
+        ("Magenta", "#E05BE0", "#9E22A0"),
+    ];
+
+    /// <summary>The shade of a session colour for this palette's theme, or null for no colour or an unknown name.</summary>
+    public string? ColourHex(string? name)
+    {
+        if (string.IsNullOrEmpty(name)) return null;
+        foreach (var (colour, dark, light) in SessionColours)
+        {
+            if (string.Equals(colour, name, StringComparison.Ordinal)) return IsLight ? light : dark;
+        }
+        return null;
+    }
+
     public static SolidColorBrush Brush(string hex) => (SolidColorBrush)new BrushConverter().ConvertFromString(hex)!;
 }
 

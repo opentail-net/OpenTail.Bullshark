@@ -123,7 +123,10 @@ public sealed class SearchView : UserControl
 
         stack.Children.Add(new TextBlock
         {
-            Text = $"{digest.ProjectFolder} · {AgeText(digest.LastActivity)} · {match.MatchingMessages} message(s) match",
+            // A word found only in the owner's name, tags or note matches with no message (D-L7).
+            Text = match.MatchingMessages == 0
+                ? $"{digest.ProjectFolder} · {AgeText(digest.LastActivity)} · matched its name, tags or note"
+                : $"{digest.ProjectFolder} · {AgeText(digest.LastActivity)} · {match.MatchingMessages} message(s) match",
             FontSize = 11,
             Foreground = RailPalette.Brush(_palette.Muted),
             TextWrapping = TextWrapping.Wrap,

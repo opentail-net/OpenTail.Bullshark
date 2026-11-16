@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Input;
 using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Resume;
 
@@ -18,6 +19,9 @@ public sealed class TranscriptView : UserControl
     private readonly TextBlock _topLabel = new();
     private readonly TextBlock _historyTitle = new();
     private readonly TextBlock _historyStats = new();
+
+    /// <summary>"Continued from" and "Continued in" links, under the stats (session library, L5). Empty when there are none.</summary>
+    private readonly WrapPanel _lineage = new() { Margin = new Thickness(0, 0, 0, 6) };
     private readonly Button _earlier = new();
     private readonly StackPanel _transcript = new();
     private readonly ScrollViewer _transcriptScroll = new();
@@ -53,12 +57,13 @@ public sealed class TranscriptView : UserControl
     /// Shows a session's headline numbers at once, and a page of its transcript: the last page, or with a focus line (a search result)
     /// the page around that line, with the line marked and brought into view. Nothing else is loaded.
     /// </summary>
-    public async Task ShowAsync(SessionDigest digest, int? focusLine = null)
+    public async Task ShowAsync(SessionDigest digest, int? focusLine = null, string? title = null)
     {
         _digest = digest;
         _resume.IsEnabled = true;
         _resumeHint.Text = ResumeHint(digest);
-        _historyTitle.Text = $"{digest.Title}\n{digest.SessionId}\n{digest.FilePath}";
+        // The title is the owner's name when there is one (session library, D-L1); the transcript's own title otherwise.
+        _historyTitle.Text = $"{title ?? digest.Title}\n{digest.SessionId}\n{digest.FilePath}";
         _historyStats.Text = StatsText(digest);
 
         var pager = await Task.Run(() => TranscriptPager.Open(digest.FilePath));
@@ -107,6 +112,9 @@ public sealed class TranscriptView : UserControl
         DockPanel.SetDock(_historyStats, Dock.Top);
         right.Children.Add(_historyStats);
 
+        DockPanel.SetDock(_lineage, Dock.Top);
+        right.Children.Add(_lineage);
+
         _earlier.Content = "Load earlier";
         _earlier.Padding = new Thickness(10, 2, 10, 2);
         _earlier.HorizontalAlignment = HorizontalAlignment.Left;
@@ -143,6 +151,39 @@ public sealed class TranscriptView : UserControl
 
     /// <summary>Raised when the owner asks to resume the session shown. The resume prompt decides how, and shows the cost first.</summary>
     public event Action<SessionDigest>? ResumeRequested;
+
+    /// <summary>Raised with a session id when the owner clicks a "Continued from" or "Continued in" link.</summary>
+    public event Action<string>? OpenSessionRequested;
+
+    /// <summary>
+    /// Shows the links to the session this one continues, and to the sessions that continue it (D-L8). A link is text that
+    /// opens that session's transcript; the rail is not changed by it.
+    /// </summary>
+    public void ShowLineage(string? fromId, string? fromTitle, IReadOnlyList<(string Id, string Title)> later)
+    {
+        _lineage.Children.Clear();
+        if (fromId is { Length: > 0 }) _lineage.Children.Add(LineageLink("Continued from ", fromTitle ?? fromId, fromId));
+        foreach (var (id, title) in later) _lineage.Children.Add(LineageLink("Continued in ", title, id));
+    }
+
+    private UIElement LineageLink(string lead, string title, string sessionId)
+    {
+        var link = new TextBlock
+        {
+            Text = title,
+            Foreground = Brush(_palette.Text),
+            TextDecorations = TextDecorations.Underline,
+            Cursor = Cursors.Hand,
+            Margin = new Thickness(0, 0, 14, 0),
+            FontSize = 12,
+            ToolTip = $"Open session {sessionId[..Math.Min(8, sessionId.Length)]}",
+        };
+        link.MouseLeftButtonUp += (_, _) => OpenSessionRequested?.Invoke(sessionId);
+        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        row.Children.Add(new TextBlock { Text = lead, Foreground = Brush(_palette.Muted), FontSize = 12 });
+        row.Children.Add(link);
+        return row;
+    }
 
     private void RaiseResume()
     {

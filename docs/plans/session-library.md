@@ -1,7 +1,6 @@
 # Session library (2026-11-16)
 
-Status (2026-11-16): L1 and L3 are built and checked. L2 is built and partly checked on screen (see its boxes). L4 and L5 are not
-started. L6 is not to be built (its trigger is not met). Nothing is committed.
+Status (2026-11-16): L1 to L3 are in commit 72cee28. Committed on 2026-11-16 in two commits: the L5 core (1a2a1ff), then L4 and the L5 screens (the commit after it). L4 is built and checked where no click is needed; the clicks are for the owner. The on-screen items of L5 are built and not checked. The one real resume is not run. L6 is not to be built.
 
 Make past sessions easy to recognise, sort and find again: better titles and a recap taken from the transcripts for free, then the
 owner's own name, pin, archive, tags and note for each session, then a link from a resumed session to the one it came from.
@@ -109,6 +108,12 @@ Recommended by the assistant. The owner has not confirmed them.
   left of the session's rail row and under its tab title. It does not replace the tab's state dot, which already uses green,
   amber and grey for working, blocked and other; the list avoids those three.
 
+Decided while building (2026-11-16; accepted by the planner, git-fb):
+- **Pin and Archive on history rows only.** A live row's menu offers Edit only. A running session is not archived from the rail.
+- **Archived rows are muted** (opacity 0.55) where they show: in a search, and under the Archived filter.
+- **Tags are also at the top of a row's tooltip**, because a narrow rail cuts the second line, where they also are.
+- **The start text names the source session** on its first line, `Continues session: <id>`. This changes the prompt's text; the CLI call does not change. A resume in full keeps its id and writes no line.
+
 ## Steps
 
 ### L1 Free facts from the transcripts (Core)
@@ -130,9 +135,7 @@ Real folder, read-only, `scripts/Check-Titles.ps1`, 2026-11-16 (7 seconds):
 - files with an `ai-title`: 70 of 137; with a `custom-title`: 46; with an `away_summary` recap: 39 (grep: 40); with a
   `compact_boundary`: 23 (grep: 24); with a user message: 137
 - the ten newest titles were read by eye: all ten read as fair descriptions of their sessions. Their content is not written here.
-- finding: many sessions open with a `<local-command-caveat>` user record (written by `/model` or `/effort`).
-  `SessionTitle.FromUserRecord` does not skip it, so a session with no `ai-title` takes that text as its title. L1 does not change
-  this: it is question 6.
+- finding (corrected 2026-11-16): the reader already skips a first message that starts with `<` (`SessionTitle.Clean`), so a `<local-command-caveat>` record never becomes the title. The first wording of this finding was wrong: the check script read the raw record, not what the reader reads. See question 6.
 
 ### L2 The rail shows them (App)
 
@@ -165,33 +168,51 @@ Check: `dotnet test` passes. Checked 2026-11-16: the Core suite passes 270 with 
 ### L4 Organise in the rail (App)
 
 - [ ] The row menu and the edit dialog (D-L10), on history rows and on live session rows. Not on folders, headings or failed starts.
-- [ ] Titles use `TitleFor`; tags show on the second line; the note shows in the tooltip.
-- [ ] The colour bar on the rail row and on the tab (D-L11), in both themes. `RefreshTabStrip` draws it; the state dot stays.
-- [ ] The Pinned group (D-L4) and the Archived filter (D-L5), with its own `FilterLabel` branch.
-- [ ] An unreadable library follows D-L3.
-- [ ] Checked on screen with a temporary state folder: rename, pin, unpin, archive, the Archived filter, unarchive, a tag, a
-      note, a colour in the dark and the light theme; then close and reopen the window and see them again.
+      Built: `RowMenu` and `EditMark` in `SessionWindow.Library.cs`; the dialog is `LibraryEditDialog.cs`. Not seen: the menu and the
+      dialog need clicks, which are for the owner. Decision to confirm: Pin and Archive are on history rows only. A live session is
+      not archived from the rail, so the live row's menu offers Edit only.
+- [ ] Titles use `TitleFor`; tags show on the second line; the note shows in the tooltip. Seen: "Plan for L4" in the Pinned group, in
+      the dark and the light theme. Built, not seen: the tags on the second line are cut at the default rail width. They, and the note,
+      are at the top of the row's tooltip, which needs a hover (for the owner).
+- [ ] The colour bar on the rail row and on the tab (D-L11), in both themes. Seen: the rail row's bar (Blue) in the dark and the light
+      theme. Built, not seen: the tab's top bar (`DrawStrip`), because a tab needs a click. The Red session is not in the visible part
+      of the list.
+- [x] The Pinned group (D-L4) and the Archived filter (D-L5), with its own `FilterLabel` branch. Seen: the Pinned group at the top of
+      History (dark and light); the archived session hidden in All (dark); the Archived filter, started with `--rail-filter archived`,
+      lists it muted (light).
+- [x] An unreadable library follows D-L3. Seen: the rail shows; a notice "library.json cannot be read" is at the top of History; the log
+      has the line "library not read"; the file is not overwritten (`scripts\Test-Library.ps1`, check 6).
+- [ ] Checked on screen with a temporary state folder: rename, pin, unpin, archive, the Archived filter, unarchive, a tag, a note, a
+      colour in the dark and the light theme; then close and reopen the window and see them again. Seen: the Archived filter; a colour
+      in both themes; a fresh start reads `library.json` and shows the Pinned group, which is the reopen. Not done: rename, pin, unpin,
+      archive, unarchive, a tag, a note and a colour changed by clicks (for the owner). Their writes are unit-tested in
+      `SessionLibraryTests`.
 
-Check: every item of the on-screen list is seen; `library.json` in the temporary folder holds only the entries that were set.
+Check: the on-screen list is not complete; the boxes above say what is. `scripts\Test-Library.ps1` passes 6 of 6 with no clicks
+(2026-11-16, scratch state folders).
 
 ### L5 Search and lineage
 
-- [ ] `HistorySearch.Run` takes an optional `Func<SessionDigest, string?>` giving a session's extra text (D-L7). Tests:
-      `AWordInTheOwnersNameMatches`, `AWordInATagMatchesWithNoMatchingMessage`, `EveryWordIsStillNeeded`.
-- [ ] `SearchView` shows "matched its name, tags or note" for a match with no messages.
-- [ ] `ResumeText.Compose` takes the source session id and writes the `Continues session:` line (D-L8). The two tests are
-      updated; a new test checks the line.
-- [ ] `TranscriptReader` reads that line from the first user message into `SessionDigest.ContinuesSessionId`. Tests:
-      `TheContinuesLineIsRead`, `ALineLikeItLaterInTheSessionIsIgnored`.
-- [ ] The rail tooltip says "continues: <title of the earlier session>". The transcript view shows a "Continued from…" link
-      that opens the earlier transcript, and a "Continued in…" link on the earlier one.
-- [ ] A session resumed from a summary has no good first message: its text starts "This session continues an earlier Claude
-      Code session…" (by reading `SessionTitle.Clean`, not run). When it has no `ai-title` and no name, its title is "↪ " and
-      the earlier session's title.
+- [x] `HistorySearch.Run` takes an optional `Func<SessionDigest, string?>` giving a session's extra text (D-L7). Tests:
+      `AWordInTheOwnersNameMatches`, `AWordInATagMatchesWithNoMatchingMessage`, `EveryWordIsStillNeeded` (`HistorySearchExtraTextTests.cs`).
+      The window passes the owner's name, tags and note (`SearchableText`), read from a snapshot of the marks.
+- [ ] `SearchView` shows "matched its name, tags or note" for a match with no messages. Built (`SearchView.cs`). Not seen: a search needs
+      typing, which is for the owner.
+- [x] `ResumeText.Compose` takes the source session id and writes the `Continues session:` line (D-L8). Tests:
+      `ResumeContinuesLineTests` (the first line; no line without a source; read back by `SessionTitle.ContinuesIdOf`). The resume passes
+      the id (`SessionWindow.Resume.cs`). The two existing tests compile unchanged, because the parameter is optional.
+- [x] `TranscriptReader` reads that line from the first user message into `SessionDigest.ContinuesSessionId`. Tests:
+      `TheContinuesLineIsRead`, `ALineLikeItLaterInTheSessionIsIgnored` (`TranscriptLineageTests.cs`).
+- [ ] The rail tooltip says "continues: <title>". The transcript view shows "Continued from…" and "Continued in…" links. Built
+      (`ContinuesTip`, `ShowLineage`, `LineageLink`). Not seen: a hover and a transcript click are needed, and no continuation exists yet
+      to show the links.
+- [x] A session resumed from a summary has no title from its start text (`SessionTitle.Clean` skips "Continues session:" and "This session
+      continues…"). Its title is "↪ " and the earlier session's title when it has no `ai-title` and no name:
+      `SessionLibrary.TitleFor(digest, entry, continued)`, tested in `LineageTitleTests.cs` (five tests). Not seen on screen: no resumed
+      session exists.
 
-Check: `dotnet test` passes. One real resume from the last turns only (no model call for the summary; the new session itself is
-a real session, so this step needs the owner's word, Haiku at low effort, a scratch folder): the new session's row names the
-earlier one.
+Check: `dotnet test` passes: 287 with the Live tests filtered out (2026-11-16). One real resume is not run. Its box waits for the owner's
+word. The on-screen boxes above are unticked until a click or a hover is checked.
 
 ### L6 Later, only if measured: a cache for the index
 
@@ -209,8 +230,7 @@ Reading every transcript took 3.6 s for 137 files (830 MB), measured 2026-11-16 
 2. One row per pinned session, under Pinned only (D-L4)? *Used as recommended; not yet confirmed.*
 3. Should a search list archived sessions (D-L5)? *Used as recommended; not yet confirmed.*
 4. May L5 run one real resume in a scratch folder as its check? *Open. The L5 resume box stays unticked until the owner says yes.*
-6. The first user message is often a `<local-command-caveat>` record (from `/model` or `/effort`). Should the title fallback skip
-   it (L1 finding, 2026-11-16)? *Open. L1 does not change it.*
+6. The first user message is often a `<local-command-caveat>` record (from `/model` or `/effort`). Should the title fallback skip it? *Answered 2026-11-16: no change needed. The reader already skips it (see L1). The test is `ACaveatIsNotTheFirstMessage`.*
 
 ## Not verified
 

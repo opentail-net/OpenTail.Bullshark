@@ -426,3 +426,27 @@ Source: `docs/plans/session-library.md`, slice L1 only.
 - **Finding, not changed:** many sessions open with a `<local-command-caveat>` user record from `/model` or `/effort`. A session with no `ai-title` takes that text as its title. Question 6 of the plan.
 - **Not verified:** the four record shapes in other CLI versions (this check is CLI 2.1.325); the title, tooltip and recap on screen (L2).
 - **Not done:** no commit, no change to the rail or the tabs (L2), no session started or resumed, no model call.
+
+## F58 Session library L2 and L3: the rail's tooltip, and the library store (L2 partly checked on screen; L3 built and tested; 2026-11-16; not committed)
+
+Source: `docs/plans/session-library.md`, slices L2 and L3. L1 is F57. L4 and L5 are not started.
+
+- **L2 built:** a history row's tooltip adds the recap with its age, the custom title when there is one, and "Compacted N times" when N is above 0 (`FactsTip` in `SessionWindow.Rail.cs`). The row title, the transcript heading and the resume heading all read `Title`, which L1 changed.
+- **L2 verified on screen:** a scratch state folder with `--no-pass` and `--shot`. The row "OpenTail.Bullshark review..." (session 29b84a3b, with a Claude Code title) and the row "Hello from git-86..." (session f8045ed8, with none; its first message is its title) show different titles, as expected. The session ids were matched from the rows' second lines against the transcripts.
+- **L2 not verified:** the tooltip (a hover was not done); the transcript and resume headings (a click was not simulated); a subagent row (none is in the visible part of the list).
+- **L3 built:** `SessionLibrary` in `Core/Library/` (`library.json` beside the state file, keyed by session id, `FileLock` and `WriteAtomic`, `StoreUnreadableException` on a bad file, empty entries removed), `TitleFor` (the owner's name first), and `TagsOf`.
+- **L3 verified by unit tests:** the six named tests and two more. The Core suite passes 270 with the Live tests filtered out (262 before L3).
+- **Stopped before L4:** L4's checks need rename, pin, archive, the Archived filter, colour and reopening, all by clicks, which the handover rules out.
+
+## F59 Session library: L5 core, L4 in the rail, L5 in the rail (built; partly checked on screen by scripts and screenshots; 2026-11-16; not committed)
+
+Source: `docs/plans/session-library.md`, the brief from the planner (git-fb) of 2026-11-16. L1 to L3 are in 72cee28 (F57, F58).
+
+- **Built, Core:** `HistorySearch.Run` takes the owner's extra text (D-L7). `ResumeText.Compose` writes the `Continues session:` line first (D-L8). `TranscriptReader` reads it from the first user message into `ContinuesSessionId`. `SessionTitle.Clean` skips a resumed session's start text. `SessionLibrary.TitleFor` takes the lineage rule: "↪ " and the earlier session's title. The Core suite passes 287 with the Live tests filtered out.
+- **Question 6 (caveat):** no change needed. The reader already skips a first message that starts with `<`, so a `/model` caveat never becomes the title. The earlier finding in F57 was wrong (the check script read the raw record). `ACaveatIsNotTheFirstMessage` covers it.
+- **Built, App:** the Pinned group (D-L4); the Archived filter (D-L5), muted rows in search; the colour bars on rail rows, and the top edge on tabs (D-L11), with eight shades in `RailPalette`; the row menu and the edit dialog (D-L10), built not clicked; tags and note at the top of the row tooltip (tags are also on the second line); "continues:" in the tooltip; "Continued from…" and "Continued in…" links in the transcript view; "matched its name, tags or note" in search; the notice for an unreadable library (D-L3).
+- **Checked, no clicks:** `scripts/Test-Library.ps1` passes 6 of 6 on the scratch build: the seeded library is shown; a run leaves it as it was; the light theme and the Archived filter run; an unreadable library.json is logged and left alone. Screenshots looked at: dark (Pinned group, the blue bar on "Plan for L4", the archived session hidden), light (the same), Archived (only the archived session, muted), unreadable (the notice at the top, the marks gone).
+- **Not verified:** the right-click menu, the edit dialog and its typing, pin, archive, rename, tag, note and colour changes made by clicks; the hover tooltips; the tab's colour bar; the transcript's "Continued from…" and "Continued in…" links; the search text; a real resume, which is not permitted and not run. Tags on the second line are cut at the default rail width.
+- **Decisions the plan did not settle:** Pin and Archive are on history rows only; a live row's menu offers Edit only. An archived row is muted with opacity 0.55. The start text names the source session on its first line; this changes the text of the prompt passed to the resume's CLI call, not the call. A resume in full keeps its id and writes no line (D-L8).
+- **Committed** on 2026-11-16: the L5 core in 1a2a1ff, and L4 with the L5 screens in the commit after it. The Core suite (287 with Live filtered) and the App build pass; the on-screen items are listed above.
+- **Review fixes (2026-11-16, from git-fb):** the row title uses `DisplayTitle` like the tab and the heading; a tab's edge is always 2 px; the tab titles read the records once per strip, and a mark change reads the library once; the five files I touched were saved with LF, as in the index, so their diffs show only my lines. The Core suite passes 287 (Live filtered), the App builds, and `scripts/Test-Library.ps1` passes 6 of 6.

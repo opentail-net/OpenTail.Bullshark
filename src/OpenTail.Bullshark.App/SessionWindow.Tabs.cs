@@ -55,7 +55,7 @@ public partial class SessionWindow
                 break;
 
             case RailKind.History:
-                SetActive(TabFor(TabKind.Transcript, tag.Key, () => $"Session {ShortId(tag.Key)}"));
+                SetActive(TabFor(TabKind.Transcript, tag.Key, () => tag.Digest is { } digest ? DisplayTitle(digest) : $"Session {ShortId(tag.Key)}"));
                 break;
 
             case RailKind.Folder:
@@ -321,6 +321,7 @@ public partial class SessionWindow
     /// </summary>
     private void RefreshTabStrip()
     {
+        RefreshTabTitles();
         var palette = Palette;
         DrawStrip(TabStrip, _tabs.Where(t => !IsRight(t)), _activeTab, palette);
         TabStrip.Children.Add(PlusTab(palette));
@@ -367,8 +368,13 @@ public partial class SessionWindow
             };
             content.Children.Add(close);
 
+            // A session's colour is a bar along the top of its tab (D-L11). Tabs without one keep no edge.
+            var edge = tab.Kind is TabKind.Session or TabKind.Transcript ? TabEdgeBrush(tab.Key) : null;
             var border = new Border
             {
+                // The edge keeps its 2 px whether or not the tab has a colour, so coloured tabs are not taller (D-L11).
+                BorderBrush = edge ?? Brushes.Transparent,
+                BorderThickness = new Thickness(0, 2, 0, 0),
                 Background = isActive ? RailPalette.Brush(palette.Background) : Brushes.Transparent,
                 CornerRadius = new CornerRadius(5, 5, 0, 0),
                 Padding = new Thickness(9, 4, 7, 4),
@@ -428,8 +434,7 @@ public partial class SessionWindow
         };
     }
 
-    private string TitleOfSession(string sessionId) =>
-        ReadRecords().Values.FirstOrDefault(r => r.SessionId == sessionId)?.Name ?? $"Session {ShortId(sessionId)}";
+    private string TitleOfSession(string sessionId) => TitleOfSessionNow(sessionId, ReadRecords().Values);
 
     private static string ShortId(string sessionId) => sessionId[..Math.Min(8, sessionId.Length)];
 }

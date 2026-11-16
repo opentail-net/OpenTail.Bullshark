@@ -103,7 +103,10 @@ public partial class SessionWindow
     {
         try
         {
-            var results = await Task.Run(() => HistorySearch.Run(sessions, query, cancellationToken: cancel.Token), cancel.Token);
+            // The marks are read from this snapshot: the search runs on a pool thread while the rail may replace them (D-L7).
+            var marks = _marks;
+            var results = await Task.Run(() => HistorySearch.Run(sessions, query, cancellationToken: cancel.Token,
+                extraText: digest => SearchableText(marks, digest.SessionId)), cancel.Token);
             if (cancel.IsCancellationRequested) return;
 
             var matches = new Dictionary<string, SessionMatch>(StringComparer.OrdinalIgnoreCase);
@@ -155,7 +158,8 @@ public partial class SessionWindow
         SetActive(tab);
         ShowOnly(_transcript);
         SelectHistoryRow(digest);
-        await _transcript.ShowAsync(digest, line);
+        await _transcript.ShowAsync(digest, line, DisplayTitle(digest));
+        ShowLineageFor(digest);
     }
 
     /// <summary>

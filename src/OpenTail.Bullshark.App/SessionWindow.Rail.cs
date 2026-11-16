@@ -42,6 +42,7 @@ public sealed record RailTag(RailKind Kind, string Key, SessionDigest? Digest = 
 /// <summary>
 /// What the rail shows (owner, 2026-11-15). All: the live folders and the history, without the temporary folders. Running:
 /// the live folders only. History: the history only, without the temporary folders. Temporary: only the temporary folders.
+/// Archived (session library, D-L5): only the archived past sessions.
 /// </summary>
 public enum RailFilter
 {
@@ -49,6 +50,7 @@ public enum RailFilter
     Running,
     History,
     Temporary,
+    Archived,
 }
 
 /// <summary>
@@ -109,6 +111,7 @@ public partial class SessionWindow
         RailFilter.Running => "Running",
         RailFilter.History => "History",
         RailFilter.Temporary => "Temporary",
+        RailFilter.Archived => "Archived",
         _ => "All",
     };
 
@@ -230,6 +233,8 @@ public partial class SessionWindow
     /// <summary>Rebuilds the rail from the state file, the last agent listing, the cache facts and the history read so far.</summary>
     private void RefreshRail()
     {
+        // The marks are read again on every refresh: they are small, and another process may have changed them (D-L3 is inside).
+        LoadLibrary();
         var records = ReadRecords().Values.OrderBy(r => r.Name, StringComparer.Ordinal).ToList();
         // A start that failed has no session, so it gets no terminal (it is listed as a failure below).
         foreach (var record in records.Where(r => !string.IsNullOrEmpty(r.SessionId))) EnsureTerminal(record);
@@ -294,11 +299,14 @@ public partial class SessionWindow
                         continue;
                     }
                     var cache = CacheTextFor(record.SessionId);
-                    folderItem.Items.Add(NewItem(
-                        TwoLine(record.Name, ActivityLine(record.SessionId, state, record.StartedAt, state == "working"), string.Empty,
-                            badge: MatchBadge(MatchOf(record.SessionId))),
+                    var title = LiveTitle(record);
+                    var item = NewItem(
+                        ColourEdge(TwoLine(title, ActivityLine(record.SessionId, state, record.StartedAt, state == "working"), string.Empty,
+                            badge: MatchBadge(MatchOf(record.SessionId))), MarkOf(record.SessionId)?.Colour),
                         new RailTag(RailKind.Session, record.SessionId),
-                        SearchTip(MatchOf(record.SessionId), cache.Full ?? record.SessionId)));
+                        NoteTip(MarkOf(record.SessionId)) + SearchTip(MatchOf(record.SessionId), cache.Full ?? record.SessionId));
+                    item.ContextMenu = RowMenu(record.SessionId, history: false, title);
+                    folderItem.Items.Add(item);
                 }
                 Rail.Items.Add(folderItem);
             }
@@ -334,6 +342,14 @@ public partial class SessionWindow
         var section = NewItem(header, new RailTag(RailKind.HistorySection, HistoryKey));
         section.IsExpanded = _expanded.GetValueOrDefault(HistoryKey, true);
 
+        // D-L3: while library.json cannot be read, the rail says so here, where it stays (the status line is overwritten).
+        if (_libraryError is not null)
+        {
+            section.Items.Add(NewItem(Label("library.json cannot be read", muted: true),
+                new RailTag(RailKind.Heading, HistoryKey + ":library"),
+                "No names, pins, tags or colours are shown, and nothing is written until the file can be read. " + _libraryError));
+        }
+
         if (_history is null)
         {
             section.Items.Add(NewItem(Label(_historyLoading ? "reading the transcripts…" : "not read yet", muted: true),
@@ -343,6 +359,7 @@ public partial class SessionWindow
 
         var folders = _history
             .Where(IsShownInHistory)
+            .Where(InFolders)
             .GroupBy(d => d.ProjectFolder, StringComparer.OrdinalIgnoreCase)
             .OrderByDescending(g => g.Max(d => d.LastActivity ?? DateTimeOffset.MinValue))
             .ToList();
@@ -357,6 +374,8 @@ public partial class SessionWindow
             .Where(id => !string.IsNullOrEmpty(id))
             .Select(id => id!)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (PinnedGroupShown && _history.Any(d => IsShownInHistory(d) && InPinnedGroup(d)))
+            section.Items.Add(PinnedGroup(openIds));
         for (int i = 0; i < shown.Count; i++)
             section.Items.Add(HistoryFolderItem(shown[i], liveNames, openIds, expandByDefault: i == 0));
         return section;
@@ -383,17 +402,7 @@ public partial class SessionWindow
                      .OrderByDescending(d => d.LastActivity ?? DateTimeOffset.MinValue)
                      .Take(MaxHistoryPerFolder))
         {
-            var cache = CacheTextFor(digest.SessionId);
-            // The ⏩ resumes a past session. It is not offered for a subagent, nor for a session that is already open.
-            var resume = digest.IsSubagent || openIds.Contains(digest.SessionId) ? null : ResumeMark(digest);
-            var match = MatchOf(digest.SessionId);
-            folderItem.Items.Add(NewItem(
-                TwoLine(digest.Title + (digest.IsSubagent ? " · subagent" : string.Empty),
-                    ActivityLine(digest.SessionId, null, digest.LastActivity, running: false)
-                        + $" · {digest.SessionId[..Math.Min(8, digest.SessionId.Length)]} · {digest.AssistantMessages} msgs",
-                    string.Empty, resume, MatchBadge(match), leadSlot: true),
-                new RailTag(RailKind.History, digest.SessionId, digest),
-                SearchTip(match, FactsTip(digest) + (cache.Full is null ? digest.FilePath : cache.Full + "\n" + digest.FilePath))));
+            folderItem.Items.Add(HistoryRow(digest, openIds));
         }
         return folderItem;
     }
@@ -502,7 +511,8 @@ public partial class SessionWindow
 
             case RailKind.History when tag.Digest is not null:
                 ShowOnly(_transcript);
-                await _transcript.ShowAsync(tag.Digest);
+                await _transcript.ShowAsync(tag.Digest, title: DisplayTitle(tag.Digest));
+                ShowLineageFor(tag.Digest);
                 break;
 
             case RailKind.Folder:
