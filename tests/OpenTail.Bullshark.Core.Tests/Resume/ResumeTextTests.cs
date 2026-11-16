@@ -85,6 +85,29 @@ public sealed class ResumeTextTests
         Assert.Contains("left out", input);
     }
 
+    [Fact]
+    public void ToolCallsAndResultsAreLeftOutOfTheSummaryInput()
+    {
+        var lines = new List<TranscriptLine>
+        {
+            Line("you", "run the tests"),
+            Line("tool", "▸ Bash dotnet test", collapsed: true),
+            Line("result", "result: 242 passed", collapsed: true),
+            Line("claude", "all 242 pass"),
+        };
+
+        Assert.Equal("you: run the tests\nclaude: all 242 pass", ResumeText.SummaryInput(lines));
+    }
+
+    [Fact]
+    public void TheFilesWrittenComeFirstAndAreNamedOnce()
+    {
+        var input = ResumeText.SummaryInput(Conversation("edit it"), new[] { "a.cs", "b.cs", "a.cs" });
+
+        Assert.StartsWith("Files written in this session: a.cs, b.cs\n\n", input);
+        Assert.Contains("you: edit it", input);
+    }
+
     [Theory]
     [InlineData(SummaryLevel.Minimal, "120 words")]
     [InlineData(SummaryLevel.Normal, "400 words")]

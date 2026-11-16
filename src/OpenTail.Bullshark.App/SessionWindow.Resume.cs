@@ -133,7 +133,7 @@ public partial class SessionWindow
             SetStatus($"Summarising {ShortId(digest.SessionId)} ({level.ToString().ToLowerInvariant()}): one model call…");
             try
             {
-                var input = await Task.Run(() => ResumeText.SummaryInput(lines));
+                var input = await Task.Run(() => ResumeText.SummaryInput(lines, digest.FilesWritten));
                 summary = await _cli.SummariseAsync(ResumeText.Instructions(level), input);
             }
             catch (ClaudeCliException ex)

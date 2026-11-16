@@ -51,25 +51,42 @@ public static class ResumeText
     };
 
     /// <summary>
-    /// The transcript the summary reads, one line per record: "you:", "claude:", and one line for each tool call and result.
-    /// When the text is longer than the limit, the oldest part is left out and the summary is told so.
+    /// The conversation the summary reads: one line for each message of the owner and each reply of Claude, after a list of the
+    /// files the session wrote. Tool calls and results are left out. They are most of a long transcript and add little to a
+    /// summary. When the text is longer than the limit, the oldest part is left out and the summary is told so.
     /// </summary>
-    public static string SummaryInput(IReadOnlyList<TranscriptLine> lines, int maxChars = SummaryInputChars)
+    public static string SummaryInput(
+        IReadOnlyList<TranscriptLine> lines,
+        IReadOnlyList<string>? filesWritten = null,
+        int maxChars = SummaryInputChars)
     {
-        var rendered = lines.Select(RenderLine).OfType<string>().ToList();
+        var header = FilesHeader(filesWritten);
+        var budget = maxChars - header.Length;
+        var rendered = lines.Select(SummaryLine).OfType<string>().ToList();
         var kept = new List<string>();
         var size = 0;
         for (var i = rendered.Count - 1; i >= 0; i--)
         {
-            if (size + rendered[i].Length + 1 > maxChars) break;
+            if (size + rendered[i].Length + 1 > budget) break;
             kept.Add(rendered[i]);
             size += rendered[i].Length + 1;
         }
         kept.Reverse();
-        var body = string.Join("\n", kept);
-        return kept.Count == rendered.Count
-            ? body
-            : "(The start of this session is left out: it is longer than the summary reads.)\n" + body;
+        var notice = kept.Count == rendered.Count
+            ? string.Empty
+            : "(The start of this session is left out: it is longer than the summary reads.)\n";
+        return header + notice + string.Join("\n", kept);
+    }
+
+    /// <summary>"Files written in this session: a, b" and a blank line, or nothing. At most 200 names are listed.</summary>
+    private static string FilesHeader(IReadOnlyList<string>? filesWritten)
+    {
+        if (filesWritten is null) return string.Empty;
+        var names = filesWritten.Distinct(StringComparer.Ordinal).ToList();
+        if (names.Count == 0) return string.Empty;
+        var listed = string.Join(", ", names.Take(200));
+        var more = names.Count > 200 ? $" and {names.Count - 200} more" : string.Empty;
+        return "Files written in this session: " + listed + more + "\n\n";
     }
 
     /// <summary>
@@ -131,6 +148,9 @@ public static class ResumeText
         "tool" or "result" => OneLine(line.Text),
         _ => null,
     };
+
+    /// <summary>The summary's view of a line: the owner's messages and Claude's replies only.</summary>
+    private static string? SummaryLine(TranscriptLine line) => line.Kind is "you" or "claude" ? RenderLine(line) : null;
 
     private static string OneLine(string text) => text.Replace("\r\n", " ").Replace('\n', ' ').Replace('\r', ' ');
 }
