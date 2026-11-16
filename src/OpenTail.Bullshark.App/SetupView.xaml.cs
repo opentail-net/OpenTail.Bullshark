@@ -151,6 +151,9 @@ public partial class SetupView : UserControl
             .GroupBy(s => $"{s.Role.ToString().ToLowerInvariant()} {s.Model}/{s.Effort}")
             .Select(group => group.Count() > 1 ? $"{group.Count()} × {group.Key}" : group.Key);
         var folder = Path.GetFileName(request.Folder.TrimEnd('\\', '/'));
+        // The reviewer is not a session of its own (it is the planner, or a subagent of it), so it is named after the sessions.
+        var solo = PatternSpec.Shipped.FirstOrDefault(p => p.Key == request.PatternKey)?.Kind == PatternKind.Solo;
+        if (!solo) sessions = sessions.Append($"reviews by {request.Reviewer}");
         return string.Join("  ·  ", sessions) + (folder.Length > 0 ? $"  ·  in {folder}" : string.Empty);
     }
 

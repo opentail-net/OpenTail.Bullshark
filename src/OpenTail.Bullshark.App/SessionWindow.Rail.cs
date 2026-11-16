@@ -391,7 +391,7 @@ public partial class SessionWindow
                 TwoLine(digest.Title + (digest.IsSubagent ? " · subagent" : string.Empty),
                     ActivityLine(digest.SessionId, null, digest.LastActivity, running: false)
                         + $" · {digest.SessionId[..Math.Min(8, digest.SessionId.Length)]} · {digest.AssistantMessages} msgs",
-                    string.Empty, resume, MatchBadge(match)),
+                    string.Empty, resume, MatchBadge(match), leadSlot: true),
                 new RailTag(RailKind.History, digest.SessionId, digest),
                 SearchTip(match, cache.Full is null ? digest.FilePath : cache.Full + "\n" + digest.FilePath)));
         }
@@ -573,17 +573,21 @@ public partial class SessionWindow
     }
 
     /// <summary>
-    /// The ⏩ at the end of a history row's second line. A click resumes that session through the resume prompt, which shows the
+    /// The ⏩ at the start of a history row's second line. A click resumes that session through the resume prompt, which shows the
     /// choices and their cost before anything runs. The click is handled before the row sees it, so the row is not selected and
     /// the transcript stays as it is.
     /// </summary>
+    /// <summary>The width of the slot at the start of a history row's second line, which holds the ⏩ when the row has one.</summary>
+    private const double LeadSlotWidth = 22;
+
     private UIElement ResumeMark(SessionDigest digest)
     {
         var mark = new TextBlock
         {
             Text = "⏩",
             FontSize = 11,
-            Margin = new Thickness(10, 0, 2, 0),
+            Margin = new Thickness(0, 0, 0, 0),
+            HorizontalAlignment = HorizontalAlignment.Left,
             Cursor = Cursors.Hand,
             VerticalAlignment = VerticalAlignment.Center,
             ToolTip = "Resume this session. The resume prompt shows the choices first.",
@@ -620,7 +624,8 @@ public partial class SessionWindow
         match?.Hits.LastOrDefault() is { } newest ? $"Newest match: {newest.Snippet}\n{tip}" : tip;
 
     /// <summary>A row of two lines. The optional trailing element sits at the right end of the second line; the badge at the right of the first.</summary>
-    private UIElement TwoLine(string title, string details, string time, UIElement? trailing = null, UIElement? badge = null)
+    private UIElement TwoLine(string title, string details, string time, UIElement? trailing = null, UIElement? badge = null,
+        bool leadSlot = false)
     {
         var top = new Grid();
         top.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -661,7 +666,24 @@ public partial class SessionWindow
         };
 
         UIElement detailRow = detailText;
-        if (trailing is not null)
+        if (leadSlot)
+        {
+            // The mark sits in a slot of fixed width at the start of the line (owner, 2026-11-16). At the end of the line it
+            // landed wherever the row's text ended, so the marks were scattered down the rail. A row with no mark keeps the
+            // empty slot, so the second lines of every row start at the same place.
+            var second = new Grid();
+            second.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(LeadSlotWidth) });
+            second.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            if (trailing is not null)
+            {
+                Grid.SetColumn(trailing, 0);
+                second.Children.Add(trailing);
+            }
+            Grid.SetColumn(detailText, 1);
+            second.Children.Add(detailText);
+            detailRow = second;
+        }
+        else if (trailing is not null)
         {
             var second = new Grid();
             second.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
