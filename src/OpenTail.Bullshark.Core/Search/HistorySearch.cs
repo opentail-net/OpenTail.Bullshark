@@ -46,12 +46,16 @@ public static class HistorySearch
     /// Finds the sessions whose messages contain every word. Sessions are read newest first, and reading stops once
     /// <see cref="MaxResults"/> are found. A session whose transcript cannot be read is left out. Throws
     /// OperationCanceledException when the token is cancelled.
+    /// <paramref name="extraText"/> gives a session's own text that is searched as well, such as the owner's name, tags and note
+    /// (D-L7). A word found there counts as found, so a session can match with no matching message; its
+    /// <see cref="SessionMatch.MatchingMessages"/> is then 0.
     /// </summary>
     public static IReadOnlyList<SessionMatch> Run(
         IEnumerable<SessionDigest> sessions,
         string query,
         bool includeSubagents = false,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Func<SessionDigest, string?>? extraText = null)
     {
         var words = WordsOf(query).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var results = new List<SessionMatch>();
@@ -64,7 +68,7 @@ public static class HistorySearch
         foreach (var digest in newestFirst)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var match = MatchSession(digest, words, cancellationToken);
+            var match = MatchSession(digest, words, extraText?.Invoke(digest), cancellationToken);
             if (match is not null) results.Add(match);
             if (results.Count >= MaxResults) break;
         }
@@ -83,9 +87,20 @@ public static class HistorySearch
         return (start > 0 ? "…" : string.Empty) + flat[start..end].Trim() + (end < flat.Length ? "…" : string.Empty);
     }
 
-    private static SessionMatch? MatchSession(SessionDigest digest, IReadOnlyList<string> words, CancellationToken cancellationToken)
+    private static SessionMatch? MatchSession(
+        SessionDigest digest,
+        IReadOnlyList<string> words,
+        string? extra,
+        CancellationToken cancellationToken)
     {
         var found = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (!string.IsNullOrEmpty(extra))
+        {
+            foreach (var word in words)
+            {
+                if (extra.Contains(word, StringComparison.OrdinalIgnoreCase)) found.Add(word);
+            }
+        }
         var hits = new List<LineHit>();
         var matchingMessages = 0;
         var number = 0;

@@ -23,7 +23,8 @@ public sealed record SessionDigest(
     string? CustomTitle = null,
     string? LastRecap = null,
     DateTimeOffset? LastRecapAt = null,
-    int Compactions = 0)
+    int Compactions = 0,
+    string? ContinuesSessionId = null)
 {
     /// <summary>
     /// The title (D-L1; the owner's own name comes in L3). Claude Code's title when the transcript has one, else the first
@@ -96,6 +97,7 @@ public sealed class TranscriptIndex
                 LastRecap: summary.LastRecap,
                 LastRecapAt: summary.LastRecapAt,
                 Compactions: summary.Compactions,
+                ContinuesSessionId: summary.ContinuesSessionId,
                 LastModel: summary.LastModel,
                 ContextTokensAtLastTurn: summary.ContextTokensAtLastTurn,
                 Usage: summary.TotalUsage));

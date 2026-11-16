@@ -31,7 +31,8 @@ public sealed record TranscriptSummary(
     string? CustomTitle = null,
     string? LastRecap = null,
     DateTimeOffset? LastRecapAt = null,
-    int Compactions = 0)
+    int Compactions = 0,
+    string? ContinuesSessionId = null)
 {
     public TokenUsage TotalUsage => UsageByModel.Values.Aggregate(TokenUsage.Zero, (sum, next) => sum.Add(next));
 }
@@ -79,6 +80,7 @@ public static class TranscriptReader
         string? aiTitle = null, customTitle = null, lastRecap = null;
         DateTimeOffset? lastRecapAt = null;
         int compactions = 0;
+        string? continuesSessionId = null;
         long contextAtLastTurn = 0;
         var seenInFile = new HashSet<string>(StringComparer.Ordinal);
         var toolNames = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -139,6 +141,8 @@ public static class TranscriptReader
                 {
                     users++;
                     firstUserText ??= SessionTitle.FromUserRecord(root);
+                    // Only the first user message can name the session this one continues (D-L8).
+                    if (users == 1) continuesSessionId = SessionTitle.ContinuesIdOf(root);
                 }
                 if (type != "assistant" || !root.TryGetProperty("message", out var message)) continue;
 
@@ -197,7 +201,7 @@ public static class TranscriptReader
 
         return new TranscriptSummary(records, users, assistants, tools, turns, lastText, lastTimestamp, lastModel,
             usageLedger.ByFile(file), firstTimestamp, toolNames, filesWritten, contextAtLastTurn, firstUserText,
-            aiTitle, customTitle, lastRecap, lastRecapAt, compactions);
+            aiTitle, customTitle, lastRecap, lastRecapAt, compactions, continuesSessionId);
     }
 
     private static bool TryGetString(JsonElement element, string property, out string? value)

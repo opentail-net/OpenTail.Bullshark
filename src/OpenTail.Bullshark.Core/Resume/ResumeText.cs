@@ -113,10 +113,14 @@ public static class ResumeText
         return turns;
     }
 
-    /// <summary>The text the resumed session starts from: a header, the summary when there is one, and the verbatim tail.</summary>
-    public static string Compose(string? summary, SummaryLevel? level, string tail, int turns)
+    /// <summary>
+    /// The text the resumed session starts from: the line that names the session it continues (D-L8), a header, the summary
+    /// when there is one, and the verbatim tail. <paramref name="sourceSessionId"/> is null when nothing is continued.
+    /// </summary>
+    public static string Compose(string? summary, SummaryLevel? level, string tail, int turns, string? sourceSessionId = null)
     {
         var text = new StringBuilder();
+        if (sourceSessionId is { Length: > 0 } source) text.AppendLine($"Continues session: {source}");
         text.AppendLine("This session continues an earlier Claude Code session that had gone cold. What follows is not the full conversation.");
         if (summary is not null && level is not null)
         {

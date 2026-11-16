@@ -66,6 +66,24 @@ public sealed class SessionLibrary
     public static string TitleFor(SessionDigest digest, LibraryEntry? entry) =>
         entry?.Name is { } name && !string.IsNullOrWhiteSpace(name) ? name.Trim() : digest.Title;
 
+    /// <summary>
+    /// The title with the lineage rule (L5). The owner's name first, then Claude's title. A resumed session with neither, and with
+    /// no first message of its own, is "↪ " and the title of the session it continues (<paramref name="continued"/>, when it is known).
+    /// </summary>
+    public static string TitleFor(SessionDigest digest, LibraryEntry? entry, SessionDigest? continued)
+    {
+        if (entry?.Name is { } name && !string.IsNullOrWhiteSpace(name)) return name.Trim();
+        if (digest.AiTitle is { Length: > 0 } aiTitle) return aiTitle;
+        if (digest.ContinuesSessionId is { Length: > 0 } earlier && string.IsNullOrEmpty(digest.FirstUserText))
+        {
+            var earlierTitle = continued is not null
+                ? TitleFor(continued, null)
+                : $"Session {earlier[..Math.Min(8, earlier.Length)]}";
+            return "↪ " + earlierTitle;
+        }
+        return digest.Title;
+    }
+
     /// <summary>The tags typed in one box: separated by spaces, tabs or commas, lower case, without repeats (D-L6).</summary>
     public static IReadOnlyList<string> TagsOf(string? text) =>
         (text ?? string.Empty).Split([' ', '\t', ','], StringSplitOptions.RemoveEmptyEntries)

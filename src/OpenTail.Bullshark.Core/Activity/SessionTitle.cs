@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace OpenTail.Bullshark.Core.Activity;
 
@@ -11,8 +12,11 @@ public static class SessionTitle
     /// <summary>The longest title, in characters. A longer one is cut and ends with an ellipsis.</summary>
     public const int MaxLength = 80;
 
-    /// <summary>The text of a user record when it is a real message; otherwise null.</summary>
-    public static string? FromUserRecord(JsonElement root)
+    /// <summary>The line a resumed session's start text begins with, naming the session it continues (D-L8).</summary>
+    private static readonly Regex ContinuesLine = new(@"^Continues session: ([0-9a-fA-F-]{36})\b", RegexOptions.Compiled);
+
+    /// <summary>The text of a user record as written, not cleaned: its string content, or its first text block. Null when none.</summary>
+    public static string? TextOf(JsonElement root)
     {
         if (!root.TryGetProperty("message", out var message) || !message.TryGetProperty("content", out var content)) return null;
 
@@ -33,7 +37,19 @@ public static class SessionTitle
                 }
             }
         }
-        return Clean(text);
+        return text;
+    }
+
+    /// <summary>The text of a user record when it is a real message; otherwise null.</summary>
+    public static string? FromUserRecord(JsonElement root) => Clean(TextOf(root));
+
+    /// <summary>The session a resumed session continues, read from the first line of a user record (D-L8); null when there is none.</summary>
+    public static string? ContinuesIdOf(JsonElement root)
+    {
+        var text = TextOf(root);
+        if (text is null) return null;
+        var match = ContinuesLine.Match(text.TrimStart());
+        return match.Success ? match.Groups[1].Value : null;
     }
 
     /// <summary>The first line of a message, in single spaces, shortened to <see cref="MaxLength"/>. Null when it is empty or a notice.</summary>
@@ -45,6 +61,10 @@ public static class SessionTitle
         // The app's own briefs (a planner, a coder or a solo session) are not what the owner wrote. A brief that carries a
         // task shows the task; one without a task, and the restart prompt, are skipped.
         if (trimmed.StartsWith("You were restarted", StringComparison.Ordinal)) return null;
+
+        // A resumed session starts from the text of the session it continues, which is not what the owner typed (D-L8).
+        if (trimmed.StartsWith("Continues session:", StringComparison.Ordinal)) return null;
+        if (trimmed.StartsWith("This session continues an earlier Claude Code session", StringComparison.Ordinal)) return null;
         if (trimmed.StartsWith("You are ", StringComparison.Ordinal))
         {
             var at = trimmed.IndexOf("Task: ", StringComparison.Ordinal);
