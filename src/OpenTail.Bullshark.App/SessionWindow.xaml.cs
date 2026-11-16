@@ -99,12 +99,16 @@ public partial class SessionWindow : Window
         Pane.Children.Add(_search);
         InitSearch();
         InitTabDrag();
+        InitZoom();
 
         Loaded += async (_, _) =>
         {
-            // The history is read in the background at start, so the live sessions show at once.
-            _ = LoadHistoryAsync();
+            // The history is read in the background at start, so the live sessions show at once. A --open-transcript run waits
+            // for it, so that the transcript can be opened (TA4).
+            if (_options.OpenSessionId is null) _ = LoadHistoryAsync();
+            else await LoadHistoryAsync();
             await PassAndRefreshAsync();
+            if (_options.OpenSessionId is { } openId) await OpenHistorySessionAsync(openId);
             StartSelfTestOrScreenshot();
         };
         _timer.Tick += async (_, _) => await PassAndRefreshAsync();
@@ -238,6 +242,7 @@ public partial class SessionWindow : Window
         };
         _terminals[record.SessionId] = terminal;
         Pane.Children.Add(terminal);
+        ConfigureTerminal(terminal);
         return terminal;
     }
 
@@ -314,6 +319,7 @@ public partial class SessionWindow : Window
                 Visibility = Visibility.Hidden,
             };
             Pane.Children.Add(terminal);
+            ConfigureTerminal(terminal);
             step = new TrustStep(root, terminal);
             _trustSteps[key] = step;
             _trustTimer.Start();
@@ -352,6 +358,17 @@ public partial class SessionWindow : Window
     private void OnPanePreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
         var modifiers = System.Windows.Input.Keyboard.Modifiers;
+
+        // Ctrl+plus, Ctrl+minus and Ctrl+0 change the zoom of the transcripts (zoom.md). The window gets them even while a
+        // terminal has the keyboard (checked 2026-11-16).
+        var zoom = OpenTail.Bullshark.Core.Zoom.ZoomKeys.FromVirtualKey(System.Windows.Input.KeyInterop.VirtualKeyFromKey(e.Key),
+            (modifiers & System.Windows.Input.ModifierKeys.Control) != 0 && (modifiers & System.Windows.Input.ModifierKeys.Alt) == 0);
+        if (zoom != OpenTail.Bullshark.Core.Zoom.ZoomKey.None)
+        {
+            ZoomBy(zoom);
+            e.Handled = true;
+            return;
+        }
         bool paste = (e.Key == System.Windows.Input.Key.V && modifiers == System.Windows.Input.ModifierKeys.Control)
                   || (e.Key == System.Windows.Input.Key.Insert && modifiers == System.Windows.Input.ModifierKeys.Shift);
         if (!paste || !System.Windows.Clipboard.ContainsText()) return;
@@ -450,11 +467,12 @@ public sealed record LaunchOptions(
     string? SelfTestPath = null,
     string? FilterName = null,
     string? SetupDetail = null,
-    string? SelfTestMode = null)
+    string? SelfTestMode = null,
+    string? OpenSessionId = null)
 {
     public static LaunchOptions Parse(string[] args)
     {
-        string? workdir = null, task = null, state = null, shot = null, selfTest = null, filterName = null, selfTestMode = null, setupDetail = null;
+        string? workdir = null, task = null, state = null, shot = null, selfTest = null, filterName = null, selfTestMode = null, setupDetail = null, openSession = null;
         double shotAfter = 8;
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         if (args.Length > 0 && args[^1] == "--state") throw new ArgumentException("--state needs the path of a state file.");
@@ -471,6 +489,7 @@ public sealed record LaunchOptions(
                 case "--selftest-mode": selfTestMode = args[++i]; break;
                 case "--rail-filter": filterName = args[++i]; break;
                 case "--setup-detail": setupDetail = args[++i]; break;
+                case "--open-transcript": openSession = args[++i]; break;
             }
         }
         var defaultState = Path.Combine(
@@ -485,6 +504,7 @@ public sealed record LaunchOptions(
             SelfTestPath: selfTest,
             FilterName: filterName,
             SetupDetail: setupDetail,
-            SelfTestMode: selfTestMode);
+            SelfTestMode: selfTestMode,
+            OpenSessionId: openSession);
     }
 }

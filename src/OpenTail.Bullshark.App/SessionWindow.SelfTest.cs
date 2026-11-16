@@ -59,6 +59,7 @@ public partial class SessionWindow
             Visibility = Visibility.Hidden,
         };
         Pane.Children.Add(_selfTestTerminal);
+        ConfigureTerminal(_selfTestTerminal);
         ShowOnly(_selfTestTerminal);
 
         var started = DateTimeOffset.UtcNow;

@@ -93,9 +93,8 @@ public static class ThemeStore
     {
         try
         {
-            var path = PathFor(stateFile);
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, JsonSerializer.Serialize(new Dictionary<string, string> { ["railTheme"] = theme.ToString() }));
+            // Only the theme key changes; the zoom and any other key in ui.json stay as they are.
+            UiFile.Set(stateFile, "railTheme", System.Text.Json.Nodes.JsonValue.Create(theme.ToString())!);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

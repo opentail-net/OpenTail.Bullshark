@@ -57,6 +57,22 @@
     <DockPanel>
         <Border x:Name="StatusBar" DockPanel.Dock="Bottom" Padding="10,4">
             <DockPanel>
+                <!-- The zoom of the terminals and the transcripts, as in Word's status bar (zoom.md). -->
+                <StackPanel x:Name="ZoomBar" DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,0,0"
+                            ToolTip="Zoom the session text: the transcripts and the terminals. Ctrl+plus, Ctrl+minus and Ctrl+0 do the same.">
+                    <TextBlock x:Name="ZoomOut" Text="−" FontSize="15" Foreground="#CCCCCC" Cursor="Hand" Padding="6,0"
+                               VerticalAlignment="Center" ToolTip="Zoom out" MouseLeftButtonUp="ZoomOut_Click" />
+                    <Slider x:Name="ZoomSlider" Width="110" Minimum="0" Maximum="10" TickFrequency="1" IsSnapToTickEnabled="True"
+                            VerticalAlignment="Center" ToolTip="Zoom" ValueChanged="ZoomSlider_ValueChanged" />
+                    <TextBlock x:Name="ZoomIn" Text="+" FontSize="15" Foreground="#CCCCCC" Cursor="Hand" Padding="6,0"
+                               VerticalAlignment="Center" ToolTip="Zoom in" MouseLeftButtonUp="ZoomIn_Click" />
+                    <TextBlock x:Name="ZoomPercentText" Text="100%" Width="52" TextAlignment="Right" FontFamily="Consolas" FontSize="12"
+                               Foreground="#CCCCCC" Cursor="Hand" VerticalAlignment="Center" Margin="4,0,0,0"
+                               ToolTip="Back to 100%" MouseLeftButtonUp="ZoomPercent_Click" />
+                </StackPanel>
+                <Button x:Name="SetupCheckButton" DockPanel.Dock="Right" Padding="10,2" Margin="10,0,0,0" Content="Setup check"
+                        Click="SetupCheckButton_Click"
+                        ToolTip="Checks Claude Code's settings, hooks, MCP servers and CLAUDE.md on this computer. Reads only." />
                 <Button x:Name="TrustButton" DockPanel.Dock="Right" Visibility="Collapsed" Padding="10,2" Margin="10,0,0,0"
                         Content="Restart trust step" Click="TrustButton_Click" />
                 <Button x:Name="RetryButton" DockPanel.Dock="Right" Visibility="Collapsed" Padding="10,2" Margin="10,0,0,0"
