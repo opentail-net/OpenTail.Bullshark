@@ -31,6 +31,13 @@ public sealed class SupervisorNamesTests : IDisposable
     private static string Agent(string sessionId, string name, string state) =>
         $$"""{"id":"{{sessionId[..8]}}","kind":"background","sessionId":"{{sessionId}}","name":"{{name}}","state":"{{state}}"}""";
 
+    /// <summary>The planner and coder under the names the state file of before the rename holds.</summary>
+    private static IReadOnlyList<SessionSpec> LegacyPair() =>
+    [
+        new SessionSpec(SessionRole.Planner, "ovc-planner", @"C:\W", "opus", "high", "task", "auto"),
+        new SessionSpec(SessionRole.Coder, "ovc-coder", @"C:\W", "haiku", "medium", "task", "auto"),
+    ];
+
     /// <summary>The state file as it was before the name key: a JSON list with Role and Name in every record.</summary>
     private void WriteLegacyFile(string path) => File.WriteAllText(path, $$"""
         [
@@ -51,7 +58,7 @@ public sealed class SupervisorNamesTests : IDisposable
         });
         var runner = new SupervisorRunner(new ClaudeCli(cli), new StateStore(path), new FixedClock());
 
-        var performed = await runner.CheckOnceAsync(RunPlan.Legacy(@"C:\W", "task"));
+        var performed = await runner.CheckOnceAsync(LegacyPair());
 
         Assert.Empty(performed);
         Assert.DoesNotContain(cli.Calls, c => c.Args[0] == "--bg");
@@ -112,7 +119,7 @@ public sealed class SupervisorNamesTests : IDisposable
         var runner = new SupervisorRunner(new ClaudeCli(cli), new StateStore(path), new FixedClock());
 
         // This pass checks the planner only. The other run's coder is not in the spec list.
-        await runner.CheckOnceAsync([SessionSpec.DefaultPlanner(@"C:\W", "task")]);
+        await runner.CheckOnceAsync([new SessionSpec(SessionRole.Planner, "ovc-planner", @"C:\W", "opus", "high", "task", "auto")]);
 
         var after = new StateStore(path).Load();
         Assert.True(after.ContainsKey("bullshark-coder-zz99"));

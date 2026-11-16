@@ -19,7 +19,12 @@ public partial class SessionWindow
 
     private void StartSelfTestOrScreenshot()
     {
-        if (_options.SelfTestPath is not null) StartSelfTest(_options.SelfTestPath);
+        if (_options.SelfTestPath is not null)
+        {
+            if (_options.SelfTestMode == "move") StartMoveTest(_options.SelfTestPath);
+            else if (_options.SelfTestMode == "split") StartSplitTest(_options.SelfTestPath);
+            else StartSelfTest(_options.SelfTestPath);
+        }
         if (_options.ShotPath is not null) ScheduleScreenshot(_options.ShotPath, _options.ShotAfterSeconds);
     }
 
@@ -107,6 +112,239 @@ public partial class SessionWindow
                 catch (Exception ex)
                 {
                     AppLog.Write($"self-test result not written: {ex.Message}");
+                }
+                Close();
+            }
+        };
+        timer.Start();
+    }
+
+    /// <summary>
+    /// The spike of docs/plans/tabs-and-panes.md (T2): <c>--selftest &lt;result.json&gt; --selftest-mode move</c> moves a running
+    /// terminal from the pane to a second grid in the same window, and back. After each move it sends a key. The result says
+    /// whether the process lived, whether the counter went on, whether each key came back, and the terminal's width in each place.
+    /// </summary>
+    private void StartMoveTest(string resultPath)
+    {
+        var ticker = WriteTickerScript();
+        _selfTestTerminal = new ExtendedTerminalControl
+        {
+            StartupCommandLine = $"powershell -NoProfile -ExecutionPolicy Bypass -File \"{ticker}\"",
+            WorkingDirectory = Path.GetDirectoryName(ticker)!,
+            LogConPTYOutput = true,
+            Visibility = Visibility.Hidden,
+        };
+        Pane.Children.Add(_selfTestTerminal);
+        ShowOnly(_selfTestTerminal);
+
+        // The second parent: a grid over the right half of the pane. It is a different parent with a different size.
+        var other = new System.Windows.Controls.Grid { HorizontalAlignment = HorizontalAlignment.Right };
+        other.SetBinding(WidthProperty, new System.Windows.Data.Binding("ActualWidth")
+        {
+            Source = Pane,
+            Converter = HalfWidth.Instance,
+        });
+        Pane.Children.Add(other);
+
+        var started = DateTimeOffset.UtcNow;
+        int step = 0, ticksBeforeMove = 0, ticksInOther = 0, ticksBack = 0;
+        double widthFirst = 0, widthOther = 0, widthBack = 0;
+        string? moveError = null;
+
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+        timer.Tick += (_, _) =>
+        {
+            var elapsed = (DateTimeOffset.UtcNow - started).TotalSeconds;
+            try
+            {
+                if (step == 0 && elapsed >= 4)
+                {
+                    step = 1;
+                    ticksBeforeMove = LastTick(_selfTestTerminal);
+                    widthFirst = _selfTestTerminal.ActualWidth;
+                    Pane.Children.Remove(_selfTestTerminal);
+                    other.Children.Add(_selfTestTerminal);
+                }
+                if (step == 1 && elapsed >= 8)
+                {
+                    step = 2;
+                    widthOther = _selfTestTerminal.ActualWidth;
+                    _selfTestTerminal.ConPTYTerm?.WriteToTerm("a");
+                }
+                if (step == 2 && elapsed >= 10)
+                {
+                    step = 3;
+                    ticksInOther = LastTick(_selfTestTerminal);
+                    other.Children.Remove(_selfTestTerminal);
+                    Pane.Children.Add(_selfTestTerminal);
+                }
+                if (step == 3 && elapsed >= 13)
+                {
+                    step = 4;
+                    widthBack = _selfTestTerminal.ActualWidth;
+                    _selfTestTerminal.ConPTYTerm?.WriteToTerm("b");
+                }
+            }
+            catch (Exception ex)
+            {
+                moveError ??= $"step {step}: {ex.GetType().Name}: {ex.Message}";
+                AppLog.Write($"move test failed at {moveError}");
+            }
+
+            if (elapsed >= 16)
+            {
+                timer.Stop();
+                ticksBack = LastTick(_selfTestTerminal);
+                var text = ConsoleText(_selfTestTerminal);
+                var result = new
+                {
+                    started = _selfTestTerminal.ConPTYTerm?.TermProcIsStarted == true,
+                    processAlive = _selfTestTerminal.ConPTYTerm?.Process is { HasExited: false },
+                    ticksBeforeMove,
+                    ticksInOther,
+                    ticksBack,
+                    keyInOther = Regex.IsMatch(text, @"KEY\s+a"),
+                    keyBack = Regex.IsMatch(text, @"KEY\s+b"),
+                    widthFirst,
+                    widthOther,
+                    widthBack,
+                    moveError,
+                };
+                try
+                {
+                    File.WriteAllText(resultPath, JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+                }
+                catch (Exception ex)
+                {
+                    AppLog.Write($"move test result not written: {ex.Message}");
+                }
+                Close();
+            }
+        };
+        timer.Start();
+    }
+
+    /// <summary>Half of a width, for the move test's second grid.</summary>
+    private sealed class HalfWidth : System.Windows.Data.IValueConverter
+    {
+        public static readonly HalfWidth Instance = new();
+
+        public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture) =>
+            value is double width ? width / 2 : 0d;
+
+        public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture) =>
+            throw new NotSupportedException();
+    }
+
+    /// <summary>
+    /// In the split self-test every session's terminal runs the counter, not <c>claude attach</c>, so the tabs and the panes are
+    /// tested with live terminals and no Claude session. Null in every other run.
+    /// </summary>
+    private string? SelfTestCommand => _options.SelfTestMode == "split"
+        ? $"powershell -NoProfile -ExecutionPolicy Bypass -File \"{WriteTickerScript()}\""
+        : null;
+
+    /// <summary>
+    /// The check of the split (docs/plans/tabs-and-panes.md, T2): <c>--selftest &lt;result.json&gt; --selftest-mode split</c>, with a
+    /// state file that holds two records. It moves the second session's tab to the right pane, sends a key to each terminal,
+    /// checks which terminal a paste would go to after the script clicks in each, closes the right tab, and writes what it saw.
+    /// </summary>
+    private void StartSplitTest(string resultPath)
+    {
+        var started = DateTimeOffset.UtcNow;
+        var step = 0;
+        var seen = new Dictionary<string, object?>();
+        OpenTab? leftTab = null, rightTab = null;
+        ExtendedTerminalControl? leftTerm = null, rightTerm = null;
+
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+        timer.Tick += (_, _) =>
+        {
+            var elapsed = (DateTimeOffset.UtcNow - started).TotalSeconds;
+            try
+            {
+                if (step == 0 && elapsed >= 5)
+                {
+                    step = 1;
+                    var sessions = _tabs.Where(t => t.Kind == TabKind.Session).ToList();
+                    seen["sessionTabs"] = sessions.Count;
+                    seen["tabOrder"] = string.Join(",", sessions.Select(t => t.Title));
+                    seen["rightAtStart"] = string.Join(",", sessions.Where(IsRight).Select(t => t.Title));
+                    if (sessions.Count >= 2)
+                    {
+                        rightTab = sessions.FirstOrDefault(IsRight) ?? sessions[1];
+                        leftTab = sessions.First(t => !ReferenceEquals(t, rightTab));
+                        ActivateTab(leftTab);
+                        MoveToRight(rightTab);
+                        _terminals.TryGetValue(leftTab.Key, out leftTerm);
+                        _terminals.TryGetValue(rightTab.Key, out rightTerm);
+                    }
+                }
+                if (step == 1 && elapsed >= 8 && leftTerm is not null && rightTerm is not null)
+                {
+                    step = 2;
+                    seen["splitOpen"] = SplitOpen;
+                    seen["rightParentIsRightPane"] = ReferenceEquals(rightTerm.Parent, PaneB);
+                    seen["leftParentIsLeftPane"] = ReferenceEquals(leftTerm.Parent, Pane);
+                    seen["bothVisible"] = leftTerm.IsVisible && rightTerm.IsVisible;
+                    seen["leftWidth"] = Math.Round(leftTerm.ActualWidth);
+                    seen["rightWidth"] = Math.Round(rightTerm.ActualWidth);
+                    seen["leftStripTabs"] = TabStrip.Children.OfType<System.Windows.Controls.Border>().Count(b => b.Tag is OpenTab);
+                    seen["rightStripTabs"] = TabStripB.Children.OfType<System.Windows.Controls.Border>().Count(b => b.Tag is OpenTab);
+                    seen["savedLayout"] = File.Exists(TabOrderPath) ? File.ReadAllText(TabOrderPath) : null;
+                    leftTerm.ConPTYTerm?.WriteToTerm("l");
+                    rightTerm.ConPTYTerm?.WriteToTerm("r");
+                }
+                if (step == 2 && elapsed >= 11)
+                {
+                    step = 3;
+                    // The script clicks in the left terminal between 9 and 10 seconds. A paste must follow that click.
+                    seen["pasteGoesLeftAfterAClickThere"] = ReferenceEquals(PasteTarget(), leftTerm);
+                }
+                if (step == 3 && elapsed >= 13)
+                {
+                    step = 5;
+                    // The script clicks in the right terminal between 11.5 and 12.5 seconds.
+                    seen["pasteGoesRightAfterAClickThere"] = ReferenceEquals(PasteTarget(), rightTerm);
+                    seen["leftKeyOnlyInLeft"] = Regex.IsMatch(ConsoleText(leftTerm), @"KEY\s+l") && !Regex.IsMatch(ConsoleText(leftTerm), @"KEY\s+r");
+                    seen["rightKeyOnlyInRight"] = Regex.IsMatch(ConsoleText(rightTerm), @"KEY\s+r") && !Regex.IsMatch(ConsoleText(rightTerm), @"KEY\s+l");
+                    seen["ticksLeft"] = LastTick(leftTerm);
+                    seen["ticksRight"] = LastTick(rightTerm);
+                }
+                if (step == 5 && elapsed >= 15)
+                {
+                    step = 6;
+                    // The 15 s rail refresh has run by now with the split open; the layout must have survived it.
+                    seen["splitOpenAfterRefresh"] = SplitOpen && ReferenceEquals(rightTerm!.Parent, PaneB);
+                    CloseTab(rightTab!);
+                }
+                if (step == 6 && elapsed >= 17)
+                {
+                    step = 7;
+                    seen["splitClosedAfterTabClosed"] = !SplitOpen;
+                    seen["closedTerminalBackAtLeft"] = ReferenceEquals(rightTerm!.Parent, Pane) && !rightTerm.IsVisible;
+                    seen["closedTerminalAlive"] = rightTerm.ConPTYTerm?.Process is { HasExited: false };
+                    seen["ticksRightAfterClose"] = LastTick(rightTerm);
+                    seen["leftAlive"] = leftTerm!.ConPTYTerm?.Process is { HasExited: false };
+                }
+            }
+            catch (Exception ex)
+            {
+                seen["error"] = $"step {step}: {ex.GetType().Name}: {ex.Message}";
+                AppLog.Write($"split test failed at step {step}: {ex}");
+                step = 99;
+            }
+
+            if (elapsed >= 18 || step == 99)
+            {
+                timer.Stop();
+                try
+                {
+                    File.WriteAllText(resultPath, JsonSerializer.Serialize(seen, new JsonSerializerOptions { WriteIndented = true }));
+                }
+                catch (Exception ex)
+                {
+                    AppLog.Write($"split test result not written: {ex.Message}");
                 }
                 Close();
             }

@@ -35,9 +35,9 @@ public sealed class TrustGateTests : IDisposable
 
         var specs = new[]
         {
-            SessionSpec.DefaultPlanner(trusted, "t"), SessionSpec.DefaultCoder(trusted),
-            SessionSpec.DefaultPlanner(untrusted, "t"), SessionSpec.DefaultCoder(untrusted),
-            SessionSpec.DefaultPlanner(plain, "t"),
+            TestSpecs.Planner(trusted, "t"), TestSpecs.Coder(trusted),
+            TestSpecs.Planner(untrusted, "t"), TestSpecs.Coder(untrusted),
+            TestSpecs.Planner(plain, "t"),
         };
 
         var (runnable, roots) = TrustGate.Filter(specs, _claudeJson);

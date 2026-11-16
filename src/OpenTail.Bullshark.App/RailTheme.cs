@@ -19,6 +19,22 @@ public sealed record RailPalette(string Panel, string Background, string Text, s
 
     public static RailPalette For(RailTheme theme) => theme == RailTheme.Light ? LightPalette : DarkPalette;
 
+    /// <summary>True for the light palette. The views that colour text by kind use it to pick colours that read on a light background.</summary>
+    public bool IsLight => this == LightPalette;
+
+    /// <summary>
+    /// The green of a button that launches a session: Start on the setup page and Resume in the resume prompt (owner, 2026-11-16).
+    /// The dark theme's green is a little deeper, so it does not glare on near black; the light theme's is a little brighter.
+    /// White text reads on both. Hover is a lighter shade and press a darker one.
+    /// </summary>
+    public string Go => IsLight ? "#23803F" : "#2E7D46";
+
+    public string GoHover => IsLight ? "#2A9449" : "#389655";
+
+    public string GoPressed => IsLight ? "#1C6A33" : "#256639";
+
+    public string GoText => "#FFFFFF";
+
     public static SolidColorBrush Brush(string hex) => (SolidColorBrush)new BrushConverter().ConvertFromString(hex)!;
 }
 

@@ -158,6 +158,9 @@ public partial class SessionWindow
         Resources["ScrollThumb"] = RailPalette.Brush("#55" + palette.Muted.TrimStart('#'));
         Resources["ScrollThumbHover"] = RailPalette.Brush("#99" + palette.Muted.TrimStart('#'));
         TabBar.Background = RailPalette.Brush(palette.Panel);
+        TabBarB.Background = RailPalette.Brush(palette.Panel);
+        PaneB.Background = RailPalette.Brush(palette.Background);
+        PaneSplitter.Background = RailPalette.Brush(palette.Muted);
         RailToggle.Foreground = RailPalette.Brush(palette.Muted);
         SearchBox.Background = RailPalette.Brush(palette.Panel);
         SearchBox.Foreground = RailPalette.Brush(palette.Text);
@@ -171,6 +174,8 @@ public partial class SessionWindow
         RailSplitter.Background = RailPalette.Brush(palette.Border);
         Pane.Background = RailPalette.Brush(palette.Background);
         _setup?.ApplyTheme(palette);
+        _search.ApplyTheme(palette);
+        _transcript.ApplyTheme(palette);
         FilterBox.Background = RailPalette.Brush(palette.Panel);
         FilterBox.BorderBrush = RailPalette.Brush(palette.Muted);
         UpdateFilterMark();
@@ -603,7 +608,7 @@ public partial class SessionWindow
         {
             Text = $"🔎 {match.MatchingMessages}",
             FontSize = 11,
-            Foreground = RailPalette.Brush("#9CDCFE"),
+            Foreground = RailPalette.Brush(Palette.IsLight ? "#1F5FA8" : "#9CDCFE"),
             Margin = new Thickness(8, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
             ToolTip = "Messages in this session that match the search",
@@ -691,10 +696,6 @@ public partial class SessionWindow
 
     private static TreeViewItem NewItem(object header, RailTag tag, string? tooltip = null) =>
         new() { Header = header, Tag = tag, ToolTip = tooltip, Padding = new Thickness(2, 1, 2, 1) };
-
-    private static string HistoryLabel(SessionDigest digest) =>
-        $"{digest.LastActivity?.ToLocalTime():yyyy-MM-dd HH:mm}  ·  {digest.AssistantMessages} msgs  ·  " +
-        $"{digest.SessionId[..Math.Min(8, digest.SessionId.Length)]}" + (digest.IsSubagent ? "  ·  subagent" : string.Empty);
 
     private static IEnumerable<TreeViewItem> AllItems(ItemCollection items)
     {

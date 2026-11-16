@@ -111,21 +111,6 @@ public static class TrustCheck
             .ToList();
     }
 
-    /// <summary>
-    /// Opens an interactive Claude in the repository root, in a new console window, so the owner can accept the
-    /// trust prompt. OpenTail.Bullshark does not answer the prompt: the owner does.
-    /// </summary>
-    public static void OpenClaudeForTrust(string repositoryRoot)
-    {
-        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-        {
-            FileName = "cmd.exe",
-            Arguments = "/k claude",
-            WorkingDirectory = repositoryRoot,
-            UseShellExecute = true,
-        });
-    }
-
     /// <summary>Claude writes both forward-slash and back-slash spellings of the same path. Compare them as one.</summary>
     public static string Normalise(string path) =>
         path.Replace('\\', '/').TrimEnd('/').ToLowerInvariant();

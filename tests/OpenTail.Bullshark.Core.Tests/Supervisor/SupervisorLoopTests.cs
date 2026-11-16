@@ -22,7 +22,7 @@ public sealed class SupervisorLoopTests : IDisposable
 
     private static FakeCliRunner Cli(string logsText) => new(args => args[0] switch
     {
-        "agents" => FakeCliRunner.Ok($$"""[{"id":"11111111","kind":"background","sessionId":"{{SessionId}}","name":"ovc-planner","state":"working"}]"""),
+        "agents" => FakeCliRunner.Ok($$"""[{"id":"11111111","kind":"background","sessionId":"{{SessionId}}","name":"{{TestSpecs.PlannerName}}","state":"working"}]"""),
         "logs" => FakeCliRunner.Ok(logsText),
         _ => FakeCliRunner.Ok(),
     });
@@ -33,7 +33,7 @@ public sealed class SupervisorLoopTests : IDisposable
         // A session already recorded, so the pass only checks it.
         store.Save(new Dictionary<string, SessionRecord>
         {
-            ["ovc-planner"] = new(SessionRole.Planner, SessionId, "ovc-planner", DateTimeOffset.UnixEpoch, 0, [], null, null),
+            [TestSpecs.PlannerName] = new(SessionRole.Planner, SessionId, TestSpecs.PlannerName, DateTimeOffset.UnixEpoch, 0, [], null, null),
         });
         var cli = new ClaudeCli(runner);
         var logged = new List<string>();
@@ -46,7 +46,7 @@ public sealed class SupervisorLoopTests : IDisposable
     {
         var (loop, _, logged) = Build(Cli("Your login expires in 1 day · run /login to renew"));
 
-        await loop.RunPassAsync([SessionSpec.DefaultPlanner(@"C:\W", "t")]);
+        await loop.RunPassAsync([TestSpecs.Planner(@"C:\W", "t")]);
 
         Assert.Single(logged, l => l.Contains("LoginExpiring") && l.Contains("/login"));
     }
@@ -56,7 +56,7 @@ public sealed class SupervisorLoopTests : IDisposable
     {
         var (loop, _, logged) = Build(Cli("Your login expires in 5 days"));
 
-        await loop.RunPassAsync([SessionSpec.DefaultPlanner(@"C:\W", "t")]);
+        await loop.RunPassAsync([TestSpecs.Planner(@"C:\W", "t")]);
 
         Assert.DoesNotContain(logged, l => l.Contains("LoginExpiring"));
     }
@@ -66,13 +66,13 @@ public sealed class SupervisorLoopTests : IDisposable
     {
         var runner = new FakeCliRunner(args => args[0] switch
         {
-            "agents" => FakeCliRunner.Ok($$"""[{"id":"11111111","kind":"background","sessionId":"{{SessionId}}","name":"ovc-planner","state":"done"}]"""),
+            "agents" => FakeCliRunner.Ok($$"""[{"id":"11111111","kind":"background","sessionId":"{{SessionId}}","name":"{{TestSpecs.PlannerName}}","state":"done"}]"""),
             "logs" => FakeCliRunner.Fail("job not found"),
             _ => FakeCliRunner.Ok(),
         });
         var (loop, _, logged) = Build(runner);
 
-        var count = await loop.RunPassAsync([SessionSpec.DefaultPlanner(@"C:\W", "t")]);
+        var count = await loop.RunPassAsync([TestSpecs.Planner(@"C:\W", "t")]);
 
         Assert.Equal(0, count);
         Assert.Single(logged, l => l.Contains("not readable"));

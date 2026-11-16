@@ -19,8 +19,6 @@ public sealed record RunRecord(
 /// <summary>Reads and writes runs.json. Writes go to a temporary file first, like the state file.</summary>
 public sealed class RunStore
 {
-    public const string LegacyRunId = "legacy";
-
     private static readonly JsonSerializerOptions Options = new()
     {
         WriteIndented = true,
@@ -70,34 +68,6 @@ public sealed class RunStore
 
     private void Write(IReadOnlyList<RunRecord> runs) =>
         FileLock.WriteAtomic(_path, JsonSerializer.Serialize(runs.OrderBy(r => r.CreatedAt).ToList(), Options));
-
-    /// <summary>
-    /// Creates the legacy run (D-S13), once. It is created only when runs.json does not exist and the state file holds the
-    /// default pair. Its folder is the `cwd` the agent listing gives the planner (or the coder); when neither is listed,
-    /// the fallback folder is used (D-S17). Returns the new run, or null when nothing was migrated.
-    /// </summary>
-    public RunRecord? MigrateLegacyIfNeeded(
-        IReadOnlyDictionary<string, SessionRecord> records,
-        IReadOnlyList<AgentInfo> agents,
-        string fallbackFolder,
-        string task,
-        DateTimeOffset now)
-    {
-        if (File.Exists(_path)) return null;
-
-        records.TryGetValue(SessionSpec.PlannerName, out var planner);
-        records.TryGetValue(SessionSpec.CoderName, out var coder);
-        if (planner is null && coder is null) return null;
-
-        string? CwdOf(SessionRecord? record) =>
-            record is null ? null
-            : agents.FirstOrDefault(a => string.Equals(a.SessionId, record.SessionId, StringComparison.OrdinalIgnoreCase))?.Cwd;
-
-        var folder = CwdOf(planner) ?? CwdOf(coder) ?? fallbackFolder;
-        var legacy = new RunRecord(LegacyRunId, "plan-code", folder, "auto", now, RunPlan.Legacy(folder, task));
-        Save([legacy]);
-        return legacy;
-    }
 
     /// <summary>The newest run, which the window opens on (D-S8), or null when there is none.</summary>
     public static RunRecord? Latest(IEnumerable<RunRecord> runs) =>

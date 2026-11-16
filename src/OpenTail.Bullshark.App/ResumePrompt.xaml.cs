@@ -45,6 +45,10 @@ public partial class ResumePrompt : Window
         Resources["PromptMuted"] = RailPalette.Brush(palette.Muted);
         Resources["PromptBorder"] = RailPalette.Brush(palette.Border);
         Resources["PromptSelection"] = RailPalette.Brush(palette.Selection);
+        Resources["PromptGo"] = RailPalette.Brush(palette.Go);
+        Resources["PromptGoHover"] = RailPalette.Brush(palette.GoHover);
+        Resources["PromptGoPressed"] = RailPalette.Brush(palette.GoPressed);
+        Resources["PromptGoText"] = RailPalette.Brush(palette.GoText);
 
         Heading.Text = heading;
         Facts.Text = facts;

@@ -57,12 +57,13 @@ public sealed class RunPlanTests
     }
 
     [Fact]
-    public void OneCoderBriefsKeepTheLegacyWordingWithTheDefaultNames()
+    public void OneCoderBriefsNameTheirPeers()
     {
-        Assert.Equal(SessionSpec.PlannerBrief("task"),
-            RunPlan.PlannerBrief(SessionSpec.PlannerName, [SessionSpec.CoderName], "task"));
-        Assert.Equal(SessionSpec.CoderBrief(),
-            RunPlan.CoderBrief(SessionSpec.CoderName, SessionSpec.PlannerName));
+        var planner = RunPlan.PlannerBrief(TestSpecs.PlannerName, [TestSpecs.CoderName], "task");
+        var coder = RunPlan.CoderBrief(TestSpecs.CoderName, TestSpecs.PlannerName);
+
+        Assert.Contains($"Your peer is {TestSpecs.CoderName}", planner);
+        Assert.Contains($"Your peer is {TestSpecs.PlannerName}", coder);
     }
 
     [Fact]
@@ -113,11 +114,4 @@ public sealed class RunPlanTests
         }
     }
 
-    [Fact]
-    public void TheLegacyPairKeepsItsPlainNames()
-    {
-        var specs = RunPlan.Legacy(WorkDir, "task");
-
-        Assert.Equal(new[] { "ovc-planner", "ovc-coder" }, specs.Select(s => s.Name));
-    }
 }

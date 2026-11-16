@@ -9,12 +9,13 @@ namespace OpenTail.Bullshark.App;
 /// <summary>
 /// Read-only view of one past session, shown in the pane (S3). It loads page by page: the last page first, and earlier
 /// pages on request. Resume asks first (the resume prompt shows what would be sent), then starts the session (D14, D-S11).
-/// The transcript rendering is the History tab's, moved here unchanged.
+/// The transcript rendering is the History tab's, moved here unchanged. The colours follow the rail's theme (owner, 2026-11-16).
 /// </summary>
 public sealed class TranscriptView : UserControl
 {
     private const int PageSize = 200;
 
+    private readonly TextBlock _topLabel = new();
     private readonly TextBlock _historyTitle = new();
     private readonly TextBlock _historyStats = new();
     private readonly Button _earlier = new();
@@ -25,15 +26,27 @@ public sealed class TranscriptView : UserControl
     private readonly Button _resume = new();
     private readonly TextBlock _resumeHint = new();
     private int _firstShown;
+    private RailPalette _palette = RailPalette.DarkPalette;
 
     /// <summary>The line a search opened this view at, once it is shown. Null for the last page.</summary>
     private TextBlock? _focus;
 
     public TranscriptView()
     {
-        Background = Brush("#1E1E1E");
-        Foreground = Brush("#E6E6E6");
         Content = BuildContent();
+        ApplyTheme(_palette);
+    }
+
+    /// <summary>Colours the view from the rail's palette. The lines already shown keep the colours they were drawn with until the next page.</summary>
+    public void ApplyTheme(RailPalette palette)
+    {
+        _palette = palette;
+        Background = Brush(palette.Background);
+        Foreground = Brush(palette.Text);
+        _topLabel.Foreground = Brush(palette.Muted);
+        _historyTitle.Foreground = Brush(palette.Text);
+        _historyStats.Foreground = Brush(palette.Muted);
+        _resumeHint.Foreground = Brush(palette.Muted);
     }
 
     /// <summary>
@@ -60,7 +73,7 @@ public sealed class TranscriptView : UserControl
             var block = Render(line);
             if (focusLine == line.Number)
             {
-                block.Background = Brush("#2D3E50");
+                block.Background = Brush(_palette.IsLight ? "#CFE0F5" : "#2D3E50");
                 _focus = block;
             }
             _transcript.Children.Add(block);
@@ -74,25 +87,19 @@ public sealed class TranscriptView : UserControl
     {
         var right = new DockPanel { Margin = new Thickness(10) };
 
-        var top = new TextBlock
-        {
-            Text = "Past session (read-only, local)",
-            Foreground = Brush("#BBBBBB"),
-            Margin = new Thickness(0, 0, 0, 6),
-        };
-        DockPanel.SetDock(top, Dock.Top);
-        right.Children.Add(top);
+        _topLabel.Text = "Past session (read-only, local)";
+        _topLabel.Margin = new Thickness(0, 0, 0, 6);
+        DockPanel.SetDock(_topLabel, Dock.Top);
+        right.Children.Add(_topLabel);
 
         _historyTitle.FontSize = 13;
         _historyTitle.FontWeight = FontWeights.SemiBold;
-        _historyTitle.Foreground = Brush("#E6E6E6");
         _historyTitle.Text = "Choose a session in the list on the left.";
         _historyTitle.TextWrapping = TextWrapping.Wrap;
         _historyTitle.Margin = new Thickness(0, 8, 0, 0);
         DockPanel.SetDock(_historyTitle, Dock.Top);
         right.Children.Add(_historyTitle);
 
-        _historyStats.Foreground = Brush("#BBBBBB");
         _historyStats.FontFamily = new FontFamily("Consolas");
         _historyStats.FontSize = 12;
         _historyStats.TextWrapping = TextWrapping.Wrap;
@@ -119,7 +126,6 @@ public sealed class TranscriptView : UserControl
         _resume.Click += (_, _) => RaiseResume();
         DockPanel.SetDock(_resume, Dock.Right);
         bottom.Children.Add(_resume);
-        _resumeHint.Foreground = Brush("#BBBBBB");
         _resumeHint.FontSize = 12;
         _resumeHint.TextWrapping = TextWrapping.Wrap;
         _resumeHint.VerticalAlignment = VerticalAlignment.Center;
@@ -170,23 +176,26 @@ public sealed class TranscriptView : UserControl
                $"cache read {d.Usage.CacheRead:N0}, cache write {d.Usage.CacheCreation:N0}";
     }
 
-    private static TextBlock Render(TranscriptLine line)
+    private TextBlock Render(TranscriptLine line)
     {
-        var (color, mono) = line.Kind switch
+        // The colours are darker on the light theme, so they read on it; the dark theme keeps the colours it always had.
+        var (color, _) = line.Kind switch
         {
-            "you" => ("#9CDCFE", false),
-            "claude" => ("#E6E6E6", false),
-            "tool" => ("#C586C0", true),
-            "result" => ("#808080", true),
-            "turn" => ("#6A9955", true),
-            _ => ("#CCCCCC", false),
+            "you" => (_palette.IsLight ? "#0B5CAD" : "#9CDCFE", false),
+            "claude" => (_palette.Text, false),
+            "tool" => (_palette.IsLight ? "#8E3A8A" : "#C586C0", true),
+            "result" => (_palette.Muted, true),
+            "turn" => (_palette.IsLight ? "#2F6B22" : "#6A9955", true),
+            _ => (_palette.Text, false),
         };
         return new TextBlock
         {
             Text = $"{line.Number,5}  {line.Text}",
             Foreground = Brush(color),
-            FontFamily = mono ? new FontFamily("Consolas") : new FontFamily("Segoe UI"),
-            FontSize = 13,
+            // Every line of the session is in the terminal's font and size (owner, 2026-11-16), so a past session reads like
+            // a live one. The colour still tells the kinds apart.
+            FontFamily = TerminalFont.Family,
+            FontSize = TerminalFont.Size,
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 2, 0, 2),
         };

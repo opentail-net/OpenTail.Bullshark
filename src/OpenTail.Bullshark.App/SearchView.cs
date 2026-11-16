@@ -10,54 +10,96 @@ namespace OpenTail.Bullshark.App;
 /// <summary>
 /// The results of a history search (docs/plans/history-search.md): one block per session, newest first, with its title, folder, age,
 /// how many of its messages matched, and the newest matching messages. A click on a title or on a message opens the session's
-/// transcript at that line.
+/// transcript at that line. The colours follow the rail's theme.
 /// </summary>
 public sealed class SearchView : UserControl
 {
+    private enum Mode
+    {
+        Searching,
+        Message,
+        Results,
+    }
+
     private readonly TextBlock _heading = new();
     private readonly StackPanel _list = new();
+    private RailPalette _palette = RailPalette.DarkPalette;
+    private Mode _mode = Mode.Searching;
+    private string _query = string.Empty;
+    private string _message = string.Empty;
+    private IReadOnlyList<SessionMatch> _matches = [];
 
     public SearchView()
     {
-        Background = Brush("#1E1E1E");
-        Foreground = Brush("#E6E6E6");
-
         var root = new DockPanel { Margin = new Thickness(16, 12, 16, 12) };
         _heading.FontSize = 13;
         _heading.FontWeight = FontWeights.SemiBold;
-        _heading.Foreground = Brush("#E6E6E6");
         _heading.TextWrapping = TextWrapping.Wrap;
         _heading.Margin = new Thickness(0, 0, 0, 10);
         DockPanel.SetDock(_heading, Dock.Top);
         root.Children.Add(_heading);
         root.Children.Add(new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = _list });
         Content = root;
+        ApplyTheme(_palette);
     }
 
     /// <summary>Raised with a session and the line number of a title or message the owner clicked.</summary>
     public event Action<SessionDigest, int>? OpenRequested;
 
+    /// <summary>Colours the view from the rail's palette, and redraws what is shown in it.</summary>
+    public void ApplyTheme(RailPalette palette)
+    {
+        _palette = palette;
+        Background = RailPalette.Brush(palette.Background);
+        Render();
+    }
+
     public void ShowSearching(string query)
     {
-        _heading.Text = $"Searching for \"{query}\"…";
-        _list.Children.Clear();
+        _mode = Mode.Searching;
+        _query = query;
+        Render();
     }
 
     public void ShowMessage(string query, string message)
     {
-        _heading.Text = $"\"{query}\"";
-        _list.Children.Clear();
-        _list.Children.Add(Muted(message));
+        _mode = Mode.Message;
+        _query = query;
+        _message = message;
+        Render();
     }
 
     public void ShowResults(string query, IReadOnlyList<SessionMatch> matches)
     {
+        _mode = Mode.Results;
+        _query = query;
+        _matches = matches;
+        Render();
+    }
+
+    private void Render()
+    {
         _list.Children.Clear();
-        _heading.Text = matches.Count == 0
-            ? $"No session says every word of \"{query}\"."
-            : $"{matches.Count} session(s) say every word of \"{query}\", newest first" +
-              (matches.Count == HistorySearch.MaxResults ? $" (the first {HistorySearch.MaxResults} are shown)" : string.Empty) + ".";
-        foreach (var match in matches) _list.Children.Add(Block(match));
+        _heading.Foreground = RailPalette.Brush(_palette.Text);
+        switch (_mode)
+        {
+            case Mode.Searching:
+                _heading.Text = $"Searching for \"{_query}\"…";
+                break;
+
+            case Mode.Message:
+                _heading.Text = $"\"{_query}\"";
+                _list.Children.Add(Muted(_message));
+                break;
+
+            case Mode.Results:
+                _heading.Text = _matches.Count == 0
+                    ? $"No session says every word of \"{_query}\"."
+                    : $"{_matches.Count} session(s) say every word of \"{_query}\", newest first" +
+                      (_matches.Count == HistorySearch.MaxResults ? $" (the first {HistorySearch.MaxResults} are shown)" : string.Empty) + ".";
+                foreach (var match in _matches) _list.Children.Add(Block(match));
+                break;
+        }
     }
 
     private UIElement Block(SessionMatch match)
@@ -72,7 +114,7 @@ public sealed class SearchView : UserControl
             FontSize = 13,
             TextWrapping = TextWrapping.Wrap,
             Cursor = Cursors.Hand,
-            Foreground = Brush("#E6E6E6"),
+            Foreground = RailPalette.Brush(_palette.Text),
             ToolTip = "Open the transcript at its newest matching message",
         };
         var newest = match.Hits.LastOrDefault()?.LineNumber ?? 1;
@@ -83,12 +125,12 @@ public sealed class SearchView : UserControl
         {
             Text = $"{digest.ProjectFolder} · {AgeText(digest.LastActivity)} · {match.MatchingMessages} message(s) match",
             FontSize = 11,
-            Foreground = Brush("#8A8F98"),
+            Foreground = RailPalette.Brush(_palette.Muted),
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 2, 0, 6),
         });
 
-        // The newest matching messages first.
+        // The newest matching messages first. The owner's messages are a blue that reads on both themes; Claude's take the text colour.
         foreach (var hit in match.Hits.Reverse())
         {
             var line = new TextBlock
@@ -97,7 +139,7 @@ public sealed class SearchView : UserControl
                 FontSize = 12,
                 TextWrapping = TextWrapping.Wrap,
                 Cursor = Cursors.Hand,
-                Foreground = Brush(hit.Kind == "you" ? "#9CDCFE" : "#CCCCCC"),
+                Foreground = RailPalette.Brush(hit.Kind == "you" ? (_palette.IsLight ? "#0B5CAD" : "#9CDCFE") : _palette.Text),
                 Margin = new Thickness(0, 2, 0, 2),
             };
             var number = hit.LineNumber;
@@ -107,7 +149,7 @@ public sealed class SearchView : UserControl
 
         return new Border
         {
-            Background = Brush("#252629"),
+            Background = RailPalette.Brush(_palette.Panel),
             CornerRadius = new CornerRadius(4),
             Padding = new Thickness(12, 9, 12, 9),
             Margin = new Thickness(0, 0, 0, 8),
@@ -115,10 +157,10 @@ public sealed class SearchView : UserControl
         };
     }
 
-    private static TextBlock Muted(string text) => new()
+    private TextBlock Muted(string text) => new()
     {
         Text = text,
-        Foreground = Brush("#8A8F98"),
+        Foreground = RailPalette.Brush(_palette.Muted),
         TextWrapping = TextWrapping.Wrap,
     };
 
@@ -131,6 +173,4 @@ public sealed class SearchView : UserControl
         if (span.TotalHours >= 1) return $"{(int)span.TotalHours}h ago";
         return $"{Math.Max(0, (int)span.TotalMinutes)}m ago";
     }
-
-    private static SolidColorBrush Brush(string hex) => (SolidColorBrush)new BrushConverter().ConvertFromString(hex)!;
 }

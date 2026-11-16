@@ -2,7 +2,7 @@
 
 Bullshark - saves your bytes.
 
-> **Status: design only (2026-11-14). Nothing is built yet.** The first build step is a spike (P1) that tests the core assumption before anything else is built. The orchestrator is a later, optional phase (P8).
+> **Status (2026-11-16): built, not yet proven end to end.** The window and the supervisor are built, and the spike (P1) passed. The review of 2026-11-15 ([docs/plans/review-2026-11-15.md](docs/plans/review-2026-11-15.md)) is in progress: its Phase 1 is committed, and its end-to-end run with the real `claude` CLI (Phase 3) has not been done. The orchestrator (P8) is a later, optional phase.
 
 ## What it is
 

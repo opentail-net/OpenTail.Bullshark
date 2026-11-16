@@ -5,6 +5,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using OpenTail.Bullshark.Core.Claude;
 using OpenTail.Bullshark.Core.Supervisor;
+using OpenTail.Bullshark.Core.Tabs;
 
 namespace OpenTail.Bullshark.App;
 
@@ -84,9 +85,11 @@ public partial class SessionWindow
         return tab;
     }
 
+    /// <summary>Makes a tab the active one of its pane: the right pane for a session that was moved there, else the left.</summary>
     private void SetActive(OpenTab tab)
     {
-        _activeTab = tab;
+        if (IsRight(tab)) _activeTabRight = tab;
+        else _activeTab = tab;
         RefreshTabStrip();
     }
 
@@ -98,10 +101,10 @@ public partial class SessionWindow
         {
             case TabKind.Session:
                 var railItem = FindItem(Rail.Items, new RailTag(RailKind.Session, tab.Key));
-                if (railItem is not null)
-                    railItem.IsSelected = true;
-                else if (_terminals.TryGetValue(tab.Key, out var terminal))
-                    ShowOnly(terminal);
+                if (railItem is not null) railItem.IsSelected = true;
+                // Shown here too: selecting a rail item that is already selected raises no event, and the pane would keep
+                // whatever it showed (for example the setup).
+                if (_terminals.TryGetValue(tab.Key, out var terminal)) ShowOnly(terminal);
                 break;
 
             case TabKind.Transcript:
@@ -125,6 +128,9 @@ public partial class SessionWindow
     /// </summary>
     private void CloseTab(OpenTab tab)
     {
+        // A tab of the right pane goes back to the left first, hidden, so its terminal is never left in a pane that closes.
+        if (IsRight(tab)) MoveToLeft(tab, activate: false);
+
         var index = _tabs.IndexOf(tab);
         _tabs.Remove(tab);
         if (tab.Kind == TabKind.Session) _hiddenSessions.Add(tab.Key);
@@ -135,12 +141,15 @@ public partial class SessionWindow
             return;
         }
 
-        if (_tabs.Count == 0)
+        // The neighbour in the same (left) pane takes over. With none there, the setup opens, so the left pane is never empty.
+        var left = _tabs.Where(t => !IsRight(t)).ToList();
+        if (left.Count == 0)
         {
             OpenSetupTab(null);
             return;
         }
-        ActivateTab(_tabs[Math.Min(index, _tabs.Count - 1)]);
+        var after = _tabs.Skip(Math.Min(index, _tabs.Count)).FirstOrDefault(t => !IsRight(t));
+        ActivateTab(after ?? left[^1]);
     }
 
     /// <summary>
@@ -192,6 +201,7 @@ public partial class SessionWindow
         }
 
         var listed = _agents.FirstOrDefault(a => a.SessionId == sessionId);
+        // An idle (done) session is not stopped here. Whether closing one should stop it too is the owner's call (review question 6).
         var needsStop = listed is not null && listed.EffectiveState != "done";
 
         // What the close takes out is kept, so a failed stop can put it back.
@@ -224,7 +234,9 @@ public partial class SessionWindow
         DetachTerminal(sessionId);
         CloseTab(tab);
         RefreshRail();
-        SetStatus($"Stopped {name}. Its conversation is kept; attach to it to resume.");
+        SetStatus(needsStop
+            ? $"Stopped {name}. Its conversation is kept; attach to it to resume."
+            : $"Closed {name}. Nothing was stopped (it was idle or not running). It is no longer supervised; its conversation is kept.");
     }
 
     /// <summary>Puts back what a failed close took out: the runs that held the session's spec, and its record.</summary>
@@ -249,7 +261,9 @@ public partial class SessionWindow
     {
         if (!_terminals.Remove(sessionId, out var terminal)) return;
         if (ReferenceEquals(_shown, terminal)) ShowOnly(_setup);
-        Pane.Children.Remove(terminal);
+        if (ReferenceEquals(_shownRight, terminal)) _shownRight = null;
+        if (ReferenceEquals(_focusTerminal, terminal)) _focusTerminal = null;
+        (terminal.Parent as Panel)?.Children.Remove(terminal);
         try
         {
             var term = terminal.DisconnectConPTYTerm();
@@ -268,11 +282,17 @@ public partial class SessionWindow
     private void SyncSessionTabs()
     {
         var records = ReadRecords().Values.Where(r => !string.IsNullOrEmpty(r.SessionId)).ToList();
-        foreach (var record in records.OrderBy(r => r.Name, StringComparer.Ordinal))
+        // New tabs open in the order the owner last left them (T1); a session with no saved place goes after those, by name.
+        foreach (var record in TabOrder.Arrange(records.OrderBy(r => r.Name, StringComparer.Ordinal), r => r.SessionId, _savedTabOrder))
         {
             if (_hiddenSessions.Contains(record.SessionId)) continue;
             if (!_tabs.Any(t => t.Kind == TabKind.Session && t.Key == record.SessionId))
+            {
                 AddTab(TabKind.Session, record.SessionId, record.Name);
+                // A session that was at the right when the window last closed opens there again (T2).
+                if (_savedRight.Contains(record.SessionId) && _terminals.TryGetValue(record.SessionId, out var terminal))
+                    PlaceRight(record.SessionId, terminal);
+            }
         }
 
         foreach (var tab in _tabs.Where(t => t.Kind == TabKind.Session).ToList())
@@ -282,13 +302,16 @@ public partial class SessionWindow
             {
                 _tabs.Remove(tab);
                 if (ReferenceEquals(_activeTab, tab)) _activeTab = null;
+                if (ReferenceEquals(_activeTabRight, tab)) _activeTabRight = null;
+                _rightSessions.Remove(tab.Key);
                 continue;
             }
             tab.Title = record.Name;
             tab.State = _agents.FirstOrDefault(a => a.SessionId == tab.Key)?.EffectiveState ?? "not listed";
         }
 
-        if (_tabs.Count == 0) OpenSetupTab(null);
+        if (SplitOpen || _rightSessions.Count > 0) SettleRightPane();
+        if (!_tabs.Any(t => !IsRight(t))) OpenSetupTab(null);
         RefreshTabStrip();
     }
 
@@ -298,11 +321,19 @@ public partial class SessionWindow
     /// </summary>
     private void RefreshTabStrip()
     {
-        TabStrip.Children.Clear();
         var palette = Palette;
-        foreach (var tab in _tabs)
+        DrawStrip(TabStrip, _tabs.Where(t => !IsRight(t)), _activeTab, palette);
+        TabStrip.Children.Add(PlusTab(palette));
+        // The right pane's strip: its session tabs only, and no "+", because a new session always opens at the left.
+        DrawStrip(TabStripB, _tabs.Where(IsRight), _activeTabRight, palette);
+    }
+
+    private void DrawStrip(StackPanel strip, IEnumerable<OpenTab> tabs, OpenTab? active, RailPalette palette)
+    {
+        strip.Children.Clear();
+        foreach (var tab in tabs.ToList())
         {
-            var isActive = ReferenceEquals(tab, _activeTab);
+            var isActive = ReferenceEquals(tab, active);
             var content = new StackPanel { Orientation = Orientation.Horizontal };
 
             var dot = StateDot(tab.State);
@@ -327,6 +358,7 @@ public partial class SessionWindow
                 Cursor = Cursors.Hand,
                 VerticalAlignment = VerticalAlignment.Center,
                 ToolTip = tab.Kind == TabKind.Session ? "Closes the tab, or stops the session too" : "Closes the tab.",
+                Tag = CloseMark,
             };
             close.MouseLeftButtonUp += (_, e) =>
             {
@@ -343,12 +375,15 @@ public partial class SessionWindow
                 Margin = new Thickness(0, 0, 2, 0),
                 Cursor = Cursors.Hand,
                 Child = content,
+                // The drag finds its tab by this, and the tab being dragged is shown faded.
+                Tag = tab,
+                Opacity = _dragging && ReferenceEquals(tab, _dragTab) ? 0.55 : 1,
+                ToolTip = tab.Title,
             };
             border.MouseLeftButtonUp += (_, _) => ActivateTab(tab);
-            TabStrip.Children.Add(border);
+            if (tab.Kind == TabKind.Session) border.ContextMenu = PaneMenu(tab);
+            strip.Children.Add(border);
         }
-
-        TabStrip.Children.Add(PlusTab(palette));
     }
 
     /// <summary>The "+" at the end of the strip: a quiet mark that opens the setup.</summary>

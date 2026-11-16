@@ -51,62 +51,6 @@ public sealed class RunStoreTests : IDisposable
         new(runId, "plan-many", @"C:\W", "auto", createdAt,
             RunPlan.Build(PatternSpec.Find("plan-many")!, @"C:\W", "task", runId, coders));
 
-    private static SessionRecord Record(SessionRole role, string sessionId, string name) =>
-        new(role, sessionId, name, Now, 0, [], null, null);
-
-    private static AgentInfo Agent(string sessionId, string cwd) =>
-        new(Id: sessionId[..8], SessionId: sessionId, Name: "x", Kind: "background", State: "working",
-            Status: null, Cwd: cwd, Pid: null, StartedAt: null);
-
-    [Fact]
-    public void WithoutLegacyRecordsNothingIsMigratedAndNoFileIsWritten()
-    {
-        var path = Path.Combine(_dir, "runs.json");
-        var store = new RunStore(path);
-
-        var migrated = store.MigrateLegacyIfNeeded(new Dictionary<string, SessionRecord>(), [], @"C:\W", "task", Now);
-
-        Assert.Null(migrated);
-        Assert.False(File.Exists(path));
-        Assert.Empty(store.Load());
-    }
-
-    [Fact]
-    public void TheDefaultPairMigratesOnceWithTheFolderOfItsSession()
-    {
-        var path = Path.Combine(_dir, "runs.json");
-        var records = new Dictionary<string, SessionRecord>
-        {
-            ["ovc-planner"] = Record(SessionRole.Planner, "11111111-aaaa", "ovc-planner"),
-            ["ovc-coder"] = Record(SessionRole.Coder, "22222222-aaaa", "ovc-coder"),
-        };
-        var agents = new[] { Agent("11111111-aaaa", @"C:\Legacy") };
-        var store = new RunStore(path);
-
-        var migrated = store.MigrateLegacyIfNeeded(records, agents, @"C:\Fallback", "task", Now);
-
-        Assert.NotNull(migrated);
-        Assert.Equal(RunStore.LegacyRunId, migrated!.RunId);
-        Assert.Equal(@"C:\Legacy", migrated.WorkingDirectory);
-        Assert.Equal(new[] { "ovc-planner", "ovc-coder" }, migrated.Specs.Select(s => s.Name));
-        Assert.True(File.Exists(path));
-        Assert.Null(store.MigrateLegacyIfNeeded(records, agents, @"C:\Fallback", "task", Now.AddDays(1)));
-    }
-
-    [Fact]
-    public void AnUnlistedPairUsesTheFallbackFolder()
-    {
-        var records = new Dictionary<string, SessionRecord>
-        {
-            ["ovc-coder"] = Record(SessionRole.Coder, "22222222-aaaa", "ovc-coder"),
-        };
-        var store = new RunStore(Path.Combine(_dir, "runs.json"));
-
-        var migrated = store.MigrateLegacyIfNeeded(records, [], @"C:\Fallback", "task", Now);
-
-        Assert.Equal(@"C:\Fallback", migrated!.WorkingDirectory);
-    }
-
     [Fact]
     public void AnExistingFileIsReadAsItIs()
     {

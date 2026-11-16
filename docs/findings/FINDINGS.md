@@ -369,3 +369,48 @@ Result: 242 Core tests pass. The app and the supervisor host build.
 
 Not verified: the close and resume flows with real sessions, the Trust fallback and the timeout kill against the real CLI, and the UI on screen. These need the owner present (Phase 3).
 
+## F54 Phase 2 of the review: the cuts that need no owner answer, and the close message (built and tested by unit tests, 2026-11-16; live sessions not run)
+
+Source: the review in `docs/plans/review-2026-11-15.md`, Phase 2. Only the cuts with no open question were made.
+
+- **Phase 1 re-checked:** committed as 51b51e7, which is in HEAD (8ac81ae). I read the code at HEAD, and the Core suite there passes 269 tests (the 51b51e7 commit message said 242). Start-failure, lost-write, adoption, listing, resume-prompt and timeout items are in the code; see the review's checkboxes for the file references.
+- **Close:** a session that is idle (`done`) or unlisted is closed without a stop, and the status line now says "Closed ... Nothing was stopped" instead of "Stopped". The plan's rule was "stop unless unlisted"; question 6 of the review decides whether idle sessions should be stopped too.
+- **Removed, with their tests:** `NudgePolicy`, `PlanFile`, `TrustCheck.OpenClaudeForTrust`, `SessionWindow.Rail` `HistoryLabel` (no callers), and `AppDataMigration` with its two calls (App and supervisor). The data copy's precondition holds: `%LOCALAPPDATA%\OpenTail.Bullshark` has `state.json` and `runs.json`.
+- **Checked on the live data (read only, 2026-11-16):** no record in `state.json` or `runs.json` has the Assistant role. The records are `ovc-planner` and `ovc-coder`, so those names are data the app still reads.
+- **Assistant parked by the owner (2026-11-16):** the idea is valid and can be deferred. Not cut; the code stays.
+- **Not cut, waiting for the owner:** the legacy run with `ovc-` names and `--workdir`/`--task` (question 1), the spike (question 8), and one supervisor host (question 4).
+- **Summary levels kept (owner, 2026-11-16):** all three stay. The 6,000-character cap on the start text cuts Complete short. The planned fix is a Summaries folder, with the path in the start text instead of the summary. It is recorded in the review's Phase 2 and not built; it waits for Phase 3 under the freeze.
+- **Status lines:** the README and `docs/plans/setup-and-sessions.md` no longer say "design only". The README points at the review.
+
+Result: 248 Core tests pass (269 minus the 21 tests of the removed code). The supervisor builds. The app build shows five warnings. Two nullable warnings in `RunPlan.cs:139-140` and two CS8601 warnings in `MainWindow.xaml.cs` and `SessionWindow.SelfTest.cs` are not from this pass (those files are unchanged from HEAD). The fifth, an un-awaited `Dispatcher.BeginInvoke` at `TranscriptView.cs:83` (CS4014), is in the owner's uncommitted change.
+
+Not verified: the close flow with a real session, the Assistant and legacy cuts (not made), and the UI on screen. These need the owner present (Phase 3).
+
+## F55 Tabs reorder, and the pane splits in two: a terminal moves between parents and keeps its process (built and tested with counters, 2026-11-16; no Claude session used)
+
+Source: `docs/plans/tabs-and-panes.md`, T1 and T2.
+
+- **The spike (the gate of T2):** `--selftest <json> --selftest-mode move` moves a running terminal (the counter of F45) from the pane to a second grid in the same window and back. Result: process alive; ticks 4 before the move, 10 in the second grid, 16 back; a key sent in each place came back; width 831, then 416, then 831. So a terminal can change parent inside one window. This replaces "nothing is moved between parents" (F45) for moves inside the window.
+- **T1 reorder:** a tab is dragged along its strip and changes places with a tab when the pointer passes that tab's middle. The order of the session tabs is saved in `tabs.json` beside the state file. Verified by unit tests (`TabOrderTests`: move, arrange, drop place, save and read). The drag itself was not driven on screen.
+- **T2 split:** a session tab moves to a right pane by its right-click menu, or by a drag released over the right half of the pane. The right pane has its own strip. Only session tabs go there; the setup, the transcripts and the search stay at the left. Closing the right pane's last tab closes the split, and the terminal goes back to the left, hidden, first.
+- **Verified by `scripts/Test-Split.ps1`** (two runs, a counter in place of each session): the split opens; each terminal is in its pane, visible, 413 wide; each strip has its tab; a key sent to each terminal reaches only that one; both counters keep running; the split survives a rail refresh; closing the right tab closes the split and the terminal lives on at the left; a second start opens in the saved order with the saved session at the right. A screenshot shows both panes drawn.
+- **Paste:** WPF's keyboard focus does not follow these terminals (`Focus()` on one did not change `IsKeyboardFocusWithin`), so the paste target is found from the native focus (`GetFocus` against each terminal's hosted window). Seen: the native focus was the right terminal's window after it was shown.
+- **Also fixed:** a click on a session's tab now shows its terminal even when its rail row is already selected. Before, the pane kept what it showed (for example the setup).
+
+Not verified:
+- The drag on screen (reorder, and the drop onto a pane), and the right-click menu. The move itself is the same code the test calls.
+- That a mouse click inside a terminal moves the paste target to it. The script's two clicks were skipped because another window covered the test window.
+- The same with a real `claude attach` client: redraw after the move to a narrower pane, and input.
+- The light theme, and the splitter between the two panes under a drag.
+- The split's width is not saved: it opens half and half.
+
+## F56 Phase 2 of the review: the legacy run is cut (built and tested by unit tests, 2026-11-16; live sessions not run)
+
+Source: the review in `docs/plans/review-2026-11-15.md`, Phase 2.
+
+- **End of the live run (owner, 2026-11-16, "end the run"):** `ovc-planner` was stopped with `claude stop` (its conversation is kept). `state.json` and `runs.json` were set to `[]`. Backups are in the scratchpad (`*.20261116-084158.bak`).
+- **Cut:** `RunPlan.Legacy`; `RunStore.MigrateLegacyIfNeeded` and `LegacyRunId`; `SessionSpec.PlannerName`, `CoderName` and the default-spec helpers; the supervisor's `--workdir` and `--task` and its migration call; the window's migration call; `scripts/Demo-Handoff.ps1`, which used the removed options.
+- **Kept:** the window's `--workdir` and `--task`, which pre-fill the setup page and are not legacy; the Assistant (parked by the owner); the spike; the supervisor hosts; the planned Summaries folder.
+- **Tests:** three migration tests and the legacy-pair test removed. Fixtures moved to `TestSpecs` (names `test-planner` and `test-coder`). The old `ovc-` names stay only where a test reads an old state file (`SupervisorNamesTests`, `StateStoreTests`) and in the title and run-name tests, which read old text.
+- **Result:** 259 Core tests pass. That count includes `tests/OpenTail.Bullshark.Core.Tests/Tabs/TabOrderTests.cs` (15 tests), an untracked file in the owner's working tree that this pass did not write. The supervisor builds. The app compiles into a scratch folder: the owner's running `OpenTail.Bullshark.App` holds its DLLs, so the normal build failed on a file lock. The process was not stopped.
+- **Not verified:** the supervisor and the window with real sessions; the running window still runs the build from before this cut.

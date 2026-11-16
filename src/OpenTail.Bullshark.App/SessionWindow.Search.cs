@@ -148,13 +148,36 @@ public partial class SessionWindow
         else ClearSearchFilter();
     }
 
-    /// <summary>A result opens its session's transcript at the matching line, in the transcript tab.</summary>
+    /// <summary>A result opens its session's transcript at the matching line, in the transcript tab. The session's row is selected in the rail too.</summary>
     private async Task OpenTranscriptAtAsync(SessionDigest digest, int line)
     {
         var tab = TabFor(TabKind.Transcript, digest.SessionId, () => $"Session {ShortId(digest.SessionId)}");
         SetActive(tab);
         ShowOnly(_transcript);
+        SelectHistoryRow(digest);
         await _transcript.ShowAsync(digest, line);
+    }
+
+    /// <summary>
+    /// Selects a history row in the rail without the selection opening the row's transcript: that would load it again from the top and lose
+    /// the line the search found. Does nothing when the row is not in the rail (for example, under a folder that is collapsed).
+    /// </summary>
+    private void SelectHistoryRow(SessionDigest digest)
+    {
+        var item = FindItem(Rail.Items, new RailTag(RailKind.History, digest.SessionId));
+        if (item is null) return;
+
+        _rebuilding = true;
+        try
+        {
+            item.IsSelected = true;
+        }
+        finally
+        {
+            _rebuilding = false;
+        }
+        _selected = (RailTag)item.Tag;
+        item.BringIntoView();
     }
 
     /// <summary>True when a history session is shown: every one, unless a search filters the history.</summary>

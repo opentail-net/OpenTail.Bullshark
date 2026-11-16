@@ -15,6 +15,8 @@ namespace OpenTail.Bullshark.App;
 /// The setup page (S4): the pattern, the folder, the models and efforts per role, the optional assistant for the coders (D-S41),
 /// the coder count, the task, and the owner's extra text per brief. Start checks the run and saves the settings for the next
 /// launch. It starts nothing: the launch is built in S5. Reading the folder list and checking a folder write nothing.
+/// The page fits one screen (owner, 2026-11-16): the task, the folder and the pattern at the top; the models, the briefs and the
+/// preview in three tabs; and Start in a footer that never scrolls, beside one line that says what would start.
 /// </summary>
 public partial class SetupView : UserControl
 {
@@ -49,7 +51,8 @@ public partial class SetupView : UserControl
         PlannerEffortBox.ItemsSource = Choices.Efforts;
         CoderEffortBox.ItemsSource = Choices.Efforts;
         AssistantEffortBox.ItemsSource = Choices.Efforts;
-        foreach (var option in AssistantOptions) AssistantTabs.Children.Add(AssistantTab(option));
+        foreach (var option in AssistantOptions)
+            AssistantBox.Items.Add(new ComboBoxItem { Content = option, Tag = option, ToolTip = AssistantTip(option) });
         TaskBox.Text = defaultTask;
         FolderBox.AddHandler(TextBoxBase.TextChangedEvent, new TextChangedEventHandler(OnTextChanged));
 
@@ -75,6 +78,12 @@ public partial class SetupView : UserControl
         resources["SetupMuted"] = RailPalette.Brush(palette.Muted);
         resources["SetupBorder"] = RailPalette.Brush(palette.Border);
         resources["SetupSelection"] = RailPalette.Brush(palette.Selection);
+
+        // The Start button's greens come from the palette, so Start and the resume prompt's Resume are the same green.
+        resources["SetupGo"] = RailPalette.Brush(palette.Go);
+        resources["SetupGoHover"] = RailPalette.Brush(palette.GoHover);
+        resources["SetupGoPressed"] = RailPalette.Brush(palette.GoPressed);
+        resources["SetupGoText"] = RailPalette.Brush(palette.GoText);
 
         resources[SystemColors.WindowBrushKey] = RailPalette.Brush(palette.Panel);
         resources[SystemColors.ControlBrushKey] = RailPalette.Brush(palette.Panel);
@@ -102,7 +111,6 @@ public partial class SetupView : UserControl
 
     private bool IsSolo => Pattern.Kind == PatternKind.Solo;
 
-    /// <summary>One assistant choice, as a tab. Its hover text says what the choice does.</summary>
     /// <summary>The hover text of an assistant choice.</summary>
     private static string AssistantTip(string option) => option switch
     {
@@ -112,28 +120,45 @@ public partial class SetupView : UserControl
         _ => $"{option}: a helper the coders can ask a quick question. It answers in a few lines, and it costs only when a coder asks.",
     };
 
-    private RadioButton AssistantTab(string option)
-    {
-        var tab = new RadioButton
-        {
-            Content = option,
-            Tag = option,
-            GroupName = "Assistant",
-            Style = (Style)Resources["AssistantTab"],
-            ToolTip = AssistantTip(option),
-        };
-        tab.Checked += (_, _) => Refresh();
-        return tab;
-    }
-
-    /// <summary>The assistant choice on screen: the chosen tab, or none.</summary>
-    private string SelectedAssistant =>
-        AssistantTabs.Children.OfType<RadioButton>().FirstOrDefault(tab => tab.IsChecked == true)?.Tag as string ?? "none";
+    /// <summary>The assistant choice on screen, or none.</summary>
+    private string SelectedAssistant => (AssistantBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "none";
 
     private void SelectAssistant(string value)
     {
-        foreach (var tab in AssistantTabs.Children.OfType<RadioButton>())
-            tab.IsChecked = string.Equals(tab.Tag as string, value, StringComparison.Ordinal);
+        var items = AssistantBox.Items.OfType<ComboBoxItem>().ToList();
+        AssistantBox.SelectedItem = items.FirstOrDefault(item => string.Equals(item.Tag as string, value, StringComparison.Ordinal))
+                                    ?? items.FirstOrDefault();
+    }
+
+    /// <summary>Shows the panel of the chosen details tab.</summary>
+    private void DetailTab_Checked(object sender, RoutedEventArgs e)
+    {
+        // The first tab is checked while the page is still being built, before the panels exist.
+        if (ModelsPanel is null || BriefsPanel is null || PreviewPanel is null) return;
+        ModelsPanel.Visibility = ModelsTab.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        BriefsPanel.Visibility = BriefsTab.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        PreviewPanel.Visibility = PreviewTab.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// One line for the footer: the sessions that would start and where, or what is missing. It is the short form of the Preview tab.
+    /// </summary>
+    private static string SummaryOf(SetupRequest request, SetupCheck check)
+    {
+        if (!check.IsValid) return "Not ready: " + string.Join("  ", check.Errors);
+
+        var sessions = SetupPlan.Build(request, "xxxx")
+            .GroupBy(s => $"{s.Role.ToString().ToLowerInvariant()} {s.Model}/{s.Effort}")
+            .Select(group => group.Count() > 1 ? $"{group.Count()} × {group.Key}" : group.Key);
+        var folder = Path.GetFileName(request.Folder.TrimEnd('\\', '/'));
+        return string.Join("  ·  ", sessions) + (folder.Length > 0 ? $"  ·  in {folder}" : string.Empty);
+    }
+
+    /// <summary>Shows a result beside Start, under the summary line. An empty text hides the line.</summary>
+    private void SetStartStatus(string text)
+    {
+        StartStatus.Text = text;
+        StartStatus.Visibility = text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
     }
 
     /// <summary>Loads the saved settings for the chosen pattern, and shows only the rows that pattern uses.</summary>
@@ -197,7 +222,11 @@ public partial class SetupView : UserControl
         var request = CurrentRequest();
         var check = SetupPlan.Validate(request, _claudeJson);
         FolderMessage.Text = check.Folder?.Message ?? string.Empty;
+        FolderMessage.Visibility = FolderMessage.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
         PreviewText.Text = check.IsValid ? PreviewOf(request) : string.Empty;
+        PreviewEmpty.Visibility = check.IsValid ? Visibility.Collapsed : Visibility.Visible;
+        SummaryText.Text = SummaryOf(request, check);
+        SummaryText.ToolTip = SummaryText.Text;
     }
 
     /// <summary>
@@ -237,8 +266,9 @@ public partial class SetupView : UserControl
 
         if (!check.IsValid)
         {
-            StartStatus.Text = "Not started: " + string.Join("  ", check.Errors);
+            SetStartStatus("Not started: " + string.Join("  ", check.Errors));
             PreviewText.Text = string.Empty;
+            PreviewEmpty.Visibility = Visibility.Visible;
             return;
         }
 
@@ -251,12 +281,12 @@ public partial class SetupView : UserControl
         catch (IOException ex)
         {
             AppLog.Write($"settings not saved: {ex.Message}");
-            StartStatus.Text = $"Not saved: {ex.Message}";
+            SetStartStatus($"Not saved: {ex.Message}");
             return;
         }
 
         PreviewText.Text = PreviewOf(request);
-        StartStatus.Text = "Starting…";
+        SetStartStatus("Starting…");
         StartButton.IsEnabled = false;
         RunRequested?.Invoke(request);
     }
@@ -265,7 +295,7 @@ public partial class SetupView : UserControl
     public void RunFinished() => StartButton.IsEnabled = true;
 
     /// <summary>Shows the outcome of a started run. The window calls this after it writes the run.</summary>
-    public void ShowStarted(string text) => StartStatus.Text = text;
+    public void ShowStarted(string text) => SetStartStatus(text);
 
     private void Browse_Click(object sender, RoutedEventArgs e)
     {

@@ -1,6 +1,6 @@
 # Plan: setup, sessions rail and history
 
-Status: planned and reviewed against the code (2026-11-15, section 9). Nothing in this plan is built yet, except where a checkbox says so. Owner decisions are marked **D**; ideas that are still assumptions are marked **assumed**.
+Status (2026-11-16): the checkboxes below say what is built (S0 to S3 at least). The rest is open or was superseded by the review of 2026-11-15 ([review-2026-11-15.md](review-2026-11-15.md)). Read the checkboxes, not this line, for what is true now. Owner decisions are marked **D**; ideas that are still assumptions are marked **assumed**.
 
 ## 1. Goal
 

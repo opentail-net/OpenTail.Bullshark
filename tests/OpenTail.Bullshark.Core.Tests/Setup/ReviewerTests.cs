@@ -25,9 +25,9 @@ public sealed class ReviewerTests : IDisposable
     [Fact]
     public void SelfAddsNothingToThePlannerBrief()
     {
-        var withSelf = RunPlan.PlannerBrief(SessionSpec.PlannerName, [SessionSpec.CoderName], "task", "self");
+        var withSelf = RunPlan.PlannerBrief(TestSpecs.PlannerName, [TestSpecs.CoderName], "task", "self");
 
-        Assert.Equal(SessionSpec.PlannerBrief("task"), withSelf);
+        Assert.Equal(TestSpecs.PlannerBrief("task"), withSelf);
         Assert.Equal(string.Empty, RunPlan.ReviewClause("self"));
     }
 

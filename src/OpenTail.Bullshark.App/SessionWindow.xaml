@@ -111,6 +111,13 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
+                <!-- The second and third columns are the split (docs/plans/tabs-and-panes.md, T2). They have no width until a
+                     session tab is moved to the right pane. -->
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition x:Name="PaneColumn" Width="*" />
+                    <ColumnDefinition x:Name="PaneSplitterColumn" Width="0" />
+                    <ColumnDefinition x:Name="PaneBColumn" Width="0" />
+                </Grid.ColumnDefinitions>
 
                 <!-- One tab per live session, the setup tab, and "+" for a new session. -->
                 <Border Grid.Row="0" x:Name="TabBar" Background="#1A1B1E" Padding="6,4,6,0">
@@ -126,8 +133,19 @@
                 </Border>
 
                 <!-- Every terminal lives here in one cell. Only the chosen one is Visible; the others are Hidden,
-                     never Collapsed, so each keeps its size and its process (F45). Nothing is moved between parents. -->
+                     never Collapsed, so each keeps its size and its process (F45). A session's terminal moves to the right pane and back (F55). -->
                 <Grid x:Name="Pane" Grid.Row="1" Background="#1E1E1E" />
+
+                <!-- The right pane, shown only while the pane is split. It holds session terminals only, with its own strip. -->
+                <GridSplitter x:Name="PaneSplitter" Grid.Row="0" Grid.RowSpan="2" Grid.Column="1" Width="5" Visibility="Collapsed"
+                              HorizontalAlignment="Stretch" Background="#333333"
+                              ResizeDirection="Columns" ResizeBehavior="PreviousAndNext" ShowsPreview="False" />
+                <Border Grid.Row="0" Grid.Column="2" x:Name="TabBarB" Background="#1A1B1E" Padding="6,4,6,0" Visibility="Collapsed">
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                        <StackPanel x:Name="TabStripB" Orientation="Horizontal" />
+                    </ScrollViewer>
+                </Border>
+                <Grid x:Name="PaneB" Grid.Row="1" Grid.Column="2" Background="#1E1E1E" Visibility="Collapsed" />
             </Grid>
         </Grid>
     </DockPanel>

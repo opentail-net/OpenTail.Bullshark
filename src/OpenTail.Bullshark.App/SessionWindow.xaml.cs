@@ -66,7 +66,6 @@ public partial class SessionWindow : Window
     private readonly TranscriptView _transcript = new() { Visibility = Visibility.Hidden };
     private readonly SetupView _setup;
     private bool _passRunning;
-    private bool _migrated;
     private IReadOnlyList<AgentInfo> _agents = [];
 
     /// <summary>The Trust steps that are open, one per untrusted repository root. The key is the folder key of the root.</summary>
@@ -97,6 +96,7 @@ public partial class SessionWindow : Window
         Pane.Children.Add(_setup);
         Pane.Children.Add(_search);
         InitSearch();
+        InitTabDrag();
 
         Loaded += async (_, _) =>
         {
@@ -177,14 +177,6 @@ public partial class SessionWindow : Window
             _runningFacts = facts;
             foreach (var pair in paths) _transcriptPaths[pair.Key] = pair.Value;
 
-            // The default pair from before runs.json becomes the legacy run, once, and only if it exists (D-S13, D-S17).
-            if (!_migrated)
-            {
-                _migrated = true;
-                var legacy = _runStore.MigrateLegacyIfNeeded(ReadRecords(), _agents, _options.WorkDir, _options.Task, DateTimeOffset.UtcNow);
-                if (legacy is not null) AppLog.Write($"legacy run created for {legacy.WorkingDirectory}");
-            }
-
             // Read the specs once, on the UI thread, before the pass runs on a pool thread.
             var specs = Specs;
             var (runnable, untrusted) = TrustGate.Filter(specs, TrustCheck.DefaultClaudeJsonPath);
@@ -195,7 +187,7 @@ public partial class SessionWindow : Window
             TrustButton.Tag = _trustSteps.Values.FirstOrDefault()?.Root;
             TrustButton.Visibility = _trustSteps.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
-            SetStatus("checking sessions…");
+            if (_searchMatches is null && SearchBusy.Visibility != Visibility.Visible) SetStatus("checking sessions…");
             var actions = _options.NoPass ? 0 : await Task.Run(() => _loop.RunPassAsync(runnable));
             RefreshRail();
 
@@ -206,7 +198,9 @@ public partial class SessionWindow : Window
             if (failed > 0) parts.Add($"{failed} start(s) failed: see the rail, then Retry failed starts");
             if (_storeProblem is { } problem) parts.Add($"state file cannot be read, nothing is changed: {problem}");
             parts.Add("closing the window detaches the terminals; the sessions keep running");
-            SetStatus(string.Join("  ·  ", parts));
+
+            // A search owns the status line while it runs or while its results are shown: the pass's summary waits for it to end.
+            if (_searchMatches is null && SearchBusy.Visibility != Visibility.Visible) SetStatus(string.Join("  ·  ", parts));
         }
         catch (Exception ex)
         {
@@ -220,8 +214,8 @@ public partial class SessionWindow : Window
     }
 
     /// <summary>
-    /// Makes sure a terminal exists for a recorded session that has one. Terminals are created once, added to the pane
-    /// once, and never moved between parents. Which one is visible is decided by <see cref="ShowOnly"/>.
+    /// Makes sure a terminal exists for a recorded session that has one. Terminals are created once and added to the left pane.
+    /// A terminal moves only between the left and the right pane (T2, F55). Which one is visible is decided by <see cref="ShowOnly"/>.
     /// </summary>
     private ExtendedTerminalControl EnsureTerminal(SessionRecord record)
     {
@@ -229,8 +223,10 @@ public partial class SessionWindow : Window
 
         var terminal = new ExtendedTerminalControl
         {
-            StartupCommandLine = $"claude attach {ClaudeCli.ShortIdOf(record.SessionId)}",
+            // The split self-test runs a counter in place of each session, so it needs no Claude session.
+            StartupCommandLine = SelfTestCommand ?? $"claude attach {ClaudeCli.ShortIdOf(record.SessionId)}",
             WorkingDirectory = _options.WorkDir,
+            LogConPTYOutput = SelfTestCommand is not null,
             Visibility = Visibility.Hidden,
         };
         _terminals[record.SessionId] = terminal;
@@ -244,8 +240,18 @@ public partial class SessionWindow : Window
     /// </summary>
     private void ShowOnly(UIElement? element)
     {
+        // A session of the right pane is shown there, and the left pane keeps what it shows (T2).
+        if (element is ExtendedTerminalControl right && ReferenceEquals(right.Parent, PaneB))
+        {
+            ShowInRight(right);
+            return;
+        }
+
         foreach (var terminal in AllTerminals())
+        {
+            if (ReferenceEquals(terminal.Parent, PaneB)) continue;
             terminal.Visibility = ReferenceEquals(terminal, element) ? Visibility.Visible : Visibility.Hidden;
+        }
         _transcript.Visibility = ReferenceEquals(_transcript, element) ? Visibility.Visible : Visibility.Hidden;
         _setup.Visibility = ReferenceEquals(_setup, element) ? Visibility.Visible : Visibility.Hidden;
         _search.Visibility = ReferenceEquals(_search, element) ? Visibility.Visible : Visibility.Hidden;
@@ -254,6 +260,7 @@ public partial class SessionWindow : Window
         if (_shown is not null)
         {
             var focus = _shown;
+            _focusTerminal = focus;
             Dispatcher.BeginInvoke(new Action(() => focus.Focus()), DispatcherPriority.Input);
         }
     }
@@ -342,7 +349,7 @@ public partial class SessionWindow : Window
                   || (e.Key == System.Windows.Input.Key.Insert && modifiers == System.Windows.Input.ModifierKeys.Shift);
         if (!paste || !System.Windows.Clipboard.ContainsText()) return;
 
-        var term = _shown?.ConPTYTerm;
+        var term = PasteTarget()?.ConPTYTerm;
         if (term is null) return;
 
         var text = System.Windows.Clipboard.GetText().Replace("\r\n", "\r").Replace('\n', '\r');
@@ -434,11 +441,12 @@ public sealed record LaunchOptions(
     string? ShotPath = null,
     double ShotAfterSeconds = 8,
     string? SelfTestPath = null,
-    string? FilterName = null)
+    string? FilterName = null,
+    string? SelfTestMode = null)
 {
     public static LaunchOptions Parse(string[] args)
     {
-        string? workdir = null, task = null, state = null, shot = null, selfTest = null, filterName = null;
+        string? workdir = null, task = null, state = null, shot = null, selfTest = null, filterName = null, selfTestMode = null;
         double shotAfter = 8;
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         if (args.Length > 0 && args[^1] == "--state") throw new ArgumentException("--state needs the path of a state file.");
@@ -452,6 +460,7 @@ public sealed record LaunchOptions(
                 case "--shot": shot = args[++i]; break;
                 case "--shot-after": shotAfter = double.Parse(args[++i], inv); break;
                 case "--selftest": selfTest = args[++i]; break;
+                case "--selftest-mode": selfTestMode = args[++i]; break;
                 case "--rail-filter": filterName = args[++i]; break;
             }
         }
@@ -465,6 +474,7 @@ public sealed record LaunchOptions(
             ShotPath: shot,
             ShotAfterSeconds: shotAfter,
             SelfTestPath: selfTest,
-            FilterName: filterName);
+            FilterName: filterName,
+            SelfTestMode: selfTestMode);
     }
 }

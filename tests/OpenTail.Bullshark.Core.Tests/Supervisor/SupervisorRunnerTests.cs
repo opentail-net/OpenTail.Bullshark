@@ -60,7 +60,7 @@ public sealed class SupervisorRunnerTests : IDisposable
         var store = new StateStore(Path.Combine(_dir, "state.json"));
         var clock = new FakeClock(new DateTimeOffset(2026, 11, 14, 12, 0, 0, TimeSpan.Zero));
 
-        var spec = SessionSpec.DefaultPlanner(@"C:\W", "Read the README and write the first batch.");
+        var spec = TestSpecs.Planner(@"C:\W", "Read the README and write the first batch.");
         var performed = await Runner(new ClaudeCli(runner), store, clock).CheckOnceAsync([spec]);
 
         Assert.IsType<SupervisorAction.Start>(Assert.Single(performed));
@@ -70,7 +70,7 @@ public sealed class SupervisorRunnerTests : IDisposable
         Assert.Contains("Read the README and write the first batch.", launch[^1]);
         Assert.Equal(@"C:\W", runner.Calls.Single(c => c.Args[0] == "--bg").WorkingDirectory);
 
-        var saved = store.Load()[SessionSpec.PlannerName];
+        var saved = store.Load()[TestSpecs.PlannerName];
         Assert.Equal(PlannerSession, saved.SessionId);
         Assert.Equal(0, saved.Restarts);
     }
@@ -80,7 +80,7 @@ public sealed class SupervisorRunnerTests : IDisposable
     {
         var store = new StateStore(Path.Combine(_dir, "state.json"));
         var clock = new FakeClock(new DateTimeOffset(2026, 11, 14, 12, 0, 0, TimeSpan.Zero));
-        var spec = SessionSpec.DefaultPlanner(@"C:\W", "brief");
+        var spec = TestSpecs.Planner(@"C:\W", "brief");
 
         await Runner(new ClaudeCli(LaunchingCli(PlannerSession, "working")), store, clock).CheckOnceAsync([spec]);
 
@@ -100,7 +100,7 @@ public sealed class SupervisorRunnerTests : IDisposable
         // A resume must carry a prompt, or the session sits idle and is reported as blocked (F19).
         Assert.Equal(spec.ResumePrompt, resumeArgs[^1]);
 
-        var saved = store.Load()[SessionSpec.PlannerName];
+        var saved = store.Load()[TestSpecs.PlannerName];
         Assert.Equal(1, saved.Restarts);
         Assert.Equal(PlannerSession, saved.SessionId);
     }
@@ -110,7 +110,7 @@ public sealed class SupervisorRunnerTests : IDisposable
     {
         var store = new StateStore(Path.Combine(_dir, "state.json"));
         var clock = new FakeClock(new DateTimeOffset(2026, 11, 14, 12, 0, 0, TimeSpan.Zero));
-        var spec = SessionSpec.DefaultPlanner(@"C:\W", "brief");
+        var spec = TestSpecs.Planner(@"C:\W", "brief");
         var logged = new List<string>();
 
         await Runner(new ClaudeCli(LaunchingCli(PlannerSession, "working")), store, clock).CheckOnceAsync([spec]);
@@ -124,7 +124,7 @@ public sealed class SupervisorRunnerTests : IDisposable
         Assert.Equal(AlertKind.Blocked, Assert.IsType<SupervisorAction.Alert>(Assert.Single(firstPass)).Kind);
         Assert.Empty(secondPass);
         Assert.Single(logged, l => l.Contains("ALERT"));
-        Assert.Equal("blocked", store.Load()[SessionSpec.PlannerName].LastState);
+        Assert.Equal("blocked", store.Load()[TestSpecs.PlannerName].LastState);
     }
 
     [Fact]
@@ -132,7 +132,7 @@ public sealed class SupervisorRunnerTests : IDisposable
     {
         var path = Path.Combine(_dir, "state.json");
         var clock = new FakeClock(new DateTimeOffset(2026, 11, 14, 12, 0, 0, TimeSpan.Zero));
-        var spec = SessionSpec.DefaultPlanner(@"C:\W", "brief");
+        var spec = TestSpecs.Planner(@"C:\W", "brief");
 
         await Runner(new ClaudeCli(LaunchingCli(PlannerSession, "working")), new StateStore(path), clock).CheckOnceAsync([spec]);
 
@@ -156,12 +156,12 @@ public sealed class SupervisorRunnerTests : IDisposable
             _ => FakeCliRunner.Ok(),
         });
 
-        var performed = await Runner(new ClaudeCli(neverListed), store, clock).CheckOnceAsync([SessionSpec.DefaultPlanner(@"C:\W", "b")]);
+        var performed = await Runner(new ClaudeCli(neverListed), store, clock).CheckOnceAsync([TestSpecs.Planner(@"C:\W", "b")]);
 
         // The failure is reported, and it is recorded with no session, so the next pass does not start it again.
         var alert = Assert.IsType<SupervisorAction.Alert>(Assert.Single(performed));
         Assert.Equal(AlertKind.StartFailed, alert.Kind);
         Assert.Contains(ShortId, alert.Detail);
-        Assert.Equal(string.Empty, store.Load()[SessionSpec.PlannerName].SessionId);
+        Assert.Equal(string.Empty, store.Load()[TestSpecs.PlannerName].SessionId);
     }
 }

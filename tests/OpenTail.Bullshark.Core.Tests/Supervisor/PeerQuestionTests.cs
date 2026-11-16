@@ -12,9 +12,9 @@ public sealed class PeerQuestionTests
     [Fact]
     public void TheCoderMayAskThePlannerAndKeepWorking()
     {
-        var brief = SessionSpec.CoderBrief();
+        var brief = TestSpecs.CoderBrief();
 
-        Assert.Contains($"send {SessionSpec.PlannerName} one short question with SendMessage", brief);
+        Assert.Contains($"send {TestSpecs.PlannerName} one short question with SendMessage", brief);
         Assert.Contains("carry on with the parts you can do", brief);
         Assert.Contains("Do not stop to wait for the answer", brief);
     }
@@ -22,9 +22,9 @@ public sealed class PeerQuestionTests
     [Fact]
     public void ThePlannerAnswersAQuestionInOneMessage()
     {
-        var brief = SessionSpec.PlannerBrief("task");
+        var brief = TestSpecs.PlannerBrief("task");
 
-        Assert.Contains($"If {SessionSpec.CoderName} sends you a question, answer it in one short message with SendMessage", brief);
+        Assert.Contains($"If {TestSpecs.CoderName} sends you a question, answer it in one short message with SendMessage", brief);
     }
 
     [Fact]

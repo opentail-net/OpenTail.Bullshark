@@ -81,15 +81,15 @@ public sealed class SupervisorFailureTests : IDisposable
         bool listed = true, refuse = false;
         var cli = new FakeCliRunner(args => args[0] switch
         {
-            "agents" => FakeCliRunner.Ok(listed ? "[" + Agent(planner, "ovc-planner") + "]" : "[]"),
+            "agents" => FakeCliRunner.Ok(listed ? "[" + Agent(planner, TestSpecs.PlannerName) + "]" : "[]"),
             "--bg" => refuse
                 ? FakeCliRunner.Fail("login expired")
-                : FakeCliRunner.Ok("backgrounded · 11111111 · ovc-planner\n"),
+                : FakeCliRunner.Ok($"backgrounded · 11111111 · {TestSpecs.PlannerName}\n"),
             _ => FakeCliRunner.Ok(),
         });
         var runner = new SupervisorRunner(new ClaudeCli(cli), new StateStore(path), new FixedClock(),
             resolveTimeout: TimeSpan.FromSeconds(3));
-        var spec = SessionSpec.DefaultPlanner(@"C:\W", "task");
+        var spec = TestSpecs.Planner(@"C:\W", "task");
 
         // The first pass starts the planner. Then it disappears, and every resume is refused.
         await runner.CheckOnceAsync([spec]);
@@ -101,7 +101,7 @@ public sealed class SupervisorFailureTests : IDisposable
             var actions = await runner.CheckOnceAsync([spec]);
             Assert.IsType<SupervisorAction.Alert>(Assert.Single(actions));
         }
-        Assert.Equal(3, new StateStore(path).Load()[SessionSpec.PlannerName].Restarts);
+        Assert.Equal(3, new StateStore(path).Load()[TestSpecs.PlannerName].Restarts);
 
         // The fourth pass does not try again: three failures in the hour raise the restart-loop alert.
         int startsBefore = cli.Calls.Count(c => c.Args[0] == "--bg");

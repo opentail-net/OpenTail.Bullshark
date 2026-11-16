@@ -82,10 +82,6 @@ public static class RunPlan
         "You were restarted and are continuing where you left off. Do not ask questions: make the sensible decision. " +
         "Carry on with the current batch and its tests. If nothing is pending, reply with one line saying so.";
 
-    /// <summary>The run that exists before runs.json: the unsuffixed default pair (D-S13).</summary>
-    public static IReadOnlyList<SessionSpec> Legacy(string workDir, string task) =>
-        [SessionSpec.DefaultPlanner(workDir, task), SessionSpec.DefaultCoder(workDir)];
-
     /// <summary>
     /// The sessions of one run. Every session gets the same permission mode (F22, D-S14). Plan > code takes exactly one
     /// coder, plan > many coders takes at least two, and solo takes none (coders is ignored).

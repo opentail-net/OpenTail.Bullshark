@@ -8,7 +8,7 @@ public sealed class SupervisorPolicyTests
 {
     private static readonly DateTimeOffset Now = new(2026, 11, 14, 12, 0, 0, TimeSpan.Zero);
     private const string SessionId = "11111111-2222-3333-4444-555555555555";
-    private static readonly SessionSpec Planner = SessionSpec.DefaultPlanner(@"C:\Work", "brief");
+    private static readonly SessionSpec Planner = TestSpecs.Planner(@"C:\Work", "brief");
 
     private static SessionRecord Record(string? lastState = null, int restarts = 0, params DateTimeOffset[] restartTimes) =>
         new(SessionRole.Planner, SessionId, "planner", Now.AddHours(-5), restarts, restartTimes, lastState, null);
@@ -95,13 +95,13 @@ public sealed class SupervisorPolicyTests
     [Fact]
     public void DefaultRolesMatchTheReadmeDecisions()
     {
-        var planner = SessionSpec.DefaultPlanner(@"C:\W", "build X");
-        var coder = SessionSpec.DefaultCoder(@"C:\W");
+        var planner = TestSpecs.Planner(@"C:\W", "build X");
+        var coder = TestSpecs.Coder(@"C:\W");
 
         Assert.Equal("opus", planner.Model);
         Assert.Equal("haiku", coder.Model);
-        Assert.Equal("ovc-planner", planner.Name);
-        Assert.Equal("ovc-coder", coder.Name);
+        Assert.Equal(TestSpecs.PlannerName, planner.Name);
+        Assert.Equal(TestSpecs.CoderName, coder.Name);
     }
 
     [Fact]
@@ -109,19 +109,19 @@ public sealed class SupervisorPolicyTests
     {
         // Finding F22: a message between sessions in different permission modes waits for approval.
         Assert.Equal(
-            SessionSpec.DefaultPlanner(@"C:\W", "t").PermissionMode,
-            SessionSpec.DefaultCoder(@"C:\W").PermissionMode);
+            TestSpecs.Planner(@"C:\W", "t").PermissionMode,
+            TestSpecs.Coder(@"C:\W").PermissionMode);
     }
 
     [Fact]
     public void EachBriefNamesThePeerAndTheHandoffAndKeepsQuestionsToThePeer()
     {
-        var planner = SessionSpec.DefaultPlanner(@"C:\W", "build X").Brief;
-        var coder = SessionSpec.DefaultCoder(@"C:\W").Brief;
+        var planner = TestSpecs.Planner(@"C:\W", "build X").Brief;
+        var coder = TestSpecs.Coder(@"C:\W").Brief;
 
-        Assert.Contains("ovc-coder", planner);
+        Assert.Contains(TestSpecs.CoderName, planner);
         Assert.Contains("SendMessage", planner);
-        Assert.Contains("ovc-planner", coder);
+        Assert.Contains(TestSpecs.PlannerName, coder);
         Assert.Contains("SendMessage", coder);
         // The planner asks nothing, and the coder may ask its peer one short question but never waits for the answer (owner, 2026-11-15).
         Assert.Contains("Do not ask questions", planner);
