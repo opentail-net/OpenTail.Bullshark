@@ -191,7 +191,7 @@ public sealed class TranscriptView : UserControl
         // The one way to resume sits at the bottom, centred under the transcript and large enough not to be missed. The hint under it
         // says what is recommended; the choices open from the button.
         var bottom = new StackPanel { Margin = new Thickness(0, 10, 0, 0), HorizontalAlignment = HorizontalAlignment.Center };
-        _resume.Content = "Resume…";
+        _resume.Content = "Resume session…";
         _resume.IsEnabled = false;
         _resume.MinWidth = 240;
         _resume.Padding = new Thickness(36, 10, 36, 10);
@@ -415,15 +415,17 @@ public sealed class TranscriptView : UserControl
     private TextBlock Render(TranscriptLine line)
     {
         // The colours are darker on the light theme, so they read on it; the dark theme keeps the colours it always had.
+        // The colours are the terminal's own palette (Campbell, as in TerminalColours): the bright shades on the dark theme, the dark
+        // shades on the light one, so a past session reads like a live one.
         var (color, _) = line.Kind switch
         {
-            "you" => (_palette.IsLight ? "#0B5CAD" : "#9CDCFE", false),
+            "you" => (_palette.IsLight ? "#0037DA" : "#61D6D6", false),
             "claude" => (_palette.Text, false),
-            "tool" => (_palette.IsLight ? "#8E3A8A" : "#C586C0", true),
-            "result" when line.Failed => (_palette.IsLight ? "#A31515" : "#D16969", false),
+            "tool" => (_palette.IsLight ? "#881798" : "#3B78FF", true),
+            "result" when line.Failed => (_palette.IsLight ? "#C50F1F" : "#E74856", false),
             "result" => (_palette.Muted, true),
-            "compact" => (_palette.Muted, true),
-            "turn" => (_palette.IsLight ? "#2F6B22" : "#6A9955", true),
+            "compact" => (_palette.IsLight ? "#C19C00" : "#F9F1A5", true),
+            "turn" => (_palette.IsLight ? "#13A10E" : "#16C60C", true),
             _ => (_palette.Text, false),
         };
         var block = new TextBlock
