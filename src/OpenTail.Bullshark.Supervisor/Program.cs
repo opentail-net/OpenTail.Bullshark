@@ -1,17 +1,15 @@
 using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Cache;
-using OpenTail.Bullshark.Core.Claude;
-using OpenTail.Bullshark.Core.Supervisor;
-using OpenTail.Bullshark.Core.Trust;
 
-// OpenTail.Bullshark supervisor: keeps the sessions of every run in runs.json alive, headless.
+// OpenTail.Bullshark.Supervisor: two read-only reports. It starts, restarts and alerts on nothing.
 //
-//   OpenTail.Bullshark.Supervisor [--state <state.json>] [--interval 30] [--once]
+//   OpenTail.Bullshark.Supervisor --usage-report [--projects <folder>]
+//   OpenTail.Bullshark.Supervisor --cache-report [--projects <folder>]
 //
-// Each pass reads `claude agents --json`, starts what is missing, restarts what is gone, alerts on what is blocked or
-// failed, and warns before the login expires. A run whose folder is untrusted waits; the other runs go on.
-// With no run yet, nothing is started: start a run from the OpenTail.Bullshark window (setup page).
-// The sessions talk to each other directly with SendMessage; this process does not carry messages (owner decision).
+// The sessions of every run are kept alive by the OpenTail.Bullshark window, the one supervisor (review of 2026-11-15, section 4).
+// This process used to run a second supervisor loop beside the window, and two passes could start the same session. A headless
+// start at log-on is not wanted now. If it is wanted later, it replaces the window's loop and does not run beside it.
+// The sessions talk to each other directly with SendMessage; no process carries messages (owner decision).
 
 // Read-only report: totals from the transcripts, computed locally. It starts no session and needs no trust.
 if (args.Contains("--usage-report"))
@@ -44,106 +42,6 @@ if (args.Contains("--cache-report"))
     return 0;
 }
 
-var options = SupervisorOptions.Parse(args);
-if (options.Error is not null)
-{
-    Console.Error.WriteLine(options.Error);
-    Console.Error.WriteLine("usage: OpenTail.Bullshark.Supervisor [--state <state.json>] [--interval 30] [--once]");
-    return 2;
-}
-
-var logPath = Path.Combine(Path.GetDirectoryName(options.StatePath)!, "logs", "supervisor.log");
-Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
-void Log(string message)
-{
-    var line = $"{DateTime.Now:O} {message}";
-    Console.WriteLine(line);
-    File.AppendAllText(logPath, line + Environment.NewLine);
-}
-
-var cli = new ClaudeCli(new ProcessCliRunner());
-var store = new StateStore(options.StatePath, Log);
-var runStore = new RunStore(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(options.StatePath))!, "runs.json"));
-var runner = new SupervisorRunner(cli, store, TimeProvider.System, log: Log);
-var loop = new SupervisorLoop(runner, cli, store, Log);
-
-using var cancel = new CancellationTokenSource();
-Console.CancelKeyPress += (_, e) => { e.Cancel = true; cancel.Cancel(); };
-
-Log($"supervisor started: state={options.StatePath} interval={options.IntervalSeconds}s once={options.Once}");
-var announcedNoRuns = false;
-do
-{
-    try
-    {
-        await cli.ListAgentsAsync(cancel.Token);
-
-        var specs = RunStore.SpecsOf(runStore.Load());
-        if (specs.Count == 0 && !announcedNoRuns)
-        {
-            announcedNoRuns = true;
-            Log("no run yet: nothing is started until a run is written (start one from the OpenTail.Bullshark window)");
-        }
-
-        var (runnable, untrusted) = TrustGate.Filter(specs, TrustCheck.DefaultClaudeJsonPath);
-        foreach (var root in untrusted) Log($"waiting for trust: {root} (open it in Claude and accept the trust prompt)");
-
-        var actions = await loop.RunPassAsync(runnable, cancel.Token);
-        if (actions > 0) Log($"pass done: {actions} action(s)");
-    }
-    catch (OperationCanceledException) when (cancel.IsCancellationRequested)
-    {
-        break;
-    }
-    catch (Exception ex)
-    {
-        // Any failure ends this pass only. A state file that cannot be read is reported and left alone: nothing is written from it.
-        Log($"pass failed: {ex.Message}");
-    }
-
-    if (options.Once) break;
-    try
-    {
-        await Task.Delay(TimeSpan.FromSeconds(options.IntervalSeconds), cancel.Token);
-    }
-    catch (OperationCanceledException)
-    {
-        break;
-    }
-} while (!cancel.IsCancellationRequested);
-
-Log("supervisor stopped");
-return 0;
-
-/// <summary>Command-line options. Parsing is kept separate so it can be tested.</summary>
-sealed record SupervisorOptions(int IntervalSeconds, bool Once, string StatePath, string? Error)
-{
-    public static SupervisorOptions Parse(string[] args)
-    {
-        string? state = null;
-        int interval = 30;
-        bool once = false;
-        for (int i = 0; i < args.Length; i++)
-        {
-            switch (args[i])
-            {
-                case "--state":
-                    if (i + 1 >= args.Length) return Failed("--state needs the path of a state file");
-                    state = args[++i];
-                    break;
-                case "--interval":
-                    if (i + 1 < args.Length && int.TryParse(args[++i], out var seconds) && seconds >= 5) interval = seconds;
-                    else return Failed("--interval needs a number of seconds, at least 5");
-                    break;
-                case "--once": once = true; break;
-                default: return Failed($"unknown argument: {args[i]}");
-            }
-        }
-
-        var statePath = state ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenTail.Bullshark", "state.json");
-        return new SupervisorOptions(interval, once, Path.GetFullPath(statePath), null);
-    }
-
-    private static SupervisorOptions Failed(string error) => new(0, false, string.Empty, error);
-}
+Console.Error.WriteLine("This process runs no supervisor. The sessions are kept alive by the OpenTail.Bullshark window.");
+Console.Error.WriteLine("usage: OpenTail.Bullshark.Supervisor --usage-report | --cache-report [--projects <folder>]");
+return 2;
