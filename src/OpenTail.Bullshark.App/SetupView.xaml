@@ -170,7 +170,7 @@
             </Style.Triggers>
         </Style>
 
-        <!-- A tab of the details area (Models, Briefs, Preview): quiet text, with a line under the chosen one. -->
+        <!-- A tab of the details area (Models, Preview): quiet text, with a line under the chosen one. -->
         <Style x:Key="DetailTab" TargetType="RadioButton">
             <Setter Property="Foreground" Value="{DynamicResource SetupMuted}" />
             <Setter Property="Margin" Value="0,0,18,0" />
@@ -242,8 +242,8 @@
     </UserControl.Resources>
 
     <!-- The page fits one screen (owner, 2026-11-16). The top holds what every run needs: the task, the folder and the pattern.
-         The details sit in three tabs below, with defaults that work. Start is in a footer that never scrolls, with one line that
-         says what would start. Explanations are hover texts on the small marks. -->
+         The details below show models or an editable preview. Start is in a footer that never scrolls, with one line that says what
+         would start. Explanations are hover texts on the small marks. -->
     <DockPanel Background="{DynamicResource SetupBg}">
 
         <!-- The footer: always on screen. -->
@@ -252,7 +252,7 @@
             <DockPanel>
                 <Button x:Name="StartButton" DockPanel.Dock="Left" Content="Start" Padding="22,6" FontWeight="SemiBold"
                         Style="{StaticResource GoButton}" VerticalAlignment="Center"
-                        ToolTip="Checks the run and saves these settings for the next launch. Nothing starts until you press Start; the sessions then start on the next pass, within about 15 seconds. A running session keeps the brief it started with."
+                        ToolTip="Checks the run and saves the pattern and model settings for the next launch. Save briefs separately in Preview. Nothing starts until you press Start; the sessions then start on the next pass, within about 15 seconds. A running session keeps the brief it started with."
                         Click="Start_Click" />
                 <StackPanel VerticalAlignment="Center" Margin="14,0,0,0">
                     <TextBlock x:Name="SummaryText" Foreground="{DynamicResource SetupMuted}" TextTrimming="CharacterEllipsis" />
@@ -315,15 +315,13 @@
             </WrapPanel>
         </Grid>
 
-        <!-- The details: three tabs. Their defaults work, so a first run needs none of them. -->
+        <!-- The details: models and an editable preview of the generated briefs. -->
         <Border DockPanel.Dock="Top" Margin="20,8,20,0" BorderBrush="{DynamicResource SetupBorder}" BorderThickness="0,0,0,1">
             <StackPanel Orientation="Horizontal">
                 <RadioButton x:Name="ModelsTab" GroupName="SetupDetails" Content="Models" Style="{StaticResource DetailTab}" IsChecked="True"
                              ToolTip="The model and the effort of each role." Checked="DetailTab_Checked" />
-                <RadioButton x:Name="BriefsTab" GroupName="SetupDetails" Content="Briefs" Style="{StaticResource DetailTab}"
-                             ToolTip="Extra instructions of your own for each role. Optional." Checked="DetailTab_Checked" />
                 <RadioButton x:Name="PreviewTab" GroupName="SetupDetails" Content="Preview" Style="{StaticResource DetailTab}"
-                             ToolTip="The sessions that would start, with the full brief of each." Checked="DetailTab_Checked" />
+                             ToolTip="The sessions that would start, with editable full briefs." Checked="DetailTab_Checked" />
             </StackPanel>
         </Border>
 
@@ -386,30 +384,31 @@
                 </StackPanel>
             </ScrollViewer>
 
-            <!-- Briefs: the owner's own text for each role. -->
-            <ScrollViewer x:Name="BriefsPanel" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
-                <StackPanel MaxWidth="900" HorizontalAlignment="Left" Margin="0,0,12,0">
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                        <TextBlock x:Name="PlannerExtraLabel" Text="Extra for the planner's brief (optional)" FontWeight="SemiBold" />
-                        <TextBlock Style="{StaticResource Info}"
-                                   ToolTip="The extra text is added after the base brief, under 'From the owner'. The base brief keeps the peer names, the handoff by message, and 'do not ask questions'." />
-                    </StackPanel>
-                    <TextBox x:Name="PlannerExtraBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="52" MinWidth="520" Margin="0,0,0,12"
-                             ToolTip="Extra instructions added under 'From the owner' in the planner's brief. Optional."
-                             TextChanged="OnTextChanged" />
-                    <TextBlock x:Name="CoderExtraLabel" Text="Extra for the coders' briefs (optional)" FontWeight="SemiBold" Margin="0,0,0,4" />
-                    <TextBox x:Name="CoderExtraBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="52" MinWidth="520" Margin="0,0,0,8"
-                             ToolTip="Extra instructions added under 'From the owner' in every coder's brief. Optional."
-                             TextChanged="OnTextChanged" />
-                </StackPanel>
-            </ScrollViewer>
-
-            <!-- Preview: the sessions that would start, with the full brief of each. -->
+            <!-- Preview: session models and editable full briefs. -->
             <ScrollViewer x:Name="PreviewPanel" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
-                <StackPanel Margin="0,0,12,0">
+                <StackPanel Margin="0,0,12,0" MaxWidth="900" HorizontalAlignment="Left">
                     <TextBlock x:Name="PreviewEmpty" Foreground="{DynamicResource SetupMuted}" TextWrapping="Wrap"
                                Text="Nothing to preview yet. The line beside Start says what is missing." />
-                    <TextBlock x:Name="PreviewText" FontFamily="Consolas" FontSize="12" TextWrapping="Wrap" />
+                    <StackPanel x:Name="PreviewContent" Visibility="Collapsed">
+                        <TextBlock x:Name="PreviewSessionsText" FontFamily="Consolas" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,8" />
+                        <TextBlock Foreground="{DynamicResource SetupMuted}" FontSize="12" TextWrapping="Wrap" Text="Saved per pattern. Tags: {task}, {plannername}, {codername}, {codernames}, {reviewername}, {assistantname}, {reviewclause}, {assistantclause}. They expand when a run starts." Margin="0,0,0,8" />
+                        <TextBlock Text="Planner brief" FontWeight="SemiBold" Margin="0,0,0,4" />
+                        <TextBox x:Name="PlannerBriefBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="120" MinWidth="520" Margin="0,0,0,12"
+                                 ToolTip="The planner's saved brief. Its tags expand to the current run values when a run starts."
+                                 TextChanged="PlannerBrief_TextChanged" />
+                        <StackPanel x:Name="CoderBriefEditor">
+                            <TextBlock Text="Coder brief (shared by all coders)" FontWeight="SemiBold" Margin="0,0,0,4" />
+                            <TextBox x:Name="CoderBriefBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="120" MinWidth="520" Margin="0,0,0,8"
+                                     ToolTip="The saved brief sent to every coder. Its tags are shown above."
+                                     TextChanged="CoderBrief_TextChanged" />
+                        </StackPanel>
+                        <WrapPanel Margin="0,4,0,8">
+                            <Button x:Name="SaveBriefsButton" Content="Save briefs" Click="SaveBriefs_Click" IsEnabled="False" Margin="0,0,8,0"
+                                    ToolTip="Save these briefs for this pattern." />
+                            <Button x:Name="ResetBriefsButton" Content="Reset to the templates" Click="ResetBriefs_Click" IsEnabled="False"
+                                    ToolTip="Discard the saved briefs and take the built-in templates again." />
+                        </WrapPanel>
+                    </StackPanel>
                 </StackPanel>
             </ScrollViewer>
         </Grid>

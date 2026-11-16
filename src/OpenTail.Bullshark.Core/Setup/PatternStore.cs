@@ -5,8 +5,10 @@ using OpenTail.Bullshark.Core.Supervisor;
 namespace OpenTail.Bullshark.Core.Setup;
 
 /// <summary>
-/// What the setup page remembers for one pattern (D-S6): the models and efforts, the coder count, and the owner's extra
-/// text for each brief. An edit applies to the next launch only; a running session keeps the brief it started with.
+/// What the setup page remembers for one pattern (D-S6): the models and efforts, coder count, and the saved briefs.
+/// A saved brief is the owner's text, with its tags, and it is expanded at each launch. Null means no brief is saved, so the
+/// built-in template is used. A running session keeps the brief it started with.
+/// PlannerExtra and CoderExtra are read from files written before the briefs, and they are not used: no launch adds them.
 /// </summary>
 public sealed record PatternSettings(
     string PatternKey,
@@ -19,7 +21,9 @@ public sealed record PatternSettings(
     string CoderExtra,
     string Reviewer = "sonnet",
     string Assistant = "none",
-    string AssistantEffort = "medium");
+    string AssistantEffort = "medium",
+    string? PlannerBrief = null,
+    string? CoderBrief = null);
 
 /// <summary>Reads and writes patterns.json. The file sits beside state.json, so a scratch state file isolates it too.</summary>
 public sealed class PatternStore

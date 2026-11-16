@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using OpenTail.Bullshark.Core.Folders;
 using OpenTail.Bullshark.Core.Supervisor;
 
@@ -40,7 +41,9 @@ public sealed record SetupRequest(
     string PermissionMode = "auto",
     string Reviewer = "sonnet",
     string Assistant = "none",
-    string AssistantEffort = "medium");
+    string AssistantEffort = "medium",
+    string? PlannerBrief = null,
+    string? CoderBrief = null);
 
 /// <summary>The result of checking a request: the problems to show, and the folder check.</summary>
 public sealed record SetupCheck(IReadOnlyList<string> Errors, FolderCheckResult? Folder)
@@ -94,9 +97,8 @@ public static class SetupPlan
     }
 
     /// <summary>
-    /// The sessions of a run as they would start: the pattern's sessions, with the chosen models and efforts, and the
-    /// owner's extra text added to the brief of each role. The base brief, with its peer names, "do not ask questions"
-    /// and the SendMessage handoff, is kept (D-S15, F21). Call only with a request that passed <see cref="Validate"/>.
+    /// The sessions of a run as they would start: the pattern's sessions, with chosen models and efforts. The brief is the saved
+    /// brief, or the built-in template when none is saved, expanded for this launch. Call only with a request that passed <see cref="Validate"/>.
     /// </summary>
     public static IReadOnlyList<SessionSpec> Build(SetupRequest request, string runId)
     {
@@ -107,13 +109,12 @@ public static class SetupPlan
         var sessions = RunPlan.Build(pattern, Path.GetFullPath(request.Folder.Trim()), request.Task.Trim(), runId,
             coders, request.PermissionMode, request.Reviewer, ChoiceOf(request));
 
-        return sessions.Select(s => s.Role switch
+        var configured = sessions.Select(s => s.Role switch
         {
             SessionRole.Planner => s with
             {
                 Model = request.PlannerModel,
                 Effort = request.PlannerEffort,
-                Brief = WithOwnerText(s.Brief, request.PlannerExtra),
             },
             SessionRole.Assistant => s with
             {
@@ -124,9 +125,94 @@ public static class SetupPlan
             {
                 Model = request.CoderModel,
                 Effort = request.CoderEffort,
-                Brief = WithOwnerText(s.Brief, request.CoderExtra),
             },
         }).ToList();
+
+        var plannerName = configured.First(s => s.Role == SessionRole.Planner).Name;
+        var coderNames = configured.Where(s => s.Role == SessionRole.Coder).Select(s => s.Name).ToList();
+        var assistantName = configured.FirstOrDefault(s => s.Role == SessionRole.Assistant)?.Name;
+        return configured.Select(s =>
+        {
+            // The brief a session starts with is the saved brief, or the built-in template when none is saved. Either way it is
+            // expanded here, at launch, because the names carry the run id and the task changes each run.
+            var source = s.Role switch
+            {
+                SessionRole.Planner => request.PlannerBrief ?? DefaultBriefTemplate(request, SessionRole.Planner),
+                SessionRole.Coder => request.CoderBrief ?? DefaultBriefTemplate(request, SessionRole.Coder),
+                _ => null,
+            };
+            if (source is null) return s;
+
+            var coderName = s.Role == SessionRole.Coder ? s.Name : coderNames.FirstOrDefault() ?? string.Empty;
+            var reviewerName = request.Reviewer == "self" ? plannerName : request.Reviewer;
+            if (s.Role == SessionRole.Coder && request.Assistant == "reviewer" && assistantName is not null)
+                reviewerName = assistantName;
+
+            // The assistant as a coder's brief names it: the assistant session, or the planner when the reviewer is the assistant.
+            var helper = ChoiceOf(request) switch
+            {
+                AssistantChoice.Session => assistantName,
+                AssistantChoice.Planner => plannerName,
+                _ => null,
+            };
+            var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["task"] = request.Task.Trim(),
+                ["plannername"] = plannerName,
+                ["codername"] = coderName,
+                ["codernames"] = string.Join(", ", coderNames),
+                ["reviewername"] = reviewerName,
+                ["assistantname"] = assistantName ?? string.Empty,
+                // The clause tags expand to the sentence the generated brief would add for the current settings, or to nothing.
+                ["reviewclause"] = s.Role == SessionRole.Planner ? RunPlan.ReviewClause(request.Reviewer) : string.Empty,
+                ["assistantclause"] = s.Role == SessionRole.Coder ? RunPlan.AssistantClause(helper, plannerName) : string.Empty,
+            };
+
+            // One pass: Regex.Replace does not rescan what it inserted, so a tag typed in the task text stays as typed.
+            var brief = Regex.Replace(source,
+                @"\{(task|plannername|codername|codernames|reviewername|assistantname|reviewclause|assistantclause)\}",
+                match => values[match.Groups[1].Value]);
+            return s with { Brief = brief };
+        }).ToList();
+    }
+
+    /// <summary>
+    /// The built-in template for a role. The app owns it: a brief starts as this template, and with no saved brief it is what a
+    /// session starts with. It is the run's brief with no assistant and the reviewer "self", with the names as tags, and the clause
+    /// tag for the role at its end. So the same text serves every reviewer and assistant choice. It does not read the owner's old
+    /// extra text (PlannerExtra and CoderExtra), which is no longer used.
+    /// </summary>
+    public static string DefaultBriefTemplate(SetupRequest request, SessionRole role)
+    {
+        var pattern = PatternSpec.Find(request.PatternKey)
+                      ?? throw new ArgumentException($"Unknown pattern '{request.PatternKey}'.", nameof(request));
+        var coders = pattern.Kind == PatternKind.PlanAndCode ? 1 : request.Coders;
+        var task = request.Task.Trim();
+
+        // RunPlan, not Build: Build expands templates, so it must not be asked for one.
+        var sessions = RunPlan.Build(pattern, Path.GetFullPath(request.Folder.Trim()), task, "xxxx", coders,
+            request.PermissionMode, "self", AssistantChoice.None);
+        var selected = sessions.FirstOrDefault(s => s.Role == role)
+                       ?? throw new ArgumentException($"The pattern has no {role} brief.", nameof(role));
+        var template = selected.Brief;
+        var planner = sessions.First(s => s.Role == SessionRole.Planner).Name;
+        var coderNames = sessions.Where(s => s.Role == SessionRole.Coder).Select(s => s.Name).ToList();
+
+        if (coderNames.Count > 1)
+            template = template.Replace(string.Join(", ", coderNames), "{codernames}", StringComparison.Ordinal);
+        foreach (var coder in coderNames)
+            template = template.Replace(coder, "{codername}", StringComparison.Ordinal);
+        template = template.Replace(planner, "{plannername}", StringComparison.Ordinal);
+        if (task.Length > 0)
+            template = template.Replace($"Task: {task}", "Task: {task}", StringComparison.Ordinal);
+
+        return role switch
+        {
+            // A solo planner has no reviewer and no coder, so its template gets no clause.
+            SessionRole.Planner when coderNames.Count > 0 => template + "{reviewclause}",
+            SessionRole.Coder => template + "{assistantclause}",
+            _ => template,
+        };
     }
 
     /// <summary>
@@ -151,8 +237,4 @@ public static class SetupPlan
         "reviewer" => request.Reviewer == "self" ? AssistantChoice.Planner : AssistantChoice.Session,
         _ => AssistantChoice.Session,
     };
-
-    /// <summary>Appends the owner''s text under a clear label. Blank text leaves the brief unchanged.</summary>
-    public static string WithOwnerText(string brief, string extra) =>
-        string.IsNullOrWhiteSpace(extra) ? brief : brief + "\n\nFrom the owner: " + extra.Trim();
 }

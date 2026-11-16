@@ -39,11 +39,23 @@ public sealed class PatternStoreTests : IDisposable
     {
         var store = new PatternStore(Path.Combine(_dir, "patterns.json"));
 
-        store.Save(PatternStore.Defaults("plan-code") with { PlannerExtra = "Small batches." });
+        store.Save(PatternStore.Defaults("plan-code") with
+        {
+            PlannerExtra = "Small batches.",
+            PlannerBrief = "Plan {task} for {codernames}.",
+            CoderBrief = "Report to {plannername}.",
+        });
         store.Save(PatternStore.Defaults("solo") with { CoderExtra = "Unused." });
 
         Assert.Equal("Small batches.", store.For("plan-code").PlannerExtra);
+        Assert.Equal("Plan {task} for {codernames}.", store.For("plan-code").PlannerBrief);
+        Assert.Equal("Report to {plannername}.", store.For("plan-code").CoderBrief);
         Assert.Equal("Unused.", store.For("solo").CoderExtra);
+
+        store.Save(store.For("plan-code") with { PlannerBrief = null, CoderBrief = null });
+
+        Assert.Null(store.For("plan-code").PlannerBrief);
+        Assert.Null(store.For("plan-code").CoderBrief);
         Assert.False(File.Exists(store.Path + ".tmp"));
     }
 
@@ -56,5 +68,21 @@ public sealed class PatternStoreTests : IDisposable
         var settings = new PatternStore(path).For("plan-code");
 
         Assert.Equal("opus", settings.PlannerModel);
+    }
+
+    [Fact]
+    public void AFileWithTheNamesOfTheFirstVersionStillLoadsAndTheValuesAreNotRead()
+    {
+        // The names PlannerBriefTemplate and CoderBriefTemplate were never released. An unknown property is ignored, so the file loads.
+        var path = Path.Combine(_dir, "patterns.json");
+        File.WriteAllText(path, """
+            {"plan-code":{"PatternKey":"plan-code","PlannerModel":"sonnet","PlannerEffort":"low","CoderModel":"haiku",
+            "CoderEffort":"medium","Coders":1,"PlannerExtra":"","CoderExtra":"","PlannerBriefTemplate":"old text"}}
+            """);
+
+        var settings = new PatternStore(path).For("plan-code");
+
+        Assert.Equal("sonnet", settings.PlannerModel);
+        Assert.Null(settings.PlannerBrief);
     }
 }

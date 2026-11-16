@@ -89,6 +89,7 @@ public partial class SessionWindow : Window
 
         _setup = new SetupView(options.StatePath, options.Task) { Visibility = Visibility.Hidden };
         _setup.ShowFolder(options.WorkDir);
+        if (options.SetupDetail is not null) _setup.ShowDetail(options.SetupDetail);
         _setup.ApplyTheme(Palette);
         _setup.RunRequested += OnRunRequested;
         _setup.TrustNeeded += root => ShowTrustStep(root, select: true);
@@ -443,11 +444,12 @@ public sealed record LaunchOptions(
     double ShotAfterSeconds = 8,
     string? SelfTestPath = null,
     string? FilterName = null,
+    string? SetupDetail = null,
     string? SelfTestMode = null)
 {
     public static LaunchOptions Parse(string[] args)
     {
-        string? workdir = null, task = null, state = null, shot = null, selfTest = null, filterName = null, selfTestMode = null;
+        string? workdir = null, task = null, state = null, shot = null, selfTest = null, filterName = null, selfTestMode = null, setupDetail = null;
         double shotAfter = 8;
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         if (args.Length > 0 && args[^1] == "--state") throw new ArgumentException("--state needs the path of a state file.");
@@ -463,6 +465,7 @@ public sealed record LaunchOptions(
                 case "--selftest": selfTest = args[++i]; break;
                 case "--selftest-mode": selfTestMode = args[++i]; break;
                 case "--rail-filter": filterName = args[++i]; break;
+                case "--setup-detail": setupDetail = args[++i]; break;
             }
         }
         var defaultState = Path.Combine(
@@ -476,6 +479,7 @@ public sealed record LaunchOptions(
             ShotAfterSeconds: shotAfter,
             SelfTestPath: selfTest,
             FilterName: filterName,
+            SetupDetail: setupDetail,
             SelfTestMode: selfTestMode);
     }
 }

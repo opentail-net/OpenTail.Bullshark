@@ -131,9 +131,10 @@ public static class RunPlan
         specs.AddRange(coderNames.Select(coder => new SessionSpec(
             SessionRole.Coder, coder, workDir, CoderModel, CoderEffort,
             CoderBrief(coder, planner, helper), permissionMode, CoderResumePrompt(planner))));
-        if (assistant == AssistantChoice.Session)
-            specs.Add(new SessionSpec(SessionRole.Assistant, helper, workDir, AssistantModel, AssistantEffort,
-                AssistantBrief(helper, coderNames, planner), permissionMode, AssistantResumePrompt));
+        // helper is set exactly when the assistant is a session, so the name is read here as a non-null value.
+        if (assistant == AssistantChoice.Session && helper is { } assistantName)
+            specs.Add(new SessionSpec(SessionRole.Assistant, assistantName, workDir, AssistantModel, AssistantEffort,
+                AssistantBrief(assistantName, coderNames, planner), permissionMode, AssistantResumePrompt));
         return specs;
     }
 
@@ -180,10 +181,18 @@ public static class RunPlan
         $"When a batch is done, send a report to {planner} with SendMessage: what changed, the test results, and anything you decided. " +
         $"If you are stuck, or a choice changes the design, send {planner} one short question with SendMessage and carry on with the parts you can do. " +
         "Do not stop to wait for the answer. Otherwise make the sensible decision and say what you decided." +
-        (assistant is null ? string.Empty
-            : assistant == planner
-                ? $" Your reviewer is {planner}: when a question needs an answer, send it one short message with SendMessage; it answers in a few lines. Ask rather than guess."
-                : $" Your assistant is {assistant}: when a question needs an answer, send it one short message with SendMessage; it answers in a few lines. Ask rather than guess.");
+        AssistantClause(assistant, planner);
+
+    /// <summary>
+    /// The sentence a coder's brief adds for its assistant (D-S41). When the assistant setting is "reviewer" and the reviewer is
+    /// the planner, the sentence names the planner as the reviewer. It starts with a space, and it is empty when there is no assistant.
+    /// The coder's brief and the {assistantclause} tag of a saved brief both use it, so they read the same.
+    /// </summary>
+    public static string AssistantClause(string? assistant, string planner) =>
+        assistant is null ? string.Empty
+        : assistant == planner
+            ? $" Your reviewer is {planner}: when a question needs an answer, send it one short message with SendMessage; it answers in a few lines. Ask rather than guess."
+            : $" Your assistant is {assistant}: when a question needs an answer, send it one short message with SendMessage; it answers in a few lines. Ask rather than guess.";
 
     /// <summary>
     /// The assistant's brief (D-S41). It answers the coders' short questions in a few lines, and does no work of its own. It

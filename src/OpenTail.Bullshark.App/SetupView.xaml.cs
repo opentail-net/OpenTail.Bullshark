@@ -13,16 +13,21 @@ namespace OpenTail.Bullshark.App;
 
 /// <summary>
 /// The setup page (S4): the pattern, the folder, the models and efforts per role, the optional assistant for the coders (D-S41),
-/// the coder count, the task, and the owner's extra text per brief. Start checks the run and saves the settings for the next
-/// launch. It starts nothing: the launch is built in S5. Reading the folder list and checking a folder write nothing.
-/// The page fits one screen (owner, 2026-11-16): the task, the folder and the pattern at the top; the models, the briefs and the
-/// preview in three tabs; and Start in a footer that never scrolls, beside one line that says what would start.
+/// the coder count, the task, and the editable per-pattern briefs. Start checks the run and saves the settings for the next launch.
+/// It starts nothing: the launch is built in S5. Reading the folder list and checking a folder write nothing.
+/// The page fits one screen (owner, 2026-11-16): the task, the folder and the pattern at the top; models and an editable preview;
+/// and Start in a footer that never scrolls, beside one line that says what would start.
 /// </summary>
 public partial class SetupView : UserControl
 {
     private readonly PatternStore _patterns;
     private readonly string _claudeJson = TrustCheck.DefaultClaudeJsonPath;
     private bool _loading = true;
+    private bool _updatingBriefEditors;
+    private string? _plannerBrief;
+    private string? _coderBrief;
+    private string _plannerExtra = string.Empty;
+    private string _coderExtra = string.Empty;
 
     /// <summary>The reviewers on offer (D-S36). "self" is marked, because it is the baseline that costs the most.</summary>
     private sealed record ReviewerChoice(string Value, string Label);
@@ -123,6 +128,13 @@ public partial class SetupView : UserControl
     /// <summary>The assistant choice on screen, or none.</summary>
     private string SelectedAssistant => (AssistantBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "none";
 
+    /// <summary>Opens one of the details tabs: "preview" shows the sessions and the briefs. Used by the screenshots of the self-test.</summary>
+    public void ShowDetail(string name)
+    {
+        if (string.Equals(name, "preview", StringComparison.OrdinalIgnoreCase)) PreviewTab.IsChecked = true;
+        else ModelsTab.IsChecked = true;
+    }
+
     private void SelectAssistant(string value)
     {
         var items = AssistantBox.Items.OfType<ComboBoxItem>().ToList();
@@ -134,9 +146,8 @@ public partial class SetupView : UserControl
     private void DetailTab_Checked(object sender, RoutedEventArgs e)
     {
         // The first tab is checked while the page is still being built, before the panels exist.
-        if (ModelsPanel is null || BriefsPanel is null || PreviewPanel is null) return;
+        if (ModelsPanel is null || PreviewPanel is null) return;
         ModelsPanel.Visibility = ModelsTab.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
-        BriefsPanel.Visibility = BriefsTab.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         PreviewPanel.Visibility = PreviewTab.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -175,8 +186,10 @@ public partial class SetupView : UserControl
         PlannerEffortBox.SelectedItem = saved.PlannerEffort;
         CoderModelBox.SelectedItem = saved.CoderModel;
         CoderEffortBox.SelectedItem = saved.CoderEffort;
-        PlannerExtraBox.Text = saved.PlannerExtra;
-        CoderExtraBox.Text = saved.CoderExtra;
+        _plannerExtra = saved.PlannerExtra;
+        _coderExtra = saved.CoderExtra;
+        _plannerBrief = saved.PlannerBrief;
+        _coderBrief = saved.CoderBrief;
 
         CodersRow.Visibility = IsMany ? Visibility.Visible : Visibility.Collapsed;
         CodersBox.ItemsSource = IsMany
@@ -195,9 +208,7 @@ public partial class SetupView : UserControl
         SelectAssistant(saved.Assistant);
         AssistantEffortBox.SelectedItem = saved.AssistantEffort;
 
-        CoderExtraLabel.Visibility = IsSolo ? Visibility.Collapsed : Visibility.Visible;
-        CoderExtraBox.Visibility = IsSolo ? Visibility.Collapsed : Visibility.Visible;
-        PlannerExtraLabel.Text = IsSolo ? "Extra for the solo session's brief (optional)" : "Extra for the planner's brief (optional)";
+        CoderBriefEditor.Visibility = IsSolo ? Visibility.Collapsed : Visibility.Visible;
 
         _loading = false;
         Refresh();
@@ -212,13 +223,15 @@ public partial class SetupView : UserControl
         PlannerEffort: PlannerEffortBox.SelectedItem as string ?? RunPlan.PlannerEffort,
         CoderModel: CoderModelBox.SelectedItem as string ?? RunPlan.CoderModel,
         CoderEffort: CoderEffortBox.SelectedItem as string ?? RunPlan.CoderEffort,
-        PlannerExtra: PlannerExtraBox.Text,
-        CoderExtra: CoderExtraBox.Text,
+        PlannerExtra: _plannerExtra,
+        CoderExtra: _coderExtra,
         Reviewer: (ReviewerBox.SelectedItem as ReviewerChoice)?.Value ?? "sonnet",
         Assistant: IsSolo ? "none" : SelectedAssistant,
-        AssistantEffort: AssistantEffortBox.SelectedItem as string ?? RunPlan.AssistantEffort);
+        AssistantEffort: AssistantEffortBox.SelectedItem as string ?? RunPlan.AssistantEffort,
+        PlannerBrief: _plannerBrief,
+        CoderBrief: _coderBrief);
 
-    /// <summary>Checks the folder as the owner types, and shows the preview when the run would be valid.</summary>
+    /// <summary>Checks the folder as the owner types, and shows editable briefs when the run would be valid.</summary>
     private void Refresh()
     {
         if (_loading) return;
@@ -226,23 +239,80 @@ public partial class SetupView : UserControl
         var check = SetupPlan.Validate(request, _claudeJson);
         FolderMessage.Text = check.Folder?.Message ?? string.Empty;
         FolderMessage.Visibility = FolderMessage.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
-        PreviewText.Text = check.IsValid ? PreviewOf(request) : string.Empty;
         PreviewEmpty.Visibility = check.IsValid ? Visibility.Collapsed : Visibility.Visible;
+        PreviewContent.Visibility = check.IsValid ? Visibility.Visible : Visibility.Collapsed;
+        SaveBriefsButton.IsEnabled = check.IsValid;
+        ResetBriefsButton.IsEnabled = check.IsValid;
+        if (check.IsValid)
+        {
+            var generated = SetupPlan.Build(request with { PlannerBrief = null, CoderBrief = null }, "xxxx");
+            _updatingBriefEditors = true;
+            SetEditorText(PlannerBriefBox, _plannerBrief ?? SetupPlan.DefaultBriefTemplate(request, SessionRole.Planner));
+            if (generated.Any(s => s.Role == SessionRole.Coder))
+                SetEditorText(CoderBriefBox, _coderBrief ?? SetupPlan.DefaultBriefTemplate(request, SessionRole.Coder));
+            _updatingBriefEditors = false;
+            PreviewSessionsText.Text = string.Join("\n", generated.Select(s =>
+                $"{s.Name}   {s.Role.ToString().ToLowerInvariant()}   {s.Model} / {s.Effort}   {s.PermissionMode}"));
+        }
         SummaryText.Text = SummaryOf(request, check);
         SummaryText.ToolTip = SummaryText.Text;
     }
 
-    /// <summary>
-    /// The sessions that would start, with the full brief and resume prompt of each. Names get their run id at launch,
-    /// so the preview uses a placeholder.
-    /// </summary>
-    private static string PreviewOf(SetupRequest request)
+    private static void SetEditorText(TextBox editor, string text)
     {
-        var sessions = SetupPlan.Build(request, "xxxx");
-        return string.Join("\n\n", sessions.Select(s =>
-            $"{s.Name}   {s.Role.ToString().ToLowerInvariant()}   {s.Model} / {s.Effort}   {s.PermissionMode}\n" +
-            $"brief:\n{s.Brief}\n" +
-            $"resume prompt:\n{s.ResumePrompt}"));
+        if (!string.Equals(editor.Text, text, StringComparison.Ordinal)) editor.Text = text;
+    }
+
+    private void PlannerBrief_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_updatingBriefEditors || _loading) return;
+        _plannerBrief = PlannerBriefBox.Text;
+        Refresh();
+    }
+
+    private void CoderBrief_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_updatingBriefEditors || _loading) return;
+        _coderBrief = CoderBriefBox.Text;
+        Refresh();
+    }
+
+    private void SaveBriefs_Click(object sender, RoutedEventArgs e)
+    {
+        _plannerBrief = PlannerBriefBox.Text;
+        _coderBrief = IsSolo ? null : CoderBriefBox.Text;
+        PersistBriefs("Briefs saved.");
+    }
+
+    private void ResetBriefs_Click(object sender, RoutedEventArgs e)
+    {
+        _plannerBrief = null;
+        _coderBrief = null;
+        _plannerExtra = string.Empty;
+        _coderExtra = string.Empty;
+        Refresh();
+        PersistBriefs("Briefs reset to the templates.", clearLegacyExtras: true);
+    }
+
+    private void PersistBriefs(string successMessage, bool clearLegacyExtras = false)
+    {
+        try
+        {
+            var saved = _patterns.For(Pattern.Key);
+            _patterns.Save(saved with
+            {
+                PlannerBrief = _plannerBrief,
+                CoderBrief = _coderBrief,
+                PlannerExtra = clearLegacyExtras ? string.Empty : saved.PlannerExtra,
+                CoderExtra = clearLegacyExtras ? string.Empty : saved.CoderExtra,
+            });
+            SetStartStatus(successMessage);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            AppLog.Write($"briefs not saved: {ex.Message}");
+            SetStartStatus($"Briefs not saved: {ex.Message}");
+        }
     }
 
     private void PatternBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -270,7 +340,7 @@ public partial class SetupView : UserControl
         if (!check.IsValid)
         {
             SetStartStatus("Not started: " + string.Join("  ", check.Errors));
-            PreviewText.Text = string.Empty;
+            PreviewContent.Visibility = Visibility.Collapsed;
             PreviewEmpty.Visibility = Visibility.Visible;
             return;
         }
@@ -279,16 +349,17 @@ public partial class SetupView : UserControl
         {
             _patterns.Save(new PatternSettings(request.PatternKey, request.PlannerModel, request.PlannerEffort,
                 request.CoderModel, request.CoderEffort, request.Coders, request.PlannerExtra, request.CoderExtra, request.Reviewer,
-                request.Assistant, request.AssistantEffort));
+                request.Assistant, request.AssistantEffort, request.PlannerBrief, request.CoderBrief));
         }
-        catch (IOException ex)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             AppLog.Write($"settings not saved: {ex.Message}");
             SetStartStatus($"Not saved: {ex.Message}");
             return;
         }
 
-        PreviewText.Text = PreviewOf(request);
+        PreviewContent.Visibility = Visibility.Visible;
+        PreviewEmpty.Visibility = Visibility.Collapsed;
         SetStartStatus("Starting…");
         StartButton.IsEnabled = false;
         RunRequested?.Invoke(request);
