@@ -21,6 +21,7 @@ public partial class SessionWindow
         Session,
         Setup,
         Transcript,
+        Search,
     }
 
     private sealed class OpenTab(TabKind kind, string key, string title)
@@ -111,6 +112,10 @@ public partial class SessionWindow
             case TabKind.Setup:
                 ShowOnly(_setup);
                 break;
+
+            case TabKind.Search:
+                ShowOnly(_search);
+                break;
         }
     }
 
@@ -123,6 +128,7 @@ public partial class SessionWindow
         var index = _tabs.IndexOf(tab);
         _tabs.Remove(tab);
         if (tab.Kind == TabKind.Session) _hiddenSessions.Add(tab.Key);
+        if (tab.Kind == TabKind.Search) _searchCancel?.Cancel();
         if (!ReferenceEquals(_activeTab, tab))
         {
             RefreshTabStrip();

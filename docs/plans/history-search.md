@@ -42,11 +42,16 @@ names are not good enough to find anything by (owner, 2026-11-16).
 - [x] Core tests: every word needed, words on different lines, tool results ignored, subagents hidden by default, newest
       first, case, short words refused, snippet context, cap, newest hits kept, line numbers the transcript view shows.
 - [x] Build and run the Core tests (269 pass). Commit and push.
-- [ ] App: search box at the top of the rail, debounced, Enter runs at once.
-- [ ] App: `SearchView` results tab (title, folder, age, count, newest three snippets); a click opens the transcript at the line.
-- [ ] App: `TranscriptView.ShowAsync(digest, focusLine)` pages around the line, marks it and scrolls it into view.
-- [ ] App: theme colours for the search box; `TabKind.Search` in the tab strip; `ShowOnly` shows the results view.
-- [ ] Build the app. Check on screen against a scratch copy with a temporary state folder: a search, a result click, the focus.
+- [x] App: search box at the top of the rail, debounced, Enter runs at once.
+- [x] App: `SearchView` results tab (title, folder, age, count, newest three snippets); a click opens the transcript at the line.
+- [x] App: `TranscriptView.ShowAsync(digest, focusLine)` pages around the line, marks it and scrolls it into view.
+- [x] App: theme colours for the search box; `TabKind.Search` in the tab strip; `ShowOnly` shows the results view.
+- [x] Build the app. Checked on screen against a scratch copy with a temporary state folder: "bullshark" typed and Enter gives the
+      results tab; a click on a snippet opens "Session c71e8ad0" at line 14088, marked and in view.
+
+Found by those checks, and fixed in the same commit:
+- The rail's refresh (every 15 s, and at start) showed the setup page over a search, or over a transcript opened from one, when
+  no live session was selected. Such views keep the pane now (`RestoreSelection`).
 - [x] Measure one search over all transcripts (time, memory). Measured 2026-11-16 on the 137 transcripts (830 MB), in a script
       that only reads them: loading the index takes 3.6 s (the rail already does this at start). One search takes 1.2 s to 2.3 s:
       "bullshark" 1.2 s (1 session), "transcript" 1.6 s (36 sessions), "claude code" 2.3 s (87 sessions), a word that matches
@@ -55,5 +60,5 @@ names are not good enough to find anything by (owner, 2026-11-16).
 ## Not verified yet
 
 - Speed inside the app: measured in a script (see Steps). The first search after a restart may be slower while the disk cache is cold.
-- The results view and the focus on screen (checked after the app build).
+- Not checked yet: a results list with many sessions, a light theme, and the rail's selection after a result is opened.
 - Live: no model call is made by search, so it spends no tokens.

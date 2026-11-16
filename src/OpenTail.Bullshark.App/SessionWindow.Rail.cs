@@ -158,6 +158,11 @@ public partial class SessionWindow
         Resources["ScrollThumbHover"] = RailPalette.Brush("#99" + palette.Muted.TrimStart('#'));
         TabBar.Background = RailPalette.Brush(palette.Panel);
         RailToggle.Foreground = RailPalette.Brush(palette.Muted);
+        SearchBox.Background = RailPalette.Brush(palette.Panel);
+        SearchBox.Foreground = RailPalette.Brush(palette.Text);
+        SearchBox.CaretBrush = RailPalette.Brush(palette.Text);
+        SearchBox.BorderBrush = RailPalette.Brush(palette.Muted);
+        SearchHint.Foreground = RailPalette.Brush(palette.Muted);
         UpdateRailToggle();
         Background = RailPalette.Brush(palette.Background);
         StatusBar.Background = RailPalette.Brush(palette.Panel);
@@ -448,12 +453,20 @@ public partial class SessionWindow
         if (fallback is null)
         {
             _selected = null;
+
+            // With no live session in the rail, nothing is selected, and every refresh came here and showed the setup over a search
+            // or a transcript opened from one. Those keep the pane.
+            if (_activeTab?.Kind is TabKind.Search or TabKind.Transcript) return;
             ShowOnly(_setup);
             return;
         }
 
         _selected = (RailTag)fallback.Tag;
         fallback.IsSelected = true;
+
+        // A refresh must not take the pane away from a search, or from a transcript the owner opened from a result: those have no
+        // row selected in the rail, so the fallback would show the setup over them.
+        if (_activeTab?.Kind is TabKind.Search or TabKind.Transcript) return;
         _ = ShowRailItemAsync(_selected);
     }
 

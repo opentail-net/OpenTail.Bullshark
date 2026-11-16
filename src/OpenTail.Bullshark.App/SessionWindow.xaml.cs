@@ -95,6 +95,8 @@ public partial class SessionWindow : Window
         Pane.Children.Add(_transcript);
         _transcript.ResumeRequested += digest => _ = ResumeAsync(digest);
         Pane.Children.Add(_setup);
+        Pane.Children.Add(_search);
+        InitSearch();
 
         Loaded += async (_, _) =>
         {
@@ -246,6 +248,7 @@ public partial class SessionWindow : Window
             terminal.Visibility = ReferenceEquals(terminal, element) ? Visibility.Visible : Visibility.Hidden;
         _transcript.Visibility = ReferenceEquals(_transcript, element) ? Visibility.Visible : Visibility.Hidden;
         _setup.Visibility = ReferenceEquals(_setup, element) ? Visibility.Visible : Visibility.Hidden;
+        _search.Visibility = ReferenceEquals(_search, element) ? Visibility.Visible : Visibility.Hidden;
 
         _shown = element as ExtendedTerminalControl;
         if (_shown is not null)

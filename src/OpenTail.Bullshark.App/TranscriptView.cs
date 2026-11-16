@@ -26,6 +26,9 @@ public sealed class TranscriptView : UserControl
     private readonly TextBlock _resumeHint = new();
     private int _firstShown;
 
+    /// <summary>The line a search opened this view at, once it is shown. Null for the last page.</summary>
+    private TextBlock? _focus;
+
     public TranscriptView()
     {
         Background = Brush("#1E1E1E");
@@ -33,8 +36,11 @@ public sealed class TranscriptView : UserControl
         Content = BuildContent();
     }
 
-    /// <summary>Shows a session's headline numbers at once, and its last page of transcript. Nothing else is loaded.</summary>
-    public async Task ShowAsync(SessionDigest digest)
+    /// <summary>
+    /// Shows a session's headline numbers at once, and a page of its transcript: the last page, or with a focus line (a search result)
+    /// the page around that line, with the line marked and brought into view. Nothing else is loaded.
+    /// </summary>
+    public async Task ShowAsync(SessionDigest digest, int? focusLine = null)
     {
         _digest = digest;
         _resume.IsEnabled = true;
@@ -44,11 +50,24 @@ public sealed class TranscriptView : UserControl
 
         var pager = await Task.Run(() => TranscriptPager.Open(digest.FilePath));
         _pager = pager;
-        _firstShown = pager.LastPageStart(PageSize);
+        _firstShown = focusLine is { } wanted
+            ? Math.Max(0, Math.Clamp(wanted - 1, 0, Math.Max(0, pager.LineCount - 1)) - PageSize / 2)
+            : pager.LastPageStart(PageSize);
         _transcript.Children.Clear();
-        foreach (var line in pager.ReadPage(_firstShown, PageSize)) _transcript.Children.Add(Render(line));
+        _focus = null;
+        foreach (var line in pager.ReadPage(_firstShown, PageSize))
+        {
+            var block = Render(line);
+            if (focusLine == line.Number)
+            {
+                block.Background = Brush("#2D3E50");
+                _focus = block;
+            }
+            _transcript.Children.Add(block);
+        }
         _earlier.IsEnabled = _firstShown > 0;
-        _transcriptScroll.ScrollToBottom();
+        if (_focus is null) _transcriptScroll.ScrollToBottom();
+        else Dispatcher.BeginInvoke(new Action(() => _focus?.BringIntoView()), System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
     private UIElement BuildContent()
