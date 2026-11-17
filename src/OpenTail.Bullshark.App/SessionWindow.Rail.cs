@@ -301,7 +301,7 @@ public partial class SessionWindow
             // Needs you comes first: a session that waits for the owner is the first thing to see. Shown with the live sessions only.
             if (ShowsLive && _attention.Count > 0) Rail.Items.Add(NeedsYouSection(stored));
             foreach (var (key, step) in _trustSteps)
-                Rail.Items.Add(NewItem(Label($"Trust: {Path.GetFileName(step.Root)} · choose 'Yes, I trust this folder'"),
+                Rail.Items.Add(NewItem(Label($"Trust: {Path.GetFileName(step.Root)} · choose 'Yes, I trust this folder'", wrap: true),
                     new RailTag(RailKind.Trust, key), step.Root));
 
             var liveGroups = ShowsLive ? groups.Values.ToList() : new List<RailGroup>();
@@ -579,19 +579,28 @@ public partial class SessionWindow
 
     /// <summary>
     /// A text block for a rail row. A name that is too long for the rail is cut off with an ellipsis, so the rail never needs
-    /// a sideways scrollbar; the full text is in the row's tooltip. The rail's width follows the splitter.
+    /// a sideways scrollbar; the full text is in the row's tooltip. The rail's width follows the splitter. A tree row's header is not held
+    /// to the rail's width by the tree, so the label's width is bound to the rail: the Trust row ran past the edge without an ellipsis
+    /// (round 5 item 15). A label that <paramref name="wrap"/>s wraps onto the next line instead.
     /// </summary>
-    private TextBlock Label(string text, bool bold = false, bool muted = false, bool emoji = false) => new()
+    private TextBlock Label(string text, bool bold = false, bool muted = false, bool emoji = false, bool wrap = false)
     {
-        Text = text,
-        TextWrapping = TextWrapping.NoWrap,
-        TextTrimming = TextTrimming.CharacterEllipsis,
-        Foreground = RailPalette.Brush(muted ? Palette.Muted : Palette.Text),
-        FontWeight = bold ? FontWeights.SemiBold : FontWeights.Normal,
-        FontFamily = new FontFamily(emoji ? "Segoe UI Emoji" : "Segoe UI"),
-        FontSize = 13,
-        Margin = new Thickness(0, 2, 0, 2),
-    };
+        var label = new TextBlock
+        {
+            Text = text,
+            TextWrapping = wrap ? TextWrapping.Wrap : TextWrapping.NoWrap,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            Foreground = RailPalette.Brush(muted ? Palette.Muted : Palette.Text),
+            FontWeight = bold ? FontWeights.SemiBold : FontWeights.Normal,
+            FontFamily = new FontFamily(emoji ? "Segoe UI Emoji" : "Segoe UI"),
+            FontSize = 13,
+            Margin = new Thickness(0, 2, 0, 2),
+        };
+        if (Rail is not null)
+            BindingOperations.SetBinding(label, FrameworkElement.MaxWidthProperty,
+                new Binding("ActualWidth") { Source = Rail, Converter = RailRowWidth.Instance });
+        return label;
+    }
 
     /// <summary>
     /// A row in the style of the Claude app: the title on the first line with the time on the right, and the details below,
