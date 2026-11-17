@@ -45,4 +45,17 @@ public sealed class UnreadableClaudeJsonTests : IDisposable
         Assert.Contains("cannot be read", problem);
         Assert.Contains("no session starts or restarts", problem);
     }
+
+    [Theory]
+    [InlineData("[]")]
+    [InlineData("\"text\"")]
+    [InlineData("{\"projects\":{\"C:/Git/a\":true,\"C:/Git/b\":{\"hasTrustDialogAccepted\":true}}}")]
+    public void TrustedRepositoriesSkipsWhatIsNotAnObject(string json)
+    {
+        File.WriteAllText(_json, json);
+
+        var trusted = TrustCheck.TrustedRepositories(_json);
+
+        Assert.True(trusted.Count == 0 || trusted.SequenceEqual(["C:/Git/b"]));
+    }
 }
