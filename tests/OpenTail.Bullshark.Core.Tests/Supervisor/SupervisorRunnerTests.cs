@@ -241,6 +241,86 @@ public sealed class SupervisorRunnerTests : IDisposable
     }
 
     [Fact]
+    public async Task AStoppedSessionTheOwnerRevivesAndThatIsLaterLostIsResumed()
+    {
+        var store = new StateStore(Path.Combine(_dir, "state.json"));
+        store.Save(new Dictionary<string, SessionRecord>
+        {
+            [TestSpecs.PlannerName] = new(SessionRole.Planner, PlannerSession, TestSpecs.PlannerName, DateTimeOffset.UnixEpoch, 0, [], null, null),
+        });
+        var clock = new FakeClock(new DateTimeOffset(2026, 11, 17, 12, 0, 0, TimeSpan.Zero));
+        var listing = Listing(PlannerSession, "stopped");
+        var cli = new FakeCliRunner(args => args[0] switch
+        {
+            "agents" => FakeCliRunner.Ok(listing),
+            "--bg" => FakeCliRunner.Ok($"backgrounded · {ShortId} · planner\n"),
+            _ => FakeCliRunner.Ok(),
+        });
+        var runner = Runner(new ClaudeCli(cli), store, clock);
+        var spec = TestSpecs.Planner(@"C:\W", "brief");
+
+        Assert.Equal(AlertKind.Stopped, Assert.IsType<SupervisorAction.Alert>(Assert.Single(await runner.CheckOnceAsync([spec]))).Kind);
+
+        // The owner starts the session by hand. It is listed as working, so the stop alert is no longer current and is cleared.
+        listing = Listing(PlannerSession, "working");
+        clock.Now = clock.Now.AddMinutes(5);
+        Assert.Empty(await runner.CheckOnceAsync([spec]));
+        Assert.Null(store.Load()[TestSpecs.PlannerName].LastAlert);
+
+        // It is lost after that: it is resumed, as any session the owner did not stop is.
+        listing = "[]";
+        clock.Now = clock.Now.AddMinutes(5);
+        Assert.IsType<SupervisorAction.Resume>(Assert.Single(await runner.CheckOnceAsync([spec])));
+        Assert.Equal(1, cli.Calls.Count(c => c.Args[0] == "--bg"));
+    }
+
+    [Fact]
+    public async Task ALostSessionListedAsWorkingIsResumedEvenWithAStaleStopAlertFromTheStateFile()
+    {
+        // A state file written before the stop alert was cleared on revival: the last listed state is working, and the alert is stale.
+        var store = new StateStore(Path.Combine(_dir, "state.json"));
+        store.Save(new Dictionary<string, SessionRecord>
+        {
+            [TestSpecs.PlannerName] = new(SessionRole.Planner, PlannerSession, TestSpecs.PlannerName, DateTimeOffset.UnixEpoch, 0, [], "working",
+                "Stopped: the session was stopped, so it is not restarted. Start the run again to continue."),
+        });
+        var clock = new FakeClock(new DateTimeOffset(2026, 11, 17, 12, 0, 0, TimeSpan.Zero));
+        var cli = new FakeCliRunner(args => args[0] switch
+        {
+            "agents" => FakeCliRunner.Ok("[]"),
+            "--bg" => FakeCliRunner.Ok($"backgrounded · {ShortId} · planner\n"),
+            _ => FakeCliRunner.Ok(),
+        });
+
+        var performed = await Runner(new ClaudeCli(cli), store, clock).CheckOnceAsync([TestSpecs.Planner(@"C:\W", "brief")]);
+
+        Assert.IsType<SupervisorAction.Resume>(Assert.Single(performed));
+    }
+
+    [Fact]
+    public async Task ALostSessionWithNoListedStateKeepsItsStopAlertAndIsNotResumed()
+    {
+        // A record from before the listed state was kept: only the stop alert says the owner stopped it.
+        var store = new StateStore(Path.Combine(_dir, "state.json"));
+        store.Save(new Dictionary<string, SessionRecord>
+        {
+            [TestSpecs.PlannerName] = new(SessionRole.Planner, PlannerSession, TestSpecs.PlannerName, DateTimeOffset.UnixEpoch, 0, [], null,
+                "Stopped: the session was stopped, so it is not restarted. Start the run again to continue."),
+        });
+        var clock = new FakeClock(new DateTimeOffset(2026, 11, 17, 12, 0, 0, TimeSpan.Zero));
+        var cli = new FakeCliRunner(args => args[0] switch
+        {
+            "agents" => FakeCliRunner.Ok("[]"),
+            _ => FakeCliRunner.Ok(),
+        });
+
+        var performed = await Runner(new ClaudeCli(cli), store, clock).CheckOnceAsync([TestSpecs.Planner(@"C:\W", "brief")]);
+
+        Assert.Empty(performed);
+        Assert.DoesNotContain(cli.Calls, c => c.Args[0] == "--bg");
+    }
+
+    [Fact]
     public async Task ARestartLoopIsAlertedOncePerLoopAndAgainAfterAResume()
     {
         var store = new StateStore(Path.Combine(_dir, "state.json"));

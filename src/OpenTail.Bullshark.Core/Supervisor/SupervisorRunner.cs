@@ -121,7 +121,12 @@ public sealed class SupervisorRunner
                     var kept = observed is null && SupervisorPolicy.IsStoppedOrFailed(current.LastState) ? current.LastState : observed;
                     if (!string.Equals(current.LastState, kept, StringComparison.Ordinal))
                         EmitState(spec, current.LastState, observed ?? "not listed", now);
-                    records[spec.Name] = current with { LastState = kept };
+
+                    // A session the owner brought back (listed in a state other than stopped or failed) no longer owes its stop or failure
+                    // alert. The alert is cleared here, so a later loss is not read as a stop (round 6 item 2).
+                    var revived = observed is not null && !SupervisorPolicy.IsStoppedOrFailed(observed);
+                    var alert = revived && IsStopOrFailureAlert(current.LastAlert) ? null : current.LastAlert;
+                    records[spec.Name] = current with { LastState = kept, LastAlert = alert };
                 }
             }
         }
@@ -132,6 +137,11 @@ public sealed class SupervisorRunner
 
         return performed;
     }
+
+    /// <summary>True for a last alert that says the session was stopped or failed, the two alerts the owner must act on by starting the run again.</summary>
+    private static bool IsStopOrFailureAlert(string? alert) =>
+        alert?.StartsWith(AttentionList.StoppedAlertPrefix, StringComparison.Ordinal) == true
+        || alert?.StartsWith(AttentionList.FailedAlertPrefix, StringComparison.Ordinal) == true;
 
     /// <summary>Writes one performed action to the event sink, if there is one. The event names the session's run (round 5 item 10).</summary>
     private void Emit(SessionSpec spec, SupervisorAction action, DateTimeOffset now)

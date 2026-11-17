@@ -126,13 +126,16 @@ public static class SupervisorPolicy
     public static bool IsStoppedOrFailed(string? state) => Is(state, "stopped") || Is(state, "failed");
 
     /// <summary>
-    /// True when the owner stopped the session or it failed. The last listed state says so, and so does the last alert, which
-    /// survives a listing that no longer shows the session. Another alert can replace the last alert, so both are read.
+    /// True when the owner stopped the session or it failed. The last listed state says so: the state is kept while the listing does not
+    /// show the session (round 5 item 1). The last alert is read only for a record with no listed state (one from before the state was
+    /// kept), since a stale stop alert on a session that was seen running again would otherwise hold it back (round 6 item 2).
     /// </summary>
-    private static bool WasStoppedOrFailed(SessionRecord record) =>
-        IsStoppedOrFailed(record.LastState)
-        || record.LastAlert?.StartsWith(AttentionList.StoppedAlertPrefix, StringComparison.Ordinal) == true
-        || record.LastAlert?.StartsWith(AttentionList.FailedAlertPrefix, StringComparison.Ordinal) == true;
+    private static bool WasStoppedOrFailed(SessionRecord record)
+    {
+        if (record.LastState is not null) return IsStoppedOrFailed(record.LastState);
+        return record.LastAlert?.StartsWith(AttentionList.StoppedAlertPrefix, StringComparison.Ordinal) == true
+            || record.LastAlert?.StartsWith(AttentionList.FailedAlertPrefix, StringComparison.Ordinal) == true;
+    }
 
     private static IReadOnlyList<SupervisorAction> DecideSession(
         SessionSpec spec,
