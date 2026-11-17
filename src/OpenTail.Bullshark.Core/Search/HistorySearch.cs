@@ -73,6 +73,7 @@ public static class HistorySearch
         Func<SessionDigest, string?>? extraText = null)
     {
         var words = WordsOf(query).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var probes = words.Select(RawProbe).ToList();
         var results = new List<SessionMatch>();
         var unreadable = 0;
         if (words.Count == 0) return new SearchOutcome(results, unreadable);
@@ -86,7 +87,7 @@ public static class HistorySearch
             cancellationToken.ThrowIfCancellationRequested();
             try
             {
-                var match = MatchSession(digest, words, extraText?.Invoke(digest), cancellationToken);
+                var match = MatchSession(digest, words, probes, extraText?.Invoke(digest), cancellationToken);
                 if (match is not null) results.Add(match);
             }
             catch (OperationCanceledException)
@@ -105,10 +106,34 @@ public static class HistorySearch
     /// <summary>
     /// True when the word is in the raw JSON line exactly as typed, so a plain substring test on the line is a safe pre-filter. That holds
     /// for ASCII letters, digits, '-', '_' and '.', which no JSON writer escapes. Any other character may be written escaped in the file
-    /// (a backslash is <c>\\</c>, a quote is <c>\"</c>), so a word with one is not pre-filtered: its lines are parsed, as the text is.
+    /// (a backslash is <c>\\</c>, a quote is <c>\"</c>), so such a word is looked for by its <see cref="RawProbe"/> instead.
     /// </summary>
-    public static bool SameInRawLine(string word) =>
-        word.All(c => c is (>= 'a' and <= 'z') or (>= 'A' and <= 'Z') or (>= '0' and <= '9') or '-' or '_' or '.');
+    public static bool SameInRawLine(string word) => word.All(IsRawSafe);
+
+    /// <summary>The characters that are the same in the raw JSON line as in the text (see <see cref="SameInRawLine"/>).</summary>
+    private static bool IsRawSafe(char c) => c is (>= 'a' and <= 'z') or (>= 'A' and <= 'Z') or (>= '0' and <= '9') or '-' or '_' or '.';
+
+    /// <summary>
+    /// The longest run of a word's characters that are the same in the raw line (see <see cref="SameInRawLine"/>), or empty when there is
+    /// none. A message that contains the word also contains each such run, unescaped, in its raw line, so a line without the run cannot hold
+    /// the word. This is the pre-filter of a word with an escaped character: "C:\Windows\System32" gives "System32" (round 10 item 2).
+    /// </summary>
+    public static string RawProbe(string word)
+    {
+        var best = string.Empty;
+        var start = -1;
+        for (var i = 0; i <= word.Length; i++)
+        {
+            if (i < word.Length && IsRawSafe(word[i]))
+            {
+                if (start < 0) start = i;
+                continue;
+            }
+            if (start >= 0 && i - start > best.Length) best = word[start..i];
+            start = -1;
+        }
+        return best;
+    }
 
     /// <summary>A piece of a message around its first match, on one line, with "…" where it was cut.</summary>
     public static string Snippet(string text, string word)
@@ -122,9 +147,23 @@ public static class HistorySearch
         return (start > 0 ? "…" : string.Empty) + flat[start..end].Trim() + (end < flat.Length ? "…" : string.Empty);
     }
 
+    /// <summary>
+    /// True when a raw line may hold a word: it holds the probe (see <see cref="RawProbe"/>) of some word, or some word has no probe, so
+    /// the line cannot be ruled out. A line that fails this holds no word, so it is never parsed.
+    /// </summary>
+    private static bool MayHoldAWord(string raw, IReadOnlyList<string> probes)
+    {
+        foreach (var probe in probes)
+        {
+            if (probe.Length == 0 || raw.Contains(probe, StringComparison.OrdinalIgnoreCase)) return true;
+        }
+        return false;
+    }
+
     private static SessionMatch? MatchSession(
         SessionDigest digest,
         IReadOnlyList<string> words,
+        IReadOnlyList<string> probes,
         string? extra,
         CancellationToken cancellationToken)
     {
@@ -146,9 +185,8 @@ public static class HistorySearch
             number++;
             cancellationToken.ThrowIfCancellationRequested();
 
-            // Cheap first: most lines contain no word at all, so they are never parsed. A word that the file may write escaped
-            // (see SameInRawLine) cannot be looked for in the raw line, so it does not rule the line out.
-            if (!words.Any(word => !SameInRawLine(word) || raw.Contains(word, StringComparison.OrdinalIgnoreCase))) continue;
+            // Cheap first: most lines contain no word at all, so they are never parsed. Each word is looked for by its probe (see RawProbe).
+            if (!MayHoldAWord(raw, probes)) continue;
 
             var shown = TranscriptLine.From(number, raw);
             if (shown is null || shown.Kind is not ("you" or "claude")) continue;

@@ -45,6 +45,9 @@ pass (running facts, overlap, budgets, effort) and on demand (search, storage, t
   1.57 s on the same snapshot. Peak rises from about 95 MB to 167-207 MB: under 300 MB, accepted.
 - Item 2, index: the parse itself is now the cost (the probe: decoding lines 0.3 s, summarising 0.7-0.9 s on 16 threads). The
   GC mode, tiered JIT settings and skipping the text decode made no measurable difference, so they are not changed.
+- Item 2, search: a word with a backslash or a quote was parsed line by line. Its longest plain run (`RawProbe`) is now the
+  pre-filter. A message that holds the word holds that run unescaped in its raw line, so the matches do not change; a test compares
+  twelve queries with a parse-every-line reference. Windows-path search 1.98 s to 0.89 s on the same snapshot.
 - Item 3, window: the window cannot be run for timing. Its startup pass calls the `claude` CLI (`agents`, `daemon status`) even with
   `--no-pass`, and the brief allows no CLI calls. Item 3 times the history work the window waits for (index and tails) in the bench
   instead, and records that WPF start and the rail drawing are not measured.
