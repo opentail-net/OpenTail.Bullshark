@@ -233,7 +233,9 @@ public static class SupervisorPolicy
         // or a listing that dropped it). Its last listed state, or its last alert, says so (round 5 item 1).
         if (WasStoppedOrFailed(record)) return [];
 
-        if (AttentionList.IsStaleBlockedAlert(record.LastAlert)) return [];
+        // The stale-blocked hold lasts an hour from its alert, and no longer (round 9 item 4): a session that is still not listed then goes
+        // through the rules below, as any lost session does, so its role is not held forever.
+        if (StaleBlockedHeld(record, now)) return [];
 
         // At the run's limit a lost session is not brought back (additions item 4).
         if (reached) return [];
@@ -248,5 +250,20 @@ public static class SupervisorPolicy
                 $"{recentRestarts} restarts in the last hour; not restarting until someone looks.")];
         }
         return [new SupervisorAction.Resume(spec.Role, spec, record.SessionId)];
+    }
+
+    /// <summary>How long a lost session that was waiting for input is held back from a resume, counted from its stale-blocked alert (round 9 item 4).</summary>
+    public static readonly TimeSpan StaleBlockedHold = TimeSpan.FromHours(1);
+
+    /// <summary>
+    /// True while the stale-blocked alert stands and was raised less than <see cref="StaleBlockedHold"/> ago. A record with no alert time (one
+    /// from before the field) is not held: it has no hour to hold to. A time ahead of now (the clock went back) is not held either, so a
+    /// clock jump cannot hold a role for longer than the hour.
+    /// </summary>
+    private static bool StaleBlockedHeld(SessionRecord record, DateTimeOffset now)
+    {
+        if (!AttentionList.IsStaleBlockedAlert(record.LastAlert) || record.StaleBlockedAt is not { } raised) return false;
+        var age = now - raised;
+        return age >= TimeSpan.Zero && age < StaleBlockedHold;
     }
 }

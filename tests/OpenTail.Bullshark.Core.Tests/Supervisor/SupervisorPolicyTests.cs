@@ -317,8 +317,10 @@ public sealed class SupervisorPolicyTests
     [Fact]
     public void AStaleBlockedSessionIsNotResumedWhenTheRosterDropsItsRow()
     {
-        // Its prompt is lost, so a "gone" session with the stale alert on record is not brought back either.
-        var actions = SupervisorPolicy.Decide(Planner, WithAlert(AttentionList.StaleBlockedAlertPrefix), [], Now, SupervisorRules.Default);
+        // Its prompt is lost, so a "gone" session with the stale alert on record is not brought back either. The hold lasts an hour from the
+        // alert (round 9 item 4): this alert was raised five minutes ago.
+        var record = WithAlert(AttentionList.StaleBlockedAlertPrefix) with { StaleBlockedAt = Now.AddMinutes(-5) };
+        var actions = SupervisorPolicy.Decide(Planner, record, [], Now, SupervisorRules.Default);
 
         Assert.Empty(actions);
     }

@@ -21,7 +21,12 @@ public sealed record SessionRecord(
     /// <see cref="RunBudget.ReachedLevel"/>, or null. It is kept apart from <see cref="LastAlert"/>, which another alert replaces, so one
     /// notice is given per level (round 5 item 8). Files from before the field load as null.
     /// </summary>
-    string? LimitLevel = null);
+    string? LimitLevel = null,
+    /// <summary>
+    /// When the stale-blocked alert was raised (round 9 item 4). A lost session is held from a resume for an hour from this time, and no longer.
+    /// It is read only while <see cref="LastAlert"/> is the stale-blocked alert. Files from before the field load as null.
+    /// </summary>
+    DateTimeOffset? StaleBlockedAt = null);
 
 /// <summary>
 /// Reads and writes the state file. Every change goes through <see cref="Update"/>: the file is read again under the lock,

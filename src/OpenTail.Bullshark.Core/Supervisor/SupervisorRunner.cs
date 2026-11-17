@@ -111,7 +111,7 @@ public sealed class SupervisorRunner
                     // A respawn is restarting the workers: no start or resume is carried out until the hold ends. The session is decided on again
                     // by the next pass that is not held (round 8 item 3). The hold is read for each action, just before it is carried out, so a
                     // respawn that began during this pass holds the rest of it too (round 9 item 2).
-                    if (Hold?.IsHeld == true && action is (SupervisorAction.Start or SupervisorAction.Resume)) continue;
+                    if (Hold?.IsHeld == true && HeldByRespawn(action)) continue;
 
                     try
                     {
@@ -165,6 +165,14 @@ public sealed class SupervisorRunner
 
         return performed;
     }
+
+    /// <summary>
+    /// What a respawn holds back: a start, a resume, and the stale-blocked alert. A listing taken while the daemon restarts can show a session
+    /// as not running for a moment, so that alert waits for the hold to end too (round 9 item 4). Its record is then left as it was.
+    /// </summary>
+    private static bool HeldByRespawn(SupervisorAction action) =>
+        action is (SupervisorAction.Start or SupervisorAction.Resume)
+        || (action is SupervisorAction.Alert { Kind: AlertKind.Blocked } alert && alert.Detail == AttentionList.StaleBlockedDetail);
 
     /// <summary>True for a last alert that says the session was stopped or failed, the two alerts the owner must act on by starting the run again.</summary>
     private static bool IsStopOrFailureAlert(string? alert) =>
@@ -288,7 +296,12 @@ public sealed class SupervisorRunner
                 {
                     AlertKind.LimitNear => records[spec.Name] with { LimitLevel = RunBudget.NearLevel },
                     AlertKind.LimitReached => records[spec.Name] with { LimitLevel = RunBudget.ReachedLevel },
-                    _ => records[spec.Name] with { LastAlert = $"{alert.Kind}: {alert.Detail}" },
+                    // The stale-blocked alert keeps the time it was raised: the hold on a lost session lasts an hour from it (round 9 item 4).
+                    _ => records[spec.Name] with
+                    {
+                        LastAlert = $"{alert.Kind}: {alert.Detail}",
+                        StaleBlockedAt = alert.Detail == AttentionList.StaleBlockedDetail ? now : records[spec.Name].StaleBlockedAt,
+                    },
                 };
                 _log($"{spec.Name}: ALERT {alert.Kind} - {alert.Detail}");
                 break;
