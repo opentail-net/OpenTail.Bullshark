@@ -299,7 +299,7 @@ public partial class SessionWindow
         {
             Rail.Items.Clear();
             // Needs you comes first: a session that waits for the owner is the first thing to see. Shown with the live sessions only.
-            if (ShowsLive && _attention.Count > 0) Rail.Items.Add(NeedsYouSection(stored));
+            if (ShowsLive && (_attention.Count > 0 || _daemon.Problem is not null)) Rail.Items.Add(NeedsYouSection(stored));
             foreach (var (key, step) in _trustSteps)
                 Rail.Items.Add(NewItem(Label($"Trust: {Path.GetFileName(step.Root)} · choose 'Yes, I trust this folder'", wrap: true),
                     new RailTag(RailKind.Trust, key), step.Root));

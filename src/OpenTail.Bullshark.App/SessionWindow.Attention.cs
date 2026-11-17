@@ -51,6 +51,11 @@ public partial class SessionWindow
             "or a file that another session of the run also wrote.");
         section.IsExpanded = _expanded.GetValueOrDefault(NeedsYouKey, true);
 
+        // A dead daemon comes first: while it holds, the sessions listed as working or blocked are not alive, and nothing is started (round 7 item 1).
+        if (_daemon.Problem is { } daemonProblem)
+            section.Items.Add(NewItem(Label(daemonProblem, bold: true, wrap: true),
+                new RailTag(RailKind.Heading, NeedsYouKey + ":daemon"), daemonProblem));
+
         // One row per session: its first reason is the one the row is shown for. The other reasons are in the Changes tab and the announcement.
         foreach (var item in _attention.DistinctBy(i => i.Name, StringComparer.Ordinal))
         {

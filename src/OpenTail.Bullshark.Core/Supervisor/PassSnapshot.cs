@@ -50,9 +50,11 @@ public static class PassSnapshot
         int waiting,
         int failed,
         string? storeProblem,
-        string? trustProblem)
+        string? trustProblem,
+        string? daemonProblem = null)
     {
         var parts = new List<string> { $"{now:HH:mm:ss}  {actions} action(s) this pass" };
+        if (daemonProblem is not null) parts.Add(daemonProblem);
         if (waiting > 0) parts.Add($"{waiting} session(s) wait for trust (see the Trust step)");
         if (failed > 0) parts.Add($"{failed} start(s) failed: see the rail, then Retry failed starts");
         if (storeProblem is not null) parts.Add($"state file cannot be read, nothing is changed: {storeProblem}");

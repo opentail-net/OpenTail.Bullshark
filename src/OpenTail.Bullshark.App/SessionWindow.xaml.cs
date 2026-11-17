@@ -71,6 +71,9 @@ public partial class SessionWindow : Window
     private bool _passRunning;
     private IReadOnlyList<AgentInfo> _agents = [];
 
+    /// <summary>The background daemon as the last pass read it (round 7 item 1). Its problem, if any, is shown under Needs you.</summary>
+    private DaemonStatus _daemon = DaemonStatus.Unknown();
+
     /// <summary>
     /// The listing with completed sessions (`--all`) from the last pass. Names already in use come from this one, so a new run
     /// never reuses the name of a finished session: a `done` session of a run's name can then only be that run's own (F61).
@@ -208,7 +211,8 @@ public partial class SessionWindow : Window
         Dictionary<string, TailFacts> Facts,
         Dictionary<string, string> NewPaths,
         IReadOnlyDictionary<string, RunBudget> Budgets,
-        string? StoreProblem);
+        string? StoreProblem,
+        DaemonStatus Daemon);
 
     /// <summary>
     /// Runs one supervisor pass, then refreshes the rail. The reads and the pass itself run on a pool thread, so the window does
@@ -234,6 +238,9 @@ public partial class SessionWindow : Window
             // The limits this pass is held to are set before it runs (round 6 item 1): a run at its limit gets no start or resume from the
             // first pass on. The runner is idle here, since a pass runs only when the previous one has finished.
             _runner.Budgets = read.Budgets;
+            // The daemon as this pass read it (round 7 item 1): a dead daemon makes the pass decide nothing, and shows in the Needs you group.
+            _daemon = read.Daemon;
+            _runner.Daemon = read.Daemon;
 
             // While ~/.claude.json cannot be read, trust is unknown: no root is judged untrusted, and no run starts or restarts.
             var plan = read.Trust;
@@ -266,7 +273,7 @@ public partial class SessionWindow : Window
 
             var failed = PassSnapshot.FailedStarts(records.Values);
             RetryButton.Visibility = failed > 0 ? Visibility.Visible : Visibility.Collapsed;
-            var parts = PassSnapshot.StatusParts(DateTime.Now, actions, plan.Waiting, failed, _storeProblem, plan.Problem);
+            var parts = PassSnapshot.StatusParts(DateTime.Now, actions, plan.Waiting, failed, _storeProblem, plan.Problem, _daemon.StatusProblem);
 
             // A search owns the status line while it runs or while its results are shown: the pass's summary waits for it to end.
             if (_searchMatches is null && SearchBusy.Visibility != Visibility.Visible) SetStatus(string.Join("  ·  ", parts));
@@ -294,6 +301,8 @@ public partial class SessionWindow : Window
     {
         var agents = await _cli.ListAgentsAsync();
         var passAgents = await _cli.ListAgentsAsync(includeCompleted: true);
+        // The daemon is read with the listings, and never throws: an unknown status lets the pass go on as before (round 7 item 1).
+        var daemon = await _cli.DaemonStatusAsync();
         var (records, recordsProblem) = LoadRecords(_store);
         var (runs, runsProblem) = LoadRuns(_runStore);
         // A run that waits for its start time has no specs here, so it is neither trusted, started nor adopted yet (gems item 5).
@@ -309,7 +318,7 @@ public partial class SessionWindow : Window
         var paths = new Dictionary<string, string>(known, StringComparer.Ordinal);
         foreach (var pair in newPaths) paths[pair.Key] = pair.Value;
         var budgets = BudgetsOf(runs, records, paths);
-        return new PassReads(agents, passAgents, records, plan, facts, newPaths, budgets, recordsProblem ?? runsProblem);
+        return new PassReads(agents, passAgents, records, plan, facts, newPaths, budgets, recordsProblem ?? runsProblem, daemon);
     }
 
     /// <summary>

@@ -42,6 +42,8 @@ public sealed class SupervisorLoop
         CancellationToken cancellationToken = default)
     {
         var actions = await _runner.CheckOnceAsync(specs, agents, cancellationToken);
+        // With the daemon down (round 7 item 1) the sessions' output is not read either: it is not theirs to read from a dead daemon.
+        if (_runner.Daemon?.BlocksDecisions == true) return 0;
 
         foreach (var record in _store.Load().Values)
         {

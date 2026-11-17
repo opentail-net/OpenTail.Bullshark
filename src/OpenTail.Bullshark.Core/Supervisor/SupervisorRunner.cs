@@ -32,6 +32,14 @@ public sealed class SupervisorRunner
     /// </summary>
     public IEventSink? Events { get; set; }
 
+    /// <summary>
+    /// The background daemon as the window read it before the pass (round 7 item 1). When it is not running, or its control socket is
+    /// unreachable, the pass makes no decision at all: nothing is started, resumed or adopted, and nothing is recorded, because the
+    /// listing from a dead daemon is not trusted, as an unreadable listing is not. Null, the default, and an unknown status do not stop
+    /// the pass, which is how the runner worked before the check.
+    /// </summary>
+    public DaemonStatus? Daemon { get; set; }
+
     public SupervisorRunner(
         ClaudeCli cli,
         StateStore store,
@@ -70,6 +78,9 @@ public sealed class SupervisorRunner
         IReadOnlyList<AgentInfo> agents,
         CancellationToken cancellationToken = default)
     {
+        // A dead daemon's listing is not trusted (round 7 item 1): the pass decides nothing and writes nothing.
+        if (Daemon?.BlocksDecisions == true) return [];
+
         // Read first: an unreadable state file stops the pass before anything is started or written.
         var before = _store.Load().ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
         var records = new Dictionary<string, SessionRecord>(before, StringComparer.Ordinal);

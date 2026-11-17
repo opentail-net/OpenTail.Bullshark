@@ -81,6 +81,25 @@ public sealed class ClaudeCli
     }
 
     /// <summary>
+    /// What `claude daemon status` says (round 7 item 1). Read-only. The command exits with 1 when the daemon is not running, so its
+    /// exit code is not used: the text decides. A command that cannot be run, or times out, gives an Unknown status rather than an
+    /// error, so a pass goes on as it did before the check existed.
+    /// </summary>
+    public async Task<DaemonStatus> DaemonStatusAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var result = await _runner.RunAsync(["daemon", "status"], null, ShortTimeout, cancellationToken);
+            if (result.TimedOut) return DaemonStatus.Unknown("`claude daemon status` timed out");
+            return DaemonStatus.Parse(result.StdOut + "\n" + result.StdErr);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return DaemonStatus.Unknown(ex.Message);
+        }
+    }
+
+    /// <summary>
     /// The most characters the joined launch arguments may take, counted as they are written on the command line (see
     /// <see cref="EscapeArgument"/>). Windows caps a command line at 32,767 characters. The margin is for the executable's path.
     /// </summary>

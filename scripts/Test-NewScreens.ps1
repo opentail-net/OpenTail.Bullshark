@@ -3,7 +3,8 @@
 #
 # Everything the window reads is a scratch fixture, built by this script in -Out: a state folder with one run of two coders (their
 # sessions do not exist), a test .claude folder with one transcript, a git repo with one edited file, and a stand-in for the claude CLI
-# that lists no sessions and starts nothing. Each screen is one run of the built App with --no-pass, --state and --claude-home set to
+# that lists no sessions and starts nothing. The stand-in answers `daemon status` and `--version` from FAKECLAUDE_* variables (the daemon
+# screens set them) and logs every call to calls.log under -Out\tools, so a run can be checked for read-only calls only. Each screen is one run of the built App with --no-pass, --state and --claude-home set to
 # that scratch, so no Claude session is started and the owner's transcripts and state are not read as screens. The app's own
 # claude listing and attach calls reach only the stand-in, because its folder is first on PATH for these runs.
 #
@@ -146,7 +147,37 @@ Console.WriteLine($"coder1={coders[0].Name}");
 
 @'
 // A stand-in for the claude CLI during the screenshots. It lists no sessions, attaches to nothing and starts nothing.
+// It answers `daemon status` and `--version` (round 7 item 1 and 2) from three variables, and appends every call to FAKECLAUDE_LOG:
+//   FAKECLAUDE_DAEMON=running|down      (default running: the daemon is up; down prints the text `claude daemon status` printed on
+//                                        2.1.326 when it was not running, with exit code 1)
+//   FAKECLAUDE_VERSION=2.1.326          (what `claude --version` prints)
+//   FAKECLAUDE_DAEMON_VERSION=          (the version the running daemon reports; default the same as FAKECLAUDE_VERSION)
+var callLog = Environment.GetEnvironmentVariable("FAKECLAUDE_LOG");
+if (!string.IsNullOrEmpty(callLog)) File.AppendAllText(callLog, string.Join(' ', args) + "\n");
+var cliVersion = Environment.GetEnvironmentVariable("FAKECLAUDE_VERSION") ?? "2.1.326";
+var daemonVersion = Environment.GetEnvironmentVariable("FAKECLAUDE_DAEMON_VERSION") ?? cliVersion;
+var daemonDown = Environment.GetEnvironmentVariable("FAKECLAUDE_DAEMON") == "down";
+const string NotRunning = @"not running
+
+bg sessions:
+  sock dir:     \\.\pipe\cc-daemon-*
+  control.sock: unreachable (connect ENOENT \\.\pipe\cc-daemon-*-control)
+  bg workers:   0 in roster.json (control unreachable)
+  roster.json:  updated 6604s ago
+  daemon.log:   31.7KB at C:\Users\example\.claude\daemon.log
+";
 if (args.Length > 0 && args[0] == "agents") Console.Out.Write("[]");
+else if (args.Length >= 2 && args[0] == "daemon" && args[1] == "status")
+{
+    if (daemonDown) { Console.Out.Write(NotRunning); return 1; }
+    Console.Out.Write("running (pid 4312, version " + daemonVersion + ", uptime 2h 5m)\n\nbg sessions:\n" +
+        "  sock dir:     \\\\.\\pipe\\cc-daemon-*\n" +
+        "  control.sock: listening (\\\\.\\pipe\\cc-daemon-*-control)\n" +
+        "  bg workers:   0 in roster.json\n" +
+        "  roster.json:  updated 3s ago\n" +
+        "  daemon.log:   12.4KB at C:\\Users\\example\\.claude\\daemon.log\n");
+}
+else if (args.Length > 0 && args[0] == "--version") Console.Out.Write(cliVersion + " (Claude Code)\n");
 return 0;
 '@ | Set-Content -LiteralPath "$tools\fakeclaude\Program.cs" -Encoding UTF8
 
@@ -180,14 +211,23 @@ $screens = @(
     # The effort panel open (--effort-open), in both themes: its contents are what the screens check (round 5 item 16).
     @{ Name = 'effort-dark'; Theme = 'Dark'; Options = @('--open-transcript', '5e4f3a21-0000-4000-8000-00000000c0d1', '--effort-open') },
     @{ Name = 'effort-light'; Theme = 'Light'; Options = @('--open-transcript', '5e4f3a21-0000-4000-8000-00000000c0d1', '--effort-open') },
-    @{ Name = 'changes-dark'; Theme = 'Dark'; Options = @('--open-tab', 'changes:bullshark-coder-r4a1-1') }
+    @{ Name = 'changes-dark'; Theme = 'Dark'; Options = @('--open-tab', 'changes:bullshark-coder-r4a1-1') },
+    # Round 7 item 1: the daemon is not running, so the Needs you group says so and the pass starts nothing.
+    @{ Name = 'daemon-down-dark'; Theme = 'Dark'; Options = @(); Env = @{ FAKECLAUDE_DAEMON = 'down' } },
+    @{ Name = 'daemon-down-light'; Theme = 'Light'; Options = @(); Env = @{ FAKECLAUDE_DAEMON = 'down' } },
+    # Round 7 item 2: the running daemon reports 2.1.300 and claude is 2.1.326, so the Respawn all button shows in the bar.
+    @{ Name = 'daemon-drift-dark'; Theme = 'Dark'; Options = @(); Env = @{ FAKECLAUDE_DAEMON = 'running'; FAKECLAUDE_DAEMON_VERSION = '2.1.300' } }
 )
 
 # The stand-in goes first on PATH for these runs only: the window's claude calls reach it, not the owner's claude.
 $env:PATH = "$tools\fakebin;" + $env:PATH
+$env:FAKECLAUDE_LOG = "$tools\calls.log"
 $failed = 0
 foreach ($screen in $screens) {
     $name = $screen.Name
+    # Each screen sets its own stand-in answers and clears the others, so one screen's daemon does not leak into the next.
+    foreach ($key in 'FAKECLAUDE_DAEMON', 'FAKECLAUDE_DAEMON_VERSION') { Remove-Item "Env:$key" -ErrorAction SilentlyContinue }
+    if ($screen.Env) { foreach ($key in $screen.Env.Keys) { Set-Item -Path "Env:$key" -Value $screen.Env[$key] } }
     Set-Content -LiteralPath "$state\ui.json" -Value ('{"railTheme": "' + $screen.Theme + '"}') -Encoding UTF8
     $png = Join-Path $shots "$name.png"
     $argList = @('--state', "$state\state.json", '--no-pass', '--workdir', $repo, '--claude-home', $claudeHome,
