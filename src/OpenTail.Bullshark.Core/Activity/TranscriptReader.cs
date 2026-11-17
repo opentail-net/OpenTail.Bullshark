@@ -81,134 +81,189 @@ public static class TranscriptReader
     /// </summary>
     public static TranscriptSummary Summarize(IEnumerable<string> lines, UsageLedger? ledger = null, string? fileName = null, int firstLine = 0)
     {
-        var usageLedger = ledger ?? new UsageLedger();
-        var file = fileName ?? string.Empty;
-        int records = 0, users = 0, assistants = 0, tools = 0, turns = 0, lineNumber = firstLine;
-        string? lastText = null, lastModel = null;
-        DateTimeOffset? lastTimestamp = null, firstTimestamp = null;
-        string? firstUserText = null;
-        string? aiTitle = null, customTitle = null, lastRecap = null;
-        DateTimeOffset? lastRecapAt = null;
-        int compactions = 0;
-        string? continuesSessionId = null;
-        // Failed tool calls (TA1): a tool_result that says is_error, counted once per call id.
-        int failedCalls = 0;
-        var failedIds = new HashSet<string>(StringComparer.Ordinal);
-        long contextAtLastTurn = 0;
-        var seenInFile = new HashSet<string>(StringComparer.Ordinal);
-        var toolNames = new Dictionary<string, int>(StringComparer.Ordinal);
-        var filesWritten = new List<string>();
-        var fileSet = new HashSet<string>(StringComparer.Ordinal);
-        // The time of the last write to each file, so an overlap between sessions can say when each one wrote it (FileOverlap).
-        var fileLastWrites = new Dictionary<string, DateTimeOffset>(StringComparer.Ordinal);
-        // The working folder that the last record naming one gives: the folder the session edits now, which can be a worktree (round 7 item 4).
-        string? latestCwd = null;
-        // The folder each relative file path was written from: the cwd of the record that carries the write, not the latest one (round 8 item 8).
-        var fileFolders = new Dictionary<string, string>(StringComparer.Ordinal);
-        var facts = new LineFacts();
-
+        var counter = new SummaryCounter(ledger, fileName, firstLine);
         foreach (var line in lines)
         {
-            lineNumber++;
-            if (!TranscriptJson.TryParse(line, out var document)) continue;
-
-            // Every value the line is counted from is read first. A line that cannot be read is skipped whole, so nothing of it is counted.
-            using (document)
+            counter.NextLine();
+            if (TranscriptJson.TryParse(line, out var document))
             {
-                try
-                {
-                    facts.Read(document.RootElement, wantFirstUserText: firstUserText is null, wantContinuesId: users == 0);
-                }
-                catch (Exception ex) when (TranscriptJson.IsUnreadable(ex))
-                {
-                    continue;
-                }
+                using (document) counter.Add(document.RootElement);
+            }
+        }
+        return counter.Summary();
+    }
+
+    /// <summary>
+    /// The same summary as <see cref="Summarize"/>, from the UTF-8 bytes of each line (round 12 item A6). The index reads with this; the bench's
+    /// verify step and the tests compare it with the text reader.
+    /// </summary>
+    internal static TranscriptSummary SummarizeUtf8(IEnumerable<ReadOnlyMemory<byte>> lines, UsageLedger? ledger = null, string? fileName = null)
+    {
+        var counter = new SummaryCounter(ledger, fileName, 0);
+        foreach (var line in lines)
+        {
+            counter.NextLine();
+            if (TranscriptJson.TryParseBytes(line, out var document))
+            {
+                bool counted;
+                using (document) counted = counter.Add(document.RootElement);
+                if (counted || !TranscriptJson.HasNonAscii(line.Span)) continue;
+            }
+            else if (!TranscriptJson.HasNonAscii(line.Span))
+            {
+                continue;
             }
 
-            records++;
+            // The bytes did not parse, or did not read, and the line has bytes above 0x7F: it is read as the text reader reads it, decoded (an
+            // invalid sequence becomes U+FFFD). A line that reads as neither is skipped, as it is there (round 12 item A6).
+            if (TranscriptJson.TryParse(TranscriptJson.Decode(line.Span), out var decoded))
+            {
+                using (decoded) counter.Add(decoded.RootElement);
+            }
+        }
+        return counter.Summary();
+    }
+
+    /// <summary>Summarises one file from its UTF-8 bytes: the same result as <see cref="ReadFile"/> (round 12 item A6).</summary>
+    internal static TranscriptSummary ReadFileUtf8(string path, UsageLedger? ledger = null) =>
+        SummarizeUtf8(TranscriptFile.ReadLineBytes(path), ledger, path);
+
+    /// <summary>
+    /// The count of one transcript, record by record. The state that <see cref="Summarize"/> keeps across the lines is kept here, so the text and
+    /// the UTF-8 readers count alike.
+    /// </summary>
+    private sealed class SummaryCounter
+    {
+        private readonly UsageLedger _ledger;
+        private readonly string _file;
+        private readonly LineFacts _facts = new();
+        private readonly HashSet<string> _failedIds = new(StringComparer.Ordinal);
+        private readonly HashSet<string> _seenInFile = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, int> _toolNames = new(StringComparer.Ordinal);
+        private readonly List<string> _filesWritten = [];
+        private readonly HashSet<string> _fileSet = new(StringComparer.Ordinal);
+        // The time of the last write to each file, so an overlap between sessions can say when each one wrote it (FileOverlap).
+        private readonly Dictionary<string, DateTimeOffset> _fileLastWrites = new(StringComparer.Ordinal);
+        // The folder each relative file path was written from: the cwd of the record that carries the write, not the latest one (round 8 item 8).
+        private readonly Dictionary<string, string> _fileFolders = new(StringComparer.Ordinal);
+        private int _records, _users, _assistants, _tools, _turns, _compactions, _failedCalls, _lineNumber;
+        private string? _lastText, _lastModel, _firstUserText, _aiTitle, _customTitle, _lastRecap, _continuesSessionId;
+        // The working folder that the last record naming one gives: the folder the session edits now, which can be a worktree (round 7 item 4).
+        private string? _latestCwd;
+        private DateTimeOffset? _lastTimestamp, _firstTimestamp, _lastRecapAt;
+        private long _contextAtLastTurn;
+
+        public SummaryCounter(UsageLedger? ledger, string? fileName, int firstLine)
+        {
+            _ledger = ledger ?? new UsageLedger();
+            _file = fileName ?? string.Empty;
+            _lineNumber = firstLine;
+        }
+
+        /// <summary>Moves on to the next line of the file. Every line counts in the line numbers, blank and not-JSON ones too.</summary>
+        public void NextLine() => _lineNumber++;
+
+        /// <summary>
+        /// Counts one record. A line whose values cannot be read counts nothing (round 12 item A1): the result is false, and nothing has changed.
+        /// </summary>
+        public bool Add(JsonElement root)
+        {
+            try
+            {
+                _facts.Read(root, wantFirstUserText: _firstUserText is null, wantContinuesId: _users == 0);
+            }
+            catch (Exception ex) when (TranscriptJson.IsUnreadable(ex))
+            {
+                return false;
+            }
+
+            var facts = _facts;
+            _records++;
 
             // Claude Code writes the session's working folder on its records (observed 2026-11-17 on 2.1.326: `cwd` on most lines). A blank value is ignored.
-            if (facts.Cwd is not null) latestCwd = facts.Cwd;
+            if (facts.Cwd is not null) _latestCwd = facts.Cwd;
 
             var recordTime = facts.Time;
             if (recordTime is { } parsed)
             {
-                lastTimestamp = parsed;
-                firstTimestamp ??= parsed;
+                _lastTimestamp = parsed;
+                _firstTimestamp ??= parsed;
             }
 
-            if (facts.TurnDuration) turns++;
+            if (facts.TurnDuration) _turns++;
 
             // Facts Claude Code writes itself (observed 2026-11-16; the shape is not documented). A blank value is ignored.
-            if (facts.AiTitle is not null) aiTitle = facts.AiTitle;
-            if (facts.CustomTitle is not null) customTitle = facts.CustomTitle;
+            if (facts.AiTitle is not null) _aiTitle = facts.AiTitle;
+            if (facts.CustomTitle is not null) _customTitle = facts.CustomTitle;
             if (facts.LibraryKind == "away_summary" && facts.Recap is not null)
             {
-                lastRecap = facts.Recap;
-                lastRecapAt = recordTime;
+                _lastRecap = facts.Recap;
+                _lastRecapAt = recordTime;
             }
             else if (facts.LibraryKind == "compact_boundary")
             {
-                compactions++;
+                _compactions++;
             }
 
             if (facts.IsUser)
             {
-                users++;
-                firstUserText ??= facts.FirstUserText;
+                _users++;
+                _firstUserText ??= facts.FirstUserText;
                 // Only the first user message can name the session this one continues (D-L8).
-                if (users == 1) continuesSessionId = facts.ContinuesId;
+                if (_users == 1) _continuesSessionId = facts.ContinuesId;
                 foreach (var failedId in facts.FailedToolIds)
                 {
-                    if (failedIds.Add(failedId)) failedCalls++;
+                    if (_failedIds.Add(failedId)) _failedCalls++;
                 }
             }
 
-            if (!facts.IsAssistant) continue;
+            if (!facts.IsAssistant) return true;
 
             // The model of this record, not the last model seen: usage is attributed to the record's own model.
-            lastModel = facts.Model;
+            _lastModel = facts.Model;
 
             // Count this message once per file: the first record that carries its key.
-            bool firstInFile = facts.MessageKey is null || seenInFile.Add(facts.MessageKey);
-            if (firstInFile) assistants++;
+            bool firstInFile = facts.MessageKey is null || _seenInFile.Add(facts.MessageKey);
+            if (firstInFile) _assistants++;
 
             foreach (var block in facts.Blocks)
             {
                 if (block.Type == "tool_use")
                 {
                     // A tool call has its own id, and it is written in just one of the message's records.
-                    bool countThisCall = block.Id is not null ? seenInFile.Add("tool:" + block.Id) : firstInFile;
+                    bool countThisCall = block.Id is not null ? _seenInFile.Add("tool:" + block.Id) : firstInFile;
                     if (countThisCall)
                     {
-                        tools++;
+                        _tools++;
                         var name = block.Name ?? "unknown";
-                        toolNames[name] = toolNames.TryGetValue(name, out var n) ? n + 1 : 1;
+                        _toolNames[name] = _toolNames.TryGetValue(name, out var n) ? n + 1 : 1;
                         if (block.FilePath is { } filePath)
                         {
-                            if (recordTime is { } writeTime) fileLastWrites[filePath] = writeTime;
+                            if (recordTime is { } writeTime) _fileLastWrites[filePath] = writeTime;
                             // latestCwd is this record's own folder when it names one (it is read before the content above), else the last one named.
-                            if (latestCwd is not null && !Path.IsPathRooted(filePath)) fileFolders[filePath] = latestCwd;
-                            if (fileSet.Add(filePath)) filesWritten.Add(filePath);
+                            if (_latestCwd is not null && !Path.IsPathRooted(filePath)) _fileFolders[filePath] = _latestCwd;
+                            if (_fileSet.Add(filePath)) _filesWritten.Add(filePath);
                         }
                     }
                 }
-                if (block.Type == "text" && block.Text is { } text) lastText = text;
+                if (block.Type == "text" && block.Text is { } text) _lastText = text;
             }
 
             if (facts.Usage is { } usage)
             {
                 // A record with no identity cannot be matched to another, so it is counted where it stands.
-                var usageKey = facts.MessageKey ?? $"unkeyed:{file}:{lineNumber}";
-                usageLedger.Record(usageKey, facts.Model, file, usage);
+                var usageKey = facts.MessageKey ?? $"unkeyed:{_file}:{_lineNumber}";
+                _ledger.Record(usageKey, facts.Model, _file, usage);
                 // The context a next turn would load is this message's input plus everything read from and written to the cache.
-                contextAtLastTurn = usage.Input + usage.CacheRead + usage.CacheCreation;
+                _contextAtLastTurn = usage.Input + usage.CacheRead + usage.CacheCreation;
             }
+            return true;
         }
 
-        return new TranscriptSummary(records, users, assistants, tools, turns, lastText, lastTimestamp, lastModel,
-            usageLedger.ByFile(file), firstTimestamp, toolNames, filesWritten, contextAtLastTurn, firstUserText,
-            aiTitle, customTitle, lastRecap, lastRecapAt, compactions, continuesSessionId, failedCalls, fileLastWrites, latestCwd, fileFolders);
+        /// <summary>What has been counted so far.</summary>
+        public TranscriptSummary Summary() => new(_records, _users, _assistants, _tools, _turns, _lastText, _lastTimestamp, _lastModel,
+            _ledger.ByFile(_file), _firstTimestamp, _toolNames, _filesWritten, _contextAtLastTurn, _firstUserText,
+            _aiTitle, _customTitle, _lastRecap, _lastRecapAt, _compactions, _continuesSessionId, _failedCalls, _fileLastWrites, _latestCwd, _fileFolders);
     }
 
     /// <summary>

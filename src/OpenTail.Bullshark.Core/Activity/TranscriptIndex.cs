@@ -256,7 +256,8 @@ public sealed class TranscriptIndex
         try
         {
             var (length, written) = StatNow(file);
-            return new FileRead(file, ledger, TranscriptReader.ReadFile(file.FullName, ledger), null, length, written);
+            // The index reads the bytes of each line: the same summary as the text reader, without decoding every line (round 12 item A6).
+            return new FileRead(file, ledger, TranscriptReader.ReadFileUtf8(file.FullName, ledger), null, length, written);
         }
         catch (Exception ex)
         {

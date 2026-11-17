@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using System.Text.Json;
 
 namespace OpenTail.Bullshark.Core.Activity;
@@ -35,6 +36,31 @@ internal static class TranscriptJson
             return false;
         }
     }
+
+    /// <summary>
+    /// Parses one line given as its UTF-8 bytes (round 12 item A6). False when the bytes are not JSON, and for a blank line. A line whose bytes
+    /// parse may still fail to read (invalid UTF-8 inside a string), and a line that does not parse as bytes may parse as decoded text: the
+    /// caller decodes such a line the way the text reader does (see <see cref="HasNonAscii"/>).
+    /// </summary>
+    public static bool TryParseBytes(ReadOnlyMemory<byte> utf8, out JsonDocument document)
+    {
+        try
+        {
+            document = JsonDocument.Parse(utf8);
+            return true;
+        }
+        catch (JsonException)
+        {
+            document = null!;
+            return false;
+        }
+    }
+
+    /// <summary>True when the line has a byte above 0x7F, so that its decoded text can differ from what its bytes say.</summary>
+    public static bool HasNonAscii(ReadOnlySpan<byte> utf8) => utf8.IndexOfAnyInRange((byte)0x80, (byte)0xFF) >= 0;
+
+    /// <summary>The text a line's bytes decode to, as the text reader decodes a line: an invalid sequence becomes U+FFFD.</summary>
+    public static string Decode(ReadOnlySpan<byte> utf8) => Encoding.UTF8.GetString(utf8);
 
     /// <summary>True for the exceptions a line's values raise when they cannot be read. A reader skips that line.</summary>
     public static bool IsUnreadable(Exception ex) => ex is InvalidOperationException or JsonException;
