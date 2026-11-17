@@ -33,10 +33,16 @@ public sealed class ClaudeCli
         new(@"backgrounded\s*·\s*([0-9a-f]{8})\s*·", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private readonly ICliRunner _runner;
+    private readonly TimeProvider _clock;
 
-    public ClaudeCli(ICliRunner runner)
+    /// <param name="clock">
+    /// The clock the session-id wait reads and waits on. The default is the system clock; a test passes a clock it moves itself,
+    /// so the wait can be checked without real seconds passing.
+    /// </param>
+    public ClaudeCli(ICliRunner runner, TimeProvider? clock = null)
     {
         _runner = runner;
+        _clock = clock ?? TimeProvider.System;
     }
 
     public async Task<IReadOnlyList<AgentInfo>> ListAgentsAsync(CancellationToken cancellationToken = default)
@@ -101,14 +107,14 @@ public sealed class ClaudeCli
         TimeSpan timeout,
         CancellationToken cancellationToken = default)
     {
-        var deadline = DateTimeOffset.UtcNow + timeout;
+        var deadline = _clock.GetUtcNow() + timeout;
         while (true)
         {
             var agent = (await ListAgentsAsync(cancellationToken)).FirstOrDefault(a => a.Id == shortId);
             if (agent?.SessionId is { } sessionId) return sessionId;
-            if (DateTimeOffset.UtcNow >= deadline)
+            if (_clock.GetUtcNow() >= deadline)
                 throw new ClaudeCliException($"session {shortId} did not appear in `claude agents --json` within {timeout.TotalSeconds:0}s");
-            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+            await Task.Delay(TimeSpan.FromSeconds(1), _clock, cancellationToken);
         }
     }
 
