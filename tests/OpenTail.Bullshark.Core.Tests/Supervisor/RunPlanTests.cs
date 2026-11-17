@@ -50,7 +50,8 @@ public sealed class RunPlanTests
         var only = Assert.Single(specs);
         Assert.Equal(SessionRole.Planner, only.Role);
         Assert.Equal("bullshark-planner-ab12", only.Name);
-        Assert.Contains("no peer", only.Brief);
+        Assert.Contains("Task: task", only.Brief);
+        Assert.DoesNotContain("bullshark-planner-ab12", only.Brief);
         Assert.DoesNotContain("Your peer is", only.Brief);
         Assert.DoesNotContain("bullshark-coder", only.Brief);
         Assert.DoesNotContain("bullshark-coder", only.ResumePrompt);

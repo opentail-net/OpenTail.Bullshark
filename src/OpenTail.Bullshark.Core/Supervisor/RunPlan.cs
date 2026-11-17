@@ -111,7 +111,7 @@ public static class RunPlan
             return
             [
                 new SessionSpec(SessionRole.Planner, planner, workDir, PlannerModel, PlannerEffort,
-                    SoloBrief(planner, task), permissionMode, SoloResumePrompt),
+                    SoloBrief(task), permissionMode, SoloResumePrompt),
             ];
         }
 
@@ -218,9 +218,8 @@ public static class RunPlan
         new(name, "resume", folder, "auto", now, [new SessionSpec(SessionRole.Planner, name, folder, model, effort,
             "Continue the session you were resumed into, where it left off.", "auto", SoloResumePrompt)]);
 
-    /// <summary>Solo's brief: one session, no peer, and no message to send.</summary>
-    public static string SoloBrief(string name, string task) =>
-        $"You are {name}, the only session in this run. There is no peer, so send no messages. " +
+    /// <summary>Solo's brief: the task and the working rules. It does not name the session (the CLI has the name), and a solo session has no peer.</summary>
+    public static string SoloBrief(string task) =>
         $"Task: {task} " +
         "Plan it in small batches, do each batch fully with tests, and say what you decided after each batch. " +
         "Do not ask questions: make the sensible decision and say what you decided.";
