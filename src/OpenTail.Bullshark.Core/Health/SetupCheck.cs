@@ -192,13 +192,17 @@ public static class SetupCheck
         }
 
         var problems = new List<string>();
-        if (LooksLikePath(expanded))
+        var notChecked = UsesVariable(expanded);
+        if (!notChecked)
         {
-            if (!File.Exists(expanded)) problems.Add($"program not found: {expanded}");
-        }
-        else if (!OnPath(expanded, path))
-        {
-            problems.Add($"program not found on PATH: {expanded}");
+            if (LooksLikePath(expanded))
+            {
+                if (!File.Exists(expanded)) problems.Add($"program not found: {expanded}");
+            }
+            else if (!OnPath(expanded, path))
+            {
+                problems.Add($"program not found on PATH: {expanded}");
+            }
         }
 
         foreach (var argument in arguments)
@@ -208,9 +212,16 @@ public static class SetupCheck
         }
 
         items.Add(problems.Count == 0
-            ? new SetupItem(area, name, SetupState.Ok, Clip($"found: {expanded}"))
+            ? new SetupItem(area, name, SetupState.Ok, Clip(notChecked ? $"uses a variable; not checked: {expanded}" : $"found: {expanded}"))
             : new SetupItem(area, name, SetupState.Problem, Clip(string.Join("; ", problems))));
     }
+
+    /// <summary>
+    /// True when a program is named by a variable that is not set here: <c>$VAR</c>, <c>${VAR}</c>, or a <c>%VAR%</c> left as it is by
+    /// <see cref="Expand"/>. Where it lives is not known, so it is not checked, and it is not reported as missing (a hook that works).
+    /// </summary>
+    private static bool UsesVariable(string value) =>
+        value.StartsWith('$') || value.StartsWith('%') || value.Contains("${", StringComparison.Ordinal);
 
     /// <summary>
     /// True for a JSON object. TryGetProperty throws on any other kind, and the files are hand-edited: an array, a string or null where an

@@ -236,4 +236,34 @@ public sealed class SetupCheckTests : IDisposable
         Assert.Equal(3, items.Count(i => i.Area == "Hook PreToolUse" && i.State == SetupState.Problem));
         Assert.Contains(items, i => i.Area == "Hook PreToolUse" && i.State == SetupState.Ok);
     }
+
+    [Theory]
+    [InlineData("$CLAUDE_PROJECT_DIR/hooks/x.sh")]
+    [InlineData("${CLAUDE_PLUGIN_ROOT}/hooks/y.sh")]
+    [InlineData("%CLAUDE_TEST_UNSET_VARIABLE%\\hooks\\z.exe")]
+    public void AHookThatNamesAVariableIsNotCheckedAndNotReportedMissing(string command)
+    {
+        WriteSettings($"{{\"hooks\":{{\"PreToolUse\":[{{\"hooks\":[{{\"command\":\"{Json(command)}\"}}]}}]}}}}");
+        WriteClaudeJson("{}");
+        WriteInstructions();
+
+        var hook = Assert.Single(Run(), i => i.Area == "Hook PreToolUse");
+
+        Assert.Equal(SetupState.Ok, hook.State);
+        Assert.Contains("uses a variable; not checked", hook.Detail);
+    }
+
+    [Fact]
+    public void AHookThatNamesASetVariableIsExpandedAndChecked()
+    {
+        // %TEMP% is set, so the path is known and is checked: the program is not there, and that is a problem.
+        WriteSettings($"{{\"hooks\":{{\"PreToolUse\":[{{\"hooks\":[{{\"command\":\"{Json("%TEMP%\\bullshark-missing-tool.exe")}\"}}]}}]}}}}");
+        WriteClaudeJson("{}");
+        WriteInstructions();
+
+        var hook = Assert.Single(Run(), i => i.Area == "Hook PreToolUse");
+
+        Assert.Equal(SetupState.Problem, hook.State);
+        Assert.Contains("program not found", hook.Detail);
+    }
 }
