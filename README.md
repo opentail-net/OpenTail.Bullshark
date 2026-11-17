@@ -157,7 +157,7 @@ Not needed for the core. It is useful for recovery when a restart is not enough,
 - [x] P2 Supervisor (headless, built 2026-11-14; host `src/OpenTail.Bullshark.Supervisor`, 64 offline tests, 2 live tests): starts both roles with `--bg` and reads the session id back (`--session-id` is ignored, F18); resumes a lost session with a continuation prompt (F19, F21); alerts on `blocked` and before the login expires (F8).
 - (P2 original scope:) start planner and coder as `--bg` with `--session-id`; keep IDs in a state file; poll `claude agents --json`; restart lost sessions; alert on `blocked`.
 - [ ] P3 Tabs: one tab per session; open, close and reattach; each tab shows its state.
-- [ ] P4 Startup: Task Scheduler task at log-on runs the supervisor without a window.
+- [ ] P4 Startup: Task Scheduler task at log-on runs the supervisor without a window. **Not wanted now: the window is the one supervisor (owner decision, review of 2026-11-15 §4; see `src/OpenTail.Bullshark.Supervisor/Program.cs`). Not built.**
 - [ ] P5 Handoff: batch and report messages via `SendMessage`, a typed fallback line when delivery fails, and resume recovery by message.
 - [ ] P6 Activity panel built from transcripts (busy, blocked, last action, what changed).
 - [ ] P7 Budget (own spend check) and `blocked` alerts.
