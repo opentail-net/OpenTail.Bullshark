@@ -1,0 +1,209 @@
+# New screens, first look (round 4, item 5). Repeats the screenshots of the screens built on 2026-11-17: the Needs you group, the
+# setup page (start time and limits), Storage, Timeline, a transcript with the effort panel and Export, and Changes.
+#
+# Everything the window reads is a scratch fixture, built by this script in -Out: a state folder with one run of two coders (their
+# sessions do not exist), a test .claude folder with one transcript, a git repo with one edited file, and a stand-in for the claude CLI
+# that lists no sessions and starts nothing. Each screen is one run of the built App with --no-pass, --state and --claude-home set to
+# that scratch, so no Claude session is started and the owner's transcripts and state are not read as screens. The app's own
+# claude listing and attach calls reach only the stand-in, because its folder is first on PATH for these runs.
+#
+#   pwsh scripts\Test-NewScreens.ps1 [-Exe <path to OpenTail.Bullshark.App.exe>] [-Out <scratch folder>]
+#
+# Each run prints PASS or FAIL: the app exits 0 (it closes itself after the screenshot) and the PNG is written. The script exits 1 if
+# any check fails. The PNGs are for a person to look at; they are not committed.
+param(
+    [string]$Exe = (Join-Path (Split-Path -Parent $PSScriptRoot) 'src\OpenTail.Bullshark.App\bin\Debug\net10.0-windows\OpenTail.Bullshark.App.exe'),
+    [string]$Out = (Join-Path $env:TEMP 'bullshark-newscreens')
+)
+$ErrorActionPreference = 'Stop'
+if (-not (Test-Path $Exe)) { throw "The App is not built: $Exe (run dotnet build OpenTail.Bullshark.slnx first)" }
+$Exe = (Resolve-Path -LiteralPath $Exe).Path
+$core = (Resolve-Path -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'src\OpenTail.Bullshark.Core\OpenTail.Bullshark.Core.csproj')).Path
+
+$state = Join-Path $Out 'state'
+$claudeHome = Join-Path $Out 'home\.claude'
+$repo = Join-Path $Out 'repo'
+$tools = Join-Path $Out 'tools'
+$shots = Join-Path $Out 'shots'
+# Only the folders this script makes are cleared; -Out itself is kept.
+foreach ($folder in @($state, $claudeHome, $repo, $tools, $shots)) { if (Test-Path $folder) { Remove-Item -Recurse -Force -LiteralPath $folder } }
+New-Item -ItemType Directory -Force -Path $state, $repo, $shots, "$tools\gen", "$tools\fakeclaude", (Join-Path $claudeHome 'projects\scratch-repo') | Out-Null
+
+# The fixture generator (the Core library writes the state files, so their format is the app's own) and the stand-in for claude.
+@"
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="$core" />
+  </ItemGroup>
+</Project>
+"@ | Set-Content -LiteralPath "$tools\gen\gen.csproj" -Encoding UTF8
+
+@'
+using System.Text.Json;
+using OpenTail.Bullshark.Core.Supervisor;
+
+// Scratch fixtures for the screenshots. Usage: gen <stateFolder> <repoFolder> <claudeHomeFolder>. Session ids are made up.
+var stateFolder = args[0];
+var repo = args[1];
+var claudeHome = args[2];
+Directory.CreateDirectory(stateFolder);
+var now = DateTimeOffset.UtcNow;
+
+const string runId = "r4a1";
+var pattern = PatternSpec.Find("plan-many")!;
+var specs = RunPlan.Build(pattern, repo, "Scratch task for the screenshots: nothing runs.", runId, 2);
+var run = new RunRecord(runId, "plan-many", repo, "auto", now.AddMinutes(-95), specs);
+new RunStore(Path.Combine(stateFolder, "runs.json")).Save([run]);
+
+var planner = specs.First(s => s.Role == SessionRole.Planner);
+var coders = specs.Where(s => s.Role == SessionRole.Coder).ToList();
+const string plannerId = "5e4f3a21-0000-4000-8000-00000000a0a0";
+const string coder1Id = "5e4f3a21-0000-4000-8000-00000000c0d1";
+const string coder2Id = "5e4f3a21-0000-4000-8000-00000000c0d2";
+
+var records = new Dictionary<string, SessionRecord>(StringComparer.Ordinal)
+{
+    [planner.Name] = new(SessionRole.Planner, plannerId, planner.Name, now.AddMinutes(-95), 0, [], "working", null),
+    [coders[0].Name] = new(SessionRole.Coder, coder1Id, coders[0].Name, now.AddMinutes(-90), 3,
+        [now.AddMinutes(-30), now.AddMinutes(-20), now.AddMinutes(-8)], "working",
+        "RestartLoop: restarted 3 times in 25 minutes"),
+    [coders[1].Name] = new(SessionRole.Coder, coder2Id, coders[1].Name, now.AddMinutes(-90), 0, [], "stopped",
+        "Stopped: stopped by the owner"),
+};
+new StateStore(Path.Combine(stateFolder, "state.json")).Save(records);
+
+var events = new EventLog(Path.Combine(stateFolder, "events.jsonl"));
+void Event(int minutesAgo, string session, string kind, string detail) =>
+    events.Write(new SupervisorEvent(now.AddMinutes(-minutesAgo), session, kind, detail));
+Event(95, planner.Name, "start", "started with its brief");
+Event(94, coders[0].Name, "start", "started with its brief");
+Event(93, coders[1].Name, "start", "started with its brief");
+Event(60, coders[0].Name, "state", "working -> blocked");
+Event(59, coders[0].Name, "adopt", "adopted after the window restarted");
+Event(30, coders[0].Name, "resume", "resumed as a new session");
+Event(30, coders[0].Name, "alert:RestartLoop", "restarted 3 times in 25 minutes");
+Event(20, coders[1].Name, "state", "working -> stopped");
+Event(8, coders[0].Name, "alert:RestartLoop", "restarted 3 times in 25 minutes");
+
+// The coder's transcript, in the shapes the effort and export tests write.
+var lines = new List<object>();
+var at = now.AddMinutes(-88);
+string Stamp(int seconds) => at.AddSeconds(seconds).ToString("O");
+object Usage(long input, long output) => new { input_tokens = input, output_tokens = output, cache_creation_input_tokens = 500L, cache_read_input_tokens = 2000L };
+lines.Add(new { type = "permission-mode", permissionMode = "auto", sessionId = coder1Id });
+lines.Add(new { type = "user", timestamp = Stamp(0), message = new { role = "user", content = "Write the notes for the batch in notes.md, then run the build." } });
+var callNo = 0;
+object Call(string name, object input)
+{
+    callNo++;
+    return new
+    {
+        type = "assistant",
+        timestamp = Stamp(5 + callNo * 4),
+        requestId = "r-" + callNo,
+        message = new
+        {
+            id = "m-" + callNo,
+            model = "claude-opus-5-5",
+            content = new object[] { new { type = "tool_use", id = "toolu_" + callNo, name, input } },
+            usage = Usage(10, 5),
+        },
+    };
+}
+for (var i = 0; i < 5; i++) lines.Add(Call("Read", new { file_path = Path.Combine(repo, "README.md") }));
+lines.Add(new { type = "user", timestamp = Stamp(40), message = new { role = "user", content = new object[] { new { type = "tool_result", content = "README read", tool_use_id = "toolu_1" } } } });
+for (var i = 0; i < 3; i++) lines.Add(Call("Bash", new { command = "dotnet build" }));
+lines.Add(Call("Bash", new { command = "dotnet test --no-build" }));
+lines.Add(new { type = "user", timestamp = Stamp(70), message = new { role = "user", content = new object[] { new { type = "tool_result", content = "error: the build failed", is_error = true, tool_use_id = "toolu_7" } } } });
+lines.Add(Call("Edit", new { file_path = Path.Combine(repo, "notes.md"), old_string = "draft", new_string = "batch 1 notes" }));
+lines.Add(new { type = "assistant", timestamp = Stamp(90), requestId = "r-text", message = new { id = "m-text", model = "claude-opus-5-5", content = new object[] { new { type = "text", text = "Batch 1 notes are written. The build failed once and is fixed." } }, usage = Usage(3, 40) } });
+lines.Add(new { type = "system", subtype = "turn_duration", durationMs = 92000, timestamp = Stamp(92) });
+var projectFolder = Path.Combine(claudeHome, "projects", "scratch-repo");
+Directory.CreateDirectory(projectFolder);
+File.WriteAllText(Path.Combine(projectFolder, coder1Id + ".jsonl"), string.Join("\n", lines.Select(line => JsonSerializer.Serialize(line))) + "\n");
+
+Console.WriteLine($"coder1Id={coder1Id}");
+Console.WriteLine($"coder1={coders[0].Name}");
+'@ | Set-Content -LiteralPath "$tools\gen\Program.cs" -Encoding UTF8
+
+@"
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>claude</AssemblyName>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+</Project>
+"@ | Set-Content -LiteralPath "$tools\fakeclaude\fakeclaude.csproj" -Encoding UTF8
+
+@'
+// A stand-in for the claude CLI during the screenshots. It lists no sessions, attaches to nothing and starts nothing.
+if (args.Length > 0 && args[0] == "agents") Console.Out.Write("[]");
+return 0;
+'@ | Set-Content -LiteralPath "$tools\fakeclaude\Program.cs" -Encoding UTF8
+
+& dotnet build "$tools\gen\gen.csproj" -o "$tools\gen\out" | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "The fixture generator did not build (see dotnet build output)" }
+& dotnet build "$tools\fakeclaude\fakeclaude.csproj" -o "$tools\fakebin" | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "The stand-in for claude did not build" }
+
+# The git repo: one committed file and one edited file, so the Changes tab has a change to show.
+$git = @('-c', 'user.name=scratch', '-c', 'user.email=scratch@example.invalid')
+& git init -q $repo
+Set-Content -LiteralPath "$repo\README.md" -Value "# Scratch repo`nNothing here is real.`n" -Encoding UTF8
+Set-Content -LiteralPath "$repo\notes.md" -Value "draft`n" -Encoding UTF8
+& git -C $repo add README.md notes.md
+& git -C $repo @git commit -q -m "Scratch base"
+Set-Content -LiteralPath "$repo\README.md" -Value "# Scratch repo`nNothing here is real. Edited for the screenshot.`n" -Encoding UTF8
+
+& dotnet "$tools\gen\out\gen.dll" $state $repo $claudeHome
+if ($LASTEXITCODE -ne 0) { throw "The fixture generator failed" }
+
+# Each screen: a theme for the rail (ui.json beside the state file), the options that open the screen, and a name for its PNG.
+$screens = @(
+    @{ Name = 'rail-dark'; Theme = 'Dark'; Options = @() },
+    @{ Name = 'rail-light'; Theme = 'Light'; Options = @() },
+    @{ Name = 'setup-dark'; Theme = 'Dark'; Options = @('--open-tab', 'setup', '--setup-detail', 'models') },
+    @{ Name = 'setup-light'; Theme = 'Light'; Options = @('--open-tab', 'setup', '--setup-detail', 'models') },
+    @{ Name = 'storage-dark'; Theme = 'Dark'; Options = @('--open-tab', 'storage') },
+    @{ Name = 'timeline-dark'; Theme = 'Dark'; Options = @('--open-tab', 'timeline') },
+    @{ Name = 'timeline-light'; Theme = 'Light'; Options = @('--open-tab', 'timeline') },
+    @{ Name = 'transcript-dark'; Theme = 'Dark'; Options = @('--open-transcript', '5e4f3a21-0000-4000-8000-00000000c0d1') },
+    @{ Name = 'changes-dark'; Theme = 'Dark'; Options = @('--open-tab', 'changes:bullshark-coder-r4a1-1') }
+)
+
+# The stand-in goes first on PATH for these runs only: the window's claude calls reach it, not the owner's claude.
+$env:PATH = "$tools\fakebin;" + $env:PATH
+$failed = 0
+foreach ($screen in $screens) {
+    $name = $screen.Name
+    Set-Content -LiteralPath "$state\ui.json" -Value ('{"railTheme": "' + $screen.Theme + '"}') -Encoding UTF8
+    $png = Join-Path $shots "$name.png"
+    $argList = @('--state', "$state\state.json", '--no-pass', '--workdir', $repo, '--claude-home', $claudeHome,
+        '--shot', $png, '--shot-after', '9') + $screen.Options
+    $process = Start-Process -FilePath $Exe -ArgumentList $argList -PassThru -WorkingDirectory $repo
+    if (-not $process.WaitForExit(60000)) {
+        Stop-Process -Id $process.Id -Force
+        Write-Output "FAIL ${name}: the window did not close within 60 s (it was stopped)"
+        $failed++
+        continue
+    }
+    $pictureOk = (Test-Path -LiteralPath $png) -and ((Get-Item -LiteralPath $png).Length -gt 0)
+    if ($process.ExitCode -eq 0 -and $pictureOk) {
+        Write-Output "PASS ${name}: exit 0, $png"
+    } else {
+        Write-Output "FAIL ${name}: exit $($process.ExitCode), picture written: $pictureOk (log: $state\logs\app.log)"
+        $failed++
+    }
+}
+Write-Output "$($screens.Count - $failed) of $($screens.Count) screens written. Pictures: $shots"
+if ($failed -gt 0) { exit 1 }
+exit 0
