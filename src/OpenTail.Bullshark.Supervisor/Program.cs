@@ -1,5 +1,6 @@
 using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Cache;
+using OpenTail.Bullshark.Core.Reports;
 
 // OpenTail.Bullshark.Supervisor: two read-only reports. It starts, restarts and alerts on nothing.
 //
@@ -24,11 +25,21 @@ catch (Exception ex)
 
 static int Run(string[] args)
 {
-    // Read-only report: totals from the transcripts, computed locally. It starts no session and needs no trust.
-    if (args.Contains("--usage-report"))
+    const string usage = "usage: OpenTail.Bullshark.Supervisor --usage-report | --cache-report [--projects <folder>]";
+
+    // A wrong command line (a --projects with no folder after it, for one) is reported and exits 2. It is never read as a folder.
+    var command = HostCommand.Parse(args, TranscriptReader.DefaultProjectsRoot);
+    if (command.Problem is not null)
     {
-        var projects = args.SkipWhile(a => a != "--projects").Skip(1).FirstOrDefault()
-            ?? TranscriptReader.DefaultProjectsRoot;
+        Console.Error.WriteLine(command.Problem);
+        Console.Error.WriteLine(usage);
+        return 2;
+    }
+
+    // Read-only report: totals from the transcripts, computed locally. It starts no session and needs no trust.
+    if (command.Report == HostReport.Usage)
+    {
+        var projects = command.Projects;
         var index = TranscriptIndex.Build(projects);
         var t = index.Totals.Total;
         var report = new
@@ -46,16 +57,14 @@ static int Run(string[] args)
     }
 
     // Read-only report: tests the warm and cold rule (D-S7) against the real transcripts. Starts no session.
-    if (args.Contains("--cache-report"))
+    if (command.Report == HostReport.Cache)
     {
-        var projects = args.SkipWhile(a => a != "--projects").Skip(1).FirstOrDefault()
-            ?? TranscriptReader.DefaultProjectsRoot;
-        var result = OpenTail.Bullshark.Core.Cache.CacheReport.Compute(projects);
+        var result = CacheReport.Compute(command.Projects);
         Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(result, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
         return 0;
     }
 
     Console.Error.WriteLine("This process runs no supervisor. The sessions are kept alive by the OpenTail.Bullshark window.");
-    Console.Error.WriteLine("usage: OpenTail.Bullshark.Supervisor --usage-report | --cache-report [--projects <folder>]");
+    Console.Error.WriteLine(usage);
     return 2;
 }
