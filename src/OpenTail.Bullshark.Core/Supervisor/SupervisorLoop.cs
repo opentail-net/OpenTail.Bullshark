@@ -9,17 +9,24 @@ namespace OpenTail.Bullshark.Core.Supervisor;
 /// </summary>
 public sealed class SupervisorLoop
 {
+    /// <summary>The shortest time between two login alerts (round 12 item A5).</summary>
+    public static readonly TimeSpan LoginAlertInterval = TimeSpan.FromHours(1);
+
     private readonly SupervisorRunner _runner;
     private readonly ClaudeCli _cli;
     private readonly StateStore _store;
     private readonly Action<string> _log;
+    private readonly TimeProvider _clock;
+    private DateTimeOffset? _lastLoginAlert;
 
-    public SupervisorLoop(SupervisorRunner runner, ClaudeCli cli, StateStore store, Action<string> log)
+    /// <param name="clock">The time the login alert is limited by. The default is the system clock.</param>
+    public SupervisorLoop(SupervisorRunner runner, ClaudeCli cli, StateStore store, Action<string> log, TimeProvider? clock = null)
     {
         _runner = runner;
         _cli = cli;
         _store = store;
         _log = log;
+        _clock = clock ?? TimeProvider.System;
     }
 
     /// <summary>
@@ -48,6 +55,10 @@ public sealed class SupervisorLoop
             // A failed start has no session to read yet.
             if (string.IsNullOrEmpty(record.SessionId)) continue;
 
+            // Only a live session is read (round 12 item A5). The login belongs to the account, so one live session tells us, and a
+            // finished, stopped or failed one is not launched for on every pass.
+            if (!IsLive(agents, record.SessionId)) continue;
+
             string output;
             try
             {
@@ -61,9 +72,34 @@ public sealed class SupervisorLoop
             }
 
             if (LoginExpiry.Find(output) is { } remaining && LoginExpiry.IsExpiringSoon(remaining))
-                _log($"{record.Name}: ALERT {AlertKind.LoginExpiring} - the login expires in {remaining.TotalHours:0} hours. Run /login.");
+            {
+                AlertLogin(record.Name, remaining);
+                // The first session that shows the expiry says it for the account, so the others are not read this pass.
+                break;
+            }
         }
 
         return actions.Count;
+    }
+
+    /// <summary>
+    /// True when the listing shows the session and it is not finished: not done, stopped or failed (the states the supervisor's own rules
+    /// use). A session the listing does not show is not live.
+    /// </summary>
+    private static bool IsLive(IReadOnlyList<AgentInfo> agents, string sessionId)
+    {
+        var listed = agents.FirstOrDefault(a => string.Equals(a.SessionId, sessionId, StringComparison.OrdinalIgnoreCase));
+        if (listed is null) return false;
+        var state = listed.EffectiveState;
+        return !SupervisorPolicy.IsStoppedOrFailed(state) && !string.Equals(state, "done", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Writes the login alert, at most once per <see cref="LoginAlertInterval"/>. A clock that went back starts the count again.</summary>
+    private void AlertLogin(string name, TimeSpan remaining)
+    {
+        var now = _clock.GetUtcNow();
+        if (_lastLoginAlert is { } last && now >= last && now - last < LoginAlertInterval) return;
+        _lastLoginAlert = now;
+        _log($"{name}: ALERT {AlertKind.LoginExpiring} - the login expires in {remaining.TotalHours:0} hours. Run /login.");
     }
 }
