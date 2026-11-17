@@ -546,7 +546,7 @@ public partial class SessionWindow
             case RailKind.History when tag.Digest is not null:
                 ShowOnly(_transcript);
                 await _transcript.ShowAsync(tag.Digest, title: DisplayTitle(tag.Digest));
-                ShowLineageFor(tag.Digest);
+                if (_transcript.IsShowing(tag.Digest)) ShowLineageFor(tag.Digest);
                 break;
 
             case RailKind.Folder:

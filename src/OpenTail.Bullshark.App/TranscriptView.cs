@@ -78,6 +78,9 @@ public sealed class TranscriptView : UserControl
     /// <summary>The line a search opened this view at, once it is shown. Null for the last page.</summary>
     private TextBlock? _focus;
 
+    /// <summary>How many times <see cref="ShowAsync"/> has been called. A call that finishes after a newer one started leaves the view alone.</summary>
+    private int _showCalls;
+
     public TranscriptView()
     {
         Content = BuildContent();
@@ -105,6 +108,7 @@ public sealed class TranscriptView : UserControl
     /// </summary>
     public async Task ShowAsync(SessionDigest digest, int? focusLine = null, string? title = null)
     {
+        var call = ++_showCalls;
         _digest = digest;
         _resume.IsEnabled = true;
         _resumeHint.Text = ResumeHint(digest);
@@ -128,6 +132,8 @@ public sealed class TranscriptView : UserControl
         ShowStats(digest);
 
         var pager = await Task.Run(() => TranscriptPager.Open(digest.FilePath));
+        // A newer call started while this file was read (the rail and the search both call this). The newer one owns the view now.
+        if (call != _showCalls) return;
         _pager = pager;
         _firstShown = focusLine is { } wanted
             ? Math.Max(0, Math.Clamp(wanted - 1, 0, Math.Max(0, pager.LineCount - 1)) - PageSize / 2)
@@ -151,6 +157,9 @@ public sealed class TranscriptView : UserControl
         if (_focus is null) _transcriptScroll.ScrollToBottom();
         else _ = Dispatcher.BeginInvoke(new Action(() => _focus?.BringIntoView()), System.Windows.Threading.DispatcherPriority.Loaded);
     }
+
+    /// <summary>True when the view shows this session: no later <see cref="ShowAsync"/> has replaced it. Callers draw its lineage only then.</summary>
+    public bool IsShowing(SessionDigest digest) => ReferenceEquals(_digest, digest);
 
     /// <summary>Sets the zoom of the transcript text. The lines on screen are resized now; the lines drawn later use the same size.</summary>
     public void ApplyZoom(double scale)

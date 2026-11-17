@@ -159,7 +159,7 @@ public partial class SessionWindow
         ShowOnly(_transcript);
         SelectHistoryRow(digest);
         await _transcript.ShowAsync(digest, line, DisplayTitle(digest));
-        ShowLineageFor(digest);
+        if (_transcript.IsShowing(digest)) ShowLineageFor(digest);
     }
 
     /// <summary>
