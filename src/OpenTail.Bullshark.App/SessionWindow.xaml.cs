@@ -97,7 +97,7 @@ public partial class SessionWindow : Window
         _loop = new SupervisorLoop(runner, _cli, _store, AppLog.Write);
         _runner = runner;
         // The timeline's log sits beside the state file, and the supervisor writes every action to it (additions item 5).
-        _events = new EventLog(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(options.StatePath))!, "events.jsonl"));
+        _events = new EventLog(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(options.StatePath))!, "events.jsonl"), log: AppLog.Write);
         runner.Events = _events;
 
         _setup = new SetupView(options.StatePath, options.Task) { Visibility = Visibility.Hidden };

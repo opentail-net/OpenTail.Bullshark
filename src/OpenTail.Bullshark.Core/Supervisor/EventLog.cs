@@ -26,11 +26,17 @@ public sealed class EventLog : IEventSink
     public const long DefaultFileSizeLimit = 5L * 1024 * 1024;
 
     private readonly long _rotateBytes;
+    private readonly Action<string>? _log;
+    private bool _rotationFailureLogged;
 
-    public EventLog(string filePath, long rotateBytes = DefaultFileSizeLimit)
+    /// <param name="filePath">The current file, events.jsonl.</param>
+    /// <param name="rotateBytes">The size at which the file is rotated.</param>
+    /// <param name="log">Where a rotation that failed is said, once. Null says nothing.</param>
+    public EventLog(string filePath, long rotateBytes = DefaultFileSizeLimit, Action<string>? log = null)
     {
         FilePath = filePath;
         _rotateBytes = rotateBytes;
+        _log = log;
     }
 
     /// <summary>The current file, events.jsonl.</summary>
@@ -58,12 +64,30 @@ public sealed class EventLog : IEventSink
 
         using var _ = FileLock.Hold(FilePath);
         var current = new FileInfo(FilePath);
-        if (current.Exists && current.Length >= _rotateBytes)
-            File.Move(FilePath, RotatedFilePath, overwrite: true);
+        if (current.Exists && current.Length >= _rotateBytes) TryRotate();
         // A write that was cut off leaves a last line with no newline. The new event would be glued onto it and lost with it, so the
         // cut-off line is ended first; the reader then skips that line alone (round 5 item 5).
         var prefix = EndsWithoutNewline(FilePath) ? "\n" : string.Empty;
         File.AppendAllText(FilePath, prefix + line);
+    }
+
+    /// <summary>
+    /// Moves the current file to the rotated one. When the rotated file cannot be replaced (another program holds it, or it is denied), the
+    /// current file stays as it is and goes on taking the events, so none is lost; the failure is said once (round 5 item 18). Before, the
+    /// failure stopped every later event, until the owner removed the rotated file.
+    /// </summary>
+    private void TryRotate()
+    {
+        try
+        {
+            File.Move(FilePath, RotatedFilePath, overwrite: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            if (_rotationFailureLogged) return;
+            _rotationFailureLogged = true;
+            _log?.Invoke($"events: not rotated, so the log keeps growing: {ex.Message}");
+        }
     }
 
     /// <summary>True when the file has bytes and its last byte is not a newline. A missing or empty file is not.</summary>

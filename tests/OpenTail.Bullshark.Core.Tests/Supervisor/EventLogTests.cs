@@ -55,6 +55,26 @@ public sealed class EventLogTests : IDisposable
     }
 
     [Fact]
+    public void WhenTheRotatedFileCannotBeReplacedTheEventsGoOnIntoTheCurrentFileAndTheFailureIsSaidOnce()
+    {
+        // Round 5 item 18: the rotated file is held by another program, so the move cannot replace it. Nothing is lost, and the log says so once.
+        var messages = new List<string>();
+        var log = new EventLog(Path_(), rotateBytes: 300, messages.Add);
+        File.WriteAllText(log.RotatedFilePath, "older");
+
+        using (new FileStream(log.RotatedFilePath, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            // The file reaches the limit after three lines, and every later write tries to rotate again.
+            for (var i = 1; i <= 5; i++) log.Write(Event(i));
+        }
+
+        Assert.Equal(5, File.ReadAllLines(Path_()).Length);
+        Assert.Equal("older", File.ReadAllText(log.RotatedFilePath));
+        Assert.Single(messages);
+        Assert.Contains("not rotated", messages[0]);
+    }
+
+    [Fact]
     public void ALineCutOffAtTheEndIsSkippedAndTheRestAreKept()
     {
         var log = new EventLog(Path_());
