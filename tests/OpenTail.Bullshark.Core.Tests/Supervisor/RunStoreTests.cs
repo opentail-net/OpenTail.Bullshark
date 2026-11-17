@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using OpenTail.Bullshark.Core.Claude;
 using OpenTail.Bullshark.Core.Supervisor;
 using OpenTail.Bullshark.Core.Tests.Support;
@@ -41,6 +42,64 @@ public sealed class RunStoreTests : IDisposable
         var result = RunStore.WithoutSession([run], "no-such-session");
 
         Assert.Same(run, Assert.Single(result));
+    }
+
+    [Fact]
+    public void ClosingASessionWithNoStartOrTokensKeepsNothingExtra()
+    {
+        var run = NewRun("ab12", Now, coders: 2);
+
+        var result = Assert.Single(RunStore.WithoutSession([run], run.Specs[0].Name));
+
+        Assert.Null(result.FirstStartedAt);
+        Assert.Equal(0, result.ClosedOutputTokens);
+    }
+
+    [Fact]
+    public void ClosingTheEarliestSessionKeepsItsStartAndTokensOnTheRun()
+    {
+        var run = NewRun("ab12", Now, coders: 2);
+        var earliest = Now.AddHours(-1);
+
+        var result = Assert.Single(RunStore.WithoutSession([run], run.Specs[0].Name, earliest, 700));
+
+        Assert.Equal(earliest, result.FirstStartedAt);
+        Assert.Equal(700L, result.ClosedOutputTokens);
+        Assert.Equal(run.Specs.Skip(1).Select(s => s.Name), result.Specs.Select(s => s.Name));
+    }
+
+    [Fact]
+    public void TheCarriedStartAndTokensSurviveAStoreRoundTrip()
+    {
+        var store = new RunStore(Path.Combine(_dir, "runs.json"));
+        var run = NewRun("ab12", Now, coders: 2);
+        store.Save([run]);
+        store.Update(runs => RunStore.WithoutSession(runs, run.Specs[0].Name, Now.AddMinutes(5), 42));
+
+        var loaded = Assert.Single(new RunStore(store.Path).Load());
+
+        Assert.Equal(Now.AddMinutes(5), loaded.FirstStartedAt);
+        Assert.Equal(42L, loaded.ClosedOutputTokens);
+    }
+
+    [Fact]
+    public void ARunFileFromBeforeTheCarryFieldsLoadsWithoutThem()
+    {
+        var path = Path.Combine(_dir, "runs.json");
+        new RunStore(path).Save([NewRun("ab12", Now, coders: 2)]);
+        var runs = JsonNode.Parse(File.ReadAllText(path))!.AsArray();
+        foreach (var run in runs)
+        {
+            run!.AsObject().Remove("FirstStartedAt");
+            run.AsObject().Remove("ClosedOutputTokens");
+        }
+        File.WriteAllText(path, runs.ToJsonString());
+
+        var loaded = Assert.Single(new RunStore(path).Load());
+
+        Assert.Equal("ab12", loaded.RunId);
+        Assert.Null(loaded.FirstStartedAt);
+        Assert.Equal(0L, loaded.ClosedOutputTokens);
     }
 
     public void Dispose()

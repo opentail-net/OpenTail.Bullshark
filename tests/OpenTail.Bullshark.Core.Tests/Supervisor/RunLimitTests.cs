@@ -423,4 +423,80 @@ public sealed class RunLimitTests
             File.Delete(path);
         }
     }
+
+    [Fact]
+    public void ClosingTheEarliestSessionNeitherResetsTheClockNorLowersTheSpend()
+    {
+        // Two sessions of one run: the first started at 09:00 and has written 700 tokens, the second started at 09:30 and has written 300.
+        // At 11:00 the run has run for two hours and spent 1000 tokens.
+        var second = Spec() with { Name = "bullshark-coder-zzzz" };
+        var run = new RunRecord("abcd", "plan-code", @"C:\work", "auto", Created, [Spec(), second]);
+        var records = new Dictionary<string, SessionRecord>(StringComparer.Ordinal)
+        {
+            [Coder] = new(SessionRole.Coder, CoderId, Coder, Created, 0, [], null, null),
+            [second.Name] = new(SessionRole.Coder, OutsideId, second.Name, Created.AddMinutes(30), 0, [], null, null),
+        };
+        var at = Created.AddHours(2);
+        var before = RunSpend.Of(run, records, [Usage(CoderId, 700), Usage(OutsideId, 300)], at);
+        Assert.Equal(1000L, before.OutputTokens);
+        Assert.Equal(TimeSpan.FromHours(2), before.Elapsed);
+
+        // The earliest session is closed. Its start and its tokens are kept on the run, as the close path does.
+        var closed = Assert.Single(RunStore.WithoutSession([run], Coder, records[Coder].StartedAt, 700));
+        records.Remove(Coder);
+        var after = RunSpend.Of(closed, records, [Usage(OutsideId, 300)], at);
+
+        Assert.Equal(before, after);
+        Assert.Equal(TimeSpan.FromHours(2), RunSpend.ElapsedOf(closed, at));
+    }
+
+    [Fact]
+    public void TheTokensOfAClosedSessionStillCountTowardsTheLimit()
+    {
+        // 900 tokens were written by a session that was closed, and the run's one other session has written nothing yet.
+        var run = new RunRecord("abcd", "solo", @"C:\work", "auto", Created, [Spec()], null, new RunLimits(1000, null), null, 900);
+        var records = new Dictionary<string, SessionRecord>(StringComparer.Ordinal);
+
+        var spend = RunSpend.Of(run, records, [], Now);
+        var budget = RunBudget.For(run.Limits, spend);
+
+        Assert.Equal(900L, spend.OutputTokens);
+        Assert.True(budget!.Near);
+        Assert.False(budget.Reached);
+    }
+
+    [Fact]
+    public void ACloseKeepsTheEarlierStartAndAddsItsTokensToTheRunsOwn()
+    {
+        var run = new RunRecord("abcd", "plan-code", @"C:\work", "auto", Created, [Spec(), Spec() with { Name = "bullshark-coder-zzzz" }],
+            null, null, Created.AddMinutes(10), 100);
+
+        // A later session closes with a start after the kept one: the kept start stays, and the tokens add up.
+        var kept = Assert.Single(RunStore.WithoutSession([run], "bullshark-coder-zzzz", Created.AddHours(1), 50));
+
+        Assert.Equal(Created.AddMinutes(10), kept.FirstStartedAt);
+        Assert.Equal(150L, kept.ClosedOutputTokens);
+    }
+
+    [Fact]
+    public void AClosedSessionsTranscriptGivesItsOutputTokens()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "bullshark-close-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var path = Path.Combine(dir, CoderId + ".jsonl");
+            File.WriteAllText(path,
+                """{"type":"assistant","timestamp":"2026-11-17T09:05:00.000Z","requestId":"req_1","message":{"id":"msg_1","model":"claude-haiku-5-5","role":"assistant","content":[{"type":"text","text":"hi"}],"usage":{"input_tokens":5,"output_tokens":42,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}""" + "\n");
+
+            Assert.Equal(42L, RunSpend.OutputOfTranscript(CoderId, path));
+            Assert.Equal(0L, RunSpend.OutputOfTranscript(CoderId, null));
+            // A transcript that cannot be read is an IO error for the caller, not zero tokens: the close stops rather than lose them.
+            Assert.ThrowsAny<IOException>(() => RunSpend.OutputOfTranscript(CoderId, Path.Combine(dir, "missing.jsonl")));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
 }

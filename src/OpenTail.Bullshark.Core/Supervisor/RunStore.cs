@@ -9,6 +9,8 @@ namespace OpenTail.Bullshark.Core.Supervisor;
 /// launched. Patterns are edited for the next launch only (D-S6), so the run keeps the specs it was created with.
 /// <see cref="StartAt"/> (gems item 5) holds a run back until that time: it has no sessions in a pass until then. Null, the
 /// default, means the run starts at once. Files from before the field have no such value, so they load as "at once".
+/// <see cref="FirstStartedAt"/> and <see cref="ClosedOutputTokens"/> (round 9 item 1) keep what a closed session leaves behind, so the
+/// run's clock and spend do not drop when its earliest session is closed. Files from before the fields load as null and 0.
 /// </summary>
 public sealed record RunRecord(
     string RunId,
@@ -18,7 +20,11 @@ public sealed record RunRecord(
     DateTimeOffset CreatedAt,
     IReadOnlyList<SessionSpec> Specs,
     DateTimeOffset? StartAt = null,
-    RunLimits? Limits = null);
+    RunLimits? Limits = null,
+    /// <summary>The earliest start of the run's sessions that were closed, or null when none was closed (round 9 item 1).</summary>
+    DateTimeOffset? FirstStartedAt = null,
+    /// <summary>The output tokens the run's closed sessions wrote, read from their transcripts when they were closed (round 9 item 1).</summary>
+    long ClosedOutputTokens = 0);
 
 /// <summary>Reads and writes runs.json. Writes go to a temporary file first, like the state file.</summary>
 public sealed class RunStore
@@ -98,16 +104,43 @@ public sealed class RunStore
     /// The runs with one session taken out: its spec leaves the run it belongs to, and a run left with no specs is dropped.
     /// Closing a session for good needs this, or the supervisor would start the session again on its next pass.
     /// </summary>
-    public static IReadOnlyList<RunRecord> WithoutSession(IReadOnlyList<RunRecord> runs, string sessionName)
+    /// <remarks>
+    /// The session's own start and output tokens are kept on the run it leaves (round 9 item 1): <see cref="RunRecord.FirstStartedAt"/> takes
+    /// the earlier of its value and <paramref name="startedAt"/>, and <see cref="RunRecord.ClosedOutputTokens"/> grows by
+    /// <paramref name="outputTokens"/>. The caller reads both before the close. A run with no session left is dropped, and its budget with it.
+    /// </remarks>
+    public static IReadOnlyList<RunRecord> WithoutSession(
+        IReadOnlyList<RunRecord> runs,
+        string sessionName,
+        DateTimeOffset? startedAt = null,
+        long outputTokens = 0)
     {
         var kept = new List<RunRecord>();
         foreach (var run in runs)
         {
             var specs = run.Specs.Where(spec => spec.Name != sessionName).ToList();
-            if (specs.Count == run.Specs.Count) kept.Add(run);
-            else if (specs.Count > 0) kept.Add(run with { Specs = specs });
+            if (specs.Count == run.Specs.Count)
+            {
+                kept.Add(run);
+                continue;
+            }
+            if (specs.Count == 0) continue;
+            kept.Add(run with
+            {
+                Specs = specs,
+                FirstStartedAt = Earlier(run.FirstStartedAt, startedAt),
+                ClosedOutputTokens = run.ClosedOutputTokens + Math.Max(0, outputTokens),
+            });
         }
         return kept;
+    }
+
+    /// <summary>The earlier of two optional times. Null is no time, so a missing one gives the other.</summary>
+    private static DateTimeOffset? Earlier(DateTimeOffset? kept, DateTimeOffset? closed)
+    {
+        if (closed is not { } at) return kept;
+        if (kept is not { } first) return at;
+        return at < first ? at : first;
     }
 
     /// <summary>Every session of every run, in run order. The supervisor keeps all of them alive.</summary>

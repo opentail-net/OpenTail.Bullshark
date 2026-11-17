@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Claude;
 using OpenTail.Bullshark.Core.Supervisor;
 using OpenTail.Bullshark.Core.Tabs;
@@ -243,9 +244,27 @@ public partial class SessionWindow
         var originals = runsBefore.Where(run => affected.Contains(run.RunId)).ToList();
         var recordBefore = ReadRecords().TryGetValue(name, out var found) ? found : null;
 
+        // What the session leaves on its run (round 9 item 1): its first start, and the output tokens its transcript holds now, before the
+        // close. Without them the run's clock and spend would restart from its next session. A transcript that exists but cannot be read stops
+        // the close, since its tokens would be lost from the spend; a session with no transcript has written none.
+        var closedStart = recordBefore is { } before && before.SessionId == sessionId ? before.StartedAt : (DateTimeOffset?)null;
+        long closedOutput;
         try
         {
-            _runStore.Update(runs => RunStore.WithoutSession(runs, name));
+            var known = _transcriptPaths.TryGetValue(sessionId, out var path) ? path : null;
+            var projectsRoot = _options.ProjectsRoot;
+            closedOutput = await Task.Run(() => RunSpend.OutputOfTranscript(sessionId, known ?? TranscriptReader.FindTranscript(projectsRoot, sessionId)));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            AppLog.Write($"session not closed: its transcript could not be read: {ex.Message}");
+            SetStatus($"Not closed: {name} is unchanged, because its transcript could not be read. {ex.Message}");
+            return;
+        }
+
+        try
+        {
+            _runStore.Update(runs => RunStore.WithoutSession(runs, name, closedStart, closedOutput));
             _store.Forget(name);
             if (needsStop)
             {
