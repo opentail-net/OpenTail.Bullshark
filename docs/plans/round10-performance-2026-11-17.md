@@ -48,6 +48,10 @@ pass (running facts, overlap, budgets, effort) and on demand (search, storage, t
 - Item 2, search: a word with a backslash or a quote was parsed line by line. Its longest plain run (`RawProbe`) is now the
   pre-filter. A message that holds the word holds that run unescaped in its raw line, so the matches do not change; a test compares
   twelve queries with a parse-every-line reference. Windows-path search 1.98 s to 0.89 s on the same snapshot.
+- Item 2, search: the sessions are read in batches of 32 on several threads, and the results are taken one by one in the
+  newest-first order, so the matches, the unreadable count and the stop at 100 are the ones the one-by-one loop gives. Tests cover a
+  cap inside a batch and every unreadable session counted when all are read. Common word 0.95 s to 0.51 s warm (0.88 s cold); rare
+  word 0.90 s to 0.34 s; Windows path 0.89 s to 0.35 s (same bench step, snapshot grown slightly between runs).
 - Item 3, window: the window cannot be run for timing. Its startup pass calls the `claude` CLI (`agents`, `daemon status`) even with
   `--no-pass`, and the brief allows no CLI calls. Item 3 times the history work the window waits for (index and tails) in the bench
   instead, and records that WPF start and the rail drawing are not measured.

@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using OpenTail.Bullshark.Core.Activity;
 
 namespace OpenTail.Bullshark.Core.Search;
@@ -82,25 +83,53 @@ public static class HistorySearch
             .Where(digest => includeSubagents || !digest.IsSubagent)
             .OrderByDescending(digest => digest.LastActivity ?? DateTimeOffset.MinValue);
 
-        foreach (var digest in newestFirst)
+        // The sessions are read a batch at a time, on several threads (round 10 item 2). Their results are taken in the newest-first order, one
+        // by one, so the matches, the count of unreadable sessions and the stop at MaxResults are the ones reading them one by one gives.
+        var ordered = newestFirst.ToList();
+        for (var start = 0; start < ordered.Count; start += BatchSize)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            try
+            var batch = ordered.GetRange(start, Math.Min(BatchSize, ordered.Count - start));
+            var read = ReadBatch(batch, words, probes, extraText, cancellationToken);
+            for (var i = 0; i < batch.Count; i++)
             {
-                var match = MatchSession(digest, words, probes, extraText?.Invoke(digest), cancellationToken);
-                if (match is not null) results.Add(match);
+                cancellationToken.ThrowIfCancellationRequested();
+                var (match, error) = read[i];
+                if (error is OperationCanceledException) ExceptionDispatchInfo.Capture(error).Throw();
+                if (error is not null) unreadable++;
+                else if (match is not null) results.Add(match);
+                if (results.Count >= MaxResults) return new SearchOutcome(results, unreadable);
             }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception)
-            {
-                unreadable++;
-            }
-            if (results.Count >= MaxResults) break;
         }
         return new SearchOutcome(results, unreadable);
+    }
+
+    /// <summary>The sessions read together by one batch of a search.</summary>
+    private const int BatchSize = 32;
+
+    /// <summary>
+    /// Matches each session of a batch, on as many threads as there are processors. Each session's outcome is its match, or the error it failed
+    /// with (a cancellation is kept as an error too, and the caller rethrows it in order).
+    /// </summary>
+    private static (SessionMatch? Match, Exception? Error)[] ReadBatch(
+        IReadOnlyList<SessionDigest> batch,
+        IReadOnlyList<string> words,
+        IReadOnlyList<string> probes,
+        Func<SessionDigest, string?>? extraText,
+        CancellationToken cancellationToken)
+    {
+        var read = new (SessionMatch? Match, Exception? Error)[batch.Count];
+        Parallel.For(0, batch.Count, i =>
+        {
+            try
+            {
+                read[i] = (MatchSession(batch[i], words, probes, extraText?.Invoke(batch[i]), cancellationToken), null);
+            }
+            catch (Exception ex)
+            {
+                read[i] = (null, ex);
+            }
+        });
+        return read;
     }
 
     /// <summary>
