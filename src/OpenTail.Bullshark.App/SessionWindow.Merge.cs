@@ -46,19 +46,19 @@ public partial class SessionWindow
     /// </summary>
     private async Task CheckMergeAsync(SessionRecord record)
     {
-        var listed = _allAgents.FirstOrDefault(a => string.Equals(a.SessionId, record.SessionId, StringComparison.OrdinalIgnoreCase))?.Cwd;
-        var spec = Specs.FirstOrDefault(s => string.Equals(s.Name, record.Name, StringComparison.Ordinal))?.WorkingDirectory;
-        // The folder the coder edits now, from its transcript, is checked ahead of the listing's (round 7 item 4).
-        var transcriptFolder = await Task.Run(() => TranscriptWrites.Facts(_options.ProjectsRoot, record.SessionId).Folder);
-        var folder = GitChanges.FolderOf(transcriptFolder, listed, spec);
-        if (folder is null)
-        {
-            _mergeStarted.Remove(record.SessionId);
-            return;
-        }
-
         try
         {
+            var listed = _allAgents.FirstOrDefault(a => string.Equals(a.SessionId, record.SessionId, StringComparison.OrdinalIgnoreCase))?.Cwd;
+            var spec = Specs.FirstOrDefault(s => string.Equals(s.Name, record.Name, StringComparison.Ordinal))?.WorkingDirectory;
+            // The folder the coder edits now, from its transcript, is checked ahead of the listing's (round 7 item 4).
+            var transcriptFolder = await Task.Run(() => TranscriptWrites.Facts(_options.ProjectsRoot, record.SessionId).Folder);
+            var folder = GitChanges.FolderOf(transcriptFolder, listed, spec);
+            if (folder is null)
+            {
+                _mergeStarted.Remove(record.SessionId);
+                return;
+            }
+
             var report = await Task.Run(() => MergeCheck.RunAsync(folder, new ProcessGitRunner()));
             if (!_mergeStarted.Contains(record.SessionId)) return;
             _merges[record.SessionId] = report;
@@ -68,8 +68,10 @@ public partial class SessionWindow
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            // The reads are inside the try (round 12 B2): a failure here was lost, since the task is not awaited. It is logged, and the
+            // coder leaves the started set, so the next pass checks it again.
             _mergeStarted.Remove(record.SessionId);
-            AppLog.Write($"merge check {record.Name} failed: {ex.Message}");
+            AppLog.Write($"merge check {record.Name} failed: {ex.GetType().Name}: {ex.Message}");
         }
     }
 

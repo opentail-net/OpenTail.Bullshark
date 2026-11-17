@@ -39,32 +39,33 @@ public partial class SessionWindow
         _changesSession = sessionId;
         ShowOnly(_changes);
 
-        var record = ReadRecords().Values.FirstOrDefault(r => string.Equals(r.SessionId, sessionId, StringComparison.Ordinal));
-        var listed = _agents.FirstOrDefault(a => string.Equals(a.SessionId, sessionId, StringComparison.OrdinalIgnoreCase))?.Cwd;
-        var spec = record is null ? null : Specs.FirstOrDefault(s => string.Equals(s.Name, record.Name, StringComparison.Ordinal))?.WorkingDirectory;
-        // The transcript is read first, on a pool thread. Its latest folder is the one the session edits now, which can be a worktree,
-        // so it is preferred to the listing's folder (round 7 item 4). Its files are shown as before.
-        var facts = await Task.Run(() => TranscriptWrites.Facts(_options.ProjectsRoot, sessionId));
-        if (_changesSession != sessionId) return;
-        var folder = GitChanges.FolderOf(facts.Folder, listed, spec);
-        if (folder is null)
-        {
-            _changes.ShowMessage("Changes", "No folder is known for this session yet. It appears once the session is listed.");
-            return;
-        }
-
-        _changes.ShowLoading(folder);
         try
         {
+            var record = ReadRecords().Values.FirstOrDefault(r => string.Equals(r.SessionId, sessionId, StringComparison.Ordinal));
+            var listed = _agents.FirstOrDefault(a => string.Equals(a.SessionId, sessionId, StringComparison.OrdinalIgnoreCase))?.Cwd;
+            var spec = record is null ? null : Specs.FirstOrDefault(s => string.Equals(s.Name, record.Name, StringComparison.Ordinal))?.WorkingDirectory;
+            // The transcript is read first, on a pool thread. Its latest folder is the one the session edits now, which can be a worktree,
+            // so it is preferred to the listing's folder (round 7 item 4). Its files are shown as before.
+            var facts = await Task.Run(() => TranscriptWrites.Facts(_options.ProjectsRoot, sessionId));
+            if (_changesSession != sessionId) return;
+            var folder = GitChanges.FolderOf(facts.Folder, listed, spec);
+            if (folder is null)
+            {
+                _changes.ShowMessage("Changes", "No folder is known for this session yet. It appears once the session is listed.");
+                return;
+            }
+
+            _changes.ShowLoading(folder);
             var changes = await Task.Run(() => GitChanges.ReadAsync(folder, new ProcessGitRunner()));
             if (_changesSession != sessionId) return;
             _changes.Show(changes, facts.Files, facts.Note, SharedLinesFor(record));
             _changes.ResolvePrompt = ResolvePromptFor(record);
         }
-        catch (Exception ex) when (StoreErrors.IsExpected(ex))
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // A folder that cannot be read used to leave the tab on "Reading the changes…" with Refresh off. It is said instead (round 5 item 11).
-            AppLog.Write($"changes not read: {ex.Message}");
+            // A read that fails is said in the tab, not left on its old view (round 12 B2). A folder that cannot be read is said so too
+            // (round 5 item 11).
+            AppLog.Write($"changes not read: {ex.GetType().Name}: {ex.Message}");
             if (_changesSession == sessionId) _changes.ShowMessage("Changes", $"The changes cannot be read: {ex.Message}");
         }
     }

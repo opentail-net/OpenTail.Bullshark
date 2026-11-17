@@ -256,9 +256,10 @@ public partial class SessionWindow
             var projectsRoot = _options.ProjectsRoot;
             closedOutput = await Task.Run(() => RunSpend.OutputOfTranscript(sessionId, known ?? TranscriptReader.FindTranscript(projectsRoot, sessionId)));
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        // Any failure but cancellation stops the close and keeps the status (round 12 B2): InvalidOperationException was missed here before.
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            AppLog.Write($"session not closed: its transcript could not be read: {ex.Message}");
+            AppLog.Write($"session not closed: its transcript could not be read: {ex.GetType().Name}: {ex.Message}");
             SetStatus($"Not closed: {name} is unchanged, because its transcript could not be read. {ex.Message}");
             return;
         }
