@@ -202,10 +202,10 @@ public partial class SessionWindow
             await SaveSummaryFileAsync(digest, level, summary);
         }
 
-        // The start text names the session it continues, on its first line (D-L8). The new session's transcript carries it.
-        var text = ResumeText.Compose(summary, choice.Level, ResumeText.Tail(lines, choice.Turns), choice.Turns, digest.SessionId);
+        // The start text names the session it continues, on its first line (D-L8). It is fitted to the command line the session is
+        // launched with, before the run is written: when the latest turn makes it too long, that turn is cut in its middle.
         var pattern = SavedSolo();
-        var request = new SetupRequest(
+        SetupRequest RequestFor(string text) => new(
             PatternKey: "solo",
             Folder: folder,
             Task: text,
@@ -214,6 +214,14 @@ public partial class SessionWindow
             PlannerEffort: choice.Effort,
             CoderModel: pattern.CoderModel,
             CoderEffort: pattern.CoderEffort);
+        var fitted = ResumeText.Fit(summary, choice.Level, lines, choice.Turns, digest.SessionId,
+            text => SetupPlan.LongestCommandLine(RequestFor(text)));
+        if (!fitted.Fits)
+        {
+            SetStatus("Not started: the start text is too long for the command line, even with its latest turn cut.");
+            return;
+        }
+        var request = RequestFor(fitted.Text);
 
         var check = SetupPlan.Validate(request, TrustCheck.DefaultClaudeJsonPath);
         if (!check.IsValid)
@@ -230,8 +238,11 @@ public partial class SessionWindow
         var how = choice.Level is { } chosen
             ? $"a {chosen.ToString().ToLowerInvariant()} summary and the last {choice.Turns} turns"
             : $"the last {choice.Turns} turns";
+        var cut = fitted.CutCharacters > 0
+            ? $" {fitted.CutCharacters:N0} characters were cut from the start text to fit the command line."
+            : string.Empty;
         await StartRunAsync(request);
-        SetStatus($"Resumed {ShortId(digest.SessionId)} from {how}, at {choice.Model} {choice.Effort}. The new session starts on the next pass.");
+        SetStatus($"Resumed {ShortId(digest.SessionId)} from {how}, at {choice.Model} {choice.Effort}. The new session starts on the next pass.{cut}");
     }
 
     /// <summary>

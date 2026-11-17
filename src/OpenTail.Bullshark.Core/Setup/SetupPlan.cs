@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using OpenTail.Bullshark.Core.Claude;
 using OpenTail.Bullshark.Core.Folders;
 using OpenTail.Bullshark.Core.Supervisor;
 
@@ -228,6 +229,18 @@ public static class SetupPlan
         return new RunRecord(runId, request.PatternKey, Path.GetFullPath(request.Folder.Trim()),
             request.PermissionMode, now, specs, request.StartAt, request.Limits);
     }
+
+    /// <summary>
+    /// The length of the longest command line that starts one of the request's sessions, built as the run will build it. A run's
+    /// id is four characters (<see cref="RunNames.NewRunId"/>), so the names used here have the length they will have. A launch
+    /// over <see cref="ClaudeCli.MaxLaunchCharacters"/> is refused, so a caller checks this before it writes the run.
+    /// </summary>
+    public static int LongestCommandLine(SetupRequest request) =>
+        Build(request, "xxxx")
+            .Select(spec => ClaudeCli.CommandLineLength(new BackgroundLaunch(
+                spec.Name, spec.WorkingDirectory, spec.Model, spec.Effort, spec.Brief, spec.PermissionMode)))
+            .DefaultIfEmpty(0)
+            .Max();
 
     /// <summary>
     /// How the assistant runs for a request (D-S41). "reviewer" uses the reviewer's setting: the planner when the reviewer is self,

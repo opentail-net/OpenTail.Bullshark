@@ -88,16 +88,29 @@ public sealed class ClaudeCli
     /// <summary>Starts a background session and returns its 8-character id.</summary>
     public async Task<string> StartBackgroundAsync(BackgroundLaunch launch, CancellationToken cancellationToken = default)
     {
-        var args = new List<string> { "--bg", "--model", launch.Model, "--effort", launch.Effort, "--name", launch.Name };
-        if (launch.PermissionMode is not null) args.AddRange(["--permission-mode", launch.PermissionMode]);
-        if (launch.ResumeSessionId is not null) args.AddRange(["--resume", launch.ResumeSessionId]);
-        if (launch.Prompt is not null) args.Add(launch.Prompt);
+        var args = ArgumentsOf(launch);
 
         RequireCarriable(launch, args);
         var result = await RunAsync(args, launch.WorkingDirectory, cancellationToken);
         return ParseBackgroundId(result.StdOut)
             ?? throw new ClaudeCliException($"`claude --bg` did not print an id: {result.StdOut.Trim()}");
     }
+
+    /// <summary>The arguments a launch passes to `claude --bg`, in order. The prompt, when there is one, is the last.</summary>
+    private static List<string> ArgumentsOf(BackgroundLaunch launch)
+    {
+        var args = new List<string> { "--bg", "--model", launch.Model, "--effort", launch.Effort, "--name", launch.Name };
+        if (launch.PermissionMode is not null) args.AddRange(["--permission-mode", launch.PermissionMode]);
+        if (launch.ResumeSessionId is not null) args.AddRange(["--resume", launch.ResumeSessionId]);
+        if (launch.Prompt is not null) args.Add(launch.Prompt);
+        return args;
+    }
+
+    /// <summary>
+    /// The length of the command line a launch makes, counted as <see cref="StartBackgroundAsync"/> counts it against
+    /// <see cref="MaxLaunchCharacters"/>. A caller checks a launch before it writes the run that starts it.
+    /// </summary>
+    public static int CommandLineLength(BackgroundLaunch launch) => string.Join(' ', ArgumentsOf(launch)).Length;
 
     /// <summary>
     /// Refuses a launch the command line cannot carry, before `claude` runs. A brief that starts with '-' would be read as an

@@ -1,5 +1,6 @@
 using System.Text;
 using OpenTail.Bullshark.Core.Activity;
+using OpenTail.Bullshark.Core.Claude;
 
 namespace OpenTail.Bullshark.Core.Resume;
 
@@ -91,14 +92,74 @@ public static class ResumeText
 
     /// <summary>
     /// The last <paramref name="turns"/> turns, copied word for word, within the token cap. A turn starts at each "you" line.
-    /// Returns an empty string when there are no turns to keep.
+    /// Returns an empty string when there are no turns to keep. With <paramref name="maxChars"/>, the text is also kept within that
+    /// many characters: the oldest turns go first, and then the latest turn is cut in its middle (<see cref="CutMiddle"/>).
     /// </summary>
-    public static string Tail(IReadOnlyList<TranscriptLine> lines, int turns = DefaultTurns, int maxTokens = TailTokenCap)
+    public static string Tail(IReadOnlyList<TranscriptLine> lines, int turns = DefaultTurns, int maxTokens = TailTokenCap, int maxChars = int.MaxValue)
     {
-        if (turns <= 0) return string.Empty;
+        if (turns <= 0 || maxChars <= 0) return string.Empty;
         var chosen = SplitTurns(lines).TakeLast(turns).ToList();
         while (chosen.Count > 1 && chosen.Sum(turn => EstimateTokens(Render(turn))) > maxTokens) chosen.RemoveAt(0);
-        return string.Join("\n\n", chosen.Select(turn => Render(turn)));
+
+        var rendered = chosen.Select(turn => Render(turn)).ToList();
+        while (rendered.Count > 1 && Joined(rendered).Length > maxChars) rendered.RemoveAt(0);
+        if (rendered.Count == 1) rendered[0] = CutMiddle(rendered[0], maxChars);
+        return Joined(rendered);
+    }
+
+    private static string Joined(IEnumerable<string> turns) => string.Join("\n\n", turns);
+
+    /// <summary>The marker that stands in for the characters cut from a text.</summary>
+    public static string CutMarker(int cut) => $" … [cut {cut.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)} characters] … ";
+
+    /// <summary>
+    /// The text cut in its middle so that it is at most <paramref name="max"/> characters. Its start and its end are kept, and a
+    /// marker between them says how many characters were cut. A text that already fits is returned as it is. A cut never splits a
+    /// surrogate pair, and when <paramref name="max"/> is too small for the marker the result is empty.
+    /// </summary>
+    public static string CutMiddle(string text, int max)
+    {
+        if (text.Length <= max) return text;
+        // The marker is allowed its widest form (the count has no more digits than the whole text), so the result never passes max.
+        var room = max - CutMarker(text.Length).Length;
+        if (room < 2) return string.Empty;
+
+        var head = (room + 1) / 2;
+        var tailLength = room - head;
+        if (head > 0 && char.IsHighSurrogate(text[head - 1])) head--;
+        var tailStart = text.Length - tailLength;
+        if (tailStart < text.Length && char.IsLowSurrogate(text[tailStart])) tailStart++;
+        return text[..head] + CutMarker(tailStart - head) + text[tailStart..];
+    }
+
+    /// <summary>A resumed session's start text, fitted to the command line it is launched with.</summary>
+    /// <param name="Text">The start text, cut if it had to be.</param>
+    /// <param name="CutCharacters">The characters left out of the start text to fit it (zero when it fitted as it was).</param>
+    /// <param name="Fits">False only when the text is still over the limit after the cut.</param>
+    public sealed record FittedStart(string Text, int CutCharacters, bool Fits);
+
+    /// <summary>
+    /// The start text of a resumed session, fitted to the launch. <paramref name="commandLineOf"/> gives the length of the command line
+    /// the text would make (<c>SetupPlan.LongestCommandLine</c>). When it is over <paramref name="limit"/>, the text is composed
+    /// again with the tail cut by the excess, so the latest turn is cut in its middle and the older turns stay whole.
+    /// </summary>
+    public static FittedStart Fit(
+        string? summary,
+        SummaryLevel? level,
+        IReadOnlyList<TranscriptLine> lines,
+        int turns,
+        string sourceSessionId,
+        Func<string, int> commandLineOf,
+        int limit = ClaudeCli.MaxLaunchCharacters)
+    {
+        var fullTail = Tail(lines, turns);
+        var text = Compose(summary, level, fullTail, turns, sourceSessionId);
+        var excess = commandLineOf(text) - limit;
+        if (excess <= 0) return new FittedStart(text, 0, Fits: true);
+
+        var cutTail = Tail(lines, turns, maxChars: Math.Max(0, fullTail.Length - excess));
+        text = Compose(summary, level, cutTail, turns, sourceSessionId);
+        return new FittedStart(text, fullTail.Length - cutTail.Length, Fits: commandLineOf(text) <= limit);
     }
 
     /// <summary>The turns of a session, oldest first. Lines before the first "you" line form a turn of their own.</summary>
