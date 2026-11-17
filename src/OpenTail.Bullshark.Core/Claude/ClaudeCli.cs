@@ -54,9 +54,19 @@ public sealed class ClaudeCli
     /// sessions, so one that finished or was stopped is still listed, with its state (done, stopped, failed). The supervisor's
     /// passes use it; the rail and the name checks use the active list.
     /// </summary>
-    public async Task<IReadOnlyList<AgentInfo>> ListAgentsAsync(bool includeCompleted, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<AgentInfo>> ListAgentsAsync(bool includeCompleted, CancellationToken cancellationToken = default) =>
+        ListAgentsAsync(null, includeCompleted, cancellationToken);
+
+    /// <summary>
+    /// The sessions `claude agents --json` lists, limited to those started under <paramref name="cwd"/> when it is given (the
+    /// `--cwd` option, additions item 6). A null or blank folder gives the same listing as the overloads without one. Nothing calls
+    /// this with a folder yet: the item waits on its gate (the additions plan, D6.2).
+    /// </summary>
+    public async Task<IReadOnlyList<AgentInfo>> ListAgentsAsync(string? cwd, bool includeCompleted, CancellationToken cancellationToken = default)
     {
-        IReadOnlyList<string> args = includeCompleted ? ["agents", "--json", "--all"] : ["agents", "--json"];
+        var args = new List<string> { "agents", "--json" };
+        if (includeCompleted) args.Add("--all");
+        if (!string.IsNullOrWhiteSpace(cwd)) args.AddRange(["--cwd", cwd]);
         var result = await RunAsync(args, null, cancellationToken);
         try
         {

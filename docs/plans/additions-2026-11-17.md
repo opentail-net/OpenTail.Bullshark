@@ -75,9 +75,9 @@ Now: a `blocked` session raises `AlertKind.Blocked`, which goes to the log and t
 - [x] Tests: append under lock, rotation, reading a partly written last line.
 
 ### 6. Narrow listings with `--cwd`
-- [ ] `ClaudeCli.ListAgentsAsync(string? cwd = null)` adds `--cwd <path>` when given. Keep the no-argument call for the full list (the window needs all sessions for the rail and name checks).
+- [x] `ClaudeCli.ListAgentsAsync(string? cwd = null)` adds `--cwd <path>` when given. (The folder is required, with no default, see D6.1.) Keep the no-argument call for the full list (the window needs all sessions for the rail and name checks).
 - [ ] Use it only where one folder is wanted (for example `ResolveSessionIdAsync` after a start, with the launch folder) — check first that `--cwd` matches a worktree session started from that folder (gate of item 3), else keep the full list there.
-- [ ] Tests: argument lists.
+- [x] Tests: argument lists.
 
 ## Phase C
 
@@ -147,3 +147,9 @@ Now: a `blocked` session raises `AlertKind.Blocked`, which goes to the log and t
 - D5.5 A line cut off at the end of a file that is still being written is skipped when reading, and the complete lines before it are kept.
 - D5.6 Only supervisor actions and state changes are events. The window's own actions (Start now, archive, restore) are not written here.
 - D5.7 Not verified in a window: the tab and its chooser. The sink's behaviour is tested on the file, and the runner's write to the sink with a fake CLI (5 new Core tests, `EventLogTests`; 560 passing in all; the solution builds with App).
+
+### Item 6 (narrow listings with `--cwd`)
+
+- D6.1 The folder is a required parameter: `ListAgentsAsync(string? cwd, bool includeCompleted, ct)`. A default value would make the existing call `ListAgentsAsync()` ambiguous with the overload that takes a cancellation token, so the call sites stay as they were. A null or blank folder gives the full listing. The existing `bool` overload now calls the new one with null, and its command is unchanged (a test checks the argument lists).
+- D6.2 Used nowhere, as the brief for this build says. The second box stays open: the plan requires the gate of item 3 first, and that gate was skipped (D3.1). So it is not known whether `--cwd` returns a worktree session that was started from a folder. The option itself is confirmed in `claude agents --help` (a read-only command).
+- D6.3 Verified: 4 new Core tests (`ListAgentsCwdTests`), 564 passing in all.
