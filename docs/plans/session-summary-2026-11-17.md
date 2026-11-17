@@ -5,7 +5,7 @@ handed each plan to a Haiku builder in its own worktree. Each branch was checked
 screenshots) before it was merged to `main` and pushed. Independent read-only Sonnet reviews looked at each round's code. The owner's
 uncommitted pop-out work (`DetachedSessionWindow.cs`, `SessionWindow.PopOut.cs` and edits in five `SessionWindow.*` partials) was set
 aside and put back for every merge; it is still uncommitted and unchanged, except one line in `SessionWindow.Rail.cs` where both
-sides changed it (both kept). Tests: 357 at the start, 937 at the end.
+sides changed it (both kept). Tests: 357 at the start, 980 at the end (round 11 is on its branch, not merged).
 
 ## What was built (plans in this folder, decisions inside each)
 
@@ -18,6 +18,8 @@ sides changed it (both kept). Tests: 357 at the start, 937 at the end.
 | `bugs-round3-2026-11-17.md` | 16 fixes: search with `\`/`"`, startup with bad runs.json, locked pattern/ui/library stores, resume orphans and length, and more. |
 | `round4-2026-11-17.md` | Unreadable stores never read as empty; one error filter; setup check for `VAR=1 cmd` and built-ins; first screenshots (`scripts/Test-NewScreens.ps1`). |
 | `round5-2026-11-17.md` .. `round9-2026-11-17.md` | Reviews of the day's code: stop guard, event-log failures, limits from real start, archive safety, attention keys, incremental transcript reads, timeline paging, DST-safe start times, daemon health (F63) with stale rows, Respawn all with a hold, limits kept when a session is closed. |
+| `round10-performance-2026-11-17.md` | Index and search speed on the owner's transcripts: the index built and the search run on several threads, a search pre-filter for escaped words, batched search, and an index cache kept between starts. Merged to `main` and pushed. Numbers in `docs/findings/perf-2026-11-17.md`. Open: the first index read with no cache, about 1.6 s. |
+| `round11-2026-11-17.md` | Review of round 10 (findings R1, R2, R3, R5 and R7): the cache key from a fresh stat, a cache that never fails the history load, a locked atomic cache save, search and index with one thread fewer than the processors and cancellable, and a test that fails when the cache misses a summary or digest field. On branch `round11-2026-11-17`, not merged. |
 
 Findings added: F61 (`agents --json` hides finished/stopped sessions without `--all`), F62 (`--bg` refuses an untrusted folder),
 F63 (daemon not running while the listing still shows sessions; the daemon runs on demand).
@@ -32,6 +34,8 @@ Decisions:
 - A sound when a session that is already waiting goes stale (daemon stopped)? Today: no new sound (round 8 B2.2).
 - Respawn click waiting for a pass that is already running (round 9 item 2, optional part, needs a UI-thread change).
 - Light theme tab labels look pale (#5A6270, about 5.6:1); left as is (round 4).
+- A transcript with a lone surrogate escape makes the whole history load fail (round 11 item 2 finding): skip it as unreadable, or keep failing loudly?
+- The first index read with no cache is still about 1.6 s on the owner's data; a byte-level reader is the next step (round 10).
 
 Gates (need one real, owner-run step; nothing was started on the owner's behalf):
 - Worktree per coder (additions item 3) and using `--cwd` for listings: trust one throwaway git folder (`claude` there once, accept), then rerun the gate in the plan.
