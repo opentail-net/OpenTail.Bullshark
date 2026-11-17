@@ -13,9 +13,19 @@ public static class TrustGate
     /// Splits the specs into those that can run now and the repository roots that are waiting for trust. A folder that is
     /// not in a repository needs no trust and runs.
     /// </summary>
+    /// <summary>Reads Claude's file once for the whole call. A pass that also needs the problem uses the <see cref="ClaudeTrust"/> overload.</summary>
     public static (IReadOnlyList<SessionSpec> Runnable, IReadOnlyList<string> UntrustedRoots) Filter(
         IEnumerable<SessionSpec> specs,
-        string claudeJsonPath)
+        string claudeJsonPath) =>
+        Filter(specs, ClaudeTrust.Read(claudeJsonPath));
+
+    /// <summary>
+    /// The same split from a file that has already been read. Every folder is judged on that one read, so a write by Claude
+    /// between two folders cannot make one folder look untrusted and the next trusted.
+    /// </summary>
+    public static (IReadOnlyList<SessionSpec> Runnable, IReadOnlyList<string> UntrustedRoots) Filter(
+        IEnumerable<SessionSpec> specs,
+        ClaudeTrust trust)
     {
         var runnable = new List<SessionSpec>();
         var roots = new List<string>();
@@ -24,10 +34,10 @@ public static class TrustGate
         foreach (var group in specs.GroupBy(s => FolderKey.From(s.WorkingDirectory), StringComparer.OrdinalIgnoreCase))
         {
             var folder = group.First().WorkingDirectory;
-            var trust = TrustCheck.Check(folder, claudeJsonPath);
-            if (trust.State == TrustState.NotTrusted)
+            var check = TrustCheck.Check(folder, trust);
+            if (check.State == TrustState.NotTrusted)
             {
-                if (seen.Add(FolderKey.From(trust.RepositoryRoot!))) roots.Add(trust.RepositoryRoot!);
+                if (seen.Add(FolderKey.From(check.RepositoryRoot!))) roots.Add(check.RepositoryRoot!);
             }
             else
             {

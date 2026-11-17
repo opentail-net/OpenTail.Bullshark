@@ -50,12 +50,16 @@ public static class TrustCheck
         return null;
     }
 
-    public static TrustResult Check(string folder, string claudeJsonPath)
+    /// <summary>Reads Claude's file once for this one folder. A pass that checks many folders uses the <see cref="ClaudeTrust"/> overload.</summary>
+    public static TrustResult Check(string folder, string claudeJsonPath) => Check(folder, ClaudeTrust.Read(claudeJsonPath));
+
+    /// <summary>The trust answer for a folder from a file that has already been read, so every folder of a pass sees the same record.</summary>
+    public static TrustResult Check(string folder, ClaudeTrust trust)
     {
         var root = FindRepositoryRoot(folder);
         if (root is null) return new TrustResult(TrustState.NotARepository, null);
 
-        return new TrustResult(IsRecordedTrusted(root, claudeJsonPath) ? TrustState.Trusted : TrustState.NotTrusted, root);
+        return new TrustResult(trust.IsTrusted(root) ? TrustState.Trusted : TrustState.NotTrusted, root);
     }
 
     /// <summary>
@@ -75,23 +79,7 @@ public static class TrustCheck
     }
 
     /// <summary>True when the project entry for this path has <c>hasTrustDialogAccepted</c> set to true.</summary>
-    public static bool IsRecordedTrusted(string path, string claudeJsonPath)
-    {
-        if (!File.Exists(claudeJsonPath)) return false;
-
-        using var document = ReadClaudeJson(claudeJsonPath);
-        if (!document.RootElement.TryGetProperty("projects", out var projects) || projects.ValueKind != JsonValueKind.Object)
-            return false;
-
-        var wanted = Normalise(path);
-        foreach (var project in projects.EnumerateObject())
-        {
-            if (Normalise(project.Name) != wanted) continue;
-            return project.Value.TryGetProperty("hasTrustDialogAccepted", out var trusted)
-                   && trusted.ValueKind == JsonValueKind.True;
-        }
-        return false;
-    }
+    public static bool IsRecordedTrusted(string path, string claudeJsonPath) => ClaudeTrust.Read(claudeJsonPath).IsTrusted(path);
 
     /// <summary>
     /// The repositories Claude has recorded as trusted, spelled as the file spells them (for example <c>C:/Git/x</c>).
@@ -116,19 +104,7 @@ public static class TrustCheck
     /// parsed (Claude may be writing it) gives no trust, and it is reported so that the owner is not told to accept trust that
     /// may already be recorded. Phase 1 of the review, bad JSON in ~/.claude.json.
     /// </summary>
-    public static string? UnreadableProblem(string claudeJsonPath)
-    {
-        if (!File.Exists(claudeJsonPath)) return null;
-        try
-        {
-            using var _ = JsonDocument.Parse(File.ReadAllText(claudeJsonPath));
-            return null;
-        }
-        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
-        {
-            return $"{claudeJsonPath} cannot be read ({ex.GetType().Name}): no session starts or restarts until it can.";
-        }
-    }
+    public static string? UnreadableProblem(string claudeJsonPath) => ClaudeTrust.Read(claudeJsonPath).Problem;
 
     /// <summary>Claude writes both forward-slash and back-slash spellings of the same path. Compare them as one.</summary>
     public static string Normalise(string path) =>
