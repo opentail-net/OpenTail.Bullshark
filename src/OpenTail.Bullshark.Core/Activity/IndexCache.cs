@@ -57,6 +57,9 @@ internal static class IndexCache
         [JsonPropertyName("lastAt")]
         public string? LastAt { get; set; }
 
+        [JsonPropertyName("records")]
+        public int Records { get; set; }
+
         [JsonPropertyName("turns")]
         public int Turns { get; set; }
 
@@ -208,6 +211,7 @@ internal static class IndexCache
         {
             FirstAt = FormatTime(summary.FirstTimestamp),
             LastAt = FormatTime(summary.LastTimestamp),
+            Records = summary.Records,
             Turns = summary.CompletedTurns,
             Users = summary.UserMessages,
             Assistants = summary.AssistantMessages,
@@ -255,7 +259,7 @@ internal static class IndexCache
         var toolNames = new Dictionary<string, int>(StringComparer.Ordinal);
         foreach (var item in s.ToolNames) toolNames[item.Name] = item.Count;
         var summary = new TranscriptSummary(
-            Records: 0,
+            Records: s.Records,
             UserMessages: s.Users,
             AssistantMessages: s.Assistants,
             ToolCalls: s.Tools,
