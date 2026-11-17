@@ -275,7 +275,7 @@ public sealed class TranscriptIndexCacheTests : IDisposable
         var logged = new List<string>();
 
         Assert.Equal(Reader(_root), IndexFixture.Describe(TranscriptIndex.Build(_root, unusable, logged.Add)));
-        Assert.Single(logged);
+        Assert.Contains(logged, line => line.Contains("cache not saved"));
     }
 
     [Fact]
@@ -289,6 +289,58 @@ public sealed class TranscriptIndexCacheTests : IDisposable
         Assert.Single(logged);
         Assert.Contains("cache not saved", logged[0]);
         Assert.Empty(TempFilesBeside());
+    }
+
+    [Fact]
+    public void ALeftoverTemporaryFileOfTheCacheIsSweptOnLoad()
+    {
+        WriteTranscripts();
+        TranscriptIndex.Build(_root, _cache);
+        var folder = Path.GetDirectoryName(_cache)!;
+        // A write that stopped between the write and the move leaves its temporary file, with transcript text in it.
+        var stale = Path.Combine(folder, "transcript-index.json." + Guid.NewGuid().ToString("N") + ".tmp");
+        File.WriteAllText(stale, "transcript text left behind");
+        File.SetLastWriteTimeUtc(stale, DateTime.UtcNow.AddMinutes(-11));
+        // A write in progress in another window is young, so it is kept; another store's file is never the cache's to sweep.
+        var inProgress = Path.Combine(folder, "transcript-index.json." + Guid.NewGuid().ToString("N") + ".tmp");
+        File.WriteAllText(inProgress, "in progress");
+        File.SetLastWriteTimeUtc(inProgress, DateTime.UtcNow.AddMinutes(-1));
+        var otherStore = Path.Combine(folder, "runs.json." + Guid.NewGuid().ToString("N") + ".tmp");
+        File.WriteAllText(otherStore, "not the cache's");
+        File.SetLastWriteTimeUtc(otherStore, DateTime.UtcNow.AddHours(-1));
+
+        Assert.Equal(Reader(_root), IndexFixture.Describe(TranscriptIndex.Build(_root, _cache)));
+
+        Assert.False(File.Exists(stale));
+        Assert.True(File.Exists(inProgress));
+        Assert.True(File.Exists(otherStore));
+    }
+
+    [Fact]
+    public void ASecondSaveLeavesOneValidFileAndNoTemporaryFile()
+    {
+        var paths = WriteTranscripts();
+        TranscriptIndex.Build(_root, _cache);
+        File.AppendAllLines(paths[3], [IndexFixture.Assistant("again", "ragain", 8, "2026-11-01T12:30:00.000Z", "claude-opus-5-5")]);
+
+        TranscriptIndex.Build(_root, _cache);
+
+        Assert.Equal(Reader(_root), IndexFixture.Describe(TranscriptIndex.Build(_root, _cache)));
+        Assert.Equal([_cache], Directory.GetFiles(Path.GetDirectoryName(_cache)!));
+    }
+
+    [Fact]
+    public async Task ConcurrentSavesLeaveOneValidFile()
+    {
+        var paths = WriteTranscripts();
+        TranscriptIndex.Build(_root, _cache);
+        File.AppendAllLines(paths[4], [IndexFixture.Assistant("race", "rrace", 8, "2026-11-01T12:45:00.000Z", "claude-opus-5-5")]);
+
+        // Each build finds the appended transcript changed, so each one saves; the saves take the file lock one after another.
+        await Task.WhenAll(Enumerable.Range(0, 4).Select(_ => Task.Run(() => TranscriptIndex.Build(_root, _cache))));
+
+        Assert.Equal([_cache], Directory.GetFiles(Path.GetDirectoryName(_cache)!));
+        Assert.Equal(Reader(_root), IndexFixture.Describe(TranscriptIndex.Build(_root, _cache)));
     }
 
     [Fact]

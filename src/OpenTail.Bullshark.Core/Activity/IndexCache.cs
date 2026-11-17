@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using OpenTail.Bullshark.Core.Supervisor;
 
 namespace OpenTail.Bullshark.Core.Activity;
 
@@ -147,6 +148,7 @@ internal static class IndexCache
     /// </summary>
     public static Dictionary<string, Entry>? Load(string path, Action<string>? log = null)
     {
+        SweepStaleTemporaries(path, log);
         try
         {
             if (!File.Exists(path)) return null;
@@ -170,25 +172,23 @@ internal static class IndexCache
     }
 
     /// <summary>
-    /// Writes the cache: to a temporary file first, which then takes the place of the old one, so a reader never sees half of it. A file that
-    /// cannot be written, for any reason, leaves the old cache in place, removes its temporary file, and says so to <paramref name="log"/>.
-    /// Nothing is thrown.
+    /// Writes the cache under the file lock, through <see cref="FileLock.WriteAtomic"/>: a temporary file that then takes the place of the old
+    /// one, so a reader never sees half of it, and two writers (two windows, or a window and the bench) take turns (round 11 item 3). A file
+    /// that cannot be written, for any reason, leaves the old cache in place, removes its temporary file, and says so to
+    /// <paramref name="log"/>. Nothing is thrown.
     /// </summary>
     public static void Save(string path, IReadOnlyList<Entry> entries, Action<string>? log = null)
     {
-        var temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
-            using (var stream = File.Create(temp))
+            var text = JsonSerializer.Serialize(new Document { Reader = ReaderId, Files = entries.ToList() });
+            using (FileLock.Hold(path))
             {
-                JsonSerializer.Serialize(stream, new Document { Reader = ReaderId, Files = entries.ToList() });
+                FileLock.WriteAtomic(path, text);
             }
-            File.Move(temp, path, overwrite: true);
         }
         catch (Exception ex)
         {
-            DeleteQuietly(temp);
             log?.Invoke($"transcript index cache not saved ({ex.GetType().Name}): {ex.Message}");
         }
     }
@@ -284,15 +284,36 @@ internal static class IndexCache
     private static DateTimeOffset? ParseTime(string? text) =>
         text is null ? null : DateTimeOffset.Parse(text, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
 
-    private static void DeleteQuietly(string path)
+    /// <summary>The age past which a temporary file of the cache is a leftover: a write takes well under a second, so ten minutes is a crash.</summary>
+    private static readonly TimeSpan StaleTemporary = TimeSpan.FromMinutes(10);
+
+    /// <summary>
+    /// Deletes the cache's temporary files that are older than <see cref="StaleTemporary"/>. A write that stopped between the write and the move
+    /// leaves one, and it holds transcript text (round 11 item 3). Only names that start with the cache file's own name are swept, so another
+    /// store's file in the same folder is not touched. A file that cannot be deleted is left for the next load, and is said to <paramref name="log"/>.
+    /// </summary>
+    private static void SweepStaleTemporaries(string path, Action<string>? log)
     {
         try
         {
-            File.Delete(path);
+            var folder = Path.GetDirectoryName(Path.GetFullPath(path));
+            if (folder is null || !Directory.Exists(folder)) return;
+            var cutoff = DateTime.UtcNow - StaleTemporary;
+            foreach (var temp in new DirectoryInfo(folder).EnumerateFiles(Path.GetFileName(path) + ".*.tmp"))
+            {
+                try
+                {
+                    if (temp.LastWriteTimeUtc < cutoff) temp.Delete();
+                }
+                catch (Exception ex)
+                {
+                    log?.Invoke($"transcript index cache temporary file not removed ({ex.GetType().Name}): {ex.Message}");
+                }
+            }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // Nothing more to do: the temporary file is left behind, and the old cache is still in place.
+            log?.Invoke($"transcript index cache temporary files not swept ({ex.GetType().Name}): {ex.Message}");
         }
     }
 }
