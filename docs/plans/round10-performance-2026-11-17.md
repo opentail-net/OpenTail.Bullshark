@@ -1,7 +1,7 @@
 # Round 10, 2026-11-17: speed on the owner's real transcripts
 
 Status (2026-11-17, builder): items 1 and 4 done; item 2 partly done, item 3 partly done. Built on branch `round10-perf` (commits
-`dc9e095`..`c6dc664`, one commit per fix), not pushed or merged. Open: the first index read with no cache is still about 1.6 s
+`dc9e095`..`c6dc664`, one commit per fix), merged to `main` and pushed. Open: the first index read with no cache is still about 1.6 s
 (over the 1 s line; a byte-level reader is the next step), and the window's own start was not timed, because its startup pass calls
 the `claude` CLI. The numbers are in `docs/findings/perf-2026-11-17.md`; the record is F64 in `docs/findings/FINDINGS.md`.
 
