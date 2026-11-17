@@ -272,7 +272,7 @@ public partial class SessionWindow : Window
     /// </summary>
     private async Task<(int Actions, IReadOnlyDictionary<string, SessionRecord> Records, string? Problem)> RunPassAndReadAsync(PassReads read)
     {
-        var actions = await _loop.RunPassAsync(read.Trust.Runnable);
+        var actions = await _loop.RunPassAsync(read.Trust.Runnable, read.Agents);
         var (records, problem) = LoadRecords(_store);
         return (actions, records, problem);
     }

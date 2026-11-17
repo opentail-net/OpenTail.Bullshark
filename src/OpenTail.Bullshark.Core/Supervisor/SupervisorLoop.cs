@@ -22,10 +22,23 @@ public sealed class SupervisorLoop
         _log = log;
     }
 
-    /// <summary>Runs one pass and returns the number of actions taken (starts, resumes and alerts).</summary>
+    /// <summary>Runs one pass and returns the number of actions taken (starts, resumes and alerts). It lists the agents itself.</summary>
     public async Task<int> RunPassAsync(IReadOnlyList<SessionSpec> specs, CancellationToken cancellationToken = default)
     {
-        var actions = await _runner.CheckOnceAsync(specs, cancellationToken);
+        var agents = await _cli.ListAgentsAsync(cancellationToken);
+        return await RunPassAsync(specs, agents, cancellationToken);
+    }
+
+    /// <summary>
+    /// Runs one pass with a listing the caller already has, so the pass makes no listing call of its own. The window lists the
+    /// agents once for its refresh and passes that listing here.
+    /// </summary>
+    public async Task<int> RunPassAsync(
+        IReadOnlyList<SessionSpec> specs,
+        IReadOnlyList<AgentInfo> agents,
+        CancellationToken cancellationToken = default)
+    {
+        var actions = await _runner.CheckOnceAsync(specs, agents, cancellationToken);
 
         foreach (var record in _store.Load().Values)
         {

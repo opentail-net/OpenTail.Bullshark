@@ -42,7 +42,19 @@ public sealed class SupervisorRunner
         CancellationToken cancellationToken = default)
     {
         var agents = await _cli.ListAgentsAsync(cancellationToken);
+        return await CheckOnceAsync(specs, agents, cancellationToken);
+    }
 
+    /// <summary>
+    /// The same pass with a listing that the caller already has. Each listing is a new `claude` process, so a caller that
+    /// lists for its own purposes (the window does) passes that listing here instead of paying for a second one.
+    /// A session started during the pass still reads its id back with a listing of its own.
+    /// </summary>
+    public async Task<IReadOnlyList<SupervisorAction>> CheckOnceAsync(
+        IReadOnlyList<SessionSpec> specs,
+        IReadOnlyList<AgentInfo> agents,
+        CancellationToken cancellationToken = default)
+    {
         // Read first: an unreadable state file stops the pass before anything is started or written.
         var before = _store.Load().ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
         var records = new Dictionary<string, SessionRecord>(before, StringComparer.Ordinal);
