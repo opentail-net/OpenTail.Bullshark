@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using OpenTail.Bullshark.Core.Activity;
 using Xunit;
 
@@ -166,6 +167,128 @@ public sealed class TranscriptIndexCacheTests : IDisposable
 
         Assert.Equal(Reader(_root), IndexFixture.Describe(afterDamage));
         Assert.Equal(Reader(_root), IndexFixture.Describe(again));
+    }
+
+    /// <summary>Rewrites the cache file with an edit applied to its JSON, to test a cache that is damaged in a way the writer never makes.</summary>
+    private void EditCache(Action<JsonNode> edit)
+    {
+        var node = JsonNode.Parse(File.ReadAllText(_cache))!;
+        edit(node);
+        File.WriteAllText(_cache, node.ToJsonString());
+    }
+
+    /// <summary>The temporary files of the cache's folder (none when the folder does not exist).</summary>
+    private string[] TempFilesBeside() =>
+        Directory.Exists(Path.GetDirectoryName(_cache)!) ? Directory.GetFiles(Path.GetDirectoryName(_cache)!, "*.tmp") : [];
+
+    [Fact]
+    public void ACacheWithNullFilesIsNoCacheAndTheIndexIsRead()
+    {
+        WriteTranscripts();
+        TranscriptIndex.Build(_root, _cache);
+        EditCache(node => node["files"] = null);
+
+        Assert.Equal(Reader(_root), IndexFixture.Describe(TranscriptIndex.Build(_root, _cache)));
+    }
+
+    [Fact]
+    public void ACacheWithNullEntriesAndPathsIsReadPastThem()
+    {
+        WriteTranscripts();
+        TranscriptIndex.Build(_root, _cache);
+        EditCache(node =>
+        {
+            var files = node["files"]!.AsArray();
+            files[0]!["path"] = null;
+            files[1] = null;
+        });
+
+        Assert.Equal(Reader(_root), IndexFixture.Describe(TranscriptIndex.Build(_root, _cache)));
+    }
+
+    [Fact]
+    public void ACacheEntryWithNullPartsIsReadAgain()
+    {
+        WriteTranscripts();
+        TranscriptIndex.Build(_root, _cache);
+        EditCache(node => node["files"]![0]!["messages"] = null);
+
+        Assert.Equal(Reader(_root), IndexFixture.Describe(TranscriptIndex.Build(_root, _cache)));
+    }
+
+    [Fact]
+    public void ATruncatedCacheIsNoCacheAndTheIndexIsRead()
+    {
+        WriteTranscripts();
+        TranscriptIndex.Build(_root, _cache);
+        var text = File.ReadAllText(_cache);
+        File.WriteAllText(_cache, text[..(text.Length / 2)]);
+
+        Assert.Equal(Reader(_root), IndexFixture.Describe(TranscriptIndex.Build(_root, _cache)));
+    }
+
+    [Fact]
+    public void ADamagedCacheIsLogged()
+    {
+        WriteTranscripts();
+        TranscriptIndex.Build(_root, _cache);
+        File.WriteAllText(_cache, "{ this is not a cache");
+        var logged = new List<string>();
+
+        TranscriptIndex.Build(_root, _cache, logged.Add);
+
+        Assert.Single(logged);
+        Assert.Contains("cache not used", logged[0]);
+    }
+
+    [Fact]
+    public void AReadOnlyCacheIsKeptAndTheIndexIsStillGiven()
+    {
+        var paths = WriteTranscripts();
+        TranscriptIndex.Build(_root, _cache);
+        var before = File.ReadAllText(_cache);
+        File.SetAttributes(_cache, FileAttributes.ReadOnly);
+        try
+        {
+            // One transcript changes, so the cache must be written again, and the write fails over the read-only file.
+            File.AppendAllLines(paths[0], [IndexFixture.Assistant("late", "rlate", 5, "2026-11-01T13:00:00.000Z", "claude-opus-5-5")]);
+            var logged = new List<string>();
+
+            Assert.Equal(Reader(_root), IndexFixture.Describe(TranscriptIndex.Build(_root, _cache, logged.Add)));
+            Assert.Equal(before, File.ReadAllText(_cache));
+            Assert.Empty(TempFilesBeside());
+            Assert.Single(logged);
+            Assert.Contains("cache not saved", logged[0]);
+        }
+        finally
+        {
+            File.SetAttributes(_cache, FileAttributes.Normal);
+        }
+    }
+
+    [Fact]
+    public void ACachePathThatCannotBeUsedGivesTheIndexAndALogLine()
+    {
+        WriteTranscripts();
+        // A null character makes the path invalid (an ArgumentException, not an IOException), so it is a failure no IO filter catches.
+        var unusable = Path.Combine(_root + "-state", "bad\0name", "transcript-index.json");
+        var logged = new List<string>();
+
+        Assert.Equal(Reader(_root), IndexFixture.Describe(TranscriptIndex.Build(_root, unusable, logged.Add)));
+        Assert.Single(logged);
+    }
+
+    [Fact]
+    public void ACacheThatIsAFolderIsLoggedAndTheIndexIsStillGiven()
+    {
+        WriteTranscripts();
+        Directory.CreateDirectory(_cache);
+        var logged = new List<string>();
+
+        Assert.Equal(Reader(_root), IndexFixture.Describe(TranscriptIndex.Build(_root, _cache, logged.Add)));
+        Assert.Single(logged);
+        Assert.Contains("cache not saved", logged[0]);
+        Assert.Empty(TempFilesBeside());
     }
 
     [Fact]

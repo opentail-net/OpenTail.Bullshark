@@ -140,33 +140,41 @@ internal static class IndexCache
         public long CacheRead { get; set; }
     }
 
-    /// <summary>The entries of a cache file by transcript path, or null when there is no usable cache (none, unreadable, or another reader's).</summary>
-    public static Dictionary<string, Entry>? Load(string path)
+    /// <summary>
+    /// The entries of a cache file by transcript path, or null when there is no usable cache (none, unreadable, damaged, or another reader's).
+    /// Any failure is a cache that is not used, and is said to <paramref name="log"/> once; nothing is thrown (round 11 item 2). A missing file
+    /// is not said: the first build has none.
+    /// </summary>
+    public static Dictionary<string, Entry>? Load(string path, Action<string>? log = null)
     {
         try
         {
+            if (!File.Exists(path)) return null;
             using var stream = File.OpenRead(path);
             var document = JsonSerializer.Deserialize<Document>(stream);
             if (document is null || document.Reader != ReaderId) return null;
 
+            // A null list or a null entry or path is an entry that is not there, and an entry that does not restore is read again (FromCache).
             var entries = new Dictionary<string, Entry>(StringComparer.Ordinal);
-            foreach (var entry in document.Files)
+            foreach (var entry in document.Files ?? [])
             {
-                if (entry is not null && entry.Path.Length > 0) entries[entry.Path] = entry;
+                if (entry?.Path is { Length: > 0 } key) entries[key] = entry;
             }
             return entries;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or NotSupportedException)
+        catch (Exception ex)
         {
+            log?.Invoke($"transcript index cache not used ({ex.GetType().Name}): {ex.Message}");
             return null;
         }
     }
 
     /// <summary>
     /// Writes the cache: to a temporary file first, which then takes the place of the old one, so a reader never sees half of it. A file that
-    /// cannot be written leaves the old cache in place, and nothing is thrown.
+    /// cannot be written, for any reason, leaves the old cache in place, removes its temporary file, and says so to <paramref name="log"/>.
+    /// Nothing is thrown.
     /// </summary>
-    public static void Save(string path, IReadOnlyList<Entry> entries)
+    public static void Save(string path, IReadOnlyList<Entry> entries, Action<string>? log = null)
     {
         var temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
@@ -178,9 +186,10 @@ internal static class IndexCache
             }
             File.Move(temp, path, overwrite: true);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
+        catch (Exception ex)
         {
             DeleteQuietly(temp);
+            log?.Invoke($"transcript index cache not saved ({ex.GetType().Name}): {ex.Message}");
         }
     }
 
@@ -281,7 +290,7 @@ internal static class IndexCache
         {
             File.Delete(path);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception)
         {
             // Nothing more to do: the temporary file is left behind, and the old cache is still in place.
         }

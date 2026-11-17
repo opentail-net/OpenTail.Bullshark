@@ -91,14 +91,14 @@ public sealed class TranscriptIndex
     /// The default build, with what each transcript was read as kept in a cache file between builds (round 10 item 2). A transcript with the
     /// same length and write time as its entry in the cache is not read: its entry is taken as it was read. The others are read, and the cache
     /// is written again when any was read or one has gone. The result is the same as <see cref="Build(string)"/>. A cache that cannot be read
-    /// or written is left out, and every transcript is read.
+    /// or written is left out, and every transcript is read; <paramref name="log"/> is told each such failure in one line (null says nothing).
     /// </summary>
-    public static TranscriptIndex Build(string projectsRoot, string cachePath)
+    public static TranscriptIndex Build(string projectsRoot, string cachePath, Action<string>? log = null)
     {
         if (!Directory.Exists(projectsRoot)) return Empty();
 
         var files = ListFiles(projectsRoot);
-        var cached = IndexCache.Load(cachePath);
+        var cached = IndexCache.Load(cachePath, log);
         var now = DateTime.UtcNow;
         var reads = new FileRead[files.Count];
         var readNow = new bool[files.Count];
@@ -124,7 +124,7 @@ public sealed class TranscriptIndex
             if (read.Error is null && read.Summary is { } summary)
                 entries.Add(IndexCache.EntryOf(read.Info.FullName, read.Length, read.Written, summary, read.Ledger.Pairs));
         }
-        if (cached is null || cached.Count != entries.Count || readNow.Any(read => read)) IndexCache.Save(cachePath, entries);
+        if (cached is null || cached.Count != entries.Count || readNow.Any(read => read)) IndexCache.Save(cachePath, entries, log);
         return index;
     }
 

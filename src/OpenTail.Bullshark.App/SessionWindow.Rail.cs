@@ -438,7 +438,7 @@ public partial class SessionWindow
         RefreshRail();
         try
         {
-            var index = await Task.Run(() => TranscriptIndex.Build(_options.ProjectsRoot, _options.IndexCachePath));
+            var index = await Task.Run(() => TranscriptIndex.Build(_options.ProjectsRoot, _options.IndexCachePath, AppLog.Write));
             var facts = await Task.Run(() => ReadHistoryFacts(index.Sessions));
             _history = index.Sessions.ToList();
             _historyFacts = facts;
