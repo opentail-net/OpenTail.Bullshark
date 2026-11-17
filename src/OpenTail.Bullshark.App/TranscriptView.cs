@@ -623,7 +623,7 @@ public sealed class TranscriptView : UserControl
 
         panel.Children.Add(EffortCaption($"Files read more than {EffortReport.RereadThreshold} times: {report.RereadFiles.Count:N0}"));
         foreach (var item in report.RereadFiles)
-            panel.Children.Add(EffortJump($"{Path.GetFileName(item.Label)}: read {item.Count:N0} times", item.Line, item.Label));
+            panel.Children.Add(EffortPathJump(item.Label, $": read {item.Count:N0} times", item.Line));
 
         panel.Children.Add(EffortCaption($"Commands run more than {EffortReport.RepeatThreshold} times: {report.RepeatedCommands.Count:N0}"));
         foreach (var item in report.RepeatedCommands)
@@ -637,12 +637,53 @@ public sealed class TranscriptView : UserControl
                 $"{(turn.Prompt.Length == 0 ? "(before the first prompt)" : turn.Prompt)} · {Tokens(turn.Tokens)} tokens",
                 turn.StartLine, null));
 
-        _effort.Content = new ScrollViewer
+        var scroll = new ScrollViewer
         {
             MaxHeight = 220,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             Content = panel,
         };
+        // A file path is trimmed to the width the panel has, and again whenever that width changes (round 6 item 10).
+        scroll.SizeChanged += (_, _) => FitEffortPaths(scroll);
+        _effort.Content = scroll;
+    }
+
+    /// <summary>What a file path in the panel is made of: the whole path (for the tooltip), and the text after it, which is never trimmed.</summary>
+    private sealed record EffortPathText(string Full, string Suffix);
+
+    /// <summary>
+    /// One file in the panel. Its path is trimmed to the width when the panel is laid out: the file name always shows, and as much of the
+    /// folder as fits, from the start trimmed (<c>…\folder\name.ext</c>). The full path is in the tooltip (round 6 item 10).
+    /// </summary>
+    private TextBlock EffortPathJump(string full, string suffix, int line)
+    {
+        var block = EffortJump(full + suffix, line, full);
+        block.Tag = new EffortPathText(full, suffix);
+        return block;
+    }
+
+    /// <summary>Trims the file paths of the panel to the width its scroll area has. Runs on the UI thread, after the panel is laid out.</summary>
+    private void FitEffortPaths(ScrollViewer scroll)
+    {
+        if (scroll.Content is not StackPanel panel) return;
+        // The width is the scroll area's without the scrollbar, whether or not one is shown: the text must not change with the scrollbar, which
+        // the text's own height decides. The item is indented by its left margin of 10, and the text keeps a little room at its right edge.
+        var width = scroll.ActualWidth - SystemParameters.VerticalScrollBarWidth - 10 - 4;
+        foreach (var block in panel.Children.OfType<TextBlock>())
+        {
+            if (block.Tag is not EffortPathText text) continue;
+            var fitted = EffortReport.FitPath(text.Full, path => TextWidth(path + text.Suffix, block) <= width);
+            block.Text = fitted + text.Suffix;
+        }
+    }
+
+    /// <summary>The width of a line of text in the font of <paramref name="like"/>, at its display's pixel density.</summary>
+    private double TextWidth(string text, TextBlock like)
+    {
+        var typeface = new Typeface(like.FontFamily, like.FontStyle, like.FontWeight, like.FontStretch);
+        var formatted = new FormattedText(text, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
+            typeface, like.FontSize, like.Foreground, VisualTreeHelper.GetDpi(like).PixelsPerDip);
+        return formatted.WidthIncludingTrailingWhitespace;
     }
 
     private TextBlock EffortCaption(string text) => new()

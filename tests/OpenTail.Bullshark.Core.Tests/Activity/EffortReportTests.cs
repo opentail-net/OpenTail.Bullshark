@@ -100,6 +100,42 @@ public sealed class EffortReportTests
     }
 
     [Fact]
+    public void AFilesPathIsKeptWholeSoThePanelCanShowItsFileName()
+    {
+        // A path longer than the panel's label length: it is kept whole, so its file name is not cut off (round 6 item 10).
+        var longPath = @"C:\" + new string('a', 140) + @"\folder\README.md";
+        var lines = new List<string> { Prompt("look") };
+        for (var i = 0; i < 4; i++) lines.Add(Call("r" + i, "Read", Read(longPath), "long" + i));
+        lines.Add(Done());
+
+        var item = Assert.Single(EffortReport.From(lines).RereadFiles);
+
+        Assert.Equal(longPath, item.Label);
+        Assert.EndsWith(@"\README.md", item.Label);
+    }
+
+    [Fact]
+    public void AFolderTooLongForTheWidthIsTrimmedFromTheStartAndTheFileNameKept()
+    {
+        var path = @"C:\work\repo\src\README.md";
+
+        // The first folder boundary that fits is the longest suffix that does: "…\repo\src\README.md" is 20 characters.
+        Assert.Equal(@"…\repo\src\README.md", EffortReport.FitPath(path, text => text.Length <= 20));
+        Assert.Equal(@"…\src\README.md", EffortReport.FitPath(path, text => text.Length <= 16));
+    }
+
+    [Fact]
+    public void APathThatFitsIsShownWholeAndAFileNameThatDoesNotFitIsStillShown()
+    {
+        var path = @"C:\work\repo\src\README.md";
+
+        Assert.Equal(path, EffortReport.FitPath(path, _ => true));
+        // Nothing with an ellipsis fits: the file name with its ellipsis is what is left, and the view wraps it.
+        Assert.Equal(@"…\README.md", EffortReport.FitPath(path, _ => false));
+        Assert.Equal("README.md", EffortReport.FitPath("README.md", _ => false));
+    }
+
+    [Fact]
     public void ACommandRunMoreThanTwiceIsListedByItsExactText()
     {
         var lines = new List<string> { Prompt("test") };

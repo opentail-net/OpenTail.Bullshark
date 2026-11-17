@@ -147,7 +147,7 @@ public sealed record EffortReport(
         return new EffortReport(
             turns,
             failed.Items(minimumExclusive: 0),
-            rereads.Items(minimumExclusive: RereadThreshold),
+            rereads.Items(minimumExclusive: RereadThreshold, keepWhole: true),
             commands.Items(minimumExclusive: RepeatThreshold),
             withoutOutput);
     }
@@ -188,11 +188,14 @@ public sealed record EffortReport(
         public void Add(string label, int line) =>
             _counts[label] = _counts.TryGetValue(label, out var known) ? (known.Count + 1, known.First) : (1, line);
 
-        /// <summary>The labels seen more than <paramref name="minimumExclusive"/> times, most first.</summary>
-        public IReadOnlyList<EffortItem> Items(int minimumExclusive) =>
+        /// <summary>
+        /// The labels seen more than <paramref name="minimumExclusive"/> times, most first. A label is shortened for the panel unless
+        /// <paramref name="keepWhole"/> is set: a file path is kept whole, so the panel can trim it to its width and show its file name (round 6 item 10).
+        /// </summary>
+        public IReadOnlyList<EffortItem> Items(int minimumExclusive, bool keepWhole = false) =>
             _counts
                 .Where(pair => pair.Value.Count > minimumExclusive)
-                .Select(pair => new EffortItem(Shorten(pair.Key), pair.Value.Count, pair.Value.First))
+                .Select(pair => new EffortItem(keepWhole ? pair.Key : Shorten(pair.Key), pair.Value.Count, pair.Value.First))
                 .OrderByDescending(item => item.Count)
                 .ThenBy(item => item.Label, StringComparer.Ordinal)
                 .ToList();
@@ -205,6 +208,28 @@ public sealed record EffortReport(
     {
         var oneLine = string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
         return oneLine.Length <= LabelLength ? oneLine : oneLine[..LabelLength] + "…";
+    }
+
+    /// <summary>
+    /// A file path as the panel shows it in the width it has (round 6 item 10): the whole path when <paramref name="fits"/> says it fits, else an
+    /// ellipsis and as many of its last folders as fit, trimmed at a folder boundary, with the file name always kept. Given a path with no folder,
+    /// or one whose file name does not fit even alone, the result is the path, or the ellipsis and the file name, and the view wraps it.
+    /// </summary>
+    public static string FitPath(string path, Func<string, bool> fits)
+    {
+        if (fits(path)) return path;
+        var separators = new List<int>();
+        for (var i = 0; i < path.Length; i++)
+            if (path[i] is '\\' or '/') separators.Add(i);
+        if (separators.Count == 0) return path;
+
+        // The longest suffix that fits comes first: the folder boundaries are tried from the start of the path to its file name.
+        foreach (var at in separators)
+        {
+            var candidate = "…" + path[at..];
+            if (fits(candidate)) return candidate;
+        }
+        return "…" + path[separators[^1]..];
     }
 
     private static string? Str(JsonElement element, string property) =>
