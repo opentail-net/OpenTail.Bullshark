@@ -22,10 +22,58 @@ public sealed class RespawnHoldTests : IDisposable
         try { Directory.Delete(_dir, recursive: true); } catch (IOException) { }
     }
 
+    /// <summary>A clock whose monotonic reading moves with <see cref="Now"/>, so the hold's timing is the one the test sets.</summary>
     private sealed class SettableClock(DateTimeOffset now) : TimeProvider
     {
         public DateTimeOffset Now { get; set; } = now;
         public override DateTimeOffset GetUtcNow() => Now;
+        public override long GetTimestamp() => Now.UtcTicks;
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+    }
+
+    /// <summary>A clock whose wall time and monotonic time are set separately, as when the wall clock is changed (round 9 item 6).</summary>
+    private sealed class SplitClock : TimeProvider
+    {
+        public DateTimeOffset Wall { get; set; } = Start;
+
+        /// <summary>The monotonic reading, in milliseconds.</summary>
+        public long Ms { get; set; }
+
+        public override DateTimeOffset GetUtcNow() => Wall;
+        public override long GetTimestamp() => Ms;
+        public override long TimestampFrequency => 1_000;
+    }
+
+    [Fact]
+    public void TheHoldIsMeasuredOnTheMonotonicClockSoABackwardWallClockDoesNotExtendIt()
+    {
+        var clock = new SplitClock { Ms = 1_000 };
+        var hold = new RespawnHold(clock);
+        hold.Begin();
+        hold.End();
+
+        // The wall clock is set back an hour. Five seconds have passed on the monotonic clock: the hold is still on.
+        clock.Wall = Start.AddHours(-1);
+        clock.Ms = 1_000 + 5_000;
+        Assert.True(hold.IsHeld);
+
+        // Twenty seconds have passed on the monotonic clock, whatever the wall clock says: the hold is over.
+        clock.Ms = 1_000 + 20_000;
+        Assert.False(hold.IsHeld);
+    }
+
+    [Fact]
+    public void TheHoldIsMeasuredOnTheMonotonicClockSoAForwardWallClockJumpDoesNotEndItEarly()
+    {
+        var clock = new SplitClock { Ms = 1_000 };
+        var hold = new RespawnHold(clock);
+        hold.Begin();
+        hold.End();
+
+        // The wall clock jumps an hour ahead. Only five seconds have passed on the monotonic clock: the hold is still on.
+        clock.Wall = Start.AddHours(1);
+        clock.Ms = 1_000 + 5_000;
+        Assert.True(hold.IsHeld);
     }
 
     private static string Listing(string? state) => state is null

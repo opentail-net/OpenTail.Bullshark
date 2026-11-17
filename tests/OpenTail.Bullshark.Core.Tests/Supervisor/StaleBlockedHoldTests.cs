@@ -24,10 +24,13 @@ public sealed class StaleBlockedHoldTests : IDisposable
 
     private static readonly DaemonStatus NotRunning = DaemonStatus.Parse("not running\n  control.sock: unreachable (connect ENOENT)\n");
 
+    /// <summary>A clock whose monotonic reading moves with <see cref="Now"/>, as the respawn hold reads it.</summary>
     private sealed class SettableClock(DateTimeOffset now) : TimeProvider
     {
         public DateTimeOffset Now { get; set; } = now;
         public override DateTimeOffset GetUtcNow() => Now;
+        public override long GetTimestamp() => Now.UtcTicks;
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
     }
 
     /// <summary>A record of the planner whose last alert is the stale-blocked one, raised at <paramref name="alertedAt"/> (null: no time).</summary>

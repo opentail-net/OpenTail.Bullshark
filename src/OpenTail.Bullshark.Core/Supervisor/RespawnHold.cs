@@ -5,6 +5,8 @@ namespace OpenTail.Bullshark.Core.Supervisor;
 /// <see cref="Window"/> after it ends, a supervision pass makes no start or resume decision: the restarting workers are not all listed yet, so
 /// a session that is missing from the listing is not "gone", and a second claude process must not be started for it. The pass still reads the
 /// listing and shows it. Shared by the window and the runner, and read on a pool thread, so it is locked.
+/// The window is measured on the monotonic clock (round 9 item 6): setting the wall clock back would otherwise extend the hold, and setting it
+/// forward would end it early.
 /// </summary>
 public sealed class RespawnHold(TimeProvider? clock = null)
 {
@@ -14,7 +16,9 @@ public sealed class RespawnHold(TimeProvider? clock = null)
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
     private readonly object _lock = new();
     private bool _running;
-    private DateTimeOffset? _endedAt;
+
+    /// <summary>The monotonic timestamp at which the respawn ended, or null while none has ended (round 9 item 6).</summary>
+    private long? _endedAt;
 
     /// <summary>True while the respawn runs, and for <see cref="Window"/> after it ends. False before the first respawn.</summary>
     public bool IsHeld
@@ -24,7 +28,7 @@ public sealed class RespawnHold(TimeProvider? clock = null)
             lock (_lock)
             {
                 if (_running) return true;
-                return _endedAt is { } ended && _clock.GetUtcNow() - ended < Window;
+                return _endedAt is { } ended && _clock.GetElapsedTime(ended) < Window;
             }
         }
     }
@@ -45,7 +49,7 @@ public sealed class RespawnHold(TimeProvider? clock = null)
         lock (_lock)
         {
             _running = false;
-            _endedAt = _clock.GetUtcNow();
+            _endedAt = _clock.GetTimestamp();
         }
     }
 
