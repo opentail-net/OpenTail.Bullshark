@@ -13,7 +13,15 @@ public static class StartTime
     /// The start time for <paramref name="text"/> after <paramref name="now"/>, or the reason the text is not a time. Blank gives no time
     /// and no reason. Hours are 0 to 23, minutes 0 to 59; "9:05" is accepted.
     /// </summary>
-    public static (DateTimeOffset? At, string? Error) Parse(string? text, DateTimeOffset now)
+    public static (DateTimeOffset? At, string? Error) Parse(string? text, DateTimeOffset now) =>
+        Parse(text, now, TimeZoneInfo.Local);
+
+    /// <summary>
+    /// The same for a given clock. The next time is worked out as a wall-clock time in <paramref name="zone"/>, and then turned into an
+    /// instant with the offset that applies on that day. Moving an instant by a day keeps the old offset, which is one hour out when the
+    /// clocks change between the two days, so it is not used (round 5 item 13).
+    /// </summary>
+    public static (DateTimeOffset? At, string? Error) Parse(string? text, DateTimeOffset now, TimeZoneInfo zone)
     {
         var trimmed = (text ?? string.Empty).Trim();
         if (trimmed.Length == 0) return (null, null);
@@ -29,10 +37,30 @@ public static class StartTime
                     && minute is >= 0 and <= 59;
         if (!valid) return (null, $"'{trimmed}' is not a time. Write it as HH:mm, for example 14:30.");
 
-        var local = now.ToLocalTime().DateTime;
-        var date = new DateTime(local.Year, local.Month, local.Day, hour, minute, 0, DateTimeKind.Unspecified);
-        var at = new DateTimeOffset(date, TimeZoneInfo.Local.GetUtcOffset(date));
-        if (at <= now) at = at.AddDays(1);
+        var today = TimeZoneInfo.ConvertTime(now, zone).DateTime.Date;
+        var at = Occurrence(today.AddHours(hour).AddMinutes(minute), zone);
+        if (at <= now) at = Occurrence(today.AddDays(1).AddHours(hour).AddMinutes(minute), zone);
         return (at, null);
+    }
+
+    /// <summary>The instant of a wall-clock time in the zone, with the offset that applies at that time.</summary>
+    private static DateTimeOffset Occurrence(DateTime wallClock, TimeZoneInfo zone)
+    {
+        var unspecified = DateTime.SpecifyKind(wallClock, DateTimeKind.Unspecified);
+        return new DateTimeOffset(unspecified, zone.GetUtcOffset(unspecified));
+    }
+
+    /// <summary>
+    /// A start time as the rail shows it: the time alone when it falls on today's date in the zone, and the date and the time when it does
+    /// not (round 5 item 13). A waiting run may be a day or more away, so its row names the day.
+    /// </summary>
+    public static string Describe(DateTimeOffset at, DateTimeOffset now, TimeZoneInfo? zone = null)
+    {
+        var clock = zone ?? TimeZoneInfo.Local;
+        var when = TimeZoneInfo.ConvertTime(at, clock).DateTime;
+        var today = TimeZoneInfo.ConvertTime(now, clock).DateTime.Date;
+        return when.Date == today
+            ? when.ToString("HH:mm", CultureInfo.InvariantCulture)
+            : when.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
     }
 }
