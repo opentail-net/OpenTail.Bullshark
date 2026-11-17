@@ -23,6 +23,9 @@ public partial class SessionWindow
         Setup,
         Transcript,
         Search,
+
+        /// <summary>A live session's changes (item 2 of the additions plan). Key: the session id.</summary>
+        Changes,
     }
 
     private sealed class OpenTab(TabKind kind, string key, string title)
@@ -118,6 +121,10 @@ public partial class SessionWindow
 
             case TabKind.Search:
                 ShowOnly(_search);
+                break;
+
+            case TabKind.Changes:
+                await ShowChangesAsync(tab.Key);
                 break;
         }
     }

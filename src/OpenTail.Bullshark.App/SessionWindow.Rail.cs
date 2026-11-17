@@ -184,6 +184,7 @@ public partial class SessionWindow
         _setup?.ApplyTheme(palette);
         _search.ApplyTheme(palette);
         _transcript.ApplyTheme(palette);
+        _changes.ApplyTheme(palette);
         FilterBox.Background = RailPalette.Brush(palette.Panel);
         FilterBox.BorderBrush = RailPalette.Brush(palette.Muted);
         UpdateFilterMark();
@@ -479,7 +480,7 @@ public partial class SessionWindow
 
             // With no live session in the rail, nothing is selected, and every refresh came here and showed the setup over a search
             // or a transcript opened from one. Those keep the pane.
-            if (_activeTab?.Kind is TabKind.Search or TabKind.Transcript) return;
+            if (_activeTab?.Kind is TabKind.Search or TabKind.Transcript or TabKind.Changes) return;
             ShowOnly(_setup);
             return;
         }
@@ -489,7 +490,7 @@ public partial class SessionWindow
 
         // A refresh must not take the pane away from a search, or from a transcript the owner opened from a result: those have no
         // row selected in the rail, so the fallback would show the setup over them.
-        if (_activeTab?.Kind is TabKind.Search or TabKind.Transcript) return;
+        if (_activeTab?.Kind is TabKind.Search or TabKind.Transcript or TabKind.Changes) return;
         _ = ShowRailItemAsync(_selected);
     }
 

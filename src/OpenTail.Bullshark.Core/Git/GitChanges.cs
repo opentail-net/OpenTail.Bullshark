@@ -1,0 +1,195 @@
+using System.Globalization;
+
+namespace OpenTail.Bullshark.Core.Git;
+
+/// <summary>What the Changes tab says about a folder: a list of changes, a plain note (not a repository), or a problem.</summary>
+public enum GitChangesKind
+{
+    Changes,
+    NotARepository,
+    Problem,
+}
+
+/// <summary>
+/// One changed path. <see cref="Code"/> is the two-letter status from `git status --porcelain=v1`. <see cref="Added"/> and
+/// <see cref="Deleted"/> are the line counts of `git diff`; both are null for an untracked file or a file with no counts.
+/// <see cref="Binary"/> is set when git counts no lines for a binary file.
+/// </summary>
+public sealed record GitFileChange(string Path, string? OldPath, string Code, int? Added, int? Deleted, bool Binary)
+{
+    /// <summary>The status in plain words, for the list.</summary>
+    public string Label
+    {
+        get
+        {
+            if (Code is "UU" or "AA" or "DD" or "AU" or "UA" or "DU" or "UD") return "conflict";
+            if (Code == "??") return "new, not in the diff";
+            // A rename staged in the index is a rename, even when the worktree has changed it since.
+            var letter = Code[0] is 'R' or 'C' ? Code[0] : Code[1] != ' ' ? Code[1] : Code[0];
+            return letter switch
+            {
+                'A' => "added",
+                'D' => "deleted",
+                'R' => "renamed",
+                'C' => "copied",
+                'T' => "type changed",
+                _ => "modified",
+            };
+        }
+    }
+}
+
+/// <summary>The Changes tab's data for one folder. The text is in full, up to the limits in <see cref="GitChanges"/>.</summary>
+public sealed record GitChangesReport(
+    GitChangesKind Kind,
+    string Folder,
+    string Message,
+    IReadOnlyList<GitFileChange> Files,
+    bool FilesTruncated,
+    string Diff,
+    bool DiffTruncated);
+
+/// <summary>
+/// Reads what a session's folder has changed, through git, read-only (the Changes tab, item 2 of the additions plan). Three commands:
+/// `status` for the list, `diff --numstat` for the counts and `diff` for the text. A folder that is not a repository is a plain
+/// message, not an error. The output of each command is capped at 2 MB and each command runs for at most 10 seconds.
+/// </summary>
+public static class GitChanges
+{
+    /// <summary>The most output kept from one command.</summary>
+    public const int MaxOutputBytes = 2 * 1024 * 1024;
+
+    public static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(10);
+
+    /// <summary>The line added to the end of a diff that was cut at the limit.</summary>
+    public const string DiffTruncatedNote = "[truncated: the diff is longer than 2 MB, so the rest is not shown]";
+
+    /// <summary>The folder for a session: the working folder from its listing, else the folder of its spec. Null when neither is known.</summary>
+    public static string? FolderOf(string? listedFolder, string? specFolder)
+    {
+        if (!string.IsNullOrWhiteSpace(listedFolder)) return listedFolder;
+        return string.IsNullOrWhiteSpace(specFolder) ? null : specFolder;
+    }
+
+    /// <summary>Reads the changes of a folder. Nothing is written, and no git command can start a prompt or take the index lock.</summary>
+    public static async Task<GitChangesReport> ReadAsync(string folder, IGitRunner git, CancellationToken cancellationToken = default)
+    {
+        if (!Directory.Exists(folder))
+            return Problem(folder, $"The folder does not exist: {folder}");
+
+        var status = await git.RunAsync(["status", "--porcelain=v1", "-z"], folder, CommandTimeout, MaxOutputBytes, cancellationToken);
+        if (IsNotARepository(status))
+            return new GitChangesReport(GitChangesKind.NotARepository, folder,
+                "This folder is not in a git repository, so there are no changes to show.", [], false, string.Empty, false);
+        if (!Usable(status)) return Problem(folder, Describe("status", status));
+
+        var numstat = await git.RunAsync(["diff", "--numstat", "-z"], folder, CommandTimeout, MaxOutputBytes, cancellationToken);
+        if (!Usable(numstat)) return Problem(folder, Describe("diff --numstat", numstat));
+
+        var diff = await git.RunAsync(["diff", "--no-color", "--no-ext-diff"], folder, CommandTimeout, MaxOutputBytes, cancellationToken);
+        if (!Usable(diff)) return Problem(folder, Describe("diff", diff));
+
+        var counts = ParseNumstat(numstat.OutputTruncated ? CutAtLastNul(numstat.StdOut) : numstat.StdOut);
+        var files = ParseStatus(status.OutputTruncated ? CutAtLastNul(status.StdOut) : status.StdOut)
+            .Select(file => counts.TryGetValue(file.Path, out var count)
+                ? file with { Added = count.Added, Deleted = count.Deleted, Binary = count.Binary }
+                : file)
+            .OrderBy(file => file.Path, StringComparer.Ordinal)
+            .ToList();
+
+        var text = diff.StdOut;
+        if (diff.OutputTruncated) text = text.TrimEnd('\n') + "\n" + DiffTruncatedNote;
+
+        var message = status.OutputTruncated
+            ? "The file list is longer than 2 MB, so the rest is not shown."
+            : files.Count == 0 ? "No changes: git sees nothing new or modified here." : string.Empty;
+        return new GitChangesReport(GitChangesKind.Changes, folder, message, files, status.OutputTruncated, text, diff.OutputTruncated);
+    }
+
+    /// <summary>
+    /// The entries of `git status --porcelain=v1 -z`: "XY path" followed by NUL. A rename or copy has the old path in the next field,
+    /// so both are read. Counts are not set here.
+    /// </summary>
+    public static IReadOnlyList<GitFileChange> ParseStatus(string output)
+    {
+        var fields = output.Split('\0');
+        var files = new List<GitFileChange>();
+        for (var i = 0; i < fields.Length; i++)
+        {
+            var entry = fields[i];
+            if (entry.Length < 4) continue;
+            var code = entry[..2];
+            string? oldPath = null;
+            if (code[0] is 'R' or 'C' || code[1] is 'R' or 'C')
+            {
+                oldPath = i + 1 < fields.Length ? fields[++i] : null;
+            }
+            files.Add(new GitFileChange(entry[3..], oldPath, code, null, null, false));
+        }
+        return files;
+    }
+
+    /// <summary>
+    /// The counts of `git diff --numstat -z`, keyed by path. A line is "added TAB deleted TAB path" followed by NUL. A rename is
+    /// "added TAB deleted TAB" followed by NUL, then the old path and the new path, each followed by NUL; the count goes under the new
+    /// path. A binary file has "-" for both counts.
+    /// </summary>
+    public static IReadOnlyDictionary<string, NumstatCount> ParseNumstat(string output)
+    {
+        var fields = output.Split('\0');
+        var counts = new Dictionary<string, NumstatCount>(StringComparer.Ordinal);
+        for (var i = 0; i < fields.Length; i++)
+        {
+            var line = fields[i];
+            var first = line.IndexOf('\t');
+            if (first < 0) continue;
+            var second = line.IndexOf('\t', first + 1);
+            if (second < 0) continue;
+
+            var added = line[..first];
+            var deleted = line[(first + 1)..second];
+            var path = line[(second + 1)..];
+            var count = new NumstatCount(ParseCount(added), ParseCount(deleted), Binary: added == "-" && deleted == "-");
+            if (path.Length == 0)
+            {
+                if (i + 2 >= fields.Length) break;
+                counts[fields[i + 2]] = count;
+                i += 2;
+            }
+            else
+            {
+                counts[path] = count;
+            }
+        }
+        return counts;
+    }
+
+    /// <summary>The counts of one changed path, from `git diff --numstat`.</summary>
+    public sealed record NumstatCount(int? Added, int? Deleted, bool Binary);
+
+    private static int? ParseCount(string text) =>
+        int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var number) ? number : null;
+
+    /// <summary>Output cut at the limit may end inside a field. The text after the last NUL is dropped.</summary>
+    private static string CutAtLastNul(string output)
+    {
+        var last = output.LastIndexOf('\0');
+        return last < 0 ? string.Empty : output[..(last + 1)];
+    }
+
+    private static bool IsNotARepository(GitOutput output) =>
+        !output.Succeeded && !output.TimedOut && output.StdErr.Contains("not a git repository", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>A command's output can be used when it succeeded, or when it was cut at the limit (its exit code is then the stop).</summary>
+    private static bool Usable(GitOutput output) => output.Succeeded || output.OutputTruncated;
+
+    private static string Describe(string command, GitOutput output)
+    {
+        if (output.TimedOut) return $"git {command} did not finish within {CommandTimeout.TotalSeconds:0} seconds.";
+        var firstLine = output.StdErr.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault();
+        return $"git {command} failed (exit {output.ExitCode}): {firstLine ?? "no message"}";
+    }
+
+    private static GitChangesReport Problem(string folder, string message) =>
+        new(GitChangesKind.Problem, folder, message, [], false, string.Empty, false);
+}

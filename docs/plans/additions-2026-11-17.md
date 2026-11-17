@@ -45,11 +45,11 @@ Now: a `blocked` session raises `AlertKind.Blocked`, which goes to the log and t
 - [x] Owner decision (record, do not build): Windows toast notifications need a package (CommunityToolkit notifications or Windows App SDK). Recorded as D1.9.
 
 ### 2. A "Changes" tab per session
-- [ ] Core: `GitChanges.Read(folder)` runs `git -C <folder> status --porcelain=v1` and `git -C <folder> diff --stat` and `git diff` (read-only, 10 s timeout, through a small `IGitRunner` like `ICliRunner` so tests use a fake). Not a repository → a plain message, not an error. Diff capped at 2 MB with a "truncated" line.
-- [ ] Folder = the session's `cwd` from the listing, else its spec's `WorkingDirectory`.
-- [ ] Window: a new tab kind `Changes` opened from the session's rail context menu: file list with +/- counts, the diff below in the terminal font, colours from `TerminalColours`. A "Files written" list from the transcript digest's `FilesWritten` beside it.
-- [ ] Refresh button; no automatic refresh.
-- [ ] Tests: porcelain and `--stat` parsing (renames, spaces in paths, binary files), not-a-repo, truncation.
+- [x] Core: `GitChanges.Read(folder)` runs `git -C <folder> status --porcelain=v1` and `git -C <folder> diff --stat` and `git diff` (read-only, 10 s timeout, through a small `IGitRunner` like `ICliRunner` so tests use a fake). Not a repository → a plain message, not an error. Diff capped at 2 MB with a "truncated" line. Built as `--numstat -z` and `status -z`, see D2.1 and D2.2.
+- [x] Folder = the session's `cwd` from the listing, else its spec's `WorkingDirectory`.
+- [x] Window: a new tab kind `Changes` opened from the session's rail context menu: file list with +/- counts, the diff below in the terminal font, colours from `TerminalColours`. A "Files written" list from the transcript digest's `FilesWritten` beside it.
+- [x] Refresh button; no automatic refresh.
+- [x] Tests: porcelain and `--stat` parsing (renames, spaces in paths, binary files), not-a-repo, truncation.
 
 ### 3. One worktree per coder (gated)
 - [ ] **Gate, do first:** start one throwaway background session in a scratch git repo with `--bg` alone, then with `--bg -w <name>`; record in this file: where it runs, what `agents --json` shows (cwd, any worktree field), what `claude rm` does. Then `claude rm` both and delete the scratch repo. If `-w` does not work with `--bg`, stop this item and record why.
@@ -103,3 +103,17 @@ Now: a `blocked` session raises `AlertKind.Blocked`, which goes to the log and t
 - D1.8 The first pass after the window opens sets the baseline and announces nothing: the sessions already waiting are in view then.
 - D1.9 Announcements also fire while the window has focus (the flash then stops at once). Owner decision, not built: Windows toast notifications need a package (CommunityToolkit notifications or Windows App SDK). Until the owner decides, the flash and the sound are the signal.
 - Verified: 16 unit tests in `tests/OpenTail.Bullshark.Core.Tests/Supervisor/AttentionTests.cs`; the whole solution builds with the existing warning in `MainWindow.xaml.cs` only. The WPF side (the group, the count, the flash, the sound) compiles but was not run in a window in this session.
+
+### Item 2 (Changes tab)
+
+- D2.1 The counts come from `git diff --numstat -z`, not `--stat`. The `--stat` text is laid out for people: it draws bars, prints renames as `{a => b}`, and quotes names. The `-z` numstat gives exact fields for names with spaces, tabs and renames. So the "`--stat` parsing" tests cover numstat.
+- D2.2 `git status --porcelain=v1 -z` for the list. With `-z` a name with spaces, quotes or non-ASCII parses exactly, and a rename carries the old path in the next field. Checked on git 2.53 in a scratch repository, 2026-11-17.
+- D2.3 The git process is read-only in practice: `GIT_OPTIONAL_LOCKS=0` (status does not rewrite the index the session may be using at the same moment), `GIT_TERMINAL_PROMPT=0` (no credential prompt can hang it), and `--no-color --no-ext-diff` (the owner's git config cannot add colour codes or run an external diff tool).
+- D2.4 The list and the diff are the unstaged changes (`git diff`, as the plan says). A new untracked file is listed as "new, not in the diff" with no counts and no text. A file staged only is listed with no counts. Nothing was changed for staged work; it is a limit of this view.
+- D2.5 Each command is read up to 2 MB and the process is stopped at the limit (it is not read to its end and then cut). A list cut at the limit drops its last partial entry and says so. A diff cut at the limit ends with a line `[truncated: the diff is longer than 2 MB, so the rest is not shown]`.
+- D2.6 Each command has 10 seconds. Past that the folder shows a message that names the command and the limit, not an error dialog.
+- D2.7 The "Files written" list reads the whole transcript (`TranscriptReader.ReadFile`) each time the tab opens and on Refresh, on a pool thread. It is not cached, so a session that has written since then shows its new files at the next Refresh.
+- D2.8 A session with no known folder (not in the listing and no spec) gets a message and no read. A folder that does not exist is a problem message.
+- D2.9 The Changes tab opens from the right-click menu of a live session row only. A past session has no folder to read, so it has no entry.
+- D2.10 Not verified in a window: a 2 MB diff is one rich-text paragraph with one run per line. Its drawing speed was not measured in the running app.
+- Verified: 27 Core tests. `GitChangesTests` (24) use a fake git and cover the parsing, the merge, not-a-repository, timeouts, the cap, the folder choice. `ProcessGitRunnerTests` (3) run the real `git` on scratch repositories, including a diff longer than the limit. They return at once on a machine without `git` on the PATH, so there they check nothing.

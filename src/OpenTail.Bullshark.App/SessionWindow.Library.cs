@@ -218,6 +218,8 @@ public partial class SessionWindow
             menu.Items.Add(MenuItemFor(mark.Pinned ? "Unpin" : "Pin", () => SetPinned(sessionId, !mark.Pinned)));
             menu.Items.Add(MenuItemFor(mark.Archived ? "Unarchive" : "Archive", () => SetArchived(sessionId, !mark.Archived)));
         }
+        // A live session's changes, read from its folder (item 2). A past session has no folder to read: its transcript is its record.
+        if (!history) menu.Items.Add(MenuItemFor("Changes…", () => OpenChanges(sessionId, title)));
         menu.Items.Add(MenuItemFor("Edit…", () => EditMark(sessionId, title)));
         return menu;
     }
