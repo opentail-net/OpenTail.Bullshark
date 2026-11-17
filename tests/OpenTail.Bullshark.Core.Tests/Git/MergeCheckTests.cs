@@ -118,7 +118,7 @@ public sealed class MergeCheckTests : IDisposable
         var report = await MergeCheck.RunAsync(_folder, git);
 
         Assert.Equal(MergeCheckKind.NoDefaultBranch, report.Kind);
-        Assert.Empty(git.Calls.Where(c => c.Args[0] == "merge-tree"));
+        Assert.DoesNotContain(git.Calls, c => c.Args[0] == "merge-tree");
         Assert.Contains("No default branch", report.Message);
     }
 

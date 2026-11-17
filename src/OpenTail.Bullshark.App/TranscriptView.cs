@@ -60,6 +60,18 @@ public sealed class TranscriptView : UserControl
     private readonly Dictionary<int, (TextBlock Block, TranscriptLine Line)> _turnLines = new();
     private RailPalette _palette = RailPalette.DarkPalette;
 
+    /// <summary>
+    /// "Where the effort went" (gems item 4): collapsed until opened. It is read once for each transcript, on a pool thread, and each
+    /// item jumps to its first line with the same focus-line path the search uses.
+    /// </summary>
+    private readonly Expander _effort = new();
+
+    /// <summary>The transcript the effort panel was read for, so a jump to a line does not read it again.</summary>
+    private string? _effortPath;
+
+    /// <summary>The title the page was last shown with, so a jump to a line keeps the owner's name for the session.</summary>
+    private string? _shownTitle;
+
     /// <summary>The line a search opened this view at, once it is shown. Null for the last page.</summary>
     private TextBlock? _focus;
 
@@ -102,6 +114,14 @@ public sealed class TranscriptView : UserControl
         _historyInfo.Visibility = Visibility.Visible;
         _activeText = "…";
         _files.IsExpanded = false;
+        _shownTitle = title;
+        // The effort is read once per transcript. A jump to a line calls this again for the same file, which keeps the panel as it is.
+        if (_effortPath != digest.FilePath)
+        {
+            _effortPath = digest.FilePath;
+            ShowEffortPending();
+            _ = LoadEffortAsync(digest.FilePath);
+        }
         ShowStats(digest);
 
         var pager = await Task.Run(() => TranscriptPager.Open(digest.FilePath));
@@ -183,6 +203,11 @@ public sealed class TranscriptView : UserControl
         _files.FontSize = 12;
         _files.Margin = new Thickness(0, 0, 0, 6);
         header.Children.Add(_files);
+        _effort.Header = "Where the effort went";
+        _effort.FontSize = 12;
+        _effort.Margin = new Thickness(0, 0, 0, 6);
+        _effort.ToolTip = "Tokens are input, output and cache writes. Cache reads are left out: they re-read context that was already paid for.";
+        header.Children.Add(_effort);
         header.Children.Add(_lineage);
         _card.Child = header;
         _card.CornerRadius = new CornerRadius(6);
@@ -497,6 +522,93 @@ public sealed class TranscriptView : UserControl
         if (_activeValue is not null) _activeValue.Text = _activeText;
         foreach (var (block, line) in _turnLines.Values) block.Text = LineText(line);
     }
+
+    private void ShowEffortPending() =>
+        _effort.Content = new TextBlock { Text = "Reading the transcript…", Foreground = Brush(_palette.Muted), Margin = new Thickness(0, 4, 0, 4) };
+
+    /// <summary>
+    /// Reads the effort of the transcript on a pool thread, then draws it. A read that fails is logged and shown as a line in the panel.
+    /// A result for a transcript that is no longer shown is dropped.
+    /// </summary>
+    private async Task LoadEffortAsync(string path)
+    {
+        EffortReport report;
+        try
+        {
+            report = await Task.Run(() => EffortReport.ReadFile(path));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            AppLog.Write($"effort not read: {ex.Message}");
+            if (_effortPath == path)
+                _effort.Content = new TextBlock { Text = $"The transcript cannot be read: {ex.Message}", TextWrapping = TextWrapping.Wrap, Foreground = Brush(_palette.Muted) };
+            return;
+        }
+        if (_effortPath == path) ShowEffort(report);
+    }
+
+    /// <summary>The panel: failed calls by tool, files read again, commands run again, and the turns that gave no output.</summary>
+    private void ShowEffort(EffortReport report)
+    {
+        var panel = new StackPanel();
+        panel.Children.Add(EffortCaption($"Failed tool calls: {report.FailedCalls:N0}"));
+        foreach (var item in report.FailedByTool)
+            panel.Children.Add(EffortJump($"{item.Label}: {item.Count:N0} failed", item.Line, null));
+
+        panel.Children.Add(EffortCaption($"Files read more than {EffortReport.RereadThreshold} times: {report.RereadFiles.Count:N0}"));
+        foreach (var item in report.RereadFiles)
+            panel.Children.Add(EffortJump($"{Path.GetFileName(item.Label)}: read {item.Count:N0} times", item.Line, item.Label));
+
+        panel.Children.Add(EffortCaption($"Commands run more than {EffortReport.RepeatThreshold} times: {report.RepeatedCommands.Count:N0}"));
+        foreach (var item in report.RepeatedCommands)
+            panel.Children.Add(EffortJump($"{item.Label}: run {item.Count:N0} times", item.Line, null));
+
+        panel.Children.Add(EffortCaption(
+            $"Turns with no file written and no text answer: {report.TurnsWithoutOutput.Count:N0} of {report.Turns:N0}, " +
+            $"{Tokens(report.TokensWithoutOutput)} tokens"));
+        foreach (var turn in report.TurnsWithoutOutput)
+            panel.Children.Add(EffortJump(
+                $"{(turn.Prompt.Length == 0 ? "(before the first prompt)" : turn.Prompt)} · {Tokens(turn.Tokens)} tokens",
+                turn.StartLine, null));
+
+        _effort.Content = new ScrollViewer
+        {
+            MaxHeight = 220,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Content = panel,
+        };
+    }
+
+    private TextBlock EffortCaption(string text) => new()
+    {
+        Text = text,
+        TextWrapping = TextWrapping.Wrap,
+        FontWeight = FontWeights.SemiBold,
+        Foreground = Brush(_palette.Text),
+        Margin = new Thickness(0, 6, 0, 2),
+    };
+
+    /// <summary>One item of the panel. A click shows the transcript at its first line.</summary>
+    private TextBlock EffortJump(string text, int line, string? tooltip)
+    {
+        var block = new TextBlock
+        {
+            Text = text,
+            TextWrapping = TextWrapping.Wrap,
+            ToolTip = tooltip ?? $"Show line {line}",
+            Foreground = Brush(_palette.Muted),
+            Cursor = Cursors.Hand,
+            Margin = new Thickness(10, 1, 0, 1),
+        };
+        block.MouseLeftButtonUp += (_, _) =>
+        {
+            if (_digest is { } digest) _ = ShowAsync(digest, line, _shownTitle);
+        };
+        return block;
+    }
+
+    /// <summary>Tokens for display: input, output and cache writes (cache reads are left out, see the panel's tooltip).</summary>
+    private static string Tokens(TokenUsage usage) => (usage.Input + usage.Output + usage.CacheCreation).ToString("N0", System.Globalization.CultureInfo.InvariantCulture);
 
     private static SolidColorBrush Brush(string hex) => (SolidColorBrush)new BrushConverter().ConvertFromString(hex)!;
 }
