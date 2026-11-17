@@ -54,11 +54,22 @@ public static class TranscriptRetention
     }
 
     /// <summary>
-    /// Reads the setting from a settings file. A missing file is no setting, and a file that cannot be read gives the reason.
+    /// The settings file beside a projects folder: `settings.json` in the folder that holds the projects folder (`~/.claude`, round 8 item 11). A
+    /// trailing separator on the projects folder is trimmed first, since `GetDirectoryName("…\projects\")` is the projects folder itself. Null when
+    /// the folder has no parent (a drive root).
     /// </summary>
-    public static (int? Days, string? Problem) ReadDays(string settingsPath)
+    public static string? SettingsBeside(string projectsRoot)
     {
-        if (!File.Exists(settingsPath)) return (null, null);
+        var parent = Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(projectsRoot));
+        return parent is null ? null : Path.Combine(parent, "settings.json");
+    }
+
+    /// <summary>
+    /// Reads the setting from a settings file. A missing file, or no path at all, is no setting, and a file that cannot be read gives the reason.
+    /// </summary>
+    public static (int? Days, string? Problem) ReadDays(string? settingsPath)
+    {
+        if (settingsPath is null || !File.Exists(settingsPath)) return (null, null);
         try
         {
             return Parse(File.ReadAllText(settingsPath));
@@ -86,8 +97,10 @@ public static class TranscriptRetention
         Math.Max(1, (int)Math.Ceiling((TimeSpan.FromDays(days) - age).TotalDays));
 
     /// <summary>
-    /// The sentence the Storage page shows: the deletion age, and whether it is the default or the owner's setting.
+    /// The sentence the Storage page shows: the deletion age, and whether it is the default or the owner's setting. A setting is the one in
+    /// `~/.claude/settings.json` (round 8 item 11): other settings files (the project's, the local one, the managed one) can also set it, and
+    /// this does not read them, so the sentence says so.
     /// </summary>
     public static string Sentence(int days, bool fromSettings) =>
-        $"Claude deletes transcripts older than {days} days{(fromSettings ? " (set in settings.json)" : " (Claude's default)")}; archive to keep them.";
+        $"Claude deletes transcripts older than {days} days{(fromSettings ? " (from ~/.claude/settings.json; other settings files may override it)" : " (Claude's default)")}; archive to keep them.";
 }

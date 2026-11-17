@@ -134,7 +134,25 @@ public sealed class TranscriptRetentionTests : IDisposable
     {
         Assert.Equal("Claude deletes transcripts older than 30 days (Claude's default); archive to keep them.",
             TranscriptRetention.Sentence(30, fromSettings: false));
-        Assert.Equal("Claude deletes transcripts older than 45 days (set in settings.json); archive to keep them.",
+        Assert.Equal("Claude deletes transcripts older than 45 days (from ~/.claude/settings.json; other settings files may override it); archive to keep them.",
             TranscriptRetention.Sentence(45, fromSettings: true));
+    }
+
+    [Fact]
+    public void TheSettingsFileIsBesideTheProjectsFolderWhateverItsTrailingSeparator()
+    {
+        // Round 8 item 11: a projects folder with a trailing separator must not make the settings file be looked for in the projects folder.
+        var home = Path.Combine("C:\\", "Users", "x", ".claude");
+        var expected = Path.Combine(home, "settings.json");
+
+        Assert.Equal(expected, TranscriptRetention.SettingsBeside(Path.Combine(home, "projects")));
+        Assert.Equal(expected, TranscriptRetention.SettingsBeside(Path.Combine(home, "projects") + Path.DirectorySeparatorChar));
+        Assert.Null(TranscriptRetention.SettingsBeside("C:\\"));
+    }
+
+    [Fact]
+    public void NoSettingsPathIsNoSetting()
+    {
+        Assert.Equal((null, null), TranscriptRetention.ReadDays((string?)null));
     }
 }

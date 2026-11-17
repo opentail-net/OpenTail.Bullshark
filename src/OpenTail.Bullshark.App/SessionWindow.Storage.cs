@@ -48,17 +48,22 @@ public partial class SessionWindow
     /// <summary>The project folder whose transcripts the middle list shows, so the list can be read again after a move (round 5 item 11).</summary>
     private string? _storageFolder;
 
-    /// <summary>Reads the project sizes and the archive, then draws them. A folder that cannot be read is said in the note, not dropped.</summary>
+    /// <summary>
+    /// Reads the project sizes, the archive and the retention setting, then draws them. A folder that cannot be read is said in the note, not
+    /// dropped. The chosen project is drawn again after the setting is set, so its marks follow the setting that is read now (round 8 item 11).
+    /// This runs on Refresh, and after each archive and restore.
+    /// </summary>
     private async Task RefreshStorageAsync()
     {
         try
         {
-            // The setting is read from the settings file beside the projects folder (round 7 item 5). It is read only, and never written.
+            // The setting is read from the settings file beside the projects folder (round 7 item 5, round 8 item 11). It is read only, and never written.
             var (projects, archived, retention) = await Task.Run(() =>
                 (StorageReport.Read(_options.ProjectsRoot), TranscriptArchive.List(_options.ArchiveRoot),
-                 TranscriptRetention.ReadDays(Path.Combine(Path.GetDirectoryName(_options.ProjectsRoot)!, "settings.json"))));
+                 TranscriptRetention.ReadDays(TranscriptRetention.SettingsBeside(_options.ProjectsRoot))));
             _storage.SetRetention(retention.Days ?? TranscriptRetention.DefaultDays, retention.Days is not null, retention.Problem);
             _storage.ShowProjects(projects, archived);
+            await RefreshChosenProjectAsync();
         }
         catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
@@ -127,8 +132,8 @@ public partial class SessionWindow
             paths, _options.ProjectsRoot, _options.ArchiveRoot, protectedIds));
         _storage.SetResult(Summary(outcomes));
         if (outcomes.Any(o => o.Moved)) _ = LoadHistoryAsync();
+        // The refresh draws the chosen project again too, so a transcript that moved leaves the list and the marks follow (round 8 item 11).
         await RefreshStorageAsync();
-        await RefreshChosenProjectAsync();
     }
 
     /// <summary>Moves the checked archived transcripts back to where they were. Restoring is reversible, so it is not asked about.</summary>
@@ -143,8 +148,8 @@ public partial class SessionWindow
         var outcomes = await Task.Run(() => TranscriptArchive.Restore(paths, _options.ProjectsRoot, _options.ArchiveRoot));
         _storage.SetResult(Summary(outcomes));
         if (outcomes.Any(o => o.Moved)) _ = LoadHistoryAsync();
+        // The refresh draws the chosen project again too, so a transcript that moved leaves the list and the marks follow (round 8 item 11).
         await RefreshStorageAsync();
-        await RefreshChosenProjectAsync();
     }
 
     private static string Summary(IReadOnlyList<ArchiveOutcome> outcomes)
