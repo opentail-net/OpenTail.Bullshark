@@ -2,7 +2,7 @@
 
 Bullshark - saves your bytes.
 
-> **Status (2026-11-17): built, not yet proven end to end.** The window and the supervisor are built, and the spike (P1) passed. The review fixes of 2026-11-17 are on `main`, and so are the "Needs you" alerts and the Changes tab (additions Phase A). A known bug is open: the supervisor resumes sessions that finished or were stopped (F61); the fix is planned in `docs/plans/bugs-2026-11-17.md`. The end-to-end run with the real `claude` CLI (review of 2026-11-15, Phase 3) has not been done. The orchestrator (P8) is a later, optional phase. See [Plans](#plans).
+> **Status (2026-11-17): built, not yet proven end to end.** The window and the supervisor are built, and the spike (P1) passed. The review fixes of 2026-11-17 are on `main`, and so are the "Needs you" alerts and the Changes tab (additions Phase A). The bug fixes of 2026-11-17 are on `main` too: the supervisor no longer resumes sessions that finished or were stopped (F61). The end-to-end run with the real `claude` CLI (review of 2026-11-15, Phase 3) has not been done. The orchestrator (P8) is a later, optional phase. See [Plans](#plans).
 
 ## What it is
 
@@ -192,7 +192,7 @@ Plans live in `docs/plans/`, as checkbox lists; `DONE_` in a name means finished
 |---|---|
 | `review-2026-11-17.md` | Done, on `main` (6 items: trust file read once, pass off the UI thread, one agent listing per pass, launch length guard, testable clock, file lock fixes). |
 | `additions-2026-11-17.md` | Phase A items 1-2 done (Needs you, Changes tab). Item 3 (worktree per coder) skipped at its gate: `claude --bg` refuses an untrusted folder (F62). Phases B and C open. |
-| `bugs-2026-11-17.md` | In progress on branch `bugfixes-2026-11-17` (finished/stopped sessions resumed, alert repeats, history load, transcript file sharing). |
+| `bugs-2026-11-17.md` | Done, on `main` (finished/stopped sessions no longer resumed, restart-loop alert once, one bad transcript skipped, one shared rule for opening transcripts). |
 | `gems-2026-11-17.md` | Open: file-overlap and merge-conflict alerts, live OpenTelemetry data (gated), effort panel, scheduled runs, storage archive. |
 | `review-2026-11-15.md` | Phase 1 done; Phase 3 (end-to-end run) open. |
 | Others (`setup-*`, `session-library`, `tabs-and-panes`, `transcript-activity`, `zoom`) | Status line at the top of each file. |

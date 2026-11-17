@@ -468,12 +468,12 @@ Source: the brief-templates batch from the planner (git-fb), with the owner's de
 - **Not verified:** a run started from a saved brief (no session is started); the Save and Reset buttons, which sit below the fold in the screenshot.
 - **Not committed.** The files are the six setup files, `RunPlan.cs` (`AssistantClause`), `SessionWindow.xaml.cs` (the option), this finding, and the part-3 files that are still uncommitted (`TranscriptView.cs`, `SessionWindow.SelfTest.cs`, `RunPlan.cs`).
 
-## F61 `claude agents --json` leaves out finished and stopped sessions (checked 2026-11-17, `claude` 2.1.326; bug open)
+## F61 `claude agents --json` leaves out finished and stopped sessions (checked 2026-11-17, `claude` 2.1.326; bug fixed the same day)
 
 - **The fact:** without `--all`, `agents --json` prints active sessions only. `claude agents --help`: "--all  With --json: also include completed background sessions". On the owner's machine: 8 sessions without `--all`, 20 with it. Missing from the default list: 10 `background/done`, 2 `background/stopped`. Two `done` sessions were in both lists, so `done` alone does not decide it.
 - **Entry fields seen:** `cwd, id, kind, name, sessionId, startedAt, state` (no `pid`).
 - **The bug:** the supervisor lists without `--all` and treats a missing session as lost, so it resumes a session that finished or that the owner stopped from the CLI or Agent View (with the "You were restarted" prompt; capped at 3 restarts in a sliding hour). Bullshark's own close-tab stop removes the spec first, so it is not affected.
-- **The fix:** planned in `docs/plans/bugs-2026-11-17.md` item 1 (list with `--all` for the pass; `stopped` and `failed` alert, never resume; the window's display list stays the default listing).
+- **The fix:** `docs/plans/bugs-2026-11-17.md` item 1, built 2026-11-17: the pass lists with `--all`; `stopped` and `failed` alert once and are never resumed; `done` is left alone; the window's display list stays the default listing. New run names avoid the names in the `--all` listing, so a `done` session of a run's name is that run's own and is adopted if the record is lost.
 
 ## F62 `claude --bg` refuses a folder that has not been trusted (checked 2026-11-17)
 
