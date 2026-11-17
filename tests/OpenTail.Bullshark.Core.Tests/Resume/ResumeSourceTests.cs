@@ -34,4 +34,15 @@ public sealed class ResumeSourceTests : IDisposable
 
         Assert.Null(ResumeSource.WorkingDirectoryOf(path));
     }
+
+    [Fact]
+    public void ASessionBeingWrittenIsReadForItsFolder()
+    {
+        // Claude holds the transcript open for writing. The folder is still read: the transcript is opened with the writer's sharing.
+        var path = Path.Combine(_dir, "live.jsonl");
+        File.WriteAllLines(path, ["{\"type\":\"user\",\"cwd\":\"C:\\\\Git\\\\live\"}"]);
+
+        using var writer = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
+        Assert.Equal(@"C:\Git\live", ResumeSource.WorkingDirectoryOf(path));
+    }
 }

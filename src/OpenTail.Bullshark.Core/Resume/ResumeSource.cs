@@ -22,7 +22,8 @@ public static class ResumeSource
     /// <summary>The folder the session ran in: the first "cwd" in its records, or null when none is found near the start.</summary>
     public static string? WorkingDirectoryOf(string path)
     {
-        using var reader = new StreamReader(path);
+        // The transcript is opened the shared way (TranscriptFile): a session written a moment ago is still readable.
+        using var reader = new StreamReader(TranscriptFile.Open(path), System.Text.Encoding.UTF8);
         for (var i = 0; i < MaxLinesToScanForFolder; i++)
         {
             var json = reader.ReadLine();
