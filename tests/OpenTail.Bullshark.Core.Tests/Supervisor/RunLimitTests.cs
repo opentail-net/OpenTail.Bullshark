@@ -134,20 +134,73 @@ public sealed class RunLimitTests
         var due = Created.AddHours(4);
         var run = WaitingRun(due, new RunLimits(null, TimeSpan.FromMinutes(60)));
         var none = new Dictionary<string, SessionRecord>(StringComparer.Ordinal);
+        // The session started when the run came due, so its time counts from then (round 6 item 3).
+        var started = SessionStartedAt(due);
 
-        var atDue = RunBudget.For(run.Limits, RunSpend.Of(run, none, [], due));
+        var atDue = RunBudget.For(run.Limits, RunSpend.Of(run, started, [], due));
         Assert.Equal(0, atDue!.Fraction, 6);
         Assert.IsType<SupervisorAction.Start>(Assert.Single(SupervisorPolicy.Decide(Spec(), null, [], due, SupervisorRules.Default, atDue)));
 
         // Half an hour into the run is half the limit, and the run still starts.
-        var halfway = RunBudget.For(run.Limits, RunSpend.Of(run, none, [], due.AddMinutes(30)));
+        var halfway = RunBudget.For(run.Limits, RunSpend.Of(run, started, [], due.AddMinutes(30)));
         Assert.Equal(0.5, halfway!.Fraction, 6);
         Assert.IsType<SupervisorAction.Start>(Assert.Single(SupervisorPolicy.Decide(Spec(), null, [], due.AddMinutes(30), SupervisorRules.Default, halfway)));
 
         // Past the limit from the start time, nothing new starts.
-        var over = RunBudget.For(run.Limits, RunSpend.Of(run, none, [], due.AddMinutes(61)));
+        var over = RunBudget.For(run.Limits, RunSpend.Of(run, started, [], due.AddMinutes(61)));
         Assert.True(over!.Reached);
         Assert.Empty(SupervisorPolicy.Decide(Spec(), null, [], due.AddMinutes(61), SupervisorRules.Default, over));
+    }
+
+    /// <summary>A records map in which the run's one coder started at <paramref name="startedAt"/>.</summary>
+    private static Dictionary<string, SessionRecord> SessionStartedAt(DateTimeOffset startedAt) =>
+        new(StringComparer.Ordinal) { [Coder] = new(SessionRole.Coder, CoderId, Coder, startedAt, 0, [], null, null) };
+
+    [Fact]
+    public void AWindowOpenedHoursAfterAScheduledStartDoesNotCountAsReached()
+    {
+        // Due at 13:00 with a 60-minute limit, and the window opens at 16:00. Nothing has started, so the run has run for nothing: the
+        // first pass starts it, as it would have at 13:00.
+        var run = WaitingRun(Created.AddHours(4), new RunLimits(null, TimeSpan.FromMinutes(60)));
+        var opened = Created.AddHours(7);
+        var none = new Dictionary<string, SessionRecord>(StringComparer.Ordinal);
+
+        var first = RunBudget.For(run.Limits, RunSpend.Of(run, none, [], opened));
+        Assert.Equal(0, first!.Fraction, 6);
+        Assert.IsType<SupervisorAction.Start>(Assert.Single(SupervisorPolicy.Decide(Spec(), null, [], opened, SupervisorRules.Default, first)));
+
+        // Once it has started at 16:00, the limit counts from 16:00: half an hour later is half the limit, and an hour later is reached.
+        var started = SessionStartedAt(opened);
+        Assert.Equal(0.5, RunBudget.For(run.Limits, RunSpend.Of(run, started, [], opened.AddMinutes(30)))!.Fraction, 6);
+        Assert.True(RunBudget.For(run.Limits, RunSpend.Of(run, started, [], opened.AddMinutes(61)))!.Reached);
+    }
+
+    [Fact]
+    public void ARunsTimeCountsFromItsFirstSessionStartNotFromItsCreation()
+    {
+        // Created at 09:00, no start time. The first session started at 11:00 and the second at 11:30: the run has run for an hour at 12:00.
+        var run = new RunRecord("abcd", "plan-code", @"C:\work", "auto", Created, [Spec(), Spec() with { Name = "bullshark-coder-zzzz" }]);
+        var records = new Dictionary<string, SessionRecord>(StringComparer.Ordinal)
+        {
+            [Coder] = new(SessionRole.Coder, CoderId, Coder, Created.AddHours(2), 0, [], null, null),
+            ["bullshark-coder-zzzz"] = new(SessionRole.Coder, OutsideId, "bullshark-coder-zzzz", Created.AddHours(2).AddMinutes(30), 0, [], null, null),
+        };
+
+        Assert.Equal(TimeSpan.FromHours(1), RunSpend.ElapsedOf(run, records, Created.AddHours(3)));
+    }
+
+    [Fact]
+    public void ANoSessionStartedMeansTheRunHasRunForNothing()
+    {
+        // A run created three hours ago, whose sessions have not started (or whose starts failed, with no session id): no time has passed for it.
+        var run = new RunRecord("abcd", "solo", @"C:\work", "auto", Created, [Spec()]);
+        var failedStart = new Dictionary<string, SessionRecord>(StringComparer.Ordinal)
+        {
+            [Coder] = new(SessionRole.Coder, string.Empty, Coder, Created, 0, [], null, "start failed"),
+        };
+
+        Assert.Equal(TimeSpan.Zero, RunSpend.ElapsedOf(run, new Dictionary<string, SessionRecord>(StringComparer.Ordinal), Created.AddHours(3)));
+        Assert.Equal(TimeSpan.Zero, RunSpend.ElapsedOf(run, failedStart, Created.AddHours(3)));
     }
 
     [Fact]

@@ -5,7 +5,7 @@ namespace OpenTail.Bullshark.Core.Supervisor;
 
 /// <summary>
 /// The limits of one run (additions item 4). A null field means no limit on that measure. Output tokens are the tokens the run's
-/// sessions wrote out, and the duration is the time since the run was created.
+/// sessions wrote out, and the duration is the time since the run's first session started (round 6 item 3).
 /// </summary>
 public sealed record RunLimits(long? MaxOutputTokens, TimeSpan? MaxDuration)
 {
@@ -62,13 +62,33 @@ public sealed record RunSpend(long OutputTokens, TimeSpan Elapsed)
             var found = list.FirstOrDefault(w => string.Equals(w.SessionId, record.SessionId, StringComparison.OrdinalIgnoreCase));
             output += found?.Usage?.Output ?? 0;
         }
-        return new RunSpend(output, ElapsedOf(run, now));
+        return new RunSpend(output, ElapsedOf(run, records, now));
     }
 
     /// <summary>
-    /// The time a run has run for at <paramref name="now"/>. It counts from the run's start time once that time has come, and from its
-    /// creation when it has none. A run that waits for its start time has run for nothing yet, so it never reaches a limit before it
-    /// starts (round 5 item 3). A clock that runs backwards gives no time, not a negative one.
+    /// The time a run has run for at <paramref name="now"/>: from the first session start of the run, the earliest <see cref="SessionRecord.StartedAt"/>
+    /// of its sessions that have a session id. A run with no session started has run for nothing, so the time it waited for its start
+    /// time, or the time before the window opened, never counts against a limit (round 6 item 3). A run that waits for its start time has
+    /// run for nothing yet (round 5 item 3). A clock that runs backwards gives no time, not a negative one.
+    /// </summary>
+    public static TimeSpan ElapsedOf(RunRecord run, IReadOnlyDictionary<string, SessionRecord> records, DateTimeOffset now)
+    {
+        if (run.StartAt is { } startAt && startAt > now) return TimeSpan.Zero;
+        DateTimeOffset? first = null;
+        foreach (var spec in run.Specs.DistinctBy(s => s.Name, StringComparer.Ordinal))
+        {
+            if (!records.TryGetValue(spec.Name, out var record) || string.IsNullOrEmpty(record.SessionId)) continue;
+            if (first is null || record.StartedAt < first) first = record.StartedAt;
+        }
+        if (first is not { } started) return TimeSpan.Zero;
+        var elapsed = now - started;
+        return elapsed < TimeSpan.Zero ? TimeSpan.Zero : elapsed;
+    }
+
+    /// <summary>
+    /// The time a run has run for at <paramref name="now"/> when the caller has no session records: from the run's start time once that time has
+    /// come, and from its creation when it has none. This is the rule before round 6 item 3, which counted a run from its start time even
+    /// when no session had started. The spend uses <see cref="ElapsedOf(RunRecord, IReadOnlyDictionary{string, SessionRecord}, DateTimeOffset)"/>.
     /// </summary>
     public static TimeSpan ElapsedOf(RunRecord run, DateTimeOffset now)
     {
