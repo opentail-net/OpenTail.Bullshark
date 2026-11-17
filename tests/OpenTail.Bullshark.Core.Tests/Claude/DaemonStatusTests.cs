@@ -182,6 +182,23 @@ public sealed class DaemonStatusTests
     }
 
     [Fact]
+    public void ClosingAStaleSessionStopsNothing()
+    {
+        // Round 9 item 6 (R6): a stale row is not alive while the daemon is not running, so its close runs no `claude stop` and the close goes on.
+        var agents = AgentInfo.ParseList(Listing);
+        var idle = DaemonStatus.Parse(NotRunningOutput).IdleListing(agents);
+        var running = DaemonStatus.Parse(RunningOutput).IdleListing(agents);
+
+        Assert.False(idle[0].NeedsStopOnClose);   // working, stale
+        Assert.False(idle[1].NeedsStopOnClose);   // blocked, stale
+        Assert.False(idle[2].NeedsStopOnClose);   // done: idle, not stopped (review question 6)
+        // Unchanged: a listed stopped session is still stopped on close. It is not proven that the stop of one fails.
+        Assert.True(idle[3].NeedsStopOnClose);
+        Assert.True(running[0].NeedsStopOnClose); // working with the daemon up: alive, so stopped
+        Assert.True(running[1].NeedsStopOnClose); // blocked with the daemon up: alive, so stopped
+    }
+
+    [Fact]
     public void AVersionIsKeptOnlyForARunningDaemon()
     {
         // Round 8 item 7: a "version" word in a not-running or an unknown text is not the daemon's version.

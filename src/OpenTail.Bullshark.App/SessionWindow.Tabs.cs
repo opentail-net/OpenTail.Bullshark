@@ -234,8 +234,9 @@ public partial class SessionWindow
         }
 
         var listed = _agents.FirstOrDefault(a => a.SessionId == sessionId);
-        // An idle (done) session is not stopped here. Whether closing one should stop it too is the owner's call (review question 6).
-        var needsStop = listed is not null && listed.EffectiveState != "done";
+        // An idle (done) session is not stopped here, and a stale one is not alive to stop (AgentInfo.NeedsStopOnClose, round 9 item 6).
+        // Whether closing a done session should stop it too is the owner's call (review question 6).
+        var needsStop = listed is not null && listed.NeedsStopOnClose;
 
         // What the close takes out is kept, so a failed stop can put it back.
         var runsBefore = ReadRuns();

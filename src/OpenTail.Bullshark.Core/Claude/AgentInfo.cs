@@ -37,6 +37,13 @@ public sealed record AgentInfo(
     /// </summary>
     public string ObservedState => ListedState ?? EffectiveState;
 
+    /// <summary>
+    /// Whether closing this session runs `claude stop` on it (round 9 item 6). A session the listing shows as done is idle and is not stopped
+    /// (review question 6). A stale row is not alive while the daemon is not running, so there is nothing to stop, and a stop of it would fail
+    /// and roll the close back. Any other listed state is stopped.
+    /// </summary>
+    public bool NeedsStopOnClose => EffectiveState != "done" && EffectiveState != DaemonStatus.StaleState;
+
     /// <summary>What the session waits for, trimmed, or null when the listing says nothing about it (or says only blanks).</summary>
     public string? Waiting => string.IsNullOrWhiteSpace(WaitingFor) ? null : WaitingFor.Trim();
 
