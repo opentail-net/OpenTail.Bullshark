@@ -53,6 +53,12 @@ public partial class SessionWindow
         {
             await ResumeOnceAsync(digest);
         }
+        catch (Exception ex)
+        {
+            // The callers do not await a resume, so an exception here would be lost: it is logged and the status line says so.
+            AppLog.Write($"resume failed: {ex}");
+            SetStatus($"Not resumed: {ex.Message}");
+        }
         finally
         {
             _resuming = false;
