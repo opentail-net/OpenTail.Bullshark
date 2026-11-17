@@ -8,9 +8,10 @@ public sealed class StoreUnreadableException(string path, string reason)
     : Exception($"{path} cannot be read ({reason}); nothing was changed.");
 
 /// <summary>
-/// The lock and the atomic write behind runs.json and state.json. The window and the supervisor are two processes that write the
-/// same files, so every change is read, changed and written under one named lock. A write goes to a temporary file with its own
-/// name, then moves over the file: a crash never leaves half a file, and two writers never share a temporary file.
+/// The lock and the atomic write behind runs.json, state.json, library.json, patterns.json and ui.json. The window is the process
+/// that writes them; the headless host (OpenTail.Bullshark.Supervisor) only reads them, for its reports. Every change is still read,
+/// changed and written under one named lock, so a second writer (another window) is safe. A write goes to a temporary file with its
+/// own name, then moves over the file: a crash never leaves half a file, and two writers never share a temporary file.
 /// </summary>
 public static class FileLock
 {
@@ -22,7 +23,7 @@ public static class FileLock
     /// <summary>
     /// Takes the lock for a file, waiting up to <paramref name="wait"/>. The key is the full path, so two spellings of one file
     /// share one lock. On Windows file names do not depend on case, so the key ignores case there: without that, a path typed
-    /// in another case would take a second lock on the same file. The key names the mutex, so the window and the supervisor
+    /// in another case would take a second lock on the same file. The key names the mutex, so the window and the headless host
     /// (which ship together) always agree on it.
     /// </summary>
     public static IDisposable Hold(string path, TimeSpan wait)
