@@ -413,6 +413,71 @@ public sealed class FileOverlapTests : IDisposable
         Assert.True(FileOverlap.NeedsTranscripts(single with { Limits = new RunLimits(1000, null) }));
     }
 
+    [Fact]
+    public void ARelativeWriteIsTakenFromTheFolderItWasWrittenIn()
+    {
+        // Round 8 item 8: the session moved to folder B after it wrote notes.md in folder A. The write is A's file, so it clashes with
+        // the other coder's write of A\notes.md; resolving it against the latest folder (B) would miss the clash.
+        var folderA = Path.Combine(_root, "a");
+        var folderB = Path.Combine(_root, "b");
+        var absolute = Path.Combine(folderA, "notes.md");
+        var run = Run(_root, CoderName, OtherCoderName);
+        var moved = new SessionWrites(CoderId, ["notes.md"], new Dictionary<string, DateTimeOffset>(StringComparer.Ordinal) { ["notes.md"] = Start.AddMinutes(1) },
+            null, folderB, new Dictionary<string, string>(StringComparer.Ordinal) { ["notes.md"] = folderA });
+
+        var clash = Assert.Single(FileOverlap.Find(run, Records((CoderName, CoderId), (OtherCoderName, OtherCoderId)),
+            [moved, Writes(OtherCoderId, [absolute], (absolute, 2))]));
+
+        Assert.Equal(Path.GetFullPath(absolute), clash.Path);
+    }
+
+    [Fact]
+    public void TheCacheKeepsTheFolderOfEachRelativeWriteFromItsOwnRecord()
+    {
+        var folderA = Path.Combine(_root, "a");
+        var folderB = Path.Combine(_root, "b");
+        var transcript = Path.Combine(_root, CoderId + ".jsonl");
+        // Written in A, then the session names B on a record with no write: the write keeps A, and the session's folder is B.
+        File.WriteAllLines(transcript, [WriteIn("t1", "2026-11-17T09:05:00Z", "notes.md", folderA), SayIn("u1", "2026-11-17T09:10:00Z", folderB)]);
+        var cache = new SessionWritesCache();
+
+        var first = cache.Read(CoderId, transcript);
+        Assert.Equal(folderA, first.FileFolders!["notes.md"]);
+        Assert.Equal(folderB, first.Folder);
+
+        // A later write to the same relative file from B replaces its folder: the latest write is the one a clash is about.
+        File.AppendAllLines(transcript, [WriteIn("t2", "2026-11-17T09:20:00Z", "notes.md", folderB)]);
+        var second = cache.Read(CoderId, transcript);
+        Assert.Equal(folderB, second.FileFolders!["notes.md"]);
+        Assert.Equal(Start.AddMinutes(20), second.LastWrites["notes.md"]);
+    }
+
+    /// <summary>One assistant record with a Write tool call in a folder: the record names the folder, as Claude Code writes it.</summary>
+    private static string WriteIn(string id, string timestamp, string path, string cwd) =>
+        JsonSerializer.Serialize(new
+        {
+            type = "assistant",
+            timestamp,
+            cwd,
+            requestId = "r-" + id,
+            message = new
+            {
+                id = "m-" + id,
+                model = "claude-opus-5-5",
+                content = new object[] { new { type = "tool_use", id, name = "Write", input = new { file_path = path, content = "x" } } },
+            },
+        });
+
+    /// <summary>One user record that names a folder and writes nothing.</summary>
+    private static string SayIn(string id, string timestamp, string cwd) =>
+        JsonSerializer.Serialize(new
+        {
+            type = "user",
+            timestamp,
+            cwd,
+            message = new { role = "user", content = "hello" },
+        });
+
     /// <summary>One assistant record with a Write tool call, written as JSON so the path is escaped properly.</summary>
     private static string Assistant(string id, string timestamp, string path) =>
         JsonSerializer.Serialize(new

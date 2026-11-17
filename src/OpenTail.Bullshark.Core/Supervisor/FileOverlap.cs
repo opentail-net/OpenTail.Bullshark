@@ -15,7 +15,12 @@ public sealed record SessionWrites(
     IReadOnlyList<string> Files,
     IReadOnlyDictionary<string, DateTimeOffset> LastWrites,
     TokenUsage? Usage = null,
-    string? Folder = null);
+    string? Folder = null,
+    /// <summary>
+    /// The folder each relative file was written from, by the cwd of the record that carries its latest write (round 8 item 8). A file not in
+    /// it is taken from <see cref="Folder"/>, the session's latest folder.
+    /// </summary>
+    IReadOnlyDictionary<string, string>? FileFolders = null);
 
 /// <summary>One session in a clash: the spec's name, its session id, and when it last wrote the file (null when the transcript has no time for it).</summary>
 public sealed record ClashSession(string Name, string SessionId, DateTimeOffset? LastWrite);
@@ -31,8 +36,8 @@ public static class FileOverlap
 {
     /// <summary>
     /// The clashes among the sessions of <paramref name="run"/>. A session is in the run when its spec's name has a record with a session id.
-    /// <see cref="RunRecord"/> holds no session ids, so the state records give them. A relative path is taken from the session's folder
-    /// (the latest cwd of its transcript, which can be a worktree), or from the run's folder when the transcript names none.
+    /// <see cref="RunRecord"/> holds no session ids, so the state records give them. A relative path is taken from the folder it was written
+    /// from (round 8 item 8), else the session's folder (the latest cwd of its transcript, which can be a worktree), else the run's folder.
     /// A session that wrote a file twice counts once. A file is a clash only when two different sessions wrote it.
     /// </summary>
     public static IReadOnlyList<FileClash> Find(
@@ -54,8 +59,9 @@ public static class FileOverlap
         {
             foreach (var file in session.Files)
             {
-                // A relative path is taken from the folder the session edits (its transcript's latest cwd, which can be a worktree), else the run's folder (round 7 item 4).
-                var full = Normalise(file, session.Folder ?? run.WorkingDirectory);
+                // A relative path is taken from the folder it was written from (round 8 item 8), else the session's folder (round 7 item 4), else the run's.
+                var from = session.FileFolders is not null && session.FileFolders.TryGetValue(file, out var fromFolder) ? fromFolder : session.Folder;
+                var full = Normalise(file, from ?? run.WorkingDirectory);
                 if (full is null) continue;
                 if (!clashes.TryGetValue(full, out var entry))
                 {
@@ -183,6 +189,8 @@ public sealed class SessionWritesCache
         public readonly List<string> Files = [];
         public readonly HashSet<string> FileSet = new(StringComparer.Ordinal);
         public readonly Dictionary<string, DateTimeOffset> LastWrites = new(StringComparer.Ordinal);
+        /// <summary>The folder each relative file was last written from (round 8 item 8). Kept with the last write of each file.</summary>
+        public readonly Dictionary<string, string> FileFolders = new(StringComparer.Ordinal);
         public TokenUsage Usage = TokenUsage.Zero;
         /// <summary>The working folder the transcript last named (round 7 item 4): the folder a relative file path is taken from.</summary>
         public string? Cwd;
@@ -229,6 +237,9 @@ public sealed class SessionWritesCache
                 if (entry.FileSet.Add(file)) entry.Files.Add(file);
             foreach (var (file, when) in summary.FileLastWrites ?? new Dictionary<string, DateTimeOffset>(StringComparer.Ordinal))
                 entry.LastWrites[file] = entry.LastWrites.TryGetValue(file, out var earlier) && earlier > when ? earlier : when;
+            // A later read's folder for a file is the one its latest write names, so it replaces the earlier one (round 8 item 8).
+            foreach (var (file, folder) in summary.FileFolders ?? new Dictionary<string, string>(StringComparer.Ordinal))
+                entry.FileFolders[file] = folder;
             // The usage of the whole file, from the shared ledger: the usage rides along, so a run's token limit is checked from the same read
             // as the overlap (additions item 4).
             entry.Usage = summary.TotalUsage;
@@ -246,7 +257,8 @@ public sealed class SessionWritesCache
             entry.Files.ToList(),
             new Dictionary<string, DateTimeOffset>(entry.LastWrites, StringComparer.Ordinal),
             entry.Usage,
-            entry.Cwd);
+            entry.Cwd,
+            new Dictionary<string, string>(entry.FileFolders, StringComparer.Ordinal));
         _entries[transcriptPath] = entry;
         return entry.Writes;
     }

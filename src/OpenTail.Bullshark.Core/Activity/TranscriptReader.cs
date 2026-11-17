@@ -35,7 +35,12 @@ public sealed record TranscriptSummary(
     string? ContinuesSessionId = null,
     int FailedToolCalls = 0,
     IReadOnlyDictionary<string, DateTimeOffset>? FileLastWrites = null,
-    string? LatestCwd = null)
+    string? LatestCwd = null,
+    /// <summary>
+    /// The folder each relative file path was written from, by the cwd of the record that carries the write (round 8 item 8). A path
+    /// written before any cwd is named is not in it, and the caller takes the session's folder for it.
+    /// </summary>
+    IReadOnlyDictionary<string, string>? FileFolders = null)
 {
     public TokenUsage TotalUsage => UsageByModel.Values.Aggregate(TokenUsage.Zero, (sum, next) => sum.Add(next));
 }
@@ -98,6 +103,8 @@ public static class TranscriptReader
         var fileLastWrites = new Dictionary<string, DateTimeOffset>(StringComparer.Ordinal);
         // The working folder that the last record naming one gives: the folder the session edits now, which can be a worktree (round 7 item 4).
         string? latestCwd = null;
+        // The folder each relative file path was written from: the cwd of the record that carries the write, not the latest one (round 8 item 8).
+        var fileFolders = new Dictionary<string, string>(StringComparer.Ordinal);
 
         foreach (var line in lines)
         {
@@ -205,6 +212,8 @@ public static class TranscriptReader
                                     TryGetString(input, "file_path", out var filePath))
                                 {
                                     if (recordTime is { } writeTime) fileLastWrites[filePath!] = writeTime;
+                                    // latestCwd is this record's own folder when it names one (it is read before the content above), else the last one named.
+                                    if (latestCwd is not null && !Path.IsPathRooted(filePath!)) fileFolders[filePath!] = latestCwd;
                                     if (fileSet.Add(filePath!)) filesWritten.Add(filePath!);
                                 }
                             }
@@ -230,7 +239,7 @@ public static class TranscriptReader
 
         return new TranscriptSummary(records, users, assistants, tools, turns, lastText, lastTimestamp, lastModel,
             usageLedger.ByFile(file), firstTimestamp, toolNames, filesWritten, contextAtLastTurn, firstUserText,
-            aiTitle, customTitle, lastRecap, lastRecapAt, compactions, continuesSessionId, failedCalls, fileLastWrites, latestCwd);
+            aiTitle, customTitle, lastRecap, lastRecapAt, compactions, continuesSessionId, failedCalls, fileLastWrites, latestCwd, fileFolders);
     }
 
     private static bool TryGetString(JsonElement element, string property, out string? value)
