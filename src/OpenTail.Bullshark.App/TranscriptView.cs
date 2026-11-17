@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Media;
 using System.Windows.Input;
+using System.Windows.Threading;
 using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Resume;
 
@@ -643,8 +644,9 @@ public sealed class TranscriptView : UserControl
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             Content = panel,
         };
-        // A file path is trimmed to the width the panel has, and again whenever that width changes (round 6 item 10).
-        scroll.SizeChanged += (_, _) => FitEffortPaths(scroll);
+        // A file path is trimmed to the width the panel has, and again whenever that width changes (round 6 item 10). The fit waits until the
+        // width has stopped changing for 150 ms, so a drag of the splitter fits once (round 8 item 10).
+        scroll.SizeChanged += (_, _) => ScheduleEffortFit(scroll);
         _effort.Content = scroll;
     }
 
@@ -662,6 +664,30 @@ public sealed class TranscriptView : UserControl
         return block;
     }
 
+    /// <summary>The panel whose paths are fitted next, and the timer that fits them once the width has settled (round 8 item 10).</summary>
+    private ScrollViewer? _effortFitScroll;
+    private DispatcherTimer? _effortFitTimer;
+
+    /// <summary>
+    /// Fits the panel's paths 150 ms after its last size change: each change restarts the timer, so the measuring runs once a resize has settled,
+    /// not on every step of it (round 8 item 10).
+    /// </summary>
+    private void ScheduleEffortFit(ScrollViewer scroll)
+    {
+        _effortFitScroll = scroll;
+        if (_effortFitTimer is null)
+        {
+            _effortFitTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+            _effortFitTimer.Tick += (_, _) =>
+            {
+                _effortFitTimer!.Stop();
+                if (_effortFitScroll is { } current) FitEffortPaths(current);
+            };
+        }
+        _effortFitTimer.Stop();
+        _effortFitTimer.Start();
+    }
+
     /// <summary>Trims the file paths of the panel to the width its scroll area has. Runs on the UI thread, after the panel is laid out.</summary>
     private void FitEffortPaths(ScrollViewer scroll)
     {
@@ -669,12 +695,11 @@ public sealed class TranscriptView : UserControl
         // The width is the scroll area's without the scrollbar, whether or not one is shown: the text must not change with the scrollbar, which
         // the text's own height decides. The item is indented by its left margin of 10, and the text keeps a little room at its right edge.
         var width = scroll.ActualWidth - SystemParameters.VerticalScrollBarWidth - 10 - 4;
-        foreach (var block in panel.Children.OfType<TextBlock>())
-        {
-            if (block.Tag is not EffortPathText text) continue;
-            var fitted = EffortReport.FitPath(text.Full, path => TextWidth(path + text.Suffix, block) <= width);
-            block.Text = fitted + text.Suffix;
-        }
+        var blocks = panel.Children.OfType<TextBlock>().Where(block => block.Tag is EffortPathText).ToList();
+        var items = blocks.Select(block => (EffortPathText)block.Tag!).Select(text => (text.Full, text.Suffix)).ToList();
+        // Only the first EffortReport.MaxFittedPaths are measured; the rest are shown whole, with the full path in the tooltip (round 8 item 10).
+        var texts = EffortReport.FitPaths(items, (index, candidate) => TextWidth(candidate, blocks[index]) <= width);
+        for (var i = 0; i < blocks.Count; i++) blocks[i].Text = texts[i];
     }
 
     /// <summary>The width of a line of text in the font of <paramref name="like"/>, at its display's pixel density.</summary>

@@ -136,6 +136,37 @@ public sealed class EffortReportTests
     }
 
     [Fact]
+    public void FitPathsTrimsEachPathWithItsSuffixInThePanelsOrder()
+    {
+        // The suffix is measured with the path and is never trimmed: "!" stays at the end of the first path.
+        var items = new[] { (Path: @"C:\work\repo\src\README.md", Suffix: "!"), (Path: @"C:\work\notes.md", Suffix: "") };
+
+        var texts = EffortReport.FitPaths(items, (_, candidate) => candidate.Length <= 21);
+
+        Assert.Equal([@"…\repo\src\README.md!", @"C:\work\notes.md"], texts);
+    }
+
+    [Fact]
+    public void PastTheCapThePathsAreShownWholeAndAreNotMeasured()
+    {
+        // Round 8 item 10: a long transcript has many paths. Past MaxFittedPaths none is measured, and each keeps its full path.
+        var items = Enumerable.Range(0, EffortReport.MaxFittedPaths + 5).Select(i => (Path: $@"C:\work\f{i}.md", Suffix: "")).ToList();
+        var measured = new HashSet<int>();
+
+        var texts = EffortReport.FitPaths(items, (index, _) =>
+        {
+            measured.Add(index);
+            return false;
+        });
+
+        Assert.Equal(EffortReport.MaxFittedPaths + 5, texts.Count);
+        Assert.Equal(@"…\f0.md", texts[0]);
+        Assert.Equal(@"C:\work\f200.md", texts[EffortReport.MaxFittedPaths]);
+        Assert.Equal(EffortReport.MaxFittedPaths, measured.Count);
+        Assert.DoesNotContain(EffortReport.MaxFittedPaths, measured);
+    }
+
+    [Fact]
     public void ACommandRunMoreThanTwiceIsListedByItsExactText()
     {
         var lines = new List<string> { Prompt("test") };

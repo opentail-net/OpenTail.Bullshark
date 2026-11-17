@@ -232,6 +232,30 @@ public sealed record EffortReport(
         return "…" + path[separators[^1]..];
     }
 
+    /// <summary>
+    /// The most file paths the panel fits to its width (round 8 item 10). A fit measures every path's text on the UI thread at each resize, so a
+    /// long transcript with many file paths made a resize slow. Past this many, the rest are shown whole, and their full path is in the tooltip.
+    /// </summary>
+    public const int MaxFittedPaths = 200;
+
+    /// <summary>
+    /// The text of each file in the panel, in the panel's order, for the width it has. The first <see cref="MaxFittedPaths"/> are trimmed by
+    /// <see cref="FitPath"/>, where <paramref name="fits"/> says whether a candidate (the path and its suffix) fits and <c>index</c> is the item's
+    /// place in the list; the rest are shown whole. Each item is its path and the text after it, which is never trimmed.
+    /// </summary>
+    public static IReadOnlyList<string> FitPaths(IReadOnlyList<(string Path, string Suffix)> items, Func<int, string, bool> fits)
+    {
+        var texts = new List<string>(items.Count);
+        for (var i = 0; i < items.Count; i++)
+        {
+            var (path, suffix) = items[i];
+            texts.Add(i < MaxFittedPaths
+                ? FitPath(path, candidate => fits(i, candidate + suffix)) + suffix
+                : path + suffix);
+        }
+        return texts;
+    }
+
     private static string? Str(JsonElement element, string property) =>
         element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var v) && v.ValueKind == JsonValueKind.String
             ? v.GetString()
