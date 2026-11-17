@@ -269,6 +269,30 @@ public sealed class RunLimitTests
     }
 
     [Fact]
+    public void AStateRecordFromBeforeTheLimitLevelLoadsWithNoLevel()
+    {
+        // The shape of state.json before round 5 item 8: eight fields, no LimitLevel.
+        var path = Path.Combine(Path.GetTempPath(), "bullshark-state-" + Guid.NewGuid().ToString("N")[..8] + ".json");
+        try
+        {
+            File.WriteAllText(path, """
+                [{"Role":"Coder","SessionId":"aaaaaaaa-0000-0000-0000-000000000001","Name":"bullshark-coder-abcd",
+                  "StartedAt":"2026-11-17T09:00:00+00:00","Restarts":0,"RestartTimes":[],
+                  "LastState":"working","LastAlert":"LimitNear: the run has used 85% of its limit."}]
+                """);
+
+            var loaded = Assert.Single(new StateStore(path).Load().Values);
+
+            Assert.Null(loaded.LimitLevel);
+            Assert.Equal("LimitNear: the run has used 85% of its limit.", loaded.LastAlert);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void ARunFromBeforeTheLimitsStillLoads()
     {
         var path = Path.Combine(Path.GetTempPath(), "bullshark-limits-" + Guid.NewGuid().ToString("N")[..8] + ".json");
