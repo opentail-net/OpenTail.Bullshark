@@ -102,6 +102,18 @@ public static class SupervisorPolicy
     private static bool HasAlert(SessionRecord record, AlertKind kind) =>
         record.LastAlert?.StartsWith($"{kind}: ", StringComparison.Ordinal) == true;
 
+    /// <summary>True for the listed states `stopped` and `failed`, in any letter case: the states the supervisor never brings back.</summary>
+    public static bool IsStoppedOrFailed(string? state) => Is(state, "stopped") || Is(state, "failed");
+
+    /// <summary>
+    /// True when the owner stopped the session or it failed. The last listed state says so, and so does the last alert, which
+    /// survives a listing that no longer shows the session. Another alert can replace the last alert, so both are read.
+    /// </summary>
+    private static bool WasStoppedOrFailed(SessionRecord record) =>
+        IsStoppedOrFailed(record.LastState)
+        || record.LastAlert?.StartsWith(AttentionList.StoppedAlertPrefix, StringComparison.Ordinal) == true
+        || record.LastAlert?.StartsWith(AttentionList.FailedAlertPrefix, StringComparison.Ordinal) == true;
+
     private static IReadOnlyList<SupervisorAction> DecideSession(
         SessionSpec spec,
         SessionRecord? record,
@@ -135,6 +147,10 @@ public static class SupervisorPolicy
         // Gone: the daemon lost it or it was removed. Resume under the same id, unless it keeps happening.
         if (agent is null)
         {
+            // A session the owner stopped, or that failed, is not brought back even when the listing no longer shows it (`claude rm`,
+            // or a listing that dropped it). Its last listed state, or its last alert, says so (round 5 item 1).
+            if (WasStoppedOrFailed(record)) return [];
+
             // At the run's limit a lost session is not brought back (additions item 4).
             if (reached) return [];
             var recentRestarts = record.RestartTimes.Count(t => now - t < TimeSpan.FromHours(1));

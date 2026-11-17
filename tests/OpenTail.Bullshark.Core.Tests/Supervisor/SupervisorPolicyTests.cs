@@ -148,6 +148,29 @@ public sealed class SupervisorPolicyTests
     }
 
     [Fact]
+    public void AStoppedOrFailedSessionThatTheListingDroppedIsNotResumed()
+    {
+        // The owner removed it (claude rm), so the listing no longer shows it. Its last listed state says it was stopped or failed.
+        foreach (var state in new[] { "stopped", "failed" })
+            Assert.Empty(SupervisorPolicy.Decide(Planner, Record(lastState: state), [], Now, SupervisorRules.Default));
+
+        // The last alert says so too, for a record whose listed state was not kept.
+        Assert.Empty(SupervisorPolicy.Decide(Planner,
+            RecordWithAlert("Stopped: the session was stopped, so it is not restarted."), [], Now, SupervisorRules.Default));
+        Assert.Empty(SupervisorPolicy.Decide(Planner,
+            RecordWithAlert("Failed: the session failed, so it is not restarted."), [], Now, SupervisorRules.Default));
+    }
+
+    [Fact]
+    public void ALostWorkingSessionIsStillResumedAfterTheFix()
+    {
+        // The stop guard is for stopped and failed sessions only: a session lost while it was working is still brought back.
+        var actions = SupervisorPolicy.Decide(Planner, Record(lastState: "working"), [], Now, SupervisorRules.Default);
+
+        Assert.IsType<SupervisorAction.Resume>(Assert.Single(actions));
+    }
+
+    [Fact]
     public void ADoneSessionIsNeitherResumedNorAlerted()
     {
         // A completed session is listed with the completed ones. It is not "gone", so nothing resumes it.

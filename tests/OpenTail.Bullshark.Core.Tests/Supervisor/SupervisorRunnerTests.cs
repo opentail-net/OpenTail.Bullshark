@@ -180,6 +180,66 @@ public sealed class SupervisorRunnerTests : IDisposable
     }
 
     [Fact]
+    public async Task AStoppedSessionThatIsThenRemovedIsNeverResumed()
+    {
+        var store = new StateStore(Path.Combine(_dir, "state.json"));
+        store.Save(new Dictionary<string, SessionRecord>
+        {
+            [TestSpecs.PlannerName] = new(SessionRole.Planner, PlannerSession, TestSpecs.PlannerName, DateTimeOffset.UnixEpoch, 0, [], null, null),
+        });
+        var clock = new FakeClock(new DateTimeOffset(2026, 11, 17, 12, 0, 0, TimeSpan.Zero));
+        var listing = Listing(PlannerSession, "stopped");
+        var cli = new FakeCliRunner(args => args[0] switch
+        {
+            "agents" => FakeCliRunner.Ok(listing),
+            _ => FakeCliRunner.Ok(),
+        });
+        var runner = Runner(new ClaudeCli(cli), store, clock);
+        var spec = TestSpecs.Planner(@"C:\W", "brief");
+
+        Assert.Equal(AlertKind.Stopped, Assert.IsType<SupervisorAction.Alert>(Assert.Single(await runner.CheckOnceAsync([spec]))).Kind);
+
+        // The owner removes the session (claude rm). The listing no longer shows it, and no later pass brings it back.
+        listing = "[]";
+        for (var i = 0; i < 3; i++)
+        {
+            clock.Now = clock.Now.AddMinutes(5);
+            Assert.Empty(await runner.CheckOnceAsync([spec]));
+        }
+        Assert.DoesNotContain(cli.Calls, c => c.Args[0] == "--bg");
+        Assert.Equal("stopped", store.Load()[TestSpecs.PlannerName].LastState);
+    }
+
+    [Fact]
+    public async Task AStopIsKeptWhenAnotherAlertReplacesTheLastAlertBeforeTheRemoval()
+    {
+        var store = new StateStore(Path.Combine(_dir, "state.json"));
+        store.Save(new Dictionary<string, SessionRecord>
+        {
+            [TestSpecs.PlannerName] = new(SessionRole.Planner, PlannerSession, TestSpecs.PlannerName, DateTimeOffset.UnixEpoch, 0, [], null, null),
+        });
+        var clock = new FakeClock(new DateTimeOffset(2026, 11, 17, 12, 0, 0, TimeSpan.Zero));
+        var listing = Listing(PlannerSession, "stopped");
+        var cli = new FakeCliRunner(args => args[0] switch
+        {
+            "agents" => FakeCliRunner.Ok(listing),
+            _ => FakeCliRunner.Ok(),
+        });
+        var runner = Runner(new ClaudeCli(cli), store, clock);
+        var spec = TestSpecs.Planner(@"C:\W", "brief");
+
+        // The run is near its limit on the same pass that sees the stop, so the limit alert replaces the stop as the last alert.
+        runner.Budgets = new Dictionary<string, RunBudget>(StringComparer.Ordinal) { [TestSpecs.PlannerName] = new RunBudget(0.9) };
+        await runner.CheckOnceAsync([spec]);
+        Assert.StartsWith("LimitNear: ", store.Load()[TestSpecs.PlannerName].LastAlert);
+
+        listing = "[]";
+        clock.Now = clock.Now.AddMinutes(5);
+        Assert.Empty(await runner.CheckOnceAsync([spec]));
+        Assert.DoesNotContain(cli.Calls, c => c.Args[0] == "--bg");
+    }
+
+    [Fact]
     public async Task ARestartLoopIsAlertedOncePerLoopAndAgainAfterAResume()
     {
         var store = new StateStore(Path.Combine(_dir, "state.json"));

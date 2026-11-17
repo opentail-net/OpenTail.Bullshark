@@ -104,13 +104,17 @@ public sealed class SupervisorRunner
                     }
                 }
 
-                // Remember the state we saw, so the next pass can tell a change of state from a repeat.
+                // Remember the state we saw, so the next pass can tell a change of state from a repeat. A session the listing no
+                // longer shows keeps `stopped` or `failed`: the owner's stop must outlive the listing (round 5 item 1). Any other
+                // state is dropped when the session is not listed, as before.
                 if (records.TryGetValue(spec.Name, out var current))
                 {
                     var seen = agents.FirstOrDefault(a => string.Equals(a.SessionId, current.SessionId, StringComparison.OrdinalIgnoreCase));
-                    if (!string.Equals(current.LastState, seen?.EffectiveState, StringComparison.Ordinal))
-                        EmitState(spec.Name, current.LastState, seen?.EffectiveState ?? "not listed", now);
-                    records[spec.Name] = current with { LastState = seen?.EffectiveState };
+                    var observed = seen?.EffectiveState;
+                    var kept = observed is null && SupervisorPolicy.IsStoppedOrFailed(current.LastState) ? current.LastState : observed;
+                    if (!string.Equals(current.LastState, kept, StringComparison.Ordinal))
+                        EmitState(spec.Name, current.LastState, observed ?? "not listed", now);
+                    records[spec.Name] = current with { LastState = kept };
                 }
             }
         }
