@@ -242,9 +242,9 @@ public partial class SessionWindow
 
     /// <summary>
     /// Rebuilds the rail from the state file, the last agent listing, the cache facts and the history read so far. The pass
-    /// passes the records it read on a pool thread, so the drawing does not read the file again; other callers leave them out.
+    /// passes the records and the runs it read on a pool thread, so the drawing does not read the files again; other callers leave them out.
     /// </summary>
-    private void RefreshRail(IReadOnlyDictionary<string, SessionRecord>? known = null)
+    private void RefreshRail(IReadOnlyDictionary<string, SessionRecord>? known = null, IReadOnlyList<RunRecord>? knownRuns = null)
     {
         // The marks are read again on every refresh: they are small, and another process may have changed them (D-L3 is inside).
         LoadLibrary();
@@ -269,7 +269,7 @@ public partial class SessionWindow
         }
 
         // The folders of this window's sessions come first, so a folder is listed before its sessions start.
-        var runs = ReadRuns();
+        var runs = knownRuns ?? ReadRuns();
         var specs = RunStore.SpecsOf(runs);
         foreach (var spec in specs) Folder(spec.WorkingDirectory);
         // A run that waits for its start time is listed under its folder, with its time, so the owner can start it now (gems item 5).

@@ -96,21 +96,23 @@ public partial class SessionWindow
 
     /// <summary>
     /// The clashes and the budgets of every run, after a pass, for the sessions in <paramref name="records"/>. The budgets are kept for the
-    /// next pass and the clashes are drawn. Runs on a pool thread: it reads runs.json and the transcripts through the cache, and touches no
+    /// next pass and the clashes are drawn. The runs it read, and the problem reading them, go back too: the rail and the merge checks take
+    /// the runs from this read (round 12 B4). Runs on a pool thread: it reads runs.json and the transcripts through the cache, and touches no
     /// window object.
     /// </summary>
-    private (IReadOnlyList<FileClash> Clashes, IReadOnlyDictionary<string, RunBudget> Budgets) ReadClashes(
+    private (IReadOnlyList<FileClash> Clashes, IReadOnlyDictionary<string, RunBudget> Budgets, IReadOnlyList<RunRecord> Runs, string? RunsProblem)
+        ReadClashes(
         IReadOnlyDictionary<string, SessionRecord> records,
         IReadOnlyDictionary<string, string> paths,
         IReadOnlyList<AgentInfo> agents)
     {
-        var (runs, _) = LoadRuns(_runStore);
+        var (runs, runsProblem) = LoadRuns(_runStore);
         // Only the live sessions can clash: a finished session's shared file no longer needs the owner (round 5 item 7).
         var live = FileOverlap.LiveRecords(records, agents);
         var read = ReadRunWrites(runs, records, paths);
         var clashes = read.SelectMany(item => FileOverlap.Find(item.Run, live, item.Writes)).ToList();
         var budgets = RunBudget.ForRuns(runs, records, read.SelectMany(item => item.Writes), DateTimeOffset.UtcNow);
-        return (clashes, budgets);
+        return (clashes, budgets, runs, runsProblem);
     }
 
     /// <summary>The supervisor runner, which the limits are given to after each pass (additions item 4).</summary>

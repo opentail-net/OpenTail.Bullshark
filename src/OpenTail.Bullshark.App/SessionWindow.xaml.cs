@@ -285,13 +285,15 @@ public partial class SessionWindow : Window
             }
             // The files two sessions of a run both wrote are read off the UI thread, from the transcripts this pass has seen (gems item 1).
             var paths = new Dictionary<string, string>(_transcriptPaths, StringComparer.Ordinal);
-            // The budgets read after the pass are kept for the next one, and the clashes are drawn from them (round 6 item 1).
-            var (clashes, budgets) = await Task.Run(() => ReadClashes(records, paths, read.Agents));
+            // The budgets read after the pass are kept for the next one, and the clashes are drawn from them (round 6 item 1). The runs read here
+            // are the rail's and the merge checks' (round 12 B4): a runs.json that cannot be read shows its problem, as ReadRuns did.
+            var (clashes, budgets, runs, runsProblem) = await Task.Run(() => ReadClashes(records, paths, read.Agents));
             _clashes = clashes;
             _runner.Budgets = budgets;
+            if (runsProblem is not null) _storeProblem = runsProblem;
             // A coder that has just entered done gets its merge check, on a pool thread; its result shows on a later pass (gems item 2).
-            UpdateMergeChecks(records);
-            RefreshRail(records);
+            UpdateMergeChecks(records, RunStore.SpecsOf(runs));
+            RefreshRail(records, runs);
             AnnounceAttention();
 
             var failed = PassSnapshot.FailedStarts(records.Values);

@@ -20,8 +20,11 @@ public partial class SessionWindow
     /// </summary>
     private readonly HashSet<string> _mergeStarted = new(StringComparer.Ordinal);
 
-    /// <summary>Starts a check for each coder that has just entered `done`, and forgets the result of one that has left it.</summary>
-    private void UpdateMergeChecks(IReadOnlyDictionary<string, SessionRecord> records)
+    /// <summary>
+    /// Starts a check for each coder that has just entered `done`, and forgets the result of one that has left it. The specs are the runs the
+    /// pass read (round 12 B4), so a check does not read runs.json on the UI thread.
+    /// </summary>
+    private void UpdateMergeChecks(IReadOnlyDictionary<string, SessionRecord> records, IReadOnlyList<SessionSpec> specs)
     {
         var stillDone = new HashSet<string>(StringComparer.Ordinal);
         foreach (var record in records.Values.Where(r => r.Role == SessionRole.Coder && r.SessionId.Length > 0))
@@ -30,7 +33,7 @@ public partial class SessionWindow
             if (!string.Equals(state, "done", StringComparison.OrdinalIgnoreCase)) continue;
 
             stillDone.Add(record.SessionId);
-            if (_mergeStarted.Add(record.SessionId)) _ = CheckMergeAsync(record);
+            if (_mergeStarted.Add(record.SessionId)) _ = CheckMergeAsync(record, specs);
         }
 
         foreach (var id in _mergeStarted.Where(id => !stillDone.Contains(id)).ToList())
@@ -44,12 +47,12 @@ public partial class SessionWindow
     /// The check for one coder, on a pool thread. A coder with no known folder is not checked yet, and is tried again on the next pass.
     /// A result that arrives after the coder has left `done` is dropped.
     /// </summary>
-    private async Task CheckMergeAsync(SessionRecord record)
+    private async Task CheckMergeAsync(SessionRecord record, IReadOnlyList<SessionSpec> specs)
     {
         try
         {
             var listed = _allAgents.FirstOrDefault(a => string.Equals(a.SessionId, record.SessionId, StringComparison.OrdinalIgnoreCase))?.Cwd;
-            var spec = Specs.FirstOrDefault(s => string.Equals(s.Name, record.Name, StringComparison.Ordinal))?.WorkingDirectory;
+            var spec = specs.FirstOrDefault(s => string.Equals(s.Name, record.Name, StringComparison.Ordinal))?.WorkingDirectory;
             // The folder the coder edits now, from its transcript, is checked ahead of the listing's (round 7 item 4). The writes come from the
             // cache, off the UI thread (round 12 B3): the path is copied here, since the window's dictionary is read on the UI thread only.
             var known = _transcriptPaths.TryGetValue(record.SessionId, out var knownPath) ? knownPath : null;
