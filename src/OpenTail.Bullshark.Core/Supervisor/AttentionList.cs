@@ -36,7 +36,7 @@ public enum AttentionReason
 
     /// <summary>
     /// The run reached its limit, so nothing new starts or resumes (additions item 4, revised by round 5 item 8: the owner needs to see
-    /// it). One item for the run, on its lead session. It is shown when the session has no other reason to wait.
+    /// it). One item for each session that holds the level, normally the lead. It is shown when the session has no other reason to wait.
     /// </summary>
     LimitReached,
 }
@@ -88,7 +88,8 @@ public static class AttentionList
     /// <item>Each clash in <paramref name="clashes"/> gives <see cref="AttentionReason.Overlap"/> to every session that wrote the file.</item>
     /// <item>Each conflict in <paramref name="conflicts"/> gives <see cref="AttentionReason.Conflict"/> to its session.</item>
     /// <item>A session whose run reached its limit (its <see cref="SessionRecord.LimitLevel"/> is reached) gives
-    /// <see cref="AttentionReason.LimitReached"/>, when no other reason above applies to it (round 5 item 8).</item>
+    /// <see cref="AttentionReason.LimitReached"/>, when no other reason above applies to it, and while it is listed and not `done`
+    /// (round 5 item 8, round 6 item 5).</item>
     /// </list>
     /// The time a session entered its state is not recorded, so "oldest" means the session's own start time.
     /// <paramref name="clashes"/> (gems item 1) adds one <see cref="AttentionReason.Overlap"/> item per session per shared file.
@@ -103,7 +104,7 @@ public static class AttentionList
         var items = new List<AttentionItem>();
         foreach (var record in recordList)
         {
-            var item = ReasonFor(record, agents) ?? LimitItem(record);
+            var item = ReasonFor(record, agents) ?? LimitItem(record, agents);
             if (item is not null) items.Add(item);
         }
         if (clashes is not null) items.AddRange(OverlapItems(recordList, clashes));
@@ -199,12 +200,19 @@ public static class AttentionList
         return null;
     }
 
-    /// <summary>The limit notice of a run's lead session, once the run has reached its limit (round 5 item 8).</summary>
-    private static AttentionItem? LimitItem(SessionRecord record) =>
-        string.Equals(record.LimitLevel, RunBudget.ReachedLevel, StringComparison.Ordinal)
-            ? Item(record, AttentionReason.LimitReached,
-                "the run reached its limit: nothing new is started or resumed. Stop a session, or raise the limit.")
-            : null;
+    /// <summary>
+    /// The limit notice of a run's session, once the run has reached its limit (round 5 item 8). It is shown only while the session is live:
+    /// listed, and not `done` (a finished session has no reason to wait), and a session that is not listed (lost) is not live either. Once
+    /// the run's limit is removed or raised, the level goes and so does the notice (round 6 item 5).
+    /// </summary>
+    private static AttentionItem? LimitItem(SessionRecord record, IReadOnlyList<AgentInfo> agents)
+    {
+        if (!string.Equals(record.LimitLevel, RunBudget.ReachedLevel, StringComparison.Ordinal)) return null;
+        var listed = agents.FirstOrDefault(a => string.Equals(a.SessionId, record.SessionId, StringComparison.OrdinalIgnoreCase));
+        if (listed is null || string.Equals(listed.EffectiveState, "done", StringComparison.OrdinalIgnoreCase)) return null;
+        return Item(record, AttentionReason.LimitReached,
+            "the run reached its limit: nothing new is started or resumed. Stop a session, or raise the limit.");
+    }
 
     private static AttentionItem Item(SessionRecord record, AttentionReason reason, string detail) =>
         new(record.Name, string.IsNullOrEmpty(record.SessionId) ? null : record.SessionId, reason, detail, record.StartedAt);

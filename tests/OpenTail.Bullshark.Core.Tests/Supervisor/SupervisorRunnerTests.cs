@@ -507,6 +507,41 @@ public sealed class SupervisorRunnerTests : IDisposable
         Assert.DoesNotContain(cli.Calls, c => c.Args[0] == "--bg");
     }
 
+    [Fact]
+    public async Task ALimitRemovedThenSetAgainIsAnnouncedAgain()
+    {
+        var store = new StateStore(Path.Combine(_dir, "state.json"));
+        store.Save(new Dictionary<string, SessionRecord>
+        {
+            [TestSpecs.PlannerName] = new(SessionRole.Planner, PlannerSession, TestSpecs.PlannerName, DateTimeOffset.UnixEpoch, 0, [], null, null),
+        });
+        var clock = new FakeClock(new DateTimeOffset(2026, 11, 17, 12, 0, 0, TimeSpan.Zero));
+        var cli = new FakeCliRunner(args => args[0] switch
+        {
+            "agents" => FakeCliRunner.Ok(Listing(PlannerSession, "working")),
+            _ => FakeCliRunner.Ok(),
+        });
+        var logged = new List<string>();
+        var runner = Runner(new ClaudeCli(cli), store, clock, logged.Add);
+        var spec = TestSpecs.Planner(@"C:\W", "brief");
+        var reached = new Dictionary<string, RunBudget>(StringComparer.Ordinal) { [TestSpecs.PlannerName] = new RunBudget(1.0) };
+
+        runner.Budgets = reached;
+        await runner.CheckOnceAsync([spec]);
+
+        // The owner removes the limit: the run has no budget, and the level it was told goes.
+        runner.Budgets = new Dictionary<string, RunBudget>(StringComparer.Ordinal);
+        await runner.CheckOnceAsync([spec]);
+        Assert.Null(store.Load()[TestSpecs.PlannerName].LimitLevel);
+
+        // The owner sets a limit again, and the run reaches it: the owner is told again.
+        runner.Budgets = reached;
+        await runner.CheckOnceAsync([spec]);
+
+        Assert.Equal(2, logged.Count(l => l.Contains("ALERT LimitReached")));
+        Assert.Equal(RunBudget.ReachedLevel, store.Load()[TestSpecs.PlannerName].LimitLevel);
+    }
+
     /// <summary>An event log that another process holds: every write times out, as the file lock does after ten seconds.</summary>
     private sealed class HeldLogSink : IEventSink
     {

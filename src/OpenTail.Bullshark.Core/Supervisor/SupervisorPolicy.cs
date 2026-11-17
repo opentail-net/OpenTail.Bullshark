@@ -93,34 +93,33 @@ public static class SupervisorPolicy
     {
         var reached = budget is { Reached: true };
         var actions = DecideSession(spec, record, agents, now, rules, reached).ToList();
+        if (record is null) return actions;
 
-        if (budget is { Notify: true } && record is { } known && !string.IsNullOrEmpty(known.SessionId))
+        // The run has no limit now (the owner removed it, or its run is gone from runs.json): the level the owner was told is cleared, so a
+        // limit set later is announced again (round 6 item 5).
+        if (budget is null)
         {
-            var wanted = LevelRank(budget.Level);
-            var told = LevelRank(known.LimitLevel);
-            if (wanted > told)
-            {
-                actions.Add(reached
-                    ? new SupervisorAction.Alert(spec.Role, AlertKind.LimitReached,
-                        "the run reached its limit. Nothing new is started or resumed; a running session is not stopped. Stop it, or raise the limit.")
-                    : new SupervisorAction.Alert(spec.Role, AlertKind.LimitNear,
-                        $"the run has used {budget.Fraction:P0} of its limit."));
-            }
-            else if (wanted < told)
-            {
-                actions.Add(new SupervisorAction.LimitLevelSet(spec.Role, budget.Level));
-            }
+            if (record.LimitLevel is not null) actions.Add(new SupervisorAction.LimitLevelSet(spec.Role, null));
+            return actions;
         }
+
+        var wanted = RunBudget.RankOf(budget.Level);
+        // The told level is the highest one of the run's records, so a session that leads now is not told a level the run was told already.
+        var told = RunBudget.RankOf(budget.ToldLevel ?? record.LimitLevel);
+        if (budget.Notify && !string.IsNullOrEmpty(record.SessionId) && wanted > told)
+        {
+            actions.Add(reached
+                ? new SupervisorAction.Alert(spec.Role, AlertKind.LimitReached,
+                    "the run reached its limit. Nothing new is started or resumed; a running session is not stopped. Stop it, or raise the limit.")
+                : new SupervisorAction.Alert(spec.Role, AlertKind.LimitNear,
+                    $"the run has used {budget.Fraction:P0} of its limit."));
+        }
+
+        // A level above the one the run is at now (the owner raised the limit) goes down quietly, on any session that holds it (round 5 item 8).
+        if (RunBudget.RankOf(record.LimitLevel) > wanted)
+            actions.Add(new SupervisorAction.LimitLevelSet(spec.Role, budget.Level));
         return actions;
     }
-
-    /// <summary>The order of the limit levels: none, near, reached. A higher level is a new notice; a lower one is recorded silently.</summary>
-    private static int LevelRank(string? level) => level switch
-    {
-        RunBudget.ReachedLevel => 2,
-        RunBudget.NearLevel => 1,
-        _ => 0,
-    };
 
     /// <summary>True for the listed states `stopped` and `failed`, in any letter case: the states the supervisor never brings back.</summary>
     public static bool IsStoppedOrFailed(string? state) => Is(state, "stopped") || Is(state, "failed");

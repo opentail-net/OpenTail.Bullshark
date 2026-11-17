@@ -322,6 +322,62 @@ public sealed class RunLimitTests
     }
 
     [Fact]
+    public void ARunThatHasNoLimitAnymoreClearsTheLevelItWasTold()
+    {
+        // The owner removed the limit (or the run is no longer in runs.json): the reached level goes, so a limit set later is announced again.
+        var actions = SupervisorPolicy.Decide(Spec(), Record("LimitReached: the run reached its limit.", limitLevel: RunBudget.ReachedLevel),
+            [Working()], Now, SupervisorRules.Default, budget: null);
+
+        Assert.Null(Assert.IsType<SupervisorAction.LimitLevelSet>(Assert.Single(actions)).Level);
+    }
+
+    [Fact]
+    public void ATheToldLevelIsTheHighestOfTheRunsRecordsSoALeadChangeDoesNotAnnounceAgain()
+    {
+        // The coder was the lead when the owner was told the run is near its limit. The planner's start is retried later and it has a session
+        // id now, so the planner leads, and its own record holds no level. It is not told the same level again.
+        var planner = new SessionSpec(SessionRole.Planner, "bullshark-planner-abcd", @"C:\work", "opus", "high", "brief", "auto");
+        var run = new RunRecord("abcd", "plan-code", @"C:\work", "auto", Created, [planner, Spec()]);
+        const string plannerId = "cccccccc-0000-0000-0000-000000000003";
+        var records = new Dictionary<string, SessionRecord>(StringComparer.Ordinal)
+        {
+            [planner.Name] = new(SessionRole.Planner, plannerId, planner.Name, Created, 0, [], null, null),
+            [Coder] = Record(limitLevel: RunBudget.NearLevel),
+        };
+        var plannerListed = new AgentInfo(Id: plannerId[..8], SessionId: plannerId, Name: planner.Name, Kind: "background", State: "working",
+            Status: null, Cwd: null, Pid: null, StartedAt: null);
+
+        var held = RunBudget.ForSessions(run, records, new RunBudget(0.85));
+        Assert.True(held[planner.Name].Notify);
+        Assert.Empty(SupervisorPolicy.Decide(planner, records[planner.Name], [plannerListed], Now, SupervisorRules.Default, held[planner.Name]));
+    }
+
+    [Fact]
+    public void ANonLeadRecordIsLoweredWhenTheOwnerRaisesTheLimit()
+    {
+        // A session that is not the lead and holds the reached level (it led before): when the limit is raised to near, its level goes down.
+        var held = new RunBudget(0.85, Notify: false);
+
+        var actions = SupervisorPolicy.Decide(Spec(), Record(limitLevel: RunBudget.ReachedLevel), [Working()], Now, SupervisorRules.Default, held);
+
+        Assert.Equal(RunBudget.NearLevel, Assert.IsType<SupervisorAction.LimitLevelSet>(Assert.Single(actions)).Level);
+    }
+
+    [Fact]
+    public void ANoticeOfALimitIsNotShownForASessionThatIsDone()
+    {
+        // A run that reached its limit and finished: its lead is done, and the notice is not a reason to wait any more.
+        Assert.Empty(AttentionList.From([Record(limitLevel: RunBudget.ReachedLevel)], [Listed("done")]));
+    }
+
+    [Fact]
+    public void ANoticeOfALimitIsNotShownForASessionThatIsNotListed()
+    {
+        // A lost session is not live (it is not resumed at the limit either), so the notice does not stay under Needs you for it.
+        Assert.Empty(AttentionList.From([Record(limitLevel: RunBudget.ReachedLevel)], []));
+    }
+
+    [Fact]
     public void AStateRecordFromBeforeTheLimitLevelLoadsWithNoLevel()
     {
         // The shape of state.json before round 5 item 8: eight fields, no LimitLevel.
