@@ -49,7 +49,7 @@ public partial class SessionWindow
     /// Sets a terminal's font size. The library applies the size only when the terminal has a theme (checked 2026-11-16), so the theme is
     /// set with the terminal's own colours (<see cref="TerminalColours"/>). Setting it again applies the new size to a running terminal.
     /// </summary>
-    private static void ApplyZoomTo(ExtendedTerminalControl terminal, double scale)
+    internal static void ApplyZoomTo(ExtendedTerminalControl terminal, double scale)
     {
         terminal.FontSizeWhenSettingTheme = (int)Math.Round(TerminalFont.Size * 72.0 / 96.0 * scale);
         terminal.Theme = TerminalColours.Create();

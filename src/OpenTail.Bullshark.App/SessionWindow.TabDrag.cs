@@ -10,7 +10,7 @@ namespace OpenTail.Bullshark.App;
 /// Dragging a tab (docs/plans/tabs-and-panes.md, T1 and T2). A press and release without moving is still a click. Once the pointer
 /// has moved a few pixels the tab is being dragged. Along its strip it changes places with a tab when the pointer passes that tab's
 /// middle; "+" stays last. Released over the pane, below the strips, a session tab moves to the pane on that side: the right half
-/// opens the split. The order of the session tabs, and which are at the right, are saved beside the state file.
+/// opens the split. The order of the session tabs, and which are at the right, are saved beside the state file. Released outside the window, a session tab opens its session in its own window (T3).
 /// </summary>
 public partial class SessionWindow
 {
@@ -68,6 +68,13 @@ public partial class SessionWindow
             RefreshTabStrip();
         }
 
+        // Dragged out of the window: a release opens the session in its own window. Nothing is reordered while it is outside.
+        if (_dragTab.Kind == TabKind.Session && IsOutsideWindow(e))
+        {
+            SetStatus($"Release to open {_dragTab.Title} in its own window.");
+            return;
+        }
+
         // Below the strips the tab is over a pane: the status line says what a release would do. Nothing can be drawn over a terminal.
         if (DropPane(e) is { } toRight)
         {
@@ -111,6 +118,12 @@ public partial class SessionWindow
         var toRight = DropPane(e);
         _dragStrip.ReleaseMouseCapture();
 
+        if (tab is not null && tab.Kind == TabKind.Session && IsOutsideWindow(e))
+        {
+            PopOut(tab);
+            return;
+        }
+
         if (tab is null || tab.Kind != TabKind.Session || toRight is null || toRight == IsRight(tab)) return;
         if (toRight.Value) MoveToRight(tab);
         else MoveToLeft(tab);
@@ -127,6 +140,13 @@ public partial class SessionWindow
         if (at.X < 0 || at.X > area.ActualWidth || at.Y <= TabBar.ActualHeight || at.Y > area.ActualHeight) return null;
         var edge = SplitOpen ? PaneB.TranslatePoint(new Point(0, 0), area).X : area.ActualWidth / 2;
         return at.X >= edge;
+    }
+
+    /// <summary>True when the pointer is outside the window: the drag has taken the tab out of it.</summary>
+    private bool IsOutsideWindow(MouseEventArgs e)
+    {
+        var at = e.GetPosition(this);
+        return at.X < 0 || at.Y < 0 || at.X > ActualWidth || at.Y > ActualHeight;
     }
 
     /// <summary>Ends a drag, however it ended, and saves the order when a tab moved.</summary>

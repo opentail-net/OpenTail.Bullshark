@@ -238,6 +238,10 @@ public partial class SessionWindow
             else MoveToRight(tab);
         };
         menu.Items.Add(item);
+
+        var popOut = new MenuItem { Header = "Open in its own window", Padding = new Thickness(10, 4, 16, 4) };
+        popOut.Click += (_, _) => PopOut(tab);
+        menu.Items.Add(popOut);
         return menu;
     }
 }

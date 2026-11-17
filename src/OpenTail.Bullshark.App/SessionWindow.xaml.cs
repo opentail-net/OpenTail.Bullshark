@@ -434,6 +434,7 @@ public partial class SessionWindow : Window
     /// <summary>Detaches every terminal before the window closes. A background session keeps running after that.</summary>
     private void DetachAll()
     {
+        CloseDetachedWindows();
         foreach (var terminal in AllTerminals())
         {
             try

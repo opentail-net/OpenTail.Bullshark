@@ -251,7 +251,7 @@ public partial class SessionWindow
         var stored = known ?? ReadRecords();
         var records = stored.Values.OrderBy(r => r.Name, StringComparer.Ordinal).ToList();
         // A start that failed has no session, so it gets no terminal (it is listed as a failure below).
-        foreach (var record in records.Where(r => !string.IsNullOrEmpty(r.SessionId))) EnsureTerminal(record);
+        foreach (var record in records.Where(r => !string.IsNullOrEmpty(r.SessionId) && !IsInOwnWindow(r.SessionId))) EnsureTerminal(record);
         _attention = AttentionList.From(records, _agents, _clashes, ConflictsOf(records));
         UpdateNeedsYouCount();
 
