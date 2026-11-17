@@ -57,6 +57,7 @@ public sealed record EffortReport(
         var withoutOutput = new List<EffortTurn>();
         var turns = 0;
         OpenTurn? open = null;
+        var facts = new LineFacts();
 
         void CloseTurn()
         {
@@ -70,75 +71,66 @@ public sealed record EffortReport(
         foreach (var line in lines)
         {
             number++;
-            if (string.IsNullOrWhiteSpace(line)) continue;
+            if (!TranscriptJson.TryParse(line, out var document)) continue;
 
-            JsonDocument document;
-            try
-            {
-                document = JsonDocument.Parse(line);
-            }
-            catch (JsonException)
-            {
-                continue;
-            }
-
+            // Every value the line is counted from is read first, so a line that cannot be read changes nothing (round 12 item A1).
             using (document)
             {
-                var root = document.RootElement;
-                var type = Str(root, "type");
-                var subtype = type == "system" ? Str(root, "subtype") : null;
+                try
+                {
+                    facts.Read(document.RootElement, number);
+                }
+                catch (Exception ex) when (TranscriptJson.IsUnreadable(ex))
+                {
+                    continue;
+                }
+            }
 
-                if (type == "user" && TranscriptLine.From(number, line) is { Kind: "you" } prompt)
+            if (facts.Type == "user" && facts.PromptText is { } promptText)
+            {
+                CloseTurn();
+                open = new OpenTurn(number, Shorten(promptText));
+            }
+            else if (facts.Subtype == "turn_duration")
+            {
+                CloseTurn();
+            }
+            else if (facts.Subtype == "compact_boundary")
+            {
+                open ??= new OpenTurn(number, string.Empty);
+            }
+            else if (facts.Type == "assistant" && facts.AssistantMessage)
+            {
+                CountUsage(facts, ref open, messageKeys);
+                if (facts.ContentIsArray)
                 {
-                    CloseTurn();
-                    open = new OpenTurn(number, Shorten(prompt.Text));
-                }
-                else if (subtype == "turn_duration")
-                {
-                    CloseTurn();
-                }
-                else if (subtype == "compact_boundary")
-                {
-                    open ??= new OpenTurn(number, string.Empty);
-                }
-                else if (type == "assistant" && root.TryGetProperty("message", out var message) && message.ValueKind == JsonValueKind.Object)
-                {
-                    CountUsage(root, message, ref open, messageKeys);
-                    if (message.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array)
+                    foreach (var block in facts.Blocks)
                     {
-                        foreach (var block in content.EnumerateArray())
+                        if (block.Type == "text")
                         {
-                            var blockType = Str(block, "type");
-                            if (blockType == "text")
-                            {
-                                if (open is not null && !string.IsNullOrWhiteSpace(Str(block, "text"))) open.Texted = true;
-                                continue;
-                            }
-                            if (blockType != "tool_use" || Str(block, "id") is not { } id) continue;
-
-                            var name = Str(block, "name") ?? "unknown";
-                            toolNames[id] = name;
-                            // A call is counted once per id: the same message can be written in more than one record.
-                            open ??= new OpenTurn(number, string.Empty);
-                            if (!countedCalls.Add(id)) continue;
-
-                            var input = block.TryGetProperty("input", out var inputElement) ? inputElement : default;
-                            if (TranscriptReader.FileWritingTools.Contains(name) && Str(input, "file_path") is not null) open.Wrote = true;
-                            if (name == "Read" && Str(input, "file_path") is { } readPath) rereads.Add(readPath, number);
-                            if (name == "Bash" && Str(input, "command") is { } command) commands.Add(command, number);
+                            if (open is not null && block.HasText) open.Texted = true;
+                            continue;
                         }
+                        if (block.Type != "tool_use" || block.Id is not { } callId) continue;
+
+                        var name = block.Name ?? "unknown";
+                        toolNames[callId] = name;
+                        // A call is counted once per id: the same message can be written in more than one record.
+                        open ??= new OpenTurn(number, string.Empty);
+                        if (!countedCalls.Add(callId)) continue;
+
+                        if (TranscriptReader.FileWritingTools.Contains(name) && block.FilePath is not null) open.Wrote = true;
+                        if (name == "Read" && block.FilePath is { } readPath) rereads.Add(readPath, number);
+                        if (name == "Bash" && block.Command is { } command) commands.Add(command, number);
                     }
                 }
-                else if (type == "user" && root.TryGetProperty("message", out var userMessage) &&
-                         userMessage.ValueKind == JsonValueKind.Object && userMessage.TryGetProperty("content", out var results) &&
-                         results.ValueKind == JsonValueKind.Array)
+            }
+            else if (facts.Type == "user" && facts.UserResultsArray)
+            {
+                foreach (var failedId in facts.FailedResultIds)
                 {
-                    foreach (var block in results.EnumerateArray())
-                    {
-                        if (Str(block, "type") != "tool_result" || !TranscriptLine.IsFailedResult(block)) continue;
-                        if (Str(block, "tool_use_id") is { } failedId && failedIds.Add(failedId))
-                            failed.Add(toolNames.TryGetValue(failedId, out var tool) ? tool : "unknown", number);
-                    }
+                    if (failedId is { } failedCallId && failedIds.Add(failedCallId))
+                        failed.Add(toolNames.TryGetValue(failedCallId, out var tool) ? tool : "unknown", number);
                 }
             }
         }
@@ -157,18 +149,98 @@ public sealed record EffortReport(
     /// usage ledger does. A record with no identity is counted where it stands. Usage before the first prompt has no turn to join,
     /// so it is not in any turn.
     /// </summary>
-    private static void CountUsage(JsonElement root, JsonElement message, ref OpenTurn? open, HashSet<string> messageKeys)
+    private static void CountUsage(LineFacts facts, ref OpenTurn? open, HashSet<string> messageKeys)
     {
         if (open is null) return;
-        if (!message.TryGetProperty("usage", out var usage) || usage.ValueKind != JsonValueKind.Object) return;
+        if (facts.Usage is not { } usage) return;
+        if (facts.MessageKey is { } key && !messageKeys.Add(key)) return;
 
-        var key = Str(message, "id") is { } messageId && Str(root, "requestId") is { } requestId ? messageId + ":" + requestId : null;
-        if (key is not null && !messageKeys.Add(key)) return;
-
-        open.Tokens = open.Tokens.Add(new TokenUsage(
-            Num(usage, "input_tokens"), Num(usage, "output_tokens"),
-            Num(usage, "cache_creation_input_tokens"), Num(usage, "cache_read_input_tokens")));
+        open.Tokens = open.Tokens.Add(usage);
     }
+
+    /// <summary>
+    /// The values of one transcript line that the effort report counts from, read before anything is counted (round 12 item A1). A value
+    /// that cannot be read throws, and the line is skipped. The counting is in <see cref="From"/>, in the order of the records. A value is read
+    /// when the record's shape can carry it, and some are read though the count may not reach them; a read that throws skips the line.
+    /// </summary>
+    private sealed class LineFacts
+    {
+        private readonly List<Block> _blocks = [];
+        private readonly List<string?> _failedResultIds = [];
+
+        public string? Type { get; private set; }
+        public string? Subtype { get; private set; }
+        public string? PromptText { get; private set; }
+        public bool AssistantMessage { get; private set; }
+        public bool ContentIsArray { get; private set; }
+        public bool UserResultsArray { get; private set; }
+        public string? MessageKey { get; private set; }
+        public TokenUsage? Usage { get; private set; }
+        public IReadOnlyList<Block> Blocks => _blocks;
+        public IReadOnlyList<string?> FailedResultIds => _failedResultIds;
+
+        public void Read(JsonElement root, int number)
+        {
+            Type = TranscriptJson.Str(root, "type");
+            Subtype = Type == "system" ? TranscriptJson.Str(root, "subtype") : null;
+            PromptText = Type == "user" && TranscriptLine.FromRoot(number, root) is { Kind: "you" } prompt ? prompt.Text : null;
+
+            AssistantMessage = false;
+            ContentIsArray = false;
+            UserResultsArray = false;
+            MessageKey = null;
+            Usage = null;
+            _blocks.Clear();
+            _failedResultIds.Clear();
+
+            if (Type == "assistant" && root.TryGetProperty("message", out var message) && message.ValueKind == JsonValueKind.Object)
+            {
+                AssistantMessage = true;
+                MessageKey = TranscriptJson.Str(message, "id") is { } messageId && TranscriptJson.Str(root, "requestId") is { } requestId
+                    ? messageId + ":" + requestId
+                    : null;
+                if (message.TryGetProperty("usage", out var usageElement) && usageElement.ValueKind == JsonValueKind.Object)
+                {
+                    Usage = new TokenUsage(
+                        TranscriptJson.Long(usageElement, "input_tokens"), TranscriptJson.Long(usageElement, "output_tokens"),
+                        TranscriptJson.Long(usageElement, "cache_creation_input_tokens"), TranscriptJson.Long(usageElement, "cache_read_input_tokens"));
+                }
+                if (message.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array)
+                {
+                    ContentIsArray = true;
+                    foreach (var block in content.EnumerateArray())
+                    {
+                        var blockType = TranscriptJson.Str(block, "type");
+                        if (blockType == "text")
+                        {
+                            _blocks.Add(new Block("text", null, null, null, null,
+                                !string.IsNullOrWhiteSpace(TranscriptJson.Str(block, "text"))));
+                        }
+                        else if (blockType == "tool_use")
+                        {
+                            var input = block.TryGetProperty("input", out var inputElement) ? inputElement : default;
+                            _blocks.Add(new Block("tool_use", TranscriptJson.Str(block, "id"), TranscriptJson.Str(block, "name"),
+                                TranscriptJson.Str(input, "file_path"), TranscriptJson.Str(input, "command"), false));
+                        }
+                    }
+                }
+            }
+            else if (Type == "user" && root.TryGetProperty("message", out var userMessage) &&
+                     userMessage.ValueKind == JsonValueKind.Object && userMessage.TryGetProperty("content", out var results) &&
+                     results.ValueKind == JsonValueKind.Array)
+            {
+                UserResultsArray = true;
+                foreach (var block in results.EnumerateArray())
+                {
+                    if (TranscriptJson.Str(block, "type") == "tool_result" && TranscriptLine.IsFailedResult(block))
+                        _failedResultIds.Add(TranscriptJson.Str(block, "tool_use_id"));
+                }
+            }
+        }
+    }
+
+    /// <summary>One block of an assistant message as the report counts it: its type, a call's id, name, file and command, and whether a text block has text.</summary>
+    private readonly record struct Block(string? Type, string? Id, string? Name, string? FilePath, string? Command, bool HasText);
 
     /// <summary>A turn while it is open. Its flags and counts are kept here until it closes.</summary>
     private sealed class OpenTurn(int startLine, string prompt)
@@ -255,15 +327,4 @@ public sealed record EffortReport(
         }
         return texts;
     }
-
-    private static string? Str(JsonElement element, string property) =>
-        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var v) && v.ValueKind == JsonValueKind.String
-            ? v.GetString()
-            : null;
-
-    private static long Num(JsonElement element, string property) =>
-        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var v) &&
-        v.ValueKind == JsonValueKind.Number && v.TryGetInt64(out var n)
-            ? n
-            : 0;
 }

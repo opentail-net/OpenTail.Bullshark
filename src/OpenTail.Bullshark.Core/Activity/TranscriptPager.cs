@@ -14,42 +14,51 @@ public sealed record TranscriptLine(int Number, string Kind, DateTimeOffset? Tim
     /// </summary>
     public static TranscriptLine? From(int number, string json)
     {
-        JsonDocument document;
-        try
-        {
-            document = JsonDocument.Parse(json);
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
+        if (!TranscriptJson.TryParse(json, out var document)) return null;
 
         using (document)
         {
-            var root = document.RootElement;
-            var type = Str(root, "type");
-            var time = TimeOf(root);
-
-            switch (type)
+            try
             {
-                case "user":
-                    return UserLine(number, root, time);
-
-                case "assistant":
-                    return AssistantLine(number, root, time);
-
-                case "system" when Str(root, "subtype") == "turn_duration":
-                    var seconds = root.TryGetProperty("durationMs", out var ms) && ms.ValueKind == JsonValueKind.Number
-                        ? ms.GetDouble() / 1000.0
-                        : 0;
-                    return new TranscriptLine(number, "turn", time, $"turn finished ({seconds:0.#} s)", Collapsed: false);
-
-                case "system" when Str(root, "subtype") == "compact_boundary":
-                    return CompactLine(number, root, time);
-
-                default:
-                    return null;
+                return FromRoot(number, document.RootElement);
             }
+            catch (Exception ex) when (TranscriptJson.IsUnreadable(ex))
+            {
+                // A value of the record cannot be read: the record is not shown (round 12 item A1).
+                return null;
+            }
+        }
+    }
+
+    /// <summary>
+    /// The line for a parsed record, as <see cref="From(int, string)"/> gives it, but without the guard: a value that cannot be read throws
+    /// <see cref="InvalidOperationException"/>. A reader that counts the record as well (the turn and effort facts) calls this, so that it
+    /// skips the record whole.
+    /// </summary>
+    internal static TranscriptLine? FromRoot(int number, JsonElement root)
+    {
+        var type = TranscriptJson.Str(root, "type");
+        var time = TranscriptJson.Time(root, "timestamp");
+
+        switch (type)
+        {
+            case "user":
+                return UserLine(number, root, time);
+
+            case "assistant":
+                return AssistantLine(number, root, time);
+
+            case "system" when TranscriptJson.Str(root, "subtype") == "turn_duration":
+                var seconds = root.TryGetProperty("durationMs", out var ms) && ms.ValueKind == JsonValueKind.Number
+                    ? ms.GetDouble() / 1000.0
+                    : 0;
+                return new TranscriptLine(number, "turn", time, $"turn finished ({seconds:0.#} s)", Collapsed: false);
+
+            case "system" when TranscriptJson.Str(root, "subtype") == "compact_boundary":
+                return CompactLine(number, root, time);
+
+            default:
+                return null;
         }
     }
 
@@ -67,15 +76,15 @@ public sealed record TranscriptLine(int Number, string Kind, DateTimeOffset? Tim
         {
             foreach (var block in content.EnumerateArray())
             {
-                if (Str(block, "type") != "tool_result") continue;
+                if (TranscriptJson.Str(block, "type") != "tool_result") continue;
                 var preview = ResultText(block);
                 var shown = preview.Length > PreviewLength ? preview[..CutBefore(preview, PreviewLength)] + "…" : preview;
                 return new TranscriptLine(number, "result", time, $"result: {shown}", Collapsed: true, Failed: IsFailedResult(block));
             }
             foreach (var block in content.EnumerateArray())
             {
-                if (Str(block, "type") == "text")
-                    return new TranscriptLine(number, "you", time, Str(block, "text") ?? string.Empty, Collapsed: false);
+                if (TranscriptJson.Str(block, "type") == "text")
+                    return new TranscriptLine(number, "you", time, TranscriptJson.Str(block, "text") ?? string.Empty, Collapsed: false);
             }
         }
         return null;
@@ -88,17 +97,17 @@ public sealed record TranscriptLine(int Number, string Kind, DateTimeOffset? Tim
 
         foreach (var block in content.EnumerateArray())
         {
-            switch (Str(block, "type"))
+            switch (TranscriptJson.Str(block, "type"))
             {
                 case "text":
-                    var text = Str(block, "text");
+                    var text = TranscriptJson.Str(block, "text");
                     if (!string.IsNullOrWhiteSpace(text))
                         return new TranscriptLine(number, "claude", time, text, Collapsed: false);
                     break;
 
                 case "tool_use":
-                    var name = Str(block, "name") ?? "tool";
-                    var target = block.TryGetProperty("input", out var input) ? Str(input, "file_path") ?? Str(input, "command") : null;
+                    var name = TranscriptJson.Str(block, "name") ?? "tool";
+                    var target = block.TryGetProperty("input", out var input) ? TranscriptJson.Str(input, "file_path") ?? TranscriptJson.Str(input, "command") : null;
                     var detail = target is null ? string.Empty : " " + Short(target);
                     return new TranscriptLine(number, "tool", time, $"▸ {name}{detail}", Collapsed: true);
             }
@@ -114,7 +123,7 @@ public sealed record TranscriptLine(int Number, string Kind, DateTimeOffset? Tim
         {
             foreach (var part in content.EnumerateArray())
             {
-                if (Str(part, "type") == "text") return Str(part, "text") ?? string.Empty;
+                if (TranscriptJson.Str(part, "type") == "text") return TranscriptJson.Str(part, "text") ?? string.Empty;
             }
         }
         return string.Empty;
@@ -127,9 +136,9 @@ public sealed record TranscriptLine(int Number, string Kind, DateTimeOffset? Tim
     private static TranscriptLine CompactLine(int number, JsonElement root, DateTimeOffset? time)
     {
         var meta = root.TryGetProperty("compactMetadata", out var m) && m.ValueKind == JsonValueKind.Object ? m : default;
-        var trigger = Str(meta, "trigger");
-        var before = Num(meta, "preTokens");
-        var after = Num(meta, "postTokens");
+        var trigger = TranscriptJson.Str(meta, "trigger");
+        var before = TranscriptJson.Number(meta, "preTokens");
+        var after = TranscriptJson.Number(meta, "postTokens");
         var head = trigger is null ? "conversation compacted" : $"conversation compacted ({trigger})";
         var culture = System.Globalization.CultureInfo.InvariantCulture;
         var text = before is { } pre && after is { } post
@@ -146,12 +155,6 @@ public sealed record TranscriptLine(int Number, string Kind, DateTimeOffset? Tim
         block.ValueKind == JsonValueKind.Object &&
         block.TryGetProperty("is_error", out var error) && error.ValueKind == JsonValueKind.True;
 
-    private static long? Num(JsonElement element, string property) =>
-        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var v) &&
-        v.ValueKind == JsonValueKind.Number && v.TryGetInt64(out var n)
-            ? n
-            : null;
-
     private static string Short(string value) => value.Length > 100 ? "…" + value[CutAfter(value, value.Length - 99)..] : value;
 
     /// <summary>A cut at <paramref name="index"/> that does not split a surrogate pair (an emoji would show as a broken glyph).</summary>
@@ -161,16 +164,6 @@ public sealed record TranscriptLine(int Number, string Kind, DateTimeOffset? Tim
     private static int CutAfter(string value, int index) =>
         index > 0 && index < value.Length && char.IsLowSurrogate(value[index]) ? index + 1 : index;
 
-    private static string? Str(JsonElement element, string property) =>
-        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var v) && v.ValueKind == JsonValueKind.String
-            ? v.GetString()
-            : null;
-
-    private static DateTimeOffset? TimeOf(JsonElement root) =>
-        Str(root, "timestamp") is { } raw && DateTimeOffset.TryParse(raw, System.Globalization.CultureInfo.InvariantCulture,
-            System.Globalization.DateTimeStyles.AssumeUniversal, out var parsed)
-            ? parsed
-            : null;
 }
 
 /// <summary>

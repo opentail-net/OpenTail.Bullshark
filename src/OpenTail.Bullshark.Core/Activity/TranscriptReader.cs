@@ -73,9 +73,9 @@ public static class TranscriptReader
         Summarize(TranscriptFile.ReadLines(path), ledger, path);
 
     /// <summary>
-    /// Summarises transcript lines. Lines that are not valid JSON are skipped, not fatal.
-    /// Usage goes into a <see cref="UsageLedger"/>, once per message (F34, F35, F36). Records and tool calls are counted
-    /// for this file. Tool calls are counted once per tool-use id, and assistant messages once per message key.
+    /// Summarises transcript lines. Lines that are not valid JSON are skipped, not fatal, and so is a line one of whose values cannot be read
+    /// (round 12 item A1): it counts nothing. Usage goes into a <see cref="UsageLedger"/>, once per message (F34, F35, F36). Records and tool calls
+    /// are counted for this file. Tool calls are counted once per tool-use id, and assistant messages once per message key.
     /// <paramref name="firstLine"/> is the number of lines before <paramref name="lines"/> in the file, for a summary of the part of a
     /// file that was appended (round 5 item 9): the lines that have no message id are keyed by their line number, so it must go on.
     /// </summary>
@@ -105,135 +105,104 @@ public static class TranscriptReader
         string? latestCwd = null;
         // The folder each relative file path was written from: the cwd of the record that carries the write, not the latest one (round 8 item 8).
         var fileFolders = new Dictionary<string, string>(StringComparer.Ordinal);
+        var facts = new LineFacts();
 
         foreach (var line in lines)
         {
             lineNumber++;
-            if (string.IsNullOrWhiteSpace(line)) continue;
-            JsonDocument document;
-            try
-            {
-                document = JsonDocument.Parse(line);
-            }
-            catch (JsonException)
-            {
-                continue;
-            }
+            if (!TranscriptJson.TryParse(line, out var document)) continue;
 
+            // Every value the line is counted from is read first. A line that cannot be read is skipped whole, so nothing of it is counted.
             using (document)
             {
-                var root = document.RootElement;
-                records++;
-
-                // Claude Code writes the session's working folder on its records (observed 2026-11-17 on 2.1.326: `cwd` on most lines). A blank value is ignored.
-                if (TryGetString(root, "cwd", out var cwdText) && !string.IsNullOrWhiteSpace(cwdText)) latestCwd = cwdText;
-
-                DateTimeOffset? recordTime = null;
-                if (TryGetString(root, "timestamp", out var timestamp) &&
-                    DateTimeOffset.TryParse(timestamp, System.Globalization.CultureInfo.InvariantCulture,
-                        System.Globalization.DateTimeStyles.AssumeUniversal, out var parsed))
+                try
                 {
-                    recordTime = parsed;
-                    lastTimestamp = parsed;
-                    firstTimestamp ??= parsed;
+                    facts.Read(document.RootElement, wantFirstUserText: firstUserText is null, wantContinuesId: users == 0);
                 }
-
-                var type = TryGetString(root, "type", out var t) ? t : null;
-                if (type == "system" && TryGetString(root, "subtype", out var subtype) && subtype == "turn_duration")
-                    turns++;
-
-                // Facts Claude Code writes itself (observed 2026-11-16; the shape is not documented). A blank value is ignored.
-                if (type == "ai-title" && TryGetString(root, "aiTitle", out var aiTitleText) && !string.IsNullOrWhiteSpace(aiTitleText))
-                    aiTitle = aiTitleText.Trim();
-                if (type == "custom-title" && TryGetString(root, "customTitle", out var customTitleText) && !string.IsNullOrWhiteSpace(customTitleText))
-                    customTitle = customTitleText.Trim();
-                if (type == "system" && TryGetString(root, "subtype", out var libraryKind))
+                catch (Exception ex) when (TranscriptJson.IsUnreadable(ex))
                 {
-                    if (libraryKind == "away_summary" && TryGetString(root, "content", out var recapText) && !string.IsNullOrWhiteSpace(recapText))
-                    {
-                        lastRecap = recapText.Trim();
-                        lastRecapAt = recordTime;
-                    }
-                    else if (libraryKind == "compact_boundary")
-                    {
-                        compactions++;
-                    }
+                    continue;
                 }
-                if (type == "user")
+            }
+
+            records++;
+
+            // Claude Code writes the session's working folder on its records (observed 2026-11-17 on 2.1.326: `cwd` on most lines). A blank value is ignored.
+            if (facts.Cwd is not null) latestCwd = facts.Cwd;
+
+            var recordTime = facts.Time;
+            if (recordTime is { } parsed)
+            {
+                lastTimestamp = parsed;
+                firstTimestamp ??= parsed;
+            }
+
+            if (facts.TurnDuration) turns++;
+
+            // Facts Claude Code writes itself (observed 2026-11-16; the shape is not documented). A blank value is ignored.
+            if (facts.AiTitle is not null) aiTitle = facts.AiTitle;
+            if (facts.CustomTitle is not null) customTitle = facts.CustomTitle;
+            if (facts.LibraryKind == "away_summary" && facts.Recap is not null)
+            {
+                lastRecap = facts.Recap;
+                lastRecapAt = recordTime;
+            }
+            else if (facts.LibraryKind == "compact_boundary")
+            {
+                compactions++;
+            }
+
+            if (facts.IsUser)
+            {
+                users++;
+                firstUserText ??= facts.FirstUserText;
+                // Only the first user message can name the session this one continues (D-L8).
+                if (users == 1) continuesSessionId = facts.ContinuesId;
+                foreach (var failedId in facts.FailedToolIds)
                 {
-                    users++;
-                    firstUserText ??= SessionTitle.FromUserRecord(root);
-                    // Only the first user message can name the session this one continues (D-L8).
-                    if (users == 1) continuesSessionId = SessionTitle.ContinuesIdOf(root);
-                    if (root.TryGetProperty("message", out var userMessage) &&
-                        userMessage.TryGetProperty("content", out var userContent) && userContent.ValueKind == JsonValueKind.Array)
+                    if (failedIds.Add(failedId)) failedCalls++;
+                }
+            }
+
+            if (!facts.IsAssistant) continue;
+
+            // The model of this record, not the last model seen: usage is attributed to the record's own model.
+            lastModel = facts.Model;
+
+            // Count this message once per file: the first record that carries its key.
+            bool firstInFile = facts.MessageKey is null || seenInFile.Add(facts.MessageKey);
+            if (firstInFile) assistants++;
+
+            foreach (var block in facts.Blocks)
+            {
+                if (block.Type == "tool_use")
+                {
+                    // A tool call has its own id, and it is written in just one of the message's records.
+                    bool countThisCall = block.Id is not null ? seenInFile.Add("tool:" + block.Id) : firstInFile;
+                    if (countThisCall)
                     {
-                        foreach (var resultBlock in userContent.EnumerateArray())
+                        tools++;
+                        var name = block.Name ?? "unknown";
+                        toolNames[name] = toolNames.TryGetValue(name, out var n) ? n + 1 : 1;
+                        if (block.FilePath is { } filePath)
                         {
-                            if (TryGetString(resultBlock, "type", out var resultType) && resultType == "tool_result" &&
-                                TranscriptLine.IsFailedResult(resultBlock) &&
-                                TryGetString(resultBlock, "tool_use_id", out var failedId) && failedIds.Add(failedId!))
-                            {
-                                failedCalls++;
-                            }
+                            if (recordTime is { } writeTime) fileLastWrites[filePath] = writeTime;
+                            // latestCwd is this record's own folder when it names one (it is read before the content above), else the last one named.
+                            if (latestCwd is not null && !Path.IsPathRooted(filePath)) fileFolders[filePath] = latestCwd;
+                            if (fileSet.Add(filePath)) filesWritten.Add(filePath);
                         }
                     }
                 }
-                if (type != "assistant" || !root.TryGetProperty("message", out var message)) continue;
+                if (block.Type == "text" && block.Text is { } text) lastText = text;
+            }
 
-                // The model of this record, not the last model seen: usage is attributed to the record's own model.
-                var recordModel = TryGetString(message, "model", out var model) ? model! : "unknown";
-                lastModel = recordModel;
-
-                var messageKey = TryGetString(message, "id", out var messageId) && TryGetString(root, "requestId", out var requestId)
-                    ? $"{messageId}:{requestId}"
-                    : null;
-                // Count this message once per file: the first record that carries its key.
-                bool firstInFile = messageKey is null || seenInFile.Add(messageKey);
-                if (firstInFile) assistants++;
-
-                if (message.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var block in content.EnumerateArray())
-                    {
-                        if (!TryGetString(block, "type", out var blockType)) continue;
-                        if (blockType == "tool_use")
-                        {
-                            // A tool call has its own id, and it is written in just one of the message's records.
-                            bool countThisCall = TryGetString(block, "id", out var toolId)
-                                ? seenInFile.Add("tool:" + toolId)
-                                : firstInFile;
-                            if (countThisCall)
-                            {
-                                tools++;
-                                var name = TryGetString(block, "name", out var toolName) ? toolName! : "unknown";
-                                toolNames[name] = toolNames.TryGetValue(name, out var n) ? n + 1 : 1;
-                                if (FileWritingTools.Contains(name) && block.TryGetProperty("input", out var input) &&
-                                    TryGetString(input, "file_path", out var filePath))
-                                {
-                                    if (recordTime is { } writeTime) fileLastWrites[filePath!] = writeTime;
-                                    // latestCwd is this record's own folder when it names one (it is read before the content above), else the last one named.
-                                    if (latestCwd is not null && !Path.IsPathRooted(filePath!)) fileFolders[filePath!] = latestCwd;
-                                    if (fileSet.Add(filePath!)) filesWritten.Add(filePath!);
-                                }
-                            }
-                        }
-                        if (blockType == "text" && TryGetString(block, "text", out var text)) lastText = text;
-                    }
-                }
-
-                if (message.TryGetProperty("usage", out var usageElement) && usageElement.ValueKind == JsonValueKind.Object)
-                {
-                    var input = ReadLong(usageElement, "input_tokens");
-                    var output = ReadLong(usageElement, "output_tokens");
-                    var cacheWrite = ReadLong(usageElement, "cache_creation_input_tokens");
-                    var cacheRead = ReadLong(usageElement, "cache_read_input_tokens");
-                    // A record with no identity cannot be matched to another, so it is counted where it stands.
-                    var usageKey = messageKey ?? $"unkeyed:{file}:{lineNumber}";
-                    usageLedger.Record(usageKey, recordModel, file, new TokenUsage(input, output, cacheWrite, cacheRead));
-                    // The context a next turn would load is this message's input plus everything read from and written to the cache.
-                    contextAtLastTurn = input + cacheRead + cacheWrite;
-                }
+            if (facts.Usage is { } usage)
+            {
+                // A record with no identity cannot be matched to another, so it is counted where it stands.
+                var usageKey = facts.MessageKey ?? $"unkeyed:{file}:{lineNumber}";
+                usageLedger.Record(usageKey, facts.Model, file, usage);
+                // The context a next turn would load is this message's input plus everything read from and written to the cache.
+                contextAtLastTurn = usage.Input + usage.CacheRead + usage.CacheCreation;
             }
         }
 
@@ -242,20 +211,134 @@ public static class TranscriptReader
             aiTitle, customTitle, lastRecap, lastRecapAt, compactions, continuesSessionId, failedCalls, fileLastWrites, latestCwd, fileFolders);
     }
 
-    private static bool TryGetString(JsonElement element, string property, out string? value)
+    /// <summary>
+    /// The values of one transcript line that <see cref="Summarize"/> counts from, read before anything is counted (round 12 item A1). It is
+    /// filled by <see cref="Read"/>, which reads every value the line can count from; a value read here that the count would not reach is
+    /// read but not used, and a value that cannot be read throws and skips the line. The counting is done in <see cref="Summarize"/>, in the
+    /// order of the records. One instance serves a whole file.
+    /// </summary>
+    private sealed class LineFacts
     {
-        if (element.ValueKind == JsonValueKind.Object &&
-            element.TryGetProperty(property, out var v) && v.ValueKind == JsonValueKind.String)
+        private readonly List<ToolBlock> _blocks = [];
+        private readonly List<string> _failedToolIds = [];
+
+        public string? Cwd { get; private set; }
+        public DateTimeOffset? Time { get; private set; }
+        public bool TurnDuration { get; private set; }
+        public string? LibraryKind { get; private set; }
+        public string? AiTitle { get; private set; }
+        public string? CustomTitle { get; private set; }
+        public string? Recap { get; private set; }
+        public bool IsUser { get; private set; }
+        public string? FirstUserText { get; private set; }
+        public string? ContinuesId { get; private set; }
+        public IReadOnlyList<string> FailedToolIds => _failedToolIds;
+        public bool IsAssistant { get; private set; }
+        public string Model { get; private set; } = "unknown";
+        public string? MessageKey { get; private set; }
+        public IReadOnlyList<ToolBlock> Blocks => _blocks;
+        public TokenUsage? Usage { get; private set; }
+
+        /// <summary>
+        /// Reads the line's values. <paramref name="wantFirstUserText"/> and <paramref name="wantContinuesId"/> say whether the count would use the
+        /// two user-message texts (the first user message, and the session a resumed one continues); the others are read as the lines are.
+        /// </summary>
+        public void Read(JsonElement root, bool wantFirstUserText, bool wantContinuesId)
         {
-            value = v.GetString();
-            return true;
+            Cwd = null;
+            Time = null;
+            TurnDuration = false;
+            LibraryKind = null;
+            AiTitle = null;
+            CustomTitle = null;
+            Recap = null;
+            IsUser = false;
+            FirstUserText = null;
+            ContinuesId = null;
+            _failedToolIds.Clear();
+            IsAssistant = false;
+            Model = "unknown";
+            MessageKey = null;
+            _blocks.Clear();
+            Usage = null;
+
+            // Claude Code writes the session's working folder on its records (observed 2026-11-17 on 2.1.326: `cwd` on most lines).
+            if (TranscriptJson.TryStr(root, "cwd", out var cwdText) && !string.IsNullOrWhiteSpace(cwdText)) Cwd = cwdText;
+            Time = TranscriptJson.Time(root, "timestamp");
+
+            var type = TranscriptJson.Str(root, "type");
+            if (type == "system" && TranscriptJson.TryStr(root, "subtype", out var subtype))
+            {
+                TurnDuration = subtype == "turn_duration";
+                LibraryKind = subtype;
+                if (subtype == "away_summary" && TranscriptJson.TryStr(root, "content", out var recapText) && !string.IsNullOrWhiteSpace(recapText))
+                    Recap = recapText.Trim();
+            }
+            if (type == "ai-title" && TranscriptJson.TryStr(root, "aiTitle", out var aiTitleText) && !string.IsNullOrWhiteSpace(aiTitleText))
+                AiTitle = aiTitleText.Trim();
+            if (type == "custom-title" && TranscriptJson.TryStr(root, "customTitle", out var customTitleText) && !string.IsNullOrWhiteSpace(customTitleText))
+                CustomTitle = customTitleText.Trim();
+
+            if (type == "user")
+            {
+                IsUser = true;
+                if (wantFirstUserText) FirstUserText = SessionTitle.FromUserRecord(root);
+                if (wantContinuesId) ContinuesId = SessionTitle.ContinuesIdOf(root);
+                if (root.TryGetProperty("message", out var userMessage) &&
+                    userMessage.TryGetProperty("content", out var userContent) && userContent.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var resultBlock in userContent.EnumerateArray())
+                    {
+                        if (TranscriptJson.TryStr(resultBlock, "type", out var resultType) && resultType == "tool_result" &&
+                            TranscriptLine.IsFailedResult(resultBlock) &&
+                            TranscriptJson.TryStr(resultBlock, "tool_use_id", out var failedId))
+                        {
+                            _failedToolIds.Add(failedId!);
+                        }
+                    }
+                }
+            }
+
+            if (type != "assistant" || !root.TryGetProperty("message", out var message)) return;
+
+            IsAssistant = true;
+            Model = TranscriptJson.TryStr(message, "model", out var model) ? model! : "unknown";
+            MessageKey = TranscriptJson.TryStr(message, "id", out var messageId) && TranscriptJson.TryStr(root, "requestId", out var requestId)
+                ? $"{messageId}:{requestId}"
+                : null;
+
+            if (message.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var block in content.EnumerateArray())
+                {
+                    if (!TranscriptJson.TryStr(block, "type", out var blockType)) continue;
+                    string? id = null, name = null, filePath = null, text = null;
+                    if (blockType == "tool_use")
+                    {
+                        id = TranscriptJson.Str(block, "id");
+                        name = TranscriptJson.Str(block, "name");
+                        if (TranscriptReader.FileWritingTools.Contains(name ?? "unknown") && block.TryGetProperty("input", out var input))
+                            filePath = TranscriptJson.Str(input, "file_path");
+                    }
+                    else if (blockType == "text")
+                    {
+                        text = TranscriptJson.Str(block, "text");
+                    }
+                    _blocks.Add(new ToolBlock(blockType, id, name, filePath, text));
+                }
+            }
+
+            if (message.TryGetProperty("usage", out var usageElement) && usageElement.ValueKind == JsonValueKind.Object)
+            {
+                Usage = new TokenUsage(
+                    TranscriptJson.Long(usageElement, "input_tokens"),
+                    TranscriptJson.Long(usageElement, "output_tokens"),
+                    TranscriptJson.Long(usageElement, "cache_creation_input_tokens"),
+                    TranscriptJson.Long(usageElement, "cache_read_input_tokens"));
+            }
         }
-        value = null;
-        return false;
     }
 
-    private static long ReadLong(JsonElement element, string property) =>
-        element.TryGetProperty(property, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt64(out var n)
-            ? n
-            : 0;
+    /// <summary>One block of an assistant message as the count uses it: its type, and the id, name, file or text it can carry.</summary>
+    private readonly record struct ToolBlock(string? Type, string? Id, string? Name, string? FilePath, string? Text);
 }

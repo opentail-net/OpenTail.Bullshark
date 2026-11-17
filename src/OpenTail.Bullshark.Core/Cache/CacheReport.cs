@@ -159,53 +159,47 @@ public static class CacheReport
 
     private static Request? Parse(string line)
     {
-        JsonDocument document;
-        try
-        {
-            document = JsonDocument.Parse(line);
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
+        // A line that does not parse, or whose values cannot be read, is not a request (round 12 item A1).
+        if (!TranscriptJson.TryParse(line, out var document)) return null;
 
         using (document)
         {
-            var root = document.RootElement;
-            if (Str(root, "type") != "assistant") return null;
-            if (!root.TryGetProperty("message", out var message) ||
-                !message.TryGetProperty("usage", out var usage) ||
-                usage.ValueKind != JsonValueKind.Object)
-                return null;
-            if (Str(root, "timestamp") is not { } raw ||
-                !DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var time))
-                return null;
-
-            string? key = Str(message, "id") is { } messageId && Str(root, "requestId") is { } requestId
-                ? $"{messageId}:{requestId}"
-                : null;
-
-            long write1h = 0, write5m = 0;
-            if (usage.TryGetProperty("cache_creation", out var split) && split.ValueKind == JsonValueKind.Object)
+            try
             {
-                write1h = Num(split, "ephemeral_1h_input_tokens");
-                write5m = Num(split, "ephemeral_5m_input_tokens");
+                return RequestOf(document.RootElement);
             }
-
-            return new Request(key, time,
-                Num(usage, "input_tokens"),
-                Num(usage, "cache_read_input_tokens"),
-                Num(usage, "cache_creation_input_tokens"),
-                write1h,
-                write5m);
+            catch (Exception ex) when (TranscriptJson.IsUnreadable(ex))
+            {
+                return null;
+            }
         }
     }
 
-    private static string? Str(JsonElement element, string property) =>
-        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var v) && v.ValueKind == JsonValueKind.String
-            ? v.GetString()
+    private static Request? RequestOf(JsonElement root)
+    {
+        if (TranscriptJson.Str(root, "type") != "assistant") return null;
+        if (!root.TryGetProperty("message", out var message) ||
+            !message.TryGetProperty("usage", out var usage) ||
+            usage.ValueKind != JsonValueKind.Object)
+            return null;
+        if (TranscriptJson.Time(root, "timestamp") is not { } time) return null;
+
+        string? key = TranscriptJson.Str(message, "id") is { } messageId && TranscriptJson.Str(root, "requestId") is { } requestId
+            ? $"{messageId}:{requestId}"
             : null;
 
-    private static long Num(JsonElement element, string property) =>
-        element.TryGetProperty(property, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt64(out var n) ? n : 0;
+        long write1h = 0, write5m = 0;
+        if (usage.TryGetProperty("cache_creation", out var split) && split.ValueKind == JsonValueKind.Object)
+        {
+            write1h = TranscriptJson.Long(split, "ephemeral_1h_input_tokens");
+            write5m = TranscriptJson.Long(split, "ephemeral_5m_input_tokens");
+        }
+
+        return new Request(key, time,
+            TranscriptJson.Long(usage, "input_tokens"),
+            TranscriptJson.Long(usage, "cache_read_input_tokens"),
+            TranscriptJson.Long(usage, "cache_creation_input_tokens"),
+            write1h,
+            write5m);
+    }
 }

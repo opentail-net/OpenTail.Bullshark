@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text.Json;
 
 namespace OpenTail.Bullshark.Core.Activity;
@@ -25,7 +24,8 @@ public sealed record TurnFact(
 /// Reads the turns of a transcript, once, from its lines. A turn starts at a line the transcript view shows as "you" (the rule
 /// resume text uses, D-A5). It ends at its <c>turn_duration</c> record; a turn with none ends at its last record before the next
 /// prompt, or at the end of the file, and its duration is null. Tool calls and compactions before the first prompt form a turn
-/// with an empty prompt. Lines that are blank or not JSON are skipped, but they still count in the line numbers.
+/// with an empty prompt. Lines that are blank or not JSON are skipped, but they still count in the line numbers. So is a line one of
+/// whose values cannot be read: it is neither a record nor a last record (round 12 item A1).
 /// </summary>
 public static class TurnFacts
 {
@@ -40,75 +40,65 @@ public static class TurnFacts
         var number = 0;
         var lastRecord = 0;
         DateTimeOffset? lastTime = null;
-        DateTimeOffset? time = null;
+        var facts = new LineFacts();
 
         foreach (var line in lines)
         {
             number++;
-            if (string.IsNullOrWhiteSpace(line)) continue;
+            if (!TranscriptJson.TryParse(line, out var document)) continue;
 
-            JsonDocument document;
-            try
-            {
-                document = JsonDocument.Parse(line);
-            }
-            catch (JsonException)
-            {
-                continue;
-            }
-
+            // Every value the line is counted from is read first, so a line that cannot be read changes nothing.
             using (document)
             {
-                var root = document.RootElement;
-                var type = Str(root, "type");
-                time = TimeOf(root);
-                var content = ContentOf(root);
+                try
+                {
+                    facts.Read(document.RootElement, number);
+                }
+                catch (Exception ex) when (TranscriptJson.IsUnreadable(ex))
+                {
+                    continue;
+                }
+            }
 
-                if (type == "user" && TranscriptLine.From(number, line) is { Kind: "you" } prompt)
+            var time = facts.Time;
+            if (facts.Type == "user" && facts.PromptText is { } promptText)
+            {
+                // A typed prompt starts a turn. The previous turn, if it never got a turn_duration, ends at its last record.
+                if (open is not null) turns.Add(open.Close(lastRecord, lastTime, null));
+                open = new Turn(number, time, Clip(promptText));
+            }
+            else if (facts.Type == "system" && facts.Subtype == "turn_duration")
+            {
+                if (open is not null)
                 {
-                    // A typed prompt starts a turn. The previous turn, if it never got a turn_duration, ends at its last record.
-                    if (open is not null) turns.Add(open.Close(lastRecord, lastTime, null));
-                    open = new Turn(number, time, Clip(prompt.Text));
+                    turns.Add(open.Close(number, time ?? lastTime, facts.DurationMs is { } ms ? ms / 1000.0 : null));
+                    open = null;
                 }
-                else if (type == "system" && Str(root, "subtype") == "turn_duration")
+            }
+            else if (facts.Type == "system" && facts.Subtype == "compact_boundary")
+            {
+                open ??= new Turn(number, time, string.Empty);
+                open.Compactions++;
+            }
+            else if (facts.Type == "assistant" && facts.ContentIsArray)
+            {
+                foreach (var block in facts.Blocks)
                 {
-                    if (open is not null)
-                    {
-                        var ms = Num(root, "durationMs");
-                        turns.Add(open.Close(number, time ?? lastTime, ms is { } n ? n / 1000.0 : null));
-                        open = null;
-                    }
-                }
-                else if (type == "system" && Str(root, "subtype") == "compact_boundary")
-                {
+                    // A call is counted once per id: the same message can be written in more than one record.
+                    if (block.Id is not { } id) continue;
                     open ??= new Turn(number, time, string.Empty);
-                    open.Compactions++;
+                    if (!open.ToolIds.Add(id)) continue;
+                    open.ToolCalls++;
+                    var name = block.Name ?? "unknown";
+                    open.CountTool(name);
+                    if (block.FilePath is { } path) open.AddFile(path);
                 }
-                else if (type == "assistant" && content is { ValueKind: JsonValueKind.Array } blocks)
+            }
+            else if (facts.Type == "user" && facts.ContentIsArray && open is not null)
+            {
+                foreach (var failedId in facts.FailedResultIds)
                 {
-                    foreach (var block in blocks.EnumerateArray())
-                    {
-                        // A call is counted once per id: the same message can be written in more than one record.
-                        if (Str(block, "type") != "tool_use" || Str(block, "id") is not { } id) continue;
-                        open ??= new Turn(number, time, string.Empty);
-                        if (!open.ToolIds.Add(id)) continue;
-                        open.ToolCalls++;
-                        var name = Str(block, "name") ?? "unknown";
-                        open.CountTool(name);
-                        if (TranscriptReader.FileWritingTools.Contains(name) &&
-                            block.TryGetProperty("input", out var input) && Str(input, "file_path") is { } path)
-                        {
-                            open.AddFile(path);
-                        }
-                    }
-                }
-                else if (type == "user" && content is { ValueKind: JsonValueKind.Array } results && open is not null)
-                {
-                    foreach (var block in results.EnumerateArray())
-                    {
-                        if (Str(block, "type") != "tool_result" || !TranscriptLine.IsFailedResult(block)) continue;
-                        if (Str(block, "tool_use_id") is { } failedId && open.FailedIds.Add(failedId)) open.FailedCalls++;
-                    }
+                    if (failedId is not null && open.FailedIds.Add(failedId)) open.FailedCalls++;
                 }
             }
 
@@ -171,20 +161,57 @@ public static class TurnFacts
             ? content
             : null;
 
-    private static string? Str(JsonElement element, string property) =>
-        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var v) && v.ValueKind == JsonValueKind.String
-            ? v.GetString()
-            : null;
+    /// <summary>
+    /// The values of one transcript line that the turns count from, read before anything is counted (round 12 item A1). A value that cannot be
+    /// read throws, and the line is skipped. The counting itself is in <see cref="Read"/>, in the order of the records. One instance serves a file.
+    /// </summary>
+    private sealed class LineFacts
+    {
+        private readonly List<ToolBlock> _blocks = [];
+        private readonly List<string?> _failedResultIds = [];
 
-    private static long? Num(JsonElement element, string property) =>
-        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var v) &&
-        v.ValueKind == JsonValueKind.Number && v.TryGetInt64(out var n)
-            ? n
-            : null;
+        public DateTimeOffset? Time { get; private set; }
+        public string? Type { get; private set; }
+        public string? Subtype { get; private set; }
+        public long? DurationMs { get; private set; }
+        public string? PromptText { get; private set; }
+        public bool ContentIsArray { get; private set; }
+        public IReadOnlyList<ToolBlock> Blocks => _blocks;
+        public IReadOnlyList<string?> FailedResultIds => _failedResultIds;
 
-    private static DateTimeOffset? TimeOf(JsonElement root) =>
-        Str(root, "timestamp") is { } raw &&
-        DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed)
-            ? parsed
-            : null;
+        public void Read(JsonElement root, int number)
+        {
+            Time = TranscriptJson.Time(root, "timestamp");
+            Type = TranscriptJson.Str(root, "type");
+            Subtype = Type == "system" ? TranscriptJson.Str(root, "subtype") : null;
+            DurationMs = Subtype == "turn_duration" ? TranscriptJson.Number(root, "durationMs") : null;
+            PromptText = Type == "user" && TranscriptLine.FromRoot(number, root) is { Kind: "you" } prompt ? prompt.Text : null;
+
+            _blocks.Clear();
+            _failedResultIds.Clear();
+            ContentIsArray = false;
+            if (ContentOf(root) is not { ValueKind: JsonValueKind.Array } content) return;
+            ContentIsArray = true;
+
+            foreach (var block in content.EnumerateArray())
+            {
+                var blockType = TranscriptJson.Str(block, "type");
+                if (blockType == "tool_use")
+                {
+                    var name = TranscriptJson.Str(block, "name");
+                    string? filePath = null;
+                    if (TranscriptReader.FileWritingTools.Contains(name ?? "unknown") && block.TryGetProperty("input", out var input))
+                        filePath = TranscriptJson.Str(input, "file_path");
+                    _blocks.Add(new ToolBlock(TranscriptJson.Str(block, "id"), name, filePath));
+                }
+                else if (blockType == "tool_result" && TranscriptLine.IsFailedResult(block))
+                {
+                    _failedResultIds.Add(TranscriptJson.Str(block, "tool_use_id"));
+                }
+            }
+        }
+    }
+
+    /// <summary>A tool call of an assistant message as the turns count it: its id, its name, and the file it names when it writes one.</summary>
+    private readonly record struct ToolBlock(string? Id, string? Name, string? FilePath);
 }
