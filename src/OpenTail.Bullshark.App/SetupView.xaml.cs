@@ -229,7 +229,8 @@ public partial class SetupView : UserControl
         Assistant: IsSolo ? "none" : SelectedAssistant,
         AssistantEffort: AssistantEffortBox.SelectedItem as string ?? RunPlan.AssistantEffort,
         PlannerBrief: _plannerBrief,
-        CoderBrief: _coderBrief);
+        CoderBrief: _coderBrief,
+        StartAt: StartTime.Parse(StartAtBox.Text, DateTimeOffset.Now).At);
 
     /// <summary>Checks the folder as the owner types, and shows editable briefs when the run would be valid.</summary>
     private void Refresh()
@@ -330,6 +331,12 @@ public partial class SetupView : UserControl
     /// </summary>
     private void Start_Click(object sender, RoutedEventArgs e)
     {
+        // A start time that is not a time stops the run here, before anything is written (gems item 5).
+        if (StartTime.Parse(StartAtBox.Text, DateTimeOffset.Now).Error is { } startError)
+        {
+            SetStartStatus("Not started: " + startError);
+            return;
+        }
         var request = CurrentRequest();
         var check = SetupPlan.Validate(request, _claudeJson);
 

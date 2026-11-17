@@ -43,7 +43,8 @@ public sealed record SetupRequest(
     string Assistant = "none",
     string AssistantEffort = "medium",
     string? PlannerBrief = null,
-    string? CoderBrief = null);
+    string? CoderBrief = null,
+    DateTimeOffset? StartAt = null);
 
 /// <summary>The result of checking a request: the problems to show, and the folder check.</summary>
 public sealed record SetupCheck(IReadOnlyList<string> Errors, FolderCheckResult? Folder)
@@ -224,7 +225,7 @@ public static class SetupPlan
         var runId = RunNames.NewRunId(takenNames);
         var specs = Build(request, runId);
         return new RunRecord(runId, request.PatternKey, Path.GetFullPath(request.Folder.Trim()),
-            request.PermissionMode, now, specs);
+            request.PermissionMode, now, specs, request.StartAt);
     }
 
     /// <summary>

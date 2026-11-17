@@ -7,6 +7,8 @@ namespace OpenTail.Bullshark.Core.Supervisor;
 /// <summary>
 /// One run started from setup (D-S12): the pattern, the folder, the permission mode, and the full spec list as it was
 /// launched. Patterns are edited for the next launch only (D-S6), so the run keeps the specs it was created with.
+/// <see cref="StartAt"/> (gems item 5) holds a run back until that time: it has no sessions in a pass until then. Null, the
+/// default, means the run starts at once. Files from before the field have no such value, so they load as "at once".
 /// </summary>
 public sealed record RunRecord(
     string RunId,
@@ -14,7 +16,8 @@ public sealed record RunRecord(
     string WorkingDirectory,
     string PermissionMode,
     DateTimeOffset CreatedAt,
-    IReadOnlyList<SessionSpec> Specs);
+    IReadOnlyList<SessionSpec> Specs,
+    DateTimeOffset? StartAt = null);
 
 /// <summary>Reads and writes runs.json. Writes go to a temporary file first, like the state file.</summary>
 public sealed class RunStore
@@ -92,4 +95,18 @@ public sealed class RunStore
     /// <summary>Every session of every run, in run order. The supervisor keeps all of them alive.</summary>
     public static IReadOnlyList<SessionSpec> SpecsOf(IEnumerable<RunRecord> runs) =>
         runs.SelectMany(r => r.Specs).ToList();
+
+    /// <summary>
+    /// The sessions a pass may start, resume or adopt at <paramref name="now"/>: the specs of every run that is not waiting. A run that
+    /// waits has no specs here, so the supervisor neither starts nor adopts its sessions (gems item 5). The rail still shows all runs.
+    /// </summary>
+    public static IReadOnlyList<SessionSpec> DueSpecsOf(IEnumerable<RunRecord> runs, DateTimeOffset now) =>
+        runs.Where(run => !IsWaiting(run, now)).SelectMany(run => run.Specs).ToList();
+
+    /// <summary>Whether a run is held back: it has a start time, and that time is still ahead. The time itself starts the run.</summary>
+    public static bool IsWaiting(RunRecord run, DateTimeOffset now) => run.StartAt is { } at && at > now;
+
+    /// <summary>The runs with the start time of one run cleared, so that it may start at once. The other runs are kept as they are.</summary>
+    public static IReadOnlyList<RunRecord> StartingNow(IEnumerable<RunRecord> runs, string runId) =>
+        runs.Select(run => string.Equals(run.RunId, runId, StringComparison.Ordinal) ? run with { StartAt = null } : run).ToList();
 }

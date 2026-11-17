@@ -254,6 +254,15 @@
                         Style="{StaticResource GoButton}" VerticalAlignment="Center"
                         ToolTip="Checks the run and saves the pattern and model settings for the next launch. Save briefs separately in Preview. Nothing starts until you press Start; the sessions then start on the next pass, within about 15 seconds. A running session keeps the brief it started with."
                         Click="Start_Click" />
+                <StackPanel DockPanel.Dock="Right" VerticalAlignment="Center" Margin="14,0,0,0">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <TextBlock Text="Start at" VerticalAlignment="Center" Foreground="{DynamicResource SetupMuted}" Margin="0,0,6,0" />
+                        <TextBox x:Name="StartAtBox" Width="64" MaxLength="5"
+                                 ToolTip="Optional. A 24-hour time, HH:mm, on this computer's clock. The run waits until then. Blank starts it at once." />
+                    </StackPanel>
+                    <TextBlock Text="Starts only while this window is open." FontSize="11" HorizontalAlignment="Right"
+                               Foreground="{DynamicResource SetupMuted}" />
+                </StackPanel>
                 <StackPanel VerticalAlignment="Center" Margin="14,0,0,0">
                     <TextBlock x:Name="SummaryText" Foreground="{DynamicResource SetupMuted}" TextTrimming="CharacterEllipsis" />
                     <TextBlock x:Name="StartStatus" TextWrapping="Wrap" Visibility="Collapsed" Margin="0,2,0,0" />

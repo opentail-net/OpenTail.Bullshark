@@ -274,7 +274,8 @@ public partial class SessionWindow : Window
         var passAgents = await _cli.ListAgentsAsync(includeCompleted: true);
         var (records, recordsProblem) = LoadRecords(_store);
         var (runs, runsProblem) = LoadRuns(_runStore);
-        var plan = PassSnapshot.Trust(RunStore.SpecsOf(runs), ClaudeTrust.Read(TrustCheck.DefaultClaudeJsonPath));
+        // A run that waits for its start time has no specs here, so it is neither trusted, started nor adopted yet (gems item 5).
+        var plan = PassSnapshot.Trust(RunStore.DueSpecsOf(runs, DateTimeOffset.UtcNow), ClaudeTrust.Read(TrustCheck.DefaultClaudeJsonPath));
 
         // The cache facts of the running sessions are read on every pass: a warm session turns cold with no new record, so the
         // labels are recomputed each time.

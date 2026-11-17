@@ -136,6 +136,9 @@ public partial class SessionWindow
         public string Header { get; } = header;
         public string Tooltip { get; } = tooltip;
         public List<(SessionRecord Record, string State)> Sessions { get; } = [];
+
+        /// <summary>The runs of this folder that wait for their start time (gems item 5). They have no sessions yet.</summary>
+        public List<RunRecord> Waiting { get; } = [];
     }
 
     private void InitRail()
@@ -265,8 +268,12 @@ public partial class SessionWindow
         }
 
         // The folders of this window's sessions come first, so a folder is listed before its sessions start.
-        var specs = Specs;
+        var runs = ReadRuns();
+        var specs = RunStore.SpecsOf(runs);
         foreach (var spec in specs) Folder(spec.WorkingDirectory);
+        // A run that waits for its start time is listed under its folder, with its time, so the owner can start it now (gems item 5).
+        var now = DateTimeOffset.UtcNow;
+        foreach (var run in runs.Where(r => RunStore.IsWaiting(r, now))) Folder(run.WorkingDirectory).Waiting.Add(run);
 
         foreach (var record in records)
         {
@@ -314,6 +321,7 @@ public partial class SessionWindow
                     }
                     folderItem.Items.Add(LiveRow(record, state));
                 }
+                foreach (var run in group.Waiting) folderItem.Items.Add(WaitingRow(run));
                 Rail.Items.Add(folderItem);
             }
 
