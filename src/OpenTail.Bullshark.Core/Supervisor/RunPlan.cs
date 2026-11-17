@@ -218,6 +218,19 @@ public static class RunPlan
         new(name, "resume", folder, "auto", now, [new SessionSpec(SessionRole.Planner, name, folder, model, effort,
             "Continue the session you were resumed into, where it left off.", "auto", SoloResumePrompt)]);
 
+    /// <summary>The alert of a resumed session whose id was not read back in time. The attention list shows it.</summary>
+    public const string PendingIdAlert = "the session started, but its id was not read back in time; the next pass adopts it by its name";
+
+    /// <summary>
+    /// The state record of a resumed session. With its id, it is the session's record. Without it (the session started, but its id
+    /// was not read back in time), the record has no id and its alert says so: the next pass adopts the session by its name, as it
+    /// does for a session whose record was lost (<see cref="SupervisorPolicy"/>), so it is not started a second time.
+    /// </summary>
+    public static SessionRecord ResumedRecord(string name, string? sessionId, DateTimeOffset now) =>
+        string.IsNullOrEmpty(sessionId)
+            ? new SessionRecord(SessionRole.Planner, string.Empty, name, now, 0, [], null, PendingIdAlert)
+            : new SessionRecord(SessionRole.Planner, sessionId, name, now, 0, [], null, null);
+
     /// <summary>Solo's brief: the task and the working rules. It does not name the session (the CLI has the name), and a solo session has no peer.</summary>
     public static string SoloBrief(string task) =>
         $"Task: {task} " +

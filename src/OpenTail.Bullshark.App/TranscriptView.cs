@@ -81,6 +81,9 @@ public sealed class TranscriptView : UserControl
     /// <summary>How many times <see cref="ShowAsync"/> has been called. A call that finishes after a newer one started leaves the view alone.</summary>
     private int _showCalls;
 
+    /// <summary>True while a resume runs, so the Resume button stays off for any session shown meanwhile.</summary>
+    private bool _resumeBusy;
+
     public TranscriptView()
     {
         Content = BuildContent();
@@ -110,7 +113,7 @@ public sealed class TranscriptView : UserControl
     {
         var call = ++_showCalls;
         _digest = digest;
-        _resume.IsEnabled = true;
+        _resume.IsEnabled = !_resumeBusy;
         _resumeHint.Text = ResumeHint(digest);
         // The title is the owner's name when there is one (session library, D-L1); the transcript's own title otherwise.
         SetTitle(title ?? digest.Title);
@@ -306,6 +309,13 @@ public sealed class TranscriptView : UserControl
         row.Children.Add(new TextBlock { Text = lead, Foreground = Brush(_palette.Muted), FontSize = 12 });
         row.Children.Add(link);
         return row;
+    }
+
+    /// <summary>Turns the Resume button off while a resume runs. The window sets it when a resume starts and when it ends.</summary>
+    public void SetResumeBusy(bool busy)
+    {
+        _resumeBusy = busy;
+        _resume.IsEnabled = !busy && _digest is not null;
     }
 
     private void RaiseResume()

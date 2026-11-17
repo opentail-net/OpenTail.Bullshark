@@ -34,8 +34,34 @@ public partial class SessionWindow
         }
     }
 
-    /// <summary>Opens the resume prompt for a past session, then does what the owner chose.</summary>
+    /// <summary>True while a resume runs. A request that comes meanwhile (a second press, or the rail's mark) is refused until it ends.</summary>
+    private bool _resuming;
+
+    /// <summary>
+    /// Runs one resume at a time. The resume button is off while one runs, and a request that comes meanwhile is refused with a status line.
+    /// </summary>
     private async Task ResumeAsync(SessionDigest digest)
+    {
+        if (_resuming)
+        {
+            SetStatus("A resume is already running. Wait for it to finish.");
+            return;
+        }
+        _resuming = true;
+        _transcript.SetResumeBusy(true);
+        try
+        {
+            await ResumeOnceAsync(digest);
+        }
+        finally
+        {
+            _resuming = false;
+            _transcript.SetResumeBusy(false);
+        }
+    }
+
+    /// <summary>Opens the resume prompt for a past session, then does what the owner chose.</summary>
+    private async Task ResumeOnceAsync(SessionDigest digest)
     {
         SetStatus($"Reading session {ShortId(digest.SessionId)}…");
         var (lines, folder) = await Task.Run(() => ResumeSource.Load(digest.FilePath));
@@ -100,17 +126,16 @@ public partial class SessionWindow
         var name = "bullshark-resume-" + RunNames.NewRunId(taken);
         SetStatus($"Resuming {ShortId(digest.SessionId)} in full as {name} ({choice.Model} {choice.Effort})…");
 
-        string sessionId;
+        string shortId;
         try
         {
-            var shortId = await _cli.StartBackgroundAsync(new BackgroundLaunch(
+            shortId = await _cli.StartBackgroundAsync(new BackgroundLaunch(
                 Name: name,
                 WorkingDirectory: folder,
                 Model: choice.Model,
                 Effort: choice.Effort,
                 PermissionMode: "auto",
                 ResumeSessionId: digest.SessionId));
-            sessionId = await _cli.ResolveSessionIdAsync(shortId, TimeSpan.FromSeconds(30));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -119,23 +144,37 @@ public partial class SessionWindow
             return;
         }
 
+        // The session is running from here on, so a failure below is never reported as "not resumed". Its id is read back for the
+        // record; if that takes longer than the wait, the record has no id and the next pass adopts the session by its name.
+        string? sessionId = null;
+        try
+        {
+            sessionId = await _cli.ResolveSessionIdAsync(shortId, TimeSpan.FromSeconds(30));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            AppLog.Write($"resumed as {name} ({shortId}); its id was not read back in time: {ex.Message}");
+        }
+
         // The record first, then the run that keeps it alive. If the record cannot be written the session is running but not kept
         // alive, and the log and the status say so, so the owner can attach to it or stop it.
         try
         {
-            _store.Update(records => records[name] = new SessionRecord(SessionRole.Planner, sessionId, name, DateTimeOffset.UtcNow, 0, [], null, null));
+            _store.Update(records => records[name] = RunPlan.ResumedRecord(name, sessionId, DateTimeOffset.UtcNow));
             _runStore.Update(runs => runs.Append(RunPlan.ResumedRun(name, folder, choice.Model, choice.Effort, DateTimeOffset.UtcNow)).ToList());
         }
         catch (Exception ex) when (ex is StoreUnreadableException or TimeoutException or IOException)
         {
-            AppLog.Write($"resumed {sessionId} as {name} but it is not kept alive: {ex.Message}");
+            AppLog.Write($"resumed {sessionId ?? shortId} as {name} but it is not kept alive: {ex.Message}");
             SetStatus($"Resumed as {name} but not recorded: {ex.Message}. Check the log.");
             RefreshRail();
             return;
         }
 
         RefreshRail();
-        SetStatus($"Resumed {ShortId(digest.SessionId)} in full as {name}. It is kept alive: if it stops, the supervisor resumes it.");
+        SetStatus(sessionId is null
+            ? $"Resume of {ShortId(digest.SessionId)} started as {name}; the session id will be picked up on the next pass."
+            : $"Resumed {ShortId(digest.SessionId)} in full as {name}. It is kept alive: if it stops, the supervisor resumes it.");
     }
 
     /// <summary>
