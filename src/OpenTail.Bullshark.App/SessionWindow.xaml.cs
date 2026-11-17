@@ -47,20 +47,21 @@ public partial class SessionWindow : Window
         var newPaths = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var id in sessionIds)
         {
-            if (!knownPaths.TryGetValue(id, out var path))
-            {
-                path = TranscriptReader.FindTranscript(projectsRoot, id);
-                if (path is null) continue;
-                newPaths[id] = path;
-            }
+            // A failure is this session's alone (round 12 B1): before it, one unreadable transcript failed every pass.
             try
             {
+                if (!knownPaths.TryGetValue(id, out var path))
+                {
+                    path = TranscriptReader.FindTranscript(projectsRoot, id);
+                    if (path is null) continue;
+                    newPaths[id] = path;
+                }
                 var tail = TranscriptTail.Read(path);
                 if (tail is not null) facts[id] = tail;
             }
-            catch (IOException ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                AppLog.Write($"transcript tail not read: {ex.Message}");
+                AppLog.Write($"transcript tail not read ({ClaudeCli.ShortIdOf(id)}): {ex.GetType().Name}: {ex.Message}");
             }
         }
         return (facts, newPaths);

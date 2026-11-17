@@ -569,9 +569,10 @@ public partial class SessionWindow
                 var tail = TranscriptTail.Read(digest.FilePath);
                 if (tail is not null) facts.TryAdd(digest.SessionId, tail);
             }
-            catch (IOException ex)
+            // Any failure is this transcript's alone (round 12 B1, the owner's segmented-load decision): the rest of the history loads.
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                AppLog.Write($"history tail not read: {ex.Message}");
+                AppLog.Write($"history tail not read: {ex.GetType().Name}: {ex.Message}");
             }
         }
         return facts;

@@ -44,9 +44,10 @@ public partial class SessionWindow
                 {
                     writes.Add(_writesCache.Read(record.SessionId, path));
                 }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                // Any failure is this session's alone (round 12 B1): the other sessions of the run are still read.
+                catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    AppLog.Write($"overlap: transcript of {spec.Name} not read: {ex.Message}");
+                    AppLog.Write($"overlap: transcript of {spec.Name} not read: {ex.GetType().Name}: {ex.Message}");
                 }
             }
             result.Add((run, writes));
