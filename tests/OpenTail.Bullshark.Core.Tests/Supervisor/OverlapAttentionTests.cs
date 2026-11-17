@@ -136,4 +136,37 @@ public sealed class OverlapAttentionTests
         Assert.Empty(AttentionList.Gained(previous, cleared));
         Assert.Single(AttentionList.Gained(cleared, again));
     }
+
+    [Fact]
+    public void AnOverlapThatDroppedOutOfOneListingAndCameBackIsNotAnnouncedAgain()
+    {
+        // The overlap was announced. One pass does not list the session live, so the overlap is gone for that pass; the next pass has it again.
+        // The window remembers the notices it has shown, so the same overlap does not sound a second time (round 6 item 6).
+        var announced = AttentionList.NoticeKeys([Overlap(CoderA, FileX, Start)]);
+        var gap = Array.Empty<AttentionItem>();
+        var back = new[] { Overlap(CoderA, FileX, Start) };
+
+        Assert.Empty(AttentionList.Gained(gap, back, announced));
+    }
+
+    [Fact]
+    public void AnOverlapOfAFileNotYetShownIsAnnouncedAfterAGap()
+    {
+        // The remembered keys are per session and file: a second file the session shares is a new notice, even after a gap.
+        var announced = AttentionList.NoticeKeys([Overlap(CoderA, FileX, Start)]);
+        var gap = Array.Empty<AttentionItem>();
+        var back = new[] { Overlap(CoderA, FileY, Start) };
+
+        Assert.Equal(FileY, Assert.Single(AttentionList.Gained(gap, back, announced)).FilePath);
+    }
+
+    [Fact]
+    public void AnOverlapIsAnnouncedWhenNoNoticeHasBeenRemembered()
+    {
+        // Without the remembered keys (a window that has not seen the overlap) the same overlap is new, as before.
+        var gap = Array.Empty<AttentionItem>();
+        var back = new[] { Overlap(CoderA, FileX, Start) };
+
+        Assert.Single(AttentionList.Gained(gap, back, new HashSet<string>(StringComparer.Ordinal)));
+    }
 }

@@ -24,10 +24,11 @@ public partial class SessionWindow
     private IReadOnlyList<AttentionItem>? _announced;
 
     /// <summary>
-    /// The conflicts the window has shown, by <see cref="AttentionList.ConflictKeys"/> (session and files). Kept for the life of the window,
-    /// so a conflict that comes back after its session left done is not announced again (round 5 item 7). Written on the UI thread only.
+    /// The notices the window has shown (overlaps and conflicts), by <see cref="AttentionList.NoticeKeys"/>: the session, the reason and the file or
+    /// files. Kept for the life of the window, so a notice that comes back after a listing gap, or after its session left done, is not announced
+    /// again (round 5 item 7, round 6 item 6). Written on the UI thread only.
     /// </summary>
-    private readonly HashSet<string> _announcedConflicts = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _announcedNotices = new(StringComparer.Ordinal);
 
     private void UpdateNeedsYouCount()
     {
@@ -78,14 +79,15 @@ public partial class SessionWindow
         _announced = _attention;
         if (previous is null)
         {
-            // The first pass sets the baseline: the conflicts in view are remembered, so they are not announced later on.
-            _announcedConflicts.UnionWith(AttentionList.ConflictKeys(_attention));
+            // The first pass sets the baseline: the notices in view are remembered, so they are not announced later on.
+            _announcedNotices.UnionWith(AttentionList.NoticeKeys(_attention));
             return;
         }
 
-        var gained = AttentionList.Gained(previous, _attention, _announcedConflicts);
-        // A conflict is remembered once it has been in view, so a session that leaves done and returns with the same files does not sound again.
-        _announcedConflicts.UnionWith(AttentionList.ConflictKeys(_attention));
+        var gained = AttentionList.Gained(previous, _attention, _announcedNotices);
+        // A notice is remembered once it has been in view, so a session that leaves done, or drops out of one listing, and returns with the same
+        // files does not sound again.
+        _announcedNotices.UnionWith(AttentionList.NoticeKeys(_attention));
         if (gained.Count == 0) return;
         if (!AttentionList.NotificationsOn(UiFile.Read(_options.StatePath, "notify"))) return;
 

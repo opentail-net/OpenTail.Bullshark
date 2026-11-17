@@ -127,9 +127,9 @@ public static class AttentionList
         Gained(previous, current, announced: null);
 
     /// <summary>
-    /// The same rule, and a conflict is also not new when <paramref name="announced"/> has its key: a conflict that was announced once
-    /// does not sound again when its session leaves `done` and comes back with the same files (round 5 item 7). The keys are those of
-    /// <see cref="ConflictKeys"/>, which the caller keeps for the life of the window.
+    /// The same rule, and a notice is also not new when <paramref name="announced"/> has its key: an overlap or a conflict that was announced
+    /// once does not sound again when its session comes back after a listing gap, or after it left `done` with the same files (round 5 item 7,
+    /// round 6 item 6). The keys are those of <see cref="NoticeKeys"/>, which the caller keeps for the life of the window.
     /// </summary>
     public static IReadOnlyList<AttentionItem> Gained(
         IReadOnlyList<AttentionItem> previous,
@@ -141,7 +141,7 @@ public static class AttentionList
         var waiting = previous.Where(item => !IsNotice(item)).Select(item => item.Name).ToHashSet(StringComparer.Ordinal);
         var notices = previous.Where(IsNotice).Select(NoticeKey).ToHashSet(StringComparer.Ordinal);
         return current.Where(item => IsNotice(item)
-                ? !notices.Contains(NoticeKey(item)) && !(item.Reason == AttentionReason.Conflict && announced?.Contains(NoticeKey(item)) == true)
+                ? !notices.Contains(NoticeKey(item)) && announced?.Contains(NoticeKey(item)) != true
                 : !waiting.Contains(item.Name))
             .ToList();
     }
@@ -149,6 +149,13 @@ public static class AttentionList
     /// <summary>The keys of the conflicts in <paramref name="items"/>, for the caller to remember once they have been announced.</summary>
     public static IReadOnlySet<string> ConflictKeys(IEnumerable<AttentionItem> items) =>
         items.Where(item => item.Reason == AttentionReason.Conflict).Select(NoticeKey).ToHashSet(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The keys of the notices (overlaps and conflicts) in <paramref name="items"/>, for the caller to remember once they have been announced.
+    /// The key of a notice is its session, reason and file or files, so a notice that comes back unchanged is the same notice.
+    /// </summary>
+    public static IReadOnlySet<string> NoticeKeys(IEnumerable<AttentionItem> items) =>
+        items.Where(IsNotice).Select(NoticeKey).ToHashSet(StringComparer.Ordinal);
 
     /// <summary>
     /// What makes a notice the same notice: the session, the reason, and the file (an overlap) or the set of files (a conflict). The
