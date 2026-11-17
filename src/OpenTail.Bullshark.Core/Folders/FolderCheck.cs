@@ -46,7 +46,13 @@ public sealed record FolderCheckResult(string FullPath, string Key, FolderStatus
 /// </summary>
 public static class FolderCheck
 {
-    public static FolderCheckResult Check(string folder, string claudeJsonPath)
+    /// <summary>Checks a folder against Claude's trust record, read for this one folder. A page that checks on every key uses the <see cref="ClaudeTrust"/> overload.</summary>
+    public static FolderCheckResult Check(string folder, string claudeJsonPath) => Check(folder, () => ClaudeTrust.Read(claudeJsonPath));
+
+    /// <summary>Checks a folder against a trust record that has already been read, so the answer is the one that read gives.</summary>
+    public static FolderCheckResult Check(string folder, ClaudeTrust trust) => Check(folder, () => trust);
+
+    private static FolderCheckResult Check(string folder, Func<ClaudeTrust> readTrust)
     {
         string full;
         try
@@ -63,7 +69,7 @@ public static class FolderCheck
         if (!Directory.Exists(full))
             return new FolderCheckResult(full, key, FolderStatus.Missing, null, "This folder does not exist.");
 
-        var trust = TrustCheck.Check(full, claudeJsonPath);
+        var trust = TrustCheck.Check(full, readTrust());
         var status = trust.State switch
         {
             TrustState.Trusted => FolderStatus.Trusted,

@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Media;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Threading;
 using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Folders;
 using OpenTail.Bullshark.Core.Setup;
@@ -28,6 +29,15 @@ public partial class SetupView : UserControl
     private string? _coderBrief;
     private string _plannerExtra = string.Empty;
     private string _coderExtra = string.Empty;
+
+    /// <summary>
+    /// Claude's trust record. It is read when the page opens, again when the folder has settled (300 ms after the last change), and at
+    /// Start. Checks on every key use this copy, so the file is not read per keystroke.
+    /// </summary>
+    private ClaudeTrust _trust;
+
+    /// <summary>The pause after the last folder change before the trust record is read again.</summary>
+    private readonly DispatcherTimer _trustDelay = new() { Interval = TimeSpan.FromMilliseconds(300) };
 
     /// <summary>The reviewers on offer (D-S36). "self" is marked, because it is the baseline that costs the most.</summary>
     private sealed record ReviewerChoice(string Value, string Label);
@@ -58,8 +68,15 @@ public partial class SetupView : UserControl
         AssistantEffortBox.ItemsSource = Choices.Efforts;
         foreach (var option in AssistantOptions)
             AssistantBox.Items.Add(new ComboBoxItem { Content = option, Tag = option, ToolTip = AssistantTip(option) });
+        _trust = ClaudeTrust.Read(_claudeJson);
+        _trustDelay.Tick += (_, _) =>
+        {
+            _trustDelay.Stop();
+            _trust = ClaudeTrust.Read(_claudeJson);
+            Refresh();
+        };
         TaskBox.Text = defaultTask;
-        FolderBox.AddHandler(TextBoxBase.TextChangedEvent, new TextChangedEventHandler(OnTextChanged));
+        FolderBox.AddHandler(TextBoxBase.TextChangedEvent, new TextChangedEventHandler(OnFolderTextChanged));
 
         FolderBox.ItemsSource = SuggestedFolders(stateFile);
 
@@ -267,7 +284,7 @@ public partial class SetupView : UserControl
     {
         if (_loading) return;
         var request = CurrentRequest();
-        var check = SetupPlan.Validate(request, _claudeJson);
+        var check = SetupPlan.Validate(request, _trust);
         FolderMessage.Text = check.Folder?.Message ?? string.Empty;
         FolderMessage.Visibility = FolderMessage.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
         PreviewEmpty.Visibility = check.IsValid ? Visibility.Collapsed : Visibility.Visible;
@@ -356,6 +373,16 @@ public partial class SetupView : UserControl
     private void OnTextChanged(object sender, TextChangedEventArgs e) => Refresh();
 
     /// <summary>
+    /// The folder changed. It is checked at once against the record the page holds; the record is read again once the typing pauses.
+    /// </summary>
+    private void OnFolderTextChanged(object sender, TextChangedEventArgs e)
+    {
+        _trustDelay.Stop();
+        _trustDelay.Start();
+        Refresh();
+    }
+
+    /// <summary>
     /// Checks the run and, if it is valid, saves the settings for the next launch. Nothing is started, and the run file is
     /// not written: the launch comes in S5.
     /// </summary>
@@ -374,7 +401,9 @@ public partial class SetupView : UserControl
             return;
         }
         var request = CurrentRequest();
-        var check = SetupPlan.Validate(request, _claudeJson);
+        // Start reads the record again: the owner may have trusted the folder in Claude since the page last read it.
+        _trust = ClaudeTrust.Read(_claudeJson);
+        var check = SetupPlan.Validate(request, _trust);
 
         // An untrusted folder opens its Trust step. No run is written; the owner presses Start again after trust.
         if (check.Folder?.Status == FolderStatus.NotTrusted && check.Folder.RepositoryRoot is { } root)

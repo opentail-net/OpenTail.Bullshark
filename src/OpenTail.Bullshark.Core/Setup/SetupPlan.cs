@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using OpenTail.Bullshark.Core.Claude;
 using OpenTail.Bullshark.Core.Folders;
 using OpenTail.Bullshark.Core.Supervisor;
+using OpenTail.Bullshark.Core.Trust;
 
 namespace OpenTail.Bullshark.Core.Setup;
 
@@ -60,14 +61,20 @@ public static class SetupPlan
     /// Checks a request without writing anything. The folder must exist. An untrusted repository is refused, because
     /// background sessions would not start there (D-S2, F24). Trust is accepted in Claude, never by OpenTail.Bullshark.
     /// </summary>
-    public static SetupCheck Validate(SetupRequest request, string claudeJsonPath)
+    public static SetupCheck Validate(SetupRequest request, string claudeJsonPath) => Validate(request, ClaudeTrust.Read(claudeJsonPath));
+
+    /// <summary>
+    /// The same check against a trust record that has already been read. The setup page reads the record when it opens and when the
+    /// folder settles, so a check on every key does not read the file again.
+    /// </summary>
+    public static SetupCheck Validate(SetupRequest request, ClaudeTrust trust)
     {
         var errors = new List<string>();
 
         var pattern = PatternSpec.Find(request.PatternKey);
         if (pattern is null) errors.Add($"Unknown pattern '{request.PatternKey}'.");
 
-        var folder = FolderCheck.Check(request.Folder ?? string.Empty, claudeJsonPath);
+        var folder = FolderCheck.Check(request.Folder ?? string.Empty, trust);
         if (folder.Status == FolderStatus.Missing) errors.Add(folder.Message);
         if (folder.Status == FolderStatus.NotTrusted)
             errors.Add(folder.Message + " The Trust step for a chosen folder comes in S5.");

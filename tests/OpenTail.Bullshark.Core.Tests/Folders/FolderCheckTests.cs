@@ -1,5 +1,6 @@
 using OpenTail.Bullshark.Core.Folders;
 using OpenTail.Bullshark.Core.Supervisor;
+using OpenTail.Bullshark.Core.Trust;
 using Xunit;
 
 namespace OpenTail.Bullshark.Core.Tests.Folders;
@@ -168,5 +169,18 @@ public sealed class FolderCheckTests : IDisposable
         };
 
         Assert.Equal([FolderKey.Normalise(good)], FolderSuggestions.Build(runs, _claudeJson));
+    }
+
+    [Fact]
+    public void ACheckAgainstARecordReadEarlierAnswersFromThatRead()
+    {
+        // The setup page reads the record once and checks each key against it. A later change to the file is seen by a new read only.
+        var root = Repository("repo", trusted: true);
+        var earlier = ClaudeTrust.Read(_claudeJson);
+
+        Repository("repo", trusted: false);
+
+        Assert.Equal(FolderStatus.Trusted, FolderCheck.Check(root, earlier).Status);
+        Assert.Equal(FolderStatus.NotTrusted, FolderCheck.Check(root, ClaudeTrust.Read(_claudeJson)).Status);
     }
 }
