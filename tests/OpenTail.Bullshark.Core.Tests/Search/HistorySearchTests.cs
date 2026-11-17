@@ -207,4 +207,30 @@ public sealed class HistorySearchTests : IDisposable
 
         Assert.Throws<OperationCanceledException>(() => HistorySearch.Run([session], "lambda", cancellationToken: cancel.Token));
     }
+
+    [Fact]
+    public void ASessionThatFailsUnexpectedlyIsLeftOutAndCountedAndTheSearchGoesOn()
+    {
+        var good = Session("good", [You("sigma here")], Day);
+        var bad = Session("bad", [You("sigma too")], Day.AddMinutes(-1));
+
+        var outcome = HistorySearch.RunCounted([bad, good], "sigma",
+            extraText: digest => digest.SessionId == "bad" ? throw new InvalidOperationException("unexpected") : null);
+
+        Assert.Equal(["good"], outcome.Matches.Select(m => m.Session.SessionId));
+        Assert.Equal(1, outcome.Unreadable);
+    }
+
+    [Fact]
+    public void AMissingTranscriptIsCounted()
+    {
+        var good = Session("good", [You("tau here")], Day);
+        var missing = new SessionDigest("gone", Path.Combine(_dir, "missing.jsonl"), "C--Git", false, null, Day.AddMinutes(-1), 0, 0, 0, 0,
+            new Dictionary<string, int>(), [], null, null, 0, TokenUsage.Zero);
+
+        var outcome = HistorySearch.RunCounted([missing, good], "tau");
+
+        Assert.Single(outcome.Matches);
+        Assert.Equal(1, outcome.Unreadable);
+    }
 }

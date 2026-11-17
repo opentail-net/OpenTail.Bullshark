@@ -8,6 +8,9 @@ public sealed record LineHit(int LineNumber, string Kind, DateTimeOffset? Time, 
 /// <summary>One session that matched: how many of its messages matched any word, and the newest of those messages.</summary>
 public sealed record SessionMatch(SessionDigest Session, int MatchingMessages, IReadOnlyList<LineHit> Hits);
 
+/// <summary>The sessions that matched, and how many sessions were left out because their transcript could not be read.</summary>
+public sealed record SearchOutcome(IReadOnlyList<SessionMatch> Matches, int Unreadable);
+
 /// <summary>
 /// Search over what was said in past sessions (owner, 2026-11-16), the way ChatGPT and Claude.ai search their chats. The owner's
 /// messages and Claude's text replies are searched; tool calls and results are not. A session matches when every word appears
@@ -55,11 +58,24 @@ public static class HistorySearch
         string query,
         bool includeSubagents = false,
         CancellationToken cancellationToken = default,
+        Func<SessionDigest, string?>? extraText = null) =>
+        RunCounted(sessions, query, includeSubagents, cancellationToken, extraText).Matches;
+
+    /// <summary>
+    /// The search, with the count of sessions left out because their transcript could not be read, or because they failed in any other
+    /// way. Such a session is left out and counted; it does not stop the search. Only cancellation does.
+    /// </summary>
+    public static SearchOutcome RunCounted(
+        IEnumerable<SessionDigest> sessions,
+        string query,
+        bool includeSubagents = false,
+        CancellationToken cancellationToken = default,
         Func<SessionDigest, string?>? extraText = null)
     {
         var words = WordsOf(query).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var results = new List<SessionMatch>();
-        if (words.Count == 0) return results;
+        var unreadable = 0;
+        if (words.Count == 0) return new SearchOutcome(results, unreadable);
 
         var newestFirst = sessions
             .Where(digest => includeSubagents || !digest.IsSubagent)
@@ -68,11 +84,22 @@ public static class HistorySearch
         foreach (var digest in newestFirst)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var match = MatchSession(digest, words, extraText?.Invoke(digest), cancellationToken);
-            if (match is not null) results.Add(match);
+            try
+            {
+                var match = MatchSession(digest, words, extraText?.Invoke(digest), cancellationToken);
+                if (match is not null) results.Add(match);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception)
+            {
+                unreadable++;
+            }
             if (results.Count >= MaxResults) break;
         }
-        return results;
+        return new SearchOutcome(results, unreadable);
     }
 
     /// <summary>
@@ -113,32 +140,26 @@ public static class HistorySearch
         var matchingMessages = 0;
         var number = 0;
 
-        try
+        // A transcript that cannot be read throws here. The search counts it and goes on with the next session (RunCounted).
+        foreach (var raw in TranscriptFile.ReadLines(digest.FilePath))
         {
-            foreach (var raw in TranscriptFile.ReadLines(digest.FilePath))
-            {
-                number++;
-                cancellationToken.ThrowIfCancellationRequested();
+            number++;
+            cancellationToken.ThrowIfCancellationRequested();
 
-                // Cheap first: most lines contain no word at all, so they are never parsed. A word that the file may write escaped
-                // (see SameInRawLine) cannot be looked for in the raw line, so it does not rule the line out.
-                if (!words.Any(word => !SameInRawLine(word) || raw.Contains(word, StringComparison.OrdinalIgnoreCase))) continue;
+            // Cheap first: most lines contain no word at all, so they are never parsed. A word that the file may write escaped
+            // (see SameInRawLine) cannot be looked for in the raw line, so it does not rule the line out.
+            if (!words.Any(word => !SameInRawLine(word) || raw.Contains(word, StringComparison.OrdinalIgnoreCase))) continue;
 
-                var shown = TranscriptLine.From(number, raw);
-                if (shown is null || shown.Kind is not ("you" or "claude")) continue;
+            var shown = TranscriptLine.From(number, raw);
+            if (shown is null || shown.Kind is not ("you" or "claude")) continue;
 
-                var inThisMessage = words.Where(word => shown.Text.Contains(word, StringComparison.OrdinalIgnoreCase)).ToList();
-                if (inThisMessage.Count == 0) continue;
+            var inThisMessage = words.Where(word => shown.Text.Contains(word, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (inThisMessage.Count == 0) continue;
 
-                matchingMessages++;
-                foreach (var word in inThisMessage) found.Add(word);
-                if (hits.Count == HitsPerSession) hits.RemoveAt(0);
-                hits.Add(new LineHit(number, shown.Kind, shown.Time, Snippet(shown.Text, inThisMessage[0])));
-            }
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return null;
+            matchingMessages++;
+            foreach (var word in inThisMessage) found.Add(word);
+            if (hits.Count == HitsPerSession) hits.RemoveAt(0);
+            hits.Add(new LineHit(number, shown.Kind, shown.Time, Snippet(shown.Text, inThisMessage[0])));
         }
 
         return found.Count == words.Count ? new SessionMatch(digest, matchingMessages, hits) : null;

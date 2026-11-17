@@ -98,27 +98,33 @@ public partial class SessionWindow
         _ = RunSearchAsync(query, _history.ToList(), cancel);
     }
 
-    /// <summary>The search runs off the UI thread. A newer search, or closing the tab, cancels it, and its result is then not shown.</summary>
+    /// <summary>
+    /// The search runs off the UI thread. A newer search, or closing the tab, cancels it, and its result is then not shown. The search
+    /// source is disposed when the search ends; a search that is no longer the current one does not touch the hourglass or the status.
+    /// </summary>
     private async Task RunSearchAsync(string query, List<SessionDigest> sessions, CancellationTokenSource cancel)
     {
         try
         {
             // The marks are read from this snapshot: the search runs on a pool thread while the rail may replace them (D-L7).
             var marks = _marks;
-            var results = await Task.Run(() => HistorySearch.Run(sessions, query, cancellationToken: cancel.Token,
+            var outcome = await Task.Run(() => HistorySearch.RunCounted(sessions, query, cancellationToken: cancel.Token,
                 extraText: digest => SearchableText(marks, digest.SessionId)), cancel.Token);
-            if (cancel.IsCancellationRequested) return;
+            if (!IsCurrentSearch(cancel)) return;
 
+            var results = outcome.Matches;
             var matches = new Dictionary<string, SessionMatch>(StringComparer.OrdinalIgnoreCase);
             foreach (var match in results) matches[match.Session.SessionId] = match;
             _searchMatches = matches;
             SetBusy(false);
 
-            _search.ShowResults(query, results);
+            _search.ShowResults(query, results, DisplayTitle);
             RefreshRail();
             var total = sessions.Count(s => !s.IsSubagent);
+            var skipped = outcome.Unreadable > 0 ? $" {outcome.Unreadable} session(s) could not be read and are left out." : string.Empty;
             SetStatus($"{results.Count} of {total} sessions say every word of \"{query}\". Newest first." +
-                      (results.Count == HistorySearch.MaxResults ? $" The first {HistorySearch.MaxResults} are shown." : string.Empty));
+                      (results.Count == HistorySearch.MaxResults ? $" The first {HistorySearch.MaxResults} are shown." : string.Empty) +
+                      skipped);
         }
         catch (OperationCanceledException)
         {
@@ -126,11 +132,22 @@ public partial class SessionWindow
         }
         catch (Exception ex)
         {
+            // A search that was replaced or closed must not touch the hourglass or the status of the one that replaced it.
+            if (!IsCurrentSearch(cancel)) return;
             SetBusy(false);
             AppLog.Write($"search failed: {ex.Message}");
             SetStatus($"Search failed: {ex.Message}");
         }
+        finally
+        {
+            if (ReferenceEquals(_searchCancel, cancel)) _searchCancel = null;
+            cancel.Dispose();
+        }
     }
+
+    /// <summary>True while <paramref name="cancel"/> is the search on screen: no newer search has replaced it, and it was not cancelled.</summary>
+    private bool IsCurrentSearch(CancellationTokenSource cancel) =>
+        ReferenceEquals(_searchCancel, cancel) && !cancel.IsCancellationRequested;
 
     /// <summary>Stops a running search and shows the whole history again.</summary>
     private void ClearSearchFilter()

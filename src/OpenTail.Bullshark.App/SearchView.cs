@@ -23,6 +23,9 @@ public sealed class SearchView : UserControl
 
     private readonly TextBlock _heading = new();
     private readonly StackPanel _list = new();
+
+    /// <summary>The title of a result as the rail shows it, when the window gives one.</summary>
+    private Func<SessionDigest, string>? _titleOf;
     private RailPalette _palette = RailPalette.DarkPalette;
     private Mode _mode = Mode.Searching;
     private string _query = string.Empty;
@@ -69,11 +72,16 @@ public sealed class SearchView : UserControl
         Render();
     }
 
-    public void ShowResults(string query, IReadOnlyList<SessionMatch> matches)
+    /// <summary>
+    /// Shows the matching sessions. <paramref name="titleOf"/> gives each one's title as the rail shows it (the owner's name, when there is one);
+    /// without it, the transcript's own title is shown.
+    /// </summary>
+    public void ShowResults(string query, IReadOnlyList<SessionMatch> matches, Func<SessionDigest, string>? titleOf = null)
     {
         _mode = Mode.Results;
         _query = query;
         _matches = matches;
+        _titleOf = titleOf;
         Render();
     }
 
@@ -109,7 +117,7 @@ public sealed class SearchView : UserControl
 
         var title = new TextBlock
         {
-            Text = digest.Title,
+            Text = _titleOf?.Invoke(digest) ?? digest.Title,
             FontWeight = FontWeights.SemiBold,
             FontSize = 13,
             TextWrapping = TextWrapping.Wrap,
