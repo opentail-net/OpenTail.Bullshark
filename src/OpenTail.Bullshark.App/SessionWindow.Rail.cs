@@ -188,6 +188,7 @@ public partial class SessionWindow
         _search.ApplyTheme(palette);
         _transcript.ApplyTheme(palette);
         _changes.ApplyTheme(palette);
+        _timeline.ApplyTheme(palette);
         FilterBox.Background = RailPalette.Brush(palette.Panel);
         FilterBox.BorderBrush = RailPalette.Brush(palette.Muted);
         UpdateFilterMark();

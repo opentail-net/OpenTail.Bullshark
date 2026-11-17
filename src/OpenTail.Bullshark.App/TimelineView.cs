@@ -29,6 +29,7 @@ public sealed class TimelineView : UserControl
 
     private IReadOnlyList<SupervisorEvent> _events = [];
     private bool _loading;
+    private RailPalette _palette = RailPalette.DarkPalette;
 
     public TimelineView()
     {
@@ -63,6 +64,18 @@ public sealed class TimelineView : UserControl
 
     /// <summary>The Refresh button was pressed. The window reads the log again.</summary>
     public event Action? RefreshRequested;
+
+    /// <summary>
+    /// Takes the rail's palette, as the other views do. The list's items were drawn in the default colour, which is unreadable on the
+    /// dark background, so the lines are drawn again in the palette's text colour.
+    /// </summary>
+    public void ApplyTheme(RailPalette palette)
+    {
+        _palette = palette;
+        Foreground = RailPalette.Brush(palette.Text);
+        _caption.Foreground = RailPalette.Brush(palette.Muted);
+        Draw();
+    }
 
     /// <summary>Shows the runs (newest first), and the events of the log. The run chosen before stays chosen when it is still listed.</summary>
     public void Show(IReadOnlyList<RunRecord> runs, IReadOnlyList<SupervisorEvent> events)
@@ -104,7 +117,7 @@ public sealed class TimelineView : UserControl
         _lines.Items.Clear();
         if (_runs.SelectedItem is not RunChoice choice)
         {
-            _lines.Items.Add("Nothing to show yet.");
+            _lines.Items.Add(Line("Nothing to show yet."));
             return;
         }
 
@@ -115,10 +128,13 @@ public sealed class TimelineView : UserControl
             .ToList();
         if (shown.Count == 0)
         {
-            _lines.Items.Add("No events for this run yet.");
+            _lines.Items.Add(Line("No events for this run yet."));
             return;
         }
         foreach (var e in shown)
-            _lines.Items.Add($"{e.At.ToLocalTime():HH:mm:ss}  {e.Session,-28} {e.Event,-24} {e.Detail}");
+            _lines.Items.Add(Line($"{e.At.ToLocalTime():HH:mm:ss}  {e.Session,-28} {e.Event,-24} {e.Detail}"));
     }
+
+    /// <summary>One line of the list, in the palette's text colour.</summary>
+    private TextBlock Line(string text) => new() { Text = text, Foreground = RailPalette.Brush(_palette.Text) };
 }
