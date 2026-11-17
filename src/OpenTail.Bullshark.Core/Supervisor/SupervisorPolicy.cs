@@ -46,8 +46,13 @@ public abstract record SupervisorAction(SessionRole Role)
     /// <summary>Start a session for the first time, with its brief. The session id is read back after the launch.</summary>
     public sealed record Start(SessionRole Role, SessionSpec Spec) : SupervisorAction(Role);
 
-    /// <summary>A session of this name is already listed: its record is written from the listing, and nothing is started.</summary>
-    public sealed record Adopt(SessionRole Role, SessionSpec Spec, string SessionId, string State) : SupervisorAction(Role);
+    /// <summary>
+    /// A session of this name is already listed: its record is written from the listing, and nothing is started. <paramref name="StartedAt"/> is the
+    /// session's own start from the listing, so the run's clock counts from when it really started, not from this adoption (round 8 item 4). Null
+    /// when the listing gives none: the record then starts now.
+    /// </summary>
+    public sealed record Adopt(SessionRole Role, SessionSpec Spec, string SessionId, string State, DateTimeOffset? StartedAt = null)
+        : SupervisorAction(Role);
 
     /// <summary>The session is gone from `agents --json`: resume it under the same session id.</summary>
     public sealed record Resume(SessionRole Role, SessionSpec Spec, string SessionId) : SupervisorAction(Role);
@@ -155,7 +160,7 @@ public static class SupervisorPolicy
                 string.Equals(a.Name, spec.Name, StringComparison.Ordinal) && !Is(a.EffectiveState, "stopped") && !Is(a.EffectiveState, "failed")
                 && !Is(a.EffectiveState, DaemonStatus.StaleState));
             if (listed?.SessionId is { Length: > 0 } adoptId)
-                return [new SupervisorAction.Adopt(spec.Role, spec, adoptId, listed.EffectiveState)];
+                return [new SupervisorAction.Adopt(spec.Role, spec, adoptId, listed.EffectiveState, listed.StartedAt)];
         }
 
         // First start: nothing is remembered for this role.

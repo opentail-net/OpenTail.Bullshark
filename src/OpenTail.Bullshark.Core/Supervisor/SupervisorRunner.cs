@@ -256,7 +256,9 @@ public sealed class SupervisorRunner
                 break;
 
             case SupervisorAction.Adopt adopt:
-                records[spec.Name] = new SessionRecord(spec.Role, adopt.SessionId, spec.Name, now, 0, [], adopt.State, null);
+                // The run's clock counts from the session's own start when the listing has it (round 8 item 4). A record that is kept
+                // keeps its StartedAt: Resume copies the record, and a start or an adoption only replaces a record with no session id.
+                records[spec.Name] = new SessionRecord(spec.Role, adopt.SessionId, spec.Name, adopt.StartedAt ?? now, 0, [], adopt.State, null);
                 _log($"{spec.Name}: adopted the listed session {adopt.SessionId}");
                 break;
 

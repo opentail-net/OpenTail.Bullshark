@@ -568,4 +568,34 @@ public sealed class SupervisorRunnerTests : IDisposable
         Assert.Contains(logged, l => l.Contains("events: not written"));
         Assert.DoesNotContain(logged, l => l.Contains("start failed"));
     }
+
+    [Fact]
+    public async Task AnAdoptedSessionIsRecordedFromItsOwnStartNotFromTheAdoption()
+    {
+        // Round 8 item 4: a lost record of a session that is still listed. The run's clock counts from the listed start (2 hours ago).
+        var listedStart = new DateTimeOffset(2026, 11, 17, 10, 0, 0, TimeSpan.Zero);
+        var listing = $$"""[{"id":"abcdef12","kind":"background","sessionId":"{{PlannerSession}}","name":"{{TestSpecs.PlannerName}}","state":"working","startedAt":{{listedStart.ToUnixTimeMilliseconds()}}}]""";
+        var store = new StateStore(Path.Combine(_dir, "state.json"));
+        var clock = new FakeClock(new DateTimeOffset(2026, 11, 17, 12, 0, 0, TimeSpan.Zero));
+        var cli = new FakeCliRunner(args => args[0] == "agents" ? FakeCliRunner.Ok(listing) : FakeCliRunner.Ok());
+
+        var performed = await Runner(new ClaudeCli(cli), store, clock).CheckOnceAsync([TestSpecs.Planner(@"C:\W", "brief")]);
+
+        Assert.IsType<SupervisorAction.Adopt>(Assert.Single(performed));
+        Assert.Equal(listedStart, store.Load()[TestSpecs.PlannerName].StartedAt);
+        Assert.DoesNotContain(cli.Calls, c => c.Args[0] == "--bg");
+    }
+
+    [Fact]
+    public async Task AnAdoptionWithoutAListedStartIsRecordedFromNow()
+    {
+        var store = new StateStore(Path.Combine(_dir, "state.json"));
+        var now = new DateTimeOffset(2026, 11, 17, 12, 0, 0, TimeSpan.Zero);
+        var listing = $$"""[{"id":"abcdef12","kind":"background","sessionId":"{{PlannerSession}}","name":"{{TestSpecs.PlannerName}}","state":"working"}]""";
+        var cli = new FakeCliRunner(args => args[0] == "agents" ? FakeCliRunner.Ok(listing) : FakeCliRunner.Ok());
+
+        await Runner(new ClaudeCli(cli), store, new FakeClock(now)).CheckOnceAsync([TestSpecs.Planner(@"C:\W", "brief")]);
+
+        Assert.Equal(now, store.Load()[TestSpecs.PlannerName].StartedAt);
+    }
 }

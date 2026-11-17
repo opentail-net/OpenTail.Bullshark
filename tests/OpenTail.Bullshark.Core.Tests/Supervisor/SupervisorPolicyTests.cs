@@ -341,4 +341,17 @@ public sealed class SupervisorPolicyTests
         var adopt = Assert.IsType<SupervisorAction.Adopt>(Assert.Single(actions));
         Assert.Equal(SessionId, adopt.SessionId);
     }
+
+    [Fact]
+    public void AnAdoptionCarriesTheListedStartOfTheSession()
+    {
+        // Round 8 item 4: the session started two hours ago; the adoption is now. The adoption carries the listed start.
+        var started = Now.AddHours(-2);
+        var listed = new AgentInfo(Id: "abcdef12", SessionId: SessionId, Name: TestSpecs.PlannerName, Kind: "background", State: "working", Status: null,
+            Cwd: null, Pid: null, StartedAt: started);
+
+        var adopt = Assert.IsType<SupervisorAction.Adopt>(Assert.Single(SupervisorPolicy.Decide(Planner, null, [listed], Now, SupervisorRules.Default)));
+
+        Assert.Equal(started, adopt.StartedAt);
+    }
 }
