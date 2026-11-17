@@ -252,14 +252,14 @@ public sealed class SupervisorRunner
                 break;
 
             case SupervisorAction.Alert alert:
-                // A limit notice also records its level, which is what keeps it from being repeated (round 5 item 8).
-                var level = alert.Kind switch
+                // A limit notice records its level, which is what keeps it from being repeated (round 5 item 8). It does not replace the last
+                // alert: a restart-loop or a stopped alert must stay visible when the run reaches its limit too (round 6 item 4).
+                records[spec.Name] = alert.Kind switch
                 {
-                    AlertKind.LimitNear => RunBudget.NearLevel,
-                    AlertKind.LimitReached => RunBudget.ReachedLevel,
-                    _ => records[spec.Name].LimitLevel,
+                    AlertKind.LimitNear => records[spec.Name] with { LimitLevel = RunBudget.NearLevel },
+                    AlertKind.LimitReached => records[spec.Name] with { LimitLevel = RunBudget.ReachedLevel },
+                    _ => records[spec.Name] with { LastAlert = $"{alert.Kind}: {alert.Detail}" },
                 };
-                records[spec.Name] = records[spec.Name] with { LastAlert = $"{alert.Kind}: {alert.Detail}", LimitLevel = level };
                 _log($"{spec.Name}: ALERT {alert.Kind} - {alert.Detail}");
                 break;
 

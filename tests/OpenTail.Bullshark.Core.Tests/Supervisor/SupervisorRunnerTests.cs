@@ -212,7 +212,7 @@ public sealed class SupervisorRunnerTests : IDisposable
     }
 
     [Fact]
-    public async Task AStopIsKeptWhenAnotherAlertReplacesTheLastAlertBeforeTheRemoval()
+    public async Task AStopIsKeptWhenTheRunIsNearItsLimitBeforeTheRemoval()
     {
         var store = new StateStore(Path.Combine(_dir, "state.json"));
         store.Save(new Dictionary<string, SessionRecord>
@@ -229,10 +229,12 @@ public sealed class SupervisorRunnerTests : IDisposable
         var runner = Runner(new ClaudeCli(cli), store, clock);
         var spec = TestSpecs.Planner(@"C:\W", "brief");
 
-        // The run is near its limit on the same pass that sees the stop, so the limit alert replaces the stop as the last alert.
+        // The run is near its limit on the same pass that sees the stop. The limit notice keeps its level, not the last alert (round 6 item 4),
+        // so the stop stays the last alert and still holds the session back after it is removed.
         runner.Budgets = new Dictionary<string, RunBudget>(StringComparer.Ordinal) { [TestSpecs.PlannerName] = new RunBudget(0.9) };
         await runner.CheckOnceAsync([spec]);
-        Assert.StartsWith("LimitNear: ", store.Load()[TestSpecs.PlannerName].LastAlert);
+        Assert.StartsWith("Stopped: ", store.Load()[TestSpecs.PlannerName].LastAlert);
+        Assert.Equal(RunBudget.NearLevel, store.Load()[TestSpecs.PlannerName].LimitLevel);
 
         listing = "[]";
         clock.Now = clock.Now.AddMinutes(5);
@@ -272,6 +274,39 @@ public sealed class SupervisorRunnerTests : IDisposable
         clock.Now = clock.Now.AddMinutes(5);
         Assert.IsType<SupervisorAction.Resume>(Assert.Single(await runner.CheckOnceAsync([spec])));
         Assert.Equal(1, cli.Calls.Count(c => c.Args[0] == "--bg"));
+    }
+
+    [Fact]
+    public async Task ARestartLoopStaysTheLastAlertWhenTheRunReachesItsLimit()
+    {
+        // Three restarts in the last hour: the session is lost, and the restart-loop alert is the last alert.
+        var store = new StateStore(Path.Combine(_dir, "state.json"));
+        var t0 = new DateTimeOffset(2026, 11, 17, 12, 0, 0, TimeSpan.Zero);
+        store.Save(new Dictionary<string, SessionRecord>
+        {
+            [TestSpecs.PlannerName] = new(SessionRole.Planner, PlannerSession, TestSpecs.PlannerName, t0.AddDays(-1), 3,
+                [t0.AddMinutes(-30), t0.AddMinutes(-20), t0.AddMinutes(-10)], null, null),
+        });
+        var clock = new FakeClock(t0);
+        var lost = new FakeCliRunner(args => args[0] switch
+        {
+            "agents" => FakeCliRunner.Ok("[]"),
+            "--bg" => FakeCliRunner.Ok($"backgrounded · {ShortId} · planner\n"),
+            _ => FakeCliRunner.Ok(),
+        });
+        var runner = Runner(new ClaudeCli(lost), store, clock);
+        var spec = TestSpecs.Planner(@"C:\W", "brief");
+        Assert.Equal(AlertKind.RestartLoop, Assert.IsType<SupervisorAction.Alert>(Assert.Single(await runner.CheckOnceAsync([spec]))).Kind);
+
+        // The run reaches its limit: the owner is told, and the restart-loop alert is still the last alert.
+        runner.Budgets = new Dictionary<string, RunBudget>(StringComparer.Ordinal) { [TestSpecs.PlannerName] = new RunBudget(1.0) };
+        clock.Now = t0.AddMinutes(1);
+        Assert.Equal(AlertKind.LimitReached, Assert.IsType<SupervisorAction.Alert>(Assert.Single(await runner.CheckOnceAsync([spec]))).Kind);
+
+        var saved = store.Load()[TestSpecs.PlannerName];
+        Assert.StartsWith("RestartLoop: ", saved.LastAlert);
+        Assert.Equal(RunBudget.ReachedLevel, saved.LimitLevel);
+        Assert.Equal(AttentionReason.RestartLoop, Assert.Single(AttentionList.From([saved], [])).Reason);
     }
 
     [Fact]
