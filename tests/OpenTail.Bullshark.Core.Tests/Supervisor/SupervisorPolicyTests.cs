@@ -158,8 +158,8 @@ public sealed class SupervisorPolicyTests
     [Fact]
     public void AFinishedSessionOfTheSameNameIsNotAdopted()
     {
-        // An earlier run's session of this name has ended. It is not running, so the role is started again.
-        foreach (var state in new[] { "done", "stopped", "failed" })
+        // A stopped or failed session of this name is not adopted, so the role is started again.
+        foreach (var state in new[] { "stopped", "failed" })
         {
             var actions = SupervisorPolicy.Decide(Planner, null,
                 [NamedAgent(TestSpecs.PlannerName, state, "99999999-aaaa-bbbb-cccc-dddddddddddd")], Now, SupervisorRules.Default);
@@ -168,9 +168,19 @@ public sealed class SupervisorPolicyTests
     }
 
     [Fact]
-    public void ARunningSessionOfTheSameNameIsAdoptedRatherThanAFinishedOne()
+    public void AnIdleDoneSessionOfTheSameNameIsAdoptedNotStartedTwice()
     {
-        var finished = NamedAgent(TestSpecs.PlannerName, "done", "99999999-aaaa-bbbb-cccc-dddddddddddd");
+        // The record was lost while the session sat idle (`done`). Starting the role again would be a second paid session.
+        var actions = SupervisorPolicy.Decide(Planner, null, [NamedAgent(TestSpecs.PlannerName, "done", SessionId)], Now, SupervisorRules.Default);
+
+        var adopt = Assert.IsType<SupervisorAction.Adopt>(Assert.Single(actions));
+        Assert.Equal(SessionId, adopt.SessionId);
+    }
+
+    [Fact]
+    public void ARunningSessionOfTheSameNameIsAdoptedRatherThanAStoppedOne()
+    {
+        var finished = NamedAgent(TestSpecs.PlannerName, "stopped", "99999999-aaaa-bbbb-cccc-dddddddddddd");
         var running = NamedAgent(TestSpecs.PlannerName, "working", SessionId);
 
         var actions = SupervisorPolicy.Decide(Planner, null, [finished, running], Now, SupervisorRules.Default);

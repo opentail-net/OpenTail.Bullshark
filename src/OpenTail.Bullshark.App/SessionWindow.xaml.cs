@@ -68,6 +68,12 @@ public partial class SessionWindow : Window
     private bool _passRunning;
     private IReadOnlyList<AgentInfo> _agents = [];
 
+    /// <summary>
+    /// The listing with completed sessions (`--all`) from the last pass. Names already in use come from this one, so a new run
+    /// never reuses the name of a finished session: a `done` session of a run's name can then only be that run's own (F61).
+    /// </summary>
+    private IReadOnlyList<AgentInfo> _allAgents = [];
+
     /// <summary>The Trust steps that are open, one per untrusted repository root. The key is the folder key of the root.</summary>
     private readonly Dictionary<string, TrustStep> _trustSteps = new(StringComparer.OrdinalIgnoreCase);
     private sealed record TrustStep(string Root, ExtendedTerminalControl Terminal);
@@ -208,6 +214,7 @@ public partial class SessionWindow : Window
             var read = await Task.Run(() => ReadForPassAsync(known));
 
             _agents = read.Agents;
+            _allAgents = read.PassAgents;
             _runningFacts = read.Facts;
             foreach (var pair in read.NewPaths) _transcriptPaths[pair.Key] = pair.Value;
             _storeProblem = read.StoreProblem;
@@ -467,7 +474,7 @@ public partial class SessionWindow : Window
     {
         var taken = ReadRecords().Keys
             .Concat(RunStore.SpecsOf(ReadRuns()).Select(s => s.Name))
-            .Concat(_agents.Select(a => a.Name))
+            .Concat(_agents.Concat(_allAgents).Select(a => a.Name))
             .ToList();
         var run = SetupPlan.CreateRun(request, taken, DateTimeOffset.UtcNow);
         try

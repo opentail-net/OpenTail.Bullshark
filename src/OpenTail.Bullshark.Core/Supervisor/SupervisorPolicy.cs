@@ -65,8 +65,6 @@ public static class SupervisorPolicy
     /// `done` is also the state of an idle session that is still running, and the listing does not tell the two apart, so a
     /// `done` session is never adopted as the role's session (a finished one would then never be replaced).
     /// </summary>
-    private static bool HasEnded(string? state) => Is(state, "done") || Is(state, "stopped") || Is(state, "failed");
-
     private static bool Is(string? state, string expected) => string.Equals(state, expected, StringComparison.OrdinalIgnoreCase);
 
     public static IReadOnlyList<SupervisorAction> Decide(
@@ -77,12 +75,13 @@ public static class SupervisorPolicy
         SupervisorRules rules)
     {
         // Adoption first: a session of this name is already running, because the record was lost or the start was not read back.
-        // Starting it again would be a second paid session. A session of this name that has ended is not running, so it is not
-        // adopted: the role is started again.
+        // Starting it again would be a second paid session. An idle `done` session is adopted too: the listing cannot tell idle
+        // from completed, and new names avoid every listed name, completed ones included, so it is this run's own. A finished
+        // session is then left alone, as `done` always is. Stopped and failed sessions are not adopted: the role starts again.
         if (record is null || string.IsNullOrEmpty(record.SessionId))
         {
             var listed = agents.FirstOrDefault(a =>
-                string.Equals(a.Name, spec.Name, StringComparison.Ordinal) && !HasEnded(a.EffectiveState));
+                string.Equals(a.Name, spec.Name, StringComparison.Ordinal) && !Is(a.EffectiveState, "stopped") && !Is(a.EffectiveState, "failed"));
             if (listed?.SessionId is { Length: > 0 } adoptId)
                 return [new SupervisorAction.Adopt(spec.Role, spec, adoptId, listed.EffectiveState)];
         }

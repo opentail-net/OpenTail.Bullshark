@@ -79,7 +79,7 @@ public partial class SessionWindow
             return;
         }
 
-        var taken = ReadRecords().Keys.Concat(_agents.Select(a => a.Name)).ToList();
+        var taken = ReadRecords().Keys.Concat(_agents.Concat(_allAgents).Select(a => a.Name)).ToList();
         var name = "bullshark-resume-" + RunNames.NewRunId(taken);
         SetStatus($"Resuming {ShortId(digest.SessionId)} in full as {name} ({choice.Model} {choice.Effort})…");
 
