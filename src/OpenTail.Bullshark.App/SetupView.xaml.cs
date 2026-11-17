@@ -197,7 +197,18 @@ public partial class SetupView : UserControl
     private void LoadPattern()
     {
         _loading = true;
-        var saved = _patterns.For(Pattern.Key);
+        PatternSettings saved;
+        try
+        {
+            saved = _patterns.For(Pattern.Key);
+        }
+        catch (Exception ex) when (ex is StoreUnreadableException or TimeoutException or IOException or UnauthorizedAccessException)
+        {
+            // The saved settings are not read: the defaults are shown, and the page says why. Saving is refused until the file is fixed.
+            AppLog.Write($"patterns not read: {ex.Message}");
+            SetStartStatus($"Saved settings not read: {ex.Message}");
+            saved = PatternStore.Defaults(Pattern.Key);
+        }
 
         PatternDescription.Text = Pattern.Description;
         PlannerModelBox.SelectedItem = saved.PlannerModel;
@@ -328,7 +339,7 @@ public partial class SetupView : UserControl
             });
             SetStartStatus(successMessage);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is StoreUnreadableException or TimeoutException or IOException or UnauthorizedAccessException)
         {
             AppLog.Write($"briefs not saved: {ex.Message}");
             SetStartStatus($"Briefs not saved: {ex.Message}");
@@ -383,7 +394,7 @@ public partial class SetupView : UserControl
                 request.CoderModel, request.CoderEffort, request.Coders, request.PlannerExtra, request.CoderExtra, request.Reviewer,
                 request.Assistant, request.AssistantEffort, request.PlannerBrief, request.CoderBrief));
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is StoreUnreadableException or TimeoutException or IOException or UnauthorizedAccessException)
         {
             AppLog.Write($"settings not saved: {ex.Message}");
             SetStartStatus($"Not saved: {ex.Message}");

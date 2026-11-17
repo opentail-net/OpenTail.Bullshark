@@ -17,6 +17,23 @@ namespace OpenTail.Bullshark.App;
 /// </summary>
 public partial class SessionWindow
 {
+    /// <summary>
+    /// The solo pattern's saved models and efforts, for a resume. A patterns.json that cannot be read gives the defaults: a resume
+    /// writes no pattern, so it need not stop for the file.
+    /// </summary>
+    private PatternSettings SavedSolo()
+    {
+        try
+        {
+            return PatternStore.Beside(_options.StatePath).For("solo");
+        }
+        catch (Exception ex) when (ex is StoreUnreadableException or TimeoutException or IOException or UnauthorizedAccessException)
+        {
+            AppLog.Write($"patterns not read for a resume: {ex.Message}");
+            return PatternStore.Defaults("solo");
+        }
+    }
+
     /// <summary>Opens the resume prompt for a past session, then does what the owner chose.</summary>
     private async Task ResumeAsync(SessionDigest digest)
     {
@@ -29,7 +46,7 @@ public partial class SessionWindow
         }
 
         var facts = $"{digest.Turns} {(digest.Turns == 1 ? "turn" : "turns")} · last active {AgeOf(digest.LastActivity)} · in {folder}";
-        var defaults = PatternStore.Beside(_options.StatePath).For("solo");
+        var defaults = SavedSolo();
         var prompt = new ResumePrompt($"Resume: {DisplayTitle(digest)}", facts, digest.ContextTokensAtLastTurn, Palette,
             defaults.PlannerModel, defaults.PlannerEffort)
         {
@@ -148,7 +165,7 @@ public partial class SessionWindow
 
         // The start text names the session it continues, on its first line (D-L8). The new session's transcript carries it.
         var text = ResumeText.Compose(summary, choice.Level, ResumeText.Tail(lines, choice.Turns), choice.Turns, digest.SessionId);
-        var pattern = PatternStore.Beside(_options.StatePath).For("solo");
+        var pattern = SavedSolo();
         var request = new SetupRequest(
             PatternKey: "solo",
             Folder: folder,

@@ -1,4 +1,5 @@
 using OpenTail.Bullshark.Core.Setup;
+using OpenTail.Bullshark.Core.Supervisor;
 using Xunit;
 
 namespace OpenTail.Bullshark.Core.Tests.Setup;
@@ -60,14 +61,65 @@ public sealed class PatternStoreTests : IDisposable
     }
 
     [Fact]
-    public void ACorruptFileGivesTheDefaultsInsteadOfFailing()
+    public void ACorruptFileIsNotReadAsEmptyAndIsNotOverwritten()
     {
         var path = Path.Combine(_dir, "patterns.json");
         File.WriteAllText(path, "{ not json");
+        var store = new PatternStore(path);
 
-        var settings = new PatternStore(path).For("plan-code");
+        Assert.Throws<StoreUnreadableException>(() => store.For("plan-code"));
+        Assert.Throws<StoreUnreadableException>(() => store.Save(PatternStore.Defaults("solo")));
 
-        Assert.Equal("opus", settings.PlannerModel);
+        Assert.Equal("{ not json", File.ReadAllText(path));
+    }
+
+    [Fact]
+    public void AFileThatCannotBeReadSurfacesAsTheStoreError()
+    {
+        var path = Path.Combine(_dir, "patterns.json");
+        File.WriteAllText(path, "{}");
+        var store = new PatternStore(path);
+
+        // Another process holds the file without sharing it, as an antivirus or sync tool can.
+        using (new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            Assert.Throws<StoreUnreadableException>(() => store.For("plan-code"));
+            Assert.Throws<StoreUnreadableException>(() => store.Save(PatternStore.Defaults("solo")));
+        }
+
+        Assert.Equal("{}", File.ReadAllText(path));
+    }
+
+    [Fact]
+    public void TwoWritersKeepBothPatterns()
+    {
+        var path = Path.Combine(_dir, "patterns.json");
+        var first = new PatternStore(path);
+        var second = new PatternStore(path);
+
+        // Each writer saves its own patterns at the same time. Each save reads the file again under the lock, so none is lost.
+        Parallel.Invoke(
+            () => { for (var i = 0; i < 25; i++) first.Save(PatternStore.Defaults($"writer-a-{i}")); },
+            () => { for (var i = 0; i < 25; i++) second.Save(PatternStore.Defaults($"writer-b-{i}")); });
+
+        var saved = new PatternStore(path).Load();
+        Assert.Equal(50, saved.Count);
+        for (var i = 0; i < 25; i++)
+        {
+            Assert.True(saved.ContainsKey($"writer-a-{i}"));
+            Assert.True(saved.ContainsKey($"writer-b-{i}"));
+        }
+    }
+
+    [Fact]
+    public void ANullEntryIsNoSettingsForItsPattern()
+    {
+        var path = Path.Combine(_dir, "patterns.json");
+        File.WriteAllText(path, """{"plan-code":null,"solo":{"PatternKey":"solo","PlannerModel":"sonnet","PlannerEffort":"low","CoderModel":"haiku","CoderEffort":"medium","Coders":1,"PlannerExtra":"","CoderExtra":""}}""");
+        var store = new PatternStore(path);
+
+        Assert.Equal("opus", store.For("plan-code").PlannerModel);
+        Assert.Equal("sonnet", store.For("solo").PlannerModel);
     }
 
     [Fact]

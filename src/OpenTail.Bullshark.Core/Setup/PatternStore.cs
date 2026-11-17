@@ -65,38 +65,68 @@ public sealed class PatternStore
             AssistantEffort: "medium");
     }
 
-    /// <summary>All saved settings. A missing or unreadable file gives none, and the defaults are used.</summary>
+    /// <summary>
+    /// All saved settings, read under the file lock. A missing file gives none. A file that cannot be read or parsed throws
+    /// <see cref="StoreUnreadableException"/>; it is never read as empty, because the next save would overwrite it.
+    /// </summary>
     public IReadOnlyDictionary<string, PatternSettings> Load()
     {
-        if (!File.Exists(_path)) return new Dictionary<string, PatternSettings>(StringComparer.Ordinal);
-        try
-        {
-            return JsonSerializer.Deserialize<Dictionary<string, PatternSettings>>(File.ReadAllText(_path), Options)
-                   ?? new Dictionary<string, PatternSettings>(StringComparer.Ordinal);
-        }
-        catch (JsonException)
-        {
-            return new Dictionary<string, PatternSettings>(StringComparer.Ordinal);
-        }
+        using var _ = FileLock.Hold(_path);
+        return Read();
     }
 
     /// <summary>The saved settings for a pattern, or its defaults.</summary>
     public PatternSettings For(string patternKey) =>
         Load().TryGetValue(patternKey, out var saved) ? saved : Defaults(patternKey);
 
-    /// <summary>Writes one pattern's settings, keeping the others. The write is atomic, like the state file.</summary>
+    /// <summary>
+    /// Writes one pattern's settings, keeping the others. The file is read again under the lock first, so a save by another
+    /// window since this one was read is kept. The write is atomic (<see cref="FileLock.WriteAtomic"/>). An unreadable file throws
+    /// <see cref="StoreUnreadableException"/> and is not changed.
+    /// </summary>
     public void Save(PatternSettings settings)
     {
-        var all = new Dictionary<string, PatternSettings>(Load(), StringComparer.Ordinal)
+        using var _ = FileLock.Hold(_path);
+        var all = new Dictionary<string, PatternSettings>(Read(), StringComparer.Ordinal)
         {
             [settings.PatternKey] = settings,
         };
+        FileLock.WriteAtomic(_path, JsonSerializer.Serialize(all, Options));
+    }
 
-        var directory = System.IO.Path.GetDirectoryName(_path);
-        if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+    /// <summary>
+    /// The read itself, without the lock. A missing file gives none. Any other failure to read or parse throws
+    /// <see cref="StoreUnreadableException"/>, so a file that is locked or damaged is reported, never replaced.
+    /// </summary>
+    private Dictionary<string, PatternSettings> Read()
+    {
+        string text;
+        try
+        {
+            text = File.ReadAllText(_path);
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return new Dictionary<string, PatternSettings>(StringComparer.Ordinal);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
+        {
+            throw new StoreUnreadableException(_path, ex.Message);
+        }
 
-        var temporary = _path + ".tmp";
-        File.WriteAllText(temporary, JsonSerializer.Serialize(all, Options));
-        File.Move(temporary, _path, overwrite: true);
+        Dictionary<string, PatternSettings>? parsed;
+        try
+        {
+            parsed = JsonSerializer.Deserialize<Dictionary<string, PatternSettings>>(text, Options);
+        }
+        catch (JsonException ex)
+        {
+            throw new StoreUnreadableException(_path, ex.Message);
+        }
+
+        // A null entry is no settings for its pattern, so it is dropped, as an absent one is.
+        return (parsed ?? new Dictionary<string, PatternSettings>(StringComparer.Ordinal))
+            .Where(pair => pair.Value is not null)
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
     }
 }
