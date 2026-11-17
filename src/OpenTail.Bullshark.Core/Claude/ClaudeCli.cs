@@ -100,6 +100,29 @@ public sealed class ClaudeCli
     }
 
     /// <summary>
+    /// The installed claude's version, as `claude --version` prints it, read-only (round 7 item 2). Null when it cannot be read.
+    /// </summary>
+    public async Task<string?> VersionAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var result = await _runner.RunAsync(["--version"], null, ShortTimeout, cancellationToken);
+            return result.Succeeded ? VersionDrift.VersionOf(result.StdOut) : null;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// `claude respawn --all`: restarts every background session so that it runs the installed binary (round 7 item 2). Only the owner's
+    /// confirmed click calls this. The supervisor never does (the contract of <see cref="ClaudeCli"/>).
+    /// </summary>
+    public Task<CliResult> RespawnAllAsync(CancellationToken cancellationToken = default) =>
+        _runner.RunAsync(["respawn", "--all"], null, TimeSpan.FromMinutes(5), cancellationToken);
+
+    /// <summary>
     /// The most characters the joined launch arguments may take, counted as they are written on the command line (see
     /// <see cref="EscapeArgument"/>). Windows caps a command line at 32,767 characters. The margin is for the executable's path.
     /// </summary>

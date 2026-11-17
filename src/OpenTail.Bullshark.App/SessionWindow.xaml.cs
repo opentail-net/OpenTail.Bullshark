@@ -74,6 +74,9 @@ public partial class SessionWindow : Window
     /// <summary>The background daemon as the last pass read it (round 7 item 1). Its problem, if any, is shown under Needs you.</summary>
     private DaemonStatus _daemon = DaemonStatus.Unknown();
 
+    /// <summary>The daemon's version against the installed one, when they differ (round 7 item 2). Null when they match or either is unknown.</summary>
+    private VersionDrift? _drift;
+
     /// <summary>
     /// The listing with completed sessions (`--all`) from the last pass. Names already in use come from this one, so a new run
     /// never reuses the name of a finished session: a `done` session of a run's name can then only be that run's own (F61).
@@ -212,7 +215,8 @@ public partial class SessionWindow : Window
         Dictionary<string, string> NewPaths,
         IReadOnlyDictionary<string, RunBudget> Budgets,
         string? StoreProblem,
-        DaemonStatus Daemon);
+        DaemonStatus Daemon,
+        VersionDrift? Drift);
 
     /// <summary>
     /// Runs one supervisor pass, then refreshes the rail. The reads and the pass itself run on a pool thread, so the window does
@@ -241,6 +245,10 @@ public partial class SessionWindow : Window
             // The daemon as this pass read it (round 7 item 1): a dead daemon makes the pass decide nothing, and shows in the Needs you group.
             _daemon = read.Daemon;
             _runner.Daemon = read.Daemon;
+            // A daemon that runs another claude version gets the Respawn all button, and only the owner's confirmed click runs anything (round 7 item 2).
+            _drift = read.Drift;
+            RespawnButton.Visibility = _drift is null ? Visibility.Collapsed : Visibility.Visible;
+            RespawnButton.ToolTip = _drift?.Message;
 
             // While ~/.claude.json cannot be read, trust is unknown: no root is judged untrusted, and no run starts or restarts.
             var plan = read.Trust;
@@ -273,7 +281,7 @@ public partial class SessionWindow : Window
 
             var failed = PassSnapshot.FailedStarts(records.Values);
             RetryButton.Visibility = failed > 0 ? Visibility.Visible : Visibility.Collapsed;
-            var parts = PassSnapshot.StatusParts(DateTime.Now, actions, plan.Waiting, failed, _storeProblem, plan.Problem, _daemon.StatusProblem);
+            var parts = PassSnapshot.StatusParts(DateTime.Now, actions, plan.Waiting, failed, _storeProblem, plan.Problem, _daemon.StatusProblem, _drift?.StatusText);
 
             // A search owns the status line while it runs or while its results are shown: the pass's summary waits for it to end.
             if (_searchMatches is null && SearchBusy.Visibility != Visibility.Visible) SetStatus(string.Join("  ·  ", parts));
@@ -303,6 +311,9 @@ public partial class SessionWindow : Window
         var passAgents = await _cli.ListAgentsAsync(includeCompleted: true);
         // The daemon is read with the listings, and never throws: an unknown status lets the pass go on as before (round 7 item 1).
         var daemon = await _cli.DaemonStatusAsync();
+        // The installed version is read only when the daemon reports one: there is no drift to show without both (round 7 item 2).
+        var cliVersion = daemon.Version is null ? null : await _cli.VersionAsync();
+        var drift = VersionDrift.Of(daemon.Version, cliVersion);
         var (records, recordsProblem) = LoadRecords(_store);
         var (runs, runsProblem) = LoadRuns(_runStore);
         // A run that waits for its start time has no specs here, so it is neither trusted, started nor adopted yet (gems item 5).
@@ -318,7 +329,7 @@ public partial class SessionWindow : Window
         var paths = new Dictionary<string, string>(known, StringComparer.Ordinal);
         foreach (var pair in newPaths) paths[pair.Key] = pair.Value;
         var budgets = BudgetsOf(runs, records, paths);
-        return new PassReads(agents, passAgents, records, plan, facts, newPaths, budgets, recordsProblem ?? runsProblem, daemon);
+        return new PassReads(agents, passAgents, records, plan, facts, newPaths, budgets, recordsProblem ?? runsProblem, daemon, drift);
     }
 
     /// <summary>
@@ -543,6 +554,41 @@ public partial class SessionWindow : Window
         {
             _setup.RunFinished();
         }
+    }
+
+    /// <summary>
+    /// Restarts every background session onto the installed claude (round 7 item 2). Only this confirmed click runs `claude respawn --all`:
+    /// the owner answers the question first, and the supervisor never does it. The command runs on a pool thread, and the pass runs after.
+    /// </summary>
+    private async void RespawnButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_drift is not { } drift) return;
+        var answer = MessageBox.Show(this,
+            $"Restart all background sessions so they run the installed claude {drift.CliVersion}?\n\n" +
+            "This runs `claude respawn --all`, which restarts the background sessions so that they run the installed version.",
+            "Respawn all background sessions", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (answer != MessageBoxResult.Yes) return;
+
+        RespawnButton.IsEnabled = false;
+        try
+        {
+            var result = await Task.Run(() => _cli.RespawnAllAsync());
+            var text = result.Succeeded
+                ? "respawn --all done: the background sessions run the installed claude"
+                : $"respawn --all failed (exit {result.ExitCode}): {result.StdErr.Trim()} {result.StdOut.Trim()}".TrimEnd();
+            AppLog.Write(text);
+            SetStatus(text);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            AppLog.Write($"respawn --all could not run: {ex.Message}");
+            SetStatus($"respawn --all could not run: {ex.Message}");
+        }
+        finally
+        {
+            RespawnButton.IsEnabled = true;
+        }
+        await PassAndRefreshAsync();
     }
 
     /// <summary>Forgets the starts that failed, so the next pass tries them again. Only the owner asks for this.</summary>
