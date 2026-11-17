@@ -38,11 +38,11 @@ Build after `review-2026-11-17.md` is done; items 2 and 3 of that plan change th
 ### 1. Tell the owner when a session waits
 Now: a `blocked` session raises `AlertKind.Blocked`, which goes to the log and the record's `LastAlert`; nothing draws attention.
 
-- [ ] Core: `AttentionList.From(records, agents)` returns the sessions that need the owner (state `blocked`, or `RestartLoop`/`StartFailed` alert), oldest first. Unit tests.
-- [ ] Window: when the list gains a session since the last pass, flash the taskbar button (`FlashWindowEx` P/Invoke, until the window is focused) and play the system notification sound once.
-- [ ] Rail: a "Needs you" group at the top with those sessions; click selects the session as today.
-- [ ] Status bar shows the count. `ui.json` setting `notify: true|false` (default true).
-- [ ] Owner decision (record, do not build): Windows toast notifications need a package (CommunityToolkit notifications or Windows App SDK).
+- [x] Core: `AttentionList.From(records, agents)` returns the sessions that need the owner (state `blocked`, or `RestartLoop`/`StartFailed` alert), oldest first. Unit tests.
+- [x] Window: when the list gains a session since the last pass, flash the taskbar button (`FlashWindowEx` P/Invoke, until the window is focused) and play the system notification sound once.
+- [x] Rail: a "Needs you" group at the top with those sessions; click selects the session as today.
+- [x] Status bar shows the count. `ui.json` setting `notify: true|false` (default true).
+- [x] Owner decision (record, do not build): Windows toast notifications need a package (CommunityToolkit notifications or Windows App SDK). Recorded as D1.9.
 
 ### 2. A "Changes" tab per session
 - [ ] Core: `GitChanges.Read(folder)` runs `git -C <folder> status --porcelain=v1` and `git -C <folder> diff --stat` and `git diff` (read-only, 10 s timeout, through a small `IGitRunner` like `ICliRunner` so tests use a fake). Not a repository → a plain message, not an error. Diff capped at 2 MB with a "truncated" line.
@@ -91,4 +91,15 @@ Now: a `blocked` session raises `AlertKind.Blocked`, which goes to the log and t
 
 ## Decisions made while building
 
-(builder writes here)
+### Item 1 (Needs you)
+
+- D1.1 "Oldest first" is the session's own start time (`SessionRecord.StartedAt`), then the name. The state file does not record when a session entered `blocked`, so it cannot be sorted by that.
+- D1.2 The loss reasons (restart loop, failed resume) are read from `LastAlert`, which the supervisor writes as `RestartLoop: ...` or `resume failed: ...`. They count only while the session is not listed: a listed session is not waiting because of an old alert.
+- D1.3 `LastAlert` is cleared when a resume succeeds (`SupervisorRunner.Carry`, the resume case). Without that, the alert of a loop that had ended stays in the record, and the next time the session went missing it would be announced again, although the supervisor resumes it at once. The rail reads `LastAlert` only for records with no session id, so nothing it shows changes.
+- D1.4 A start that failed has no terminal. Its row under Needs you is muted and not selectable, with its reason, as under its folder. It leaves the list when the owner presses Retry failed starts.
+- D1.5 The Needs you group shows with the All and Running filters only, as the live sessions do. A waiting session also stays under its folder, so it appears twice. Selection goes to the first match in the tree, which is the Needs you row, while the session waits.
+- D1.6 The count is its own element at the left of the status bar, shown while at least one session waits. It is not part of the pass summary, so the summary's text changes do not hide it.
+- D1.7 The announcement fires once per session, when it joins the list. Sound: `SystemSounds.Asterisk`. Flash: `FlashWindowEx` with caption and taskbar, until the window is in front. Both are off with `"notify": false` in ui.json, read at the time of the announcement. No settings control was added; the owner edits ui.json.
+- D1.8 The first pass after the window opens sets the baseline and announces nothing: the sessions already waiting are in view then.
+- D1.9 Announcements also fire while the window has focus (the flash then stops at once). Owner decision, not built: Windows toast notifications need a package (CommunityToolkit notifications or Windows App SDK). Until the owner decides, the flash and the sound are the signal.
+- Verified: 16 unit tests in `tests/OpenTail.Bullshark.Core.Tests/Supervisor/AttentionTests.cs`; the whole solution builds with the existing warning in `MainWindow.xaml.cs` only. The WPF side (the group, the count, the flash, the sound) compiles but was not run in a window in this session.

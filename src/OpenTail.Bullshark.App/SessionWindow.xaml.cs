@@ -229,6 +229,7 @@ public partial class SessionWindow : Window
                 _storeProblem = afterProblem ?? _storeProblem;
             }
             RefreshRail(records);
+            AnnounceAttention();
 
             var failed = PassSnapshot.FailedStarts(records.Values);
             RetryButton.Visibility = failed > 0 ? Visibility.Visible : Visibility.Collapsed;
