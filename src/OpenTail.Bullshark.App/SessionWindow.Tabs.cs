@@ -26,6 +26,9 @@ public partial class SessionWindow
 
         /// <summary>A live session's changes (item 2 of the additions plan). Key: the session id.</summary>
         Changes,
+
+        /// <summary>The storage page (gems item 6). One tab, with the key "storage".</summary>
+        Storage,
     }
 
     private sealed class OpenTab(TabKind kind, string key, string title)
@@ -125,6 +128,11 @@ public partial class SessionWindow
 
             case TabKind.Changes:
                 await ShowChangesAsync(tab.Key);
+                break;
+
+            case TabKind.Storage:
+                ShowOnly(_storage);
+                _ = RefreshStorageAsync();
                 break;
         }
     }

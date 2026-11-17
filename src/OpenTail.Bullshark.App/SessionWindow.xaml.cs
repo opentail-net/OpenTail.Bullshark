@@ -105,6 +105,7 @@ public partial class SessionWindow : Window
         Pane.Children.Add(_search);
         InitSearch();
         InitChanges();
+        InitStorage();
         InitTabDrag();
         InitZoom();
 
@@ -339,6 +340,7 @@ public partial class SessionWindow : Window
         _setup.Visibility = ReferenceEquals(_setup, element) ? Visibility.Visible : Visibility.Hidden;
         _search.Visibility = ReferenceEquals(_search, element) ? Visibility.Visible : Visibility.Hidden;
         _changes.Visibility = ReferenceEquals(_changes, element) ? Visibility.Visible : Visibility.Hidden;
+        _storage.Visibility = ReferenceEquals(_storage, element) ? Visibility.Visible : Visibility.Hidden;
 
         _shown = element as ExtendedTerminalControl;
         if (_shown is not null)

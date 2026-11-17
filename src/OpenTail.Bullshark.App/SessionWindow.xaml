@@ -113,6 +113,8 @@
                 <Button x:Name="RetryButton" DockPanel.Dock="Right" Visibility="Collapsed" Padding="10,2" Margin="10,0,0,0"
                         Content="Retry failed starts" Click="RetryButton_Click"
                         ToolTip="Tries the sessions whose start failed. Nothing is retried on its own." />
+                <Button x:Name="StorageButton" DockPanel.Dock="Right" Padding="10,2" Margin="10,0,0,0" Content="Storage"
+                        Click="StorageButton_Click" ToolTip="How much the transcripts take up, and the archive of old ones." />
                 <TextBlock x:Name="StatusText" Foreground="{DynamicResource BarMuted}" FontFamily="Consolas" FontSize="12" Text="starting…"
                            TextWrapping="Wrap" VerticalAlignment="Center" />
             </DockPanel>

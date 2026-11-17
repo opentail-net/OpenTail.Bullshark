@@ -1,0 +1,147 @@
+using System.Windows;
+using System.Windows.Controls;
+using OpenTail.Bullshark.Core.Storage;
+
+namespace OpenTail.Bullshark.App;
+
+/// <summary>
+/// The Storage page (gems item 6): the project folders by size, the transcripts of a chosen folder with checkboxes, and the archive
+/// with its own checkboxes and Restore. It only draws and raises events; the window reads and moves the files on a pool thread.
+/// </summary>
+public sealed class StorageView : UserControl
+{
+    private readonly TextBlock _note = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 8) };
+    private readonly StackPanel _projects = new();
+    private readonly StackPanel _transcripts = new();
+    private readonly StackPanel _archived = new();
+    private readonly TextBlock _transcriptsCaption = new() { FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 4) };
+    private readonly TextBlock _archivedCaption = new() { FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 12, 0, 4) };
+
+    public StorageView()
+    {
+        var refresh = new Button { Content = "Refresh", Padding = new Thickness(10, 2, 10, 2), HorizontalAlignment = HorizontalAlignment.Left };
+        refresh.Click += (_, _) => RefreshRequested?.Invoke();
+
+        var archive = new Button { Content = "Archive checked…", Padding = new Thickness(10, 2, 10, 2), Margin = new Thickness(8, 0, 0, 0) };
+        archive.Click += (_, _) => ArchiveRequested?.Invoke(Checked(_transcripts));
+        var restore = new Button { Content = "Restore checked", Padding = new Thickness(10, 2, 10, 2), Margin = new Thickness(8, 0, 0, 0) };
+        restore.Click += (_, _) => RestoreRequested?.Invoke(Checked(_archived));
+
+        var toolbar = new StackPanel { Orientation = Orientation.Horizontal };
+        toolbar.Children.Add(refresh);
+
+        var left = new StackPanel();
+        left.Children.Add(new TextBlock { Text = "Projects, largest first", FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 4) });
+        left.Children.Add(new ScrollViewer { Content = _projects, MaxHeight = 320, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
+
+        var right = new StackPanel { Margin = new Thickness(16, 0, 0, 0) };
+        right.Children.Add(_transcriptsCaption);
+        right.Children.Add(new ScrollViewer { Content = _transcripts, MaxHeight = 320, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
+        var rightButtons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };
+        rightButtons.Children.Add(archive);
+        right.Children.Add(rightButtons);
+
+        var columns = new Grid();
+        columns.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        columns.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        Grid.SetColumn(right, 1);
+        columns.Children.Add(left);
+        columns.Children.Add(right);
+
+        var archivedButtons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };
+        archivedButtons.Children.Add(restore);
+        var bottom = new StackPanel();
+        bottom.Children.Add(_archivedCaption);
+        bottom.Children.Add(new ScrollViewer { Content = _archived, MaxHeight = 220, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
+        bottom.Children.Add(archivedButtons);
+
+        var root = new StackPanel { Margin = new Thickness(12, 8, 12, 8) };
+        root.Children.Add(new TextBlock
+        {
+            Text = "Storage",
+            FontSize = 17,
+            FontWeight = FontWeights.SemiBold,
+        });
+        root.Children.Add(_note);
+        root.Children.Add(toolbar);
+        root.Children.Add(columns);
+        root.Children.Add(bottom);
+        Content = new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+
+        _note.Text = "Archive moves a transcript out of History and search into the archive folder. Restore moves it back. Nothing is deleted. " +
+                     "A session that claude lists, or that Bullshark records, is never archived.";
+        _transcriptsCaption.Text = "Choose a project to see its transcripts";
+        _archivedCaption.Text = "Archived";
+    }
+
+    /// <summary>The Refresh button was pressed.</summary>
+    public event Action? RefreshRequested;
+
+    /// <summary>A project folder was chosen. The argument is the folder's full path.</summary>
+    public event Action<string>? ProjectChosen;
+
+    /// <summary>The Archive button was pressed, with the checked transcripts' paths.</summary>
+    public event Action<IReadOnlyList<string>>? ArchiveRequested;
+
+    /// <summary>The Restore button was pressed, with the checked archived paths.</summary>
+    public event Action<IReadOnlyList<string>>? RestoreRequested;
+
+    /// <summary>Shows the projects and the archive. The transcripts pane keeps what it shows until a project is chosen.</summary>
+    public void ShowProjects(IReadOnlyList<ProjectStorage> projects, IReadOnlyList<TranscriptFileInfo> archived)
+    {
+        _projects.Children.Clear();
+        foreach (var project in projects)
+        {
+            var span = project.Oldest is { } oldest && project.Newest is { } newest
+                ? $"{oldest.ToLocalTime():yyyy-MM-dd} to {newest.ToLocalTime():yyyy-MM-dd}"
+                : "no transcripts";
+            var row = new Button
+            {
+                Content = $"{project.Name}\n{project.Transcripts} transcripts · {Size(project.Bytes)} · {span}",
+                HorizontalContentAlignment = HorizontalAlignment.Left,
+                Padding = new Thickness(8, 4, 8, 4),
+                Margin = new Thickness(0, 0, 0, 4),
+                Tag = project.Folder,
+                ToolTip = project.Folder,
+            };
+            row.Click += (_, _) => ProjectChosen?.Invoke(project.Folder);
+            _projects.Children.Add(row);
+        }
+        if (projects.Count == 0) _projects.Children.Add(new TextBlock { Text = "No transcripts were found.", Margin = new Thickness(0, 4, 0, 0) });
+
+        _archived.Children.Clear();
+        foreach (var file in archived) _archived.Children.Add(FileRow(file));
+        _archivedCaption.Text = archived.Count == 0 ? "Archived: none" : $"Archived: {archived.Count}";
+    }
+
+    /// <summary>Shows the transcripts of one project, with checkboxes.</summary>
+    public void ShowTranscripts(string projectName, IReadOnlyList<TranscriptFileInfo> files)
+    {
+        _transcriptsCaption.Text = $"Transcripts in {projectName}: {files.Count}";
+        _transcripts.Children.Clear();
+        foreach (var file in files) _transcripts.Children.Add(FileRow(file));
+    }
+
+    /// <summary>Shows a line under the note: the outcome of the last archive or restore.</summary>
+    public void SetResult(string text) => _note.Text = text;
+
+    private static CheckBox FileRow(TranscriptFileInfo file) => new()
+    {
+        Content = $"{file.SessionId[..Math.Min(8, file.SessionId.Length)]} · {Size(file.Bytes)} · {file.Written.ToLocalTime():yyyy-MM-dd HH:mm}",
+        Tag = file.Path,
+        ToolTip = file.Path,
+        Margin = new Thickness(0, 0, 0, 3),
+    };
+
+    private static IReadOnlyList<string> Checked(StackPanel list) =>
+        list.Children.OfType<CheckBox>().Where(box => box.IsChecked == true).Select(box => (string)box.Tag).ToList();
+
+    /// <summary>A size for a person: bytes, KB, MB or GB, to one decimal place from KB up.</summary>
+    public static string Size(long bytes) => bytes switch
+    {
+        < 1024 => $"{bytes} B",
+        < 1024 * 1024 => $"{bytes / 1024.0:0.0} KB",
+        < 1024L * 1024 * 1024 => $"{bytes / (1024.0 * 1024):0.0} MB",
+        _ => $"{bytes / (1024.0 * 1024 * 1024):0.0} GB",
+    };
+}
