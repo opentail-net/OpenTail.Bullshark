@@ -102,6 +102,8 @@ public sealed class TranscriptView : UserControl
         _historyInfo.Foreground = Brush(palette.Muted);
         _usageCaption.Foreground = Brush(palette.Muted);
         _resumeHint.Foreground = Brush(palette.Muted);
+        // The effort header takes the text colour: the default one is unreadable on the dark panel ("Files written" is coloured when it fills).
+        _effort.Foreground = Brush(palette.Text);
         if (_digest is not null) ShowStats(_digest);
     }
 
