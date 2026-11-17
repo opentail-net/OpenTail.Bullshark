@@ -33,7 +33,7 @@ checked by the planner against the installed CLI (2.1.326) on the owner's machin
 - [x] **4. Work on the folder the session really edits.** Read the latest `cwd` from the session's transcript records (if the transcript lines carry one; check a real transcript read-only, and a test fixture); prefer it over the listing's `cwd` for the Changes tab, file overlap and the merge check. Paths compared normalised. Tests: a transcript whose `cwd` is under `.claude/worktrees/x` makes those features use it.
 - [x] **5. Transcript clean-up warning.** Read `cleanupPeriodDays` from `~/.claude/settings.json` (read-only; absent → say "Claude's default", without a number unless the docs page states one — check code.claude.com/docs settings page and record the URL). The Storage page shows "Claude deletes transcripts older than N days; archive to keep them" and marks sessions within 3 days of that age. Tests on the age rule.
 - [x] **6. `--session-id` with `--bg` (gated).** Do not build. Record the gate for the owner: one throwaway start with `--bg --session-id <uuid>` in a trusted folder; if the session id matches, Bullshark can name the transcript before launch and drop the read-back poll.
-- [ ] **7. Ideas recorded, not built** (write them under "Later" in this file with the research references): HTTP hooks per run for live overlap and limits (C3), `/goal` as a run's stop condition (C9), OpenTelemetry cross-check (C11).
+- [x] **7. Ideas recorded, not built** (write them under "Later" in this file with the research references): HTTP hooks per run for live overlap and limits (C3), `/goal` as a run's stop condition (C9), OpenTelemetry cross-check (C11).
 
 ## Gated for the owner (not built)
 
@@ -46,6 +46,20 @@ checked by the planner against the installed CLI (2.1.326) on the owner's machin
   the supervisor's "dead daemon: no start" rule (item 1) would hold every new run until something else starts the daemon, so the owner would
   need to relax it to "control unreachable" only. If it stays down, the rule stays as written.
 - Nothing in this round runs that start. The builder did not start any session (the brief forbids it).
+
+## Later (ideas recorded, not built)
+
+- **HTTP hooks per run for live overlap and limits (research C3, `research-cli-features-2026-11-17.md` section 3).** A Bullshark-owned
+  settings file, passed per run with `--settings`, could send hook events (PostToolUse, Stop, PermissionRequest) to a localhost listener,
+  keyed by `session_id`, instead of tailing transcripts. Caveats from the research: hooks do not run under `--bare`; `PreToolUse` block
+  semantics were tightened in 2.1.326; `allowedHttpHookUrls` is an admin control. Not built: it needs a listener and a verified per-run hook path.
+- **`/goal` as a run's stop condition (research C9, section 9).** The first prompt of a run-limited session could be
+  `/goal <condition> or stop after N turns`, a native run limit; the transcript records goal entries that could show a "goal met / paused" chip.
+  Caveats: goals need hooks enabled (not under `--bare` or `disableAllHooks`), and the exact JSONL shape of goal entries was not read; inspect a
+  real transcript before parsing.
+- **OpenTelemetry cross-check (research C11, section 11).** Metrics such as `claude_code.cost.usage` and `token.usage`, and the `api_request`
+  event, could cross-check the transcript-derived cost and tokens. Caveats: the OTEL variables must be set where the supervisor starts the
+  session, and whether the daemon passes arbitrary variables through is unverified. The transcript stays the offline source of cost.
 
 ## Decisions made while building
 
