@@ -319,4 +319,31 @@ public sealed class SupervisorRunnerTests : IDisposable
         Assert.Contains(ShortId, alert.Detail);
         Assert.Equal(string.Empty, store.Load()[TestSpecs.PlannerName].SessionId);
     }
+
+    /// <summary>An event log that another process holds: every write times out, as the file lock does after ten seconds.</summary>
+    private sealed class HeldLogSink : IEventSink
+    {
+        public void Write(SupervisorEvent evt) => throw new TimeoutException("events.jsonl is held by another process for more than 10 seconds.");
+    }
+
+    [Fact]
+    public async Task AStartThatSucceededKeepsItsRecordWhenTheEventLogTimesOut()
+    {
+        var store = new StateStore(Path.Combine(_dir, "state.json"));
+        var clock = new FakeClock(new DateTimeOffset(2026, 11, 17, 12, 0, 0, TimeSpan.Zero));
+        var logged = new List<string>();
+        var runner = new SupervisorRunner(new ClaudeCli(LaunchingCli(PlannerSession, "working")), store, clock,
+            resolveTimeout: TimeSpan.FromSeconds(3), log: logged.Add)
+        {
+            Events = new HeldLogSink(),
+        };
+
+        var performed = await runner.CheckOnceAsync([TestSpecs.Planner(@"C:\W", "brief")]);
+
+        // The session started. The event log's timeout is logged, not reported as a failed start, and the record keeps the session.
+        Assert.IsType<SupervisorAction.Start>(Assert.Single(performed));
+        Assert.Equal(PlannerSession, store.Load()[TestSpecs.PlannerName].SessionId);
+        Assert.Contains(logged, l => l.Contains("events: not written"));
+        Assert.DoesNotContain(logged, l => l.Contains("start failed"));
+    }
 }

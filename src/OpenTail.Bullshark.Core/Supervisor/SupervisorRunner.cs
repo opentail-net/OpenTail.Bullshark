@@ -92,8 +92,6 @@ public sealed class SupervisorRunner
                     try
                     {
                         await Carry(action, spec, records, now, cancellationToken);
-                        performed.Add(action);
-                        Emit(spec.Name, action, now);
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException && action is SupervisorAction.Start or SupervisorAction.Resume)
                     {
@@ -101,7 +99,13 @@ public sealed class SupervisorRunner
                         var failure = Failed(action, spec, records, now, ex.Message);
                         performed.Add(failure);
                         Emit(spec.Name, failure, now);
+                        continue;
                     }
+
+                    // Outside the try above: a session that started is never recorded as failed because the event log could not be
+                    // written (round 5 item 2). Write itself logs the failure and the pass goes on.
+                    performed.Add(action);
+                    Emit(spec.Name, action, now);
                 }
 
                 // Remember the state we saw, so the next pass can tell a change of state from a repeat. A session the listing no
@@ -143,6 +147,10 @@ public sealed class SupervisorRunner
     private void EmitState(string session, string? from, string to, DateTimeOffset now) =>
         Write(new SupervisorEvent(now, session, "state", $"{from ?? "-"} -> {to}"));
 
+    /// <summary>
+    /// Writes one event. Every failure the stores report is logged here, and the pass goes on: the lock of the event log can time out
+    /// (a <see cref="TimeoutException"/>), which the filter used to let out of the pass (round 5 item 2).
+    /// </summary>
     private void Write(SupervisorEvent evt)
     {
         if (Events is null) return;
@@ -150,7 +158,7 @@ public sealed class SupervisorRunner
         {
             Events.Write(evt);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
             _log($"events: not written: {ex.Message}");
         }
