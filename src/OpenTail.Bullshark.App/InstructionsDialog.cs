@@ -31,6 +31,9 @@ public sealed class InstructionsDialog : Window
     private int _index = -1;
     private FileStamp? _stamp;
     private string _loadedText = string.Empty;
+
+    /// <summary>The line ending of the open file (LF or CRLF). A save writes its text with this ending, so the file keeps it.</summary>
+    private string _ending = "\r\n";
     private bool _dirty;
     private bool _reverting;
 
@@ -117,24 +120,51 @@ public sealed class InstructionsDialog : Window
         if (index < 0 || index >= _entries.Count || index == _index) return;
         if (_dirty && !ConfirmDiscard("open another file"))
         {
-            _reverting = true;
-            _list.SelectedIndex = _index;
-            _reverting = false;
+            RevertSelection();
             return;
         }
-        Open(index);
+        if (!Open(index)) RevertSelection();
     }
 
-    private void Open(int index)
+    /// <summary>Puts the list selection back on the file that is still open.</summary>
+    private void RevertSelection()
     {
+        _reverting = true;
+        _list.SelectedIndex = _index;
+        _reverting = false;
+    }
+
+    /// <summary>
+    /// Opens a file in the editor. The file is read first: when it cannot be read, nothing changes. The previous file stays current, with its
+    /// text, and the error is shown. Only a file that was read becomes the current one, so a save cannot write its text over another file.
+    /// </summary>
+    private bool Open(int index)
+    {
+        var entry = _entries[index];
+        string text;
+        FileStamp? stamp;
+        try
+        {
+            text = InstructionFiles.Read(entry.Path);
+            stamp = FileStamp.Of(entry.Path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _status.Text = $"Not opened: {ex.Message}";
+            return false;
+        }
+
         _index = index;
-        _current = _entries[index];
-        _stamp = FileStamp.Of(_current.Path);
-        _loadedText = InstructionFiles.Read(_current.Path);
-        _editor.Text = _loadedText;
+        _current = entry;
+        _stamp = stamp;
+        _ending = InstructionFiles.LineEndingOf(text);
+        _editor.Text = text;
+        // The editor reports its line breaks in its own form (CRLF), so the unchanged text is compared in that form.
+        _loadedText = _editor.Text;
         SetDirty(false);
-        _path.Text = _current.Path;
+        _path.Text = entry.Path;
         _status.Text = _stamp is null ? "No file yet. Save creates it." : string.Empty;
+        return true;
     }
 
     private void SetDirty(bool dirty)
@@ -151,7 +181,8 @@ public sealed class InstructionsDialog : Window
     private void Save()
     {
         if (_current is null) return;
-        var text = _editor.Text;
+        var editorText = _editor.Text;
+        var text = InstructionFiles.WithLineEnding(editorText, _ending);
         var result = InstructionFiles.Save(_current.Path, text, _stamp);
         if (result.Outcome == SaveOutcome.Changed)
         {
@@ -175,7 +206,7 @@ public sealed class InstructionsDialog : Window
             return;
         }
         _stamp = result.Stamp;
-        _loadedText = text;
+        _loadedText = editorText;
         SetDirty(_editor.Text != _loadedText);
         _status.Text = "Saved. " + result.Message;
     }

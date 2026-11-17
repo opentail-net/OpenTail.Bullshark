@@ -70,6 +70,30 @@ public static class InstructionFiles
     public static string Read(string path) => File.Exists(path) ? File.ReadAllText(path) : string.Empty;
 
     /// <summary>
+    /// The line ending a file's text uses: LF, when most of its line breaks are LF alone; otherwise CRLF. A text with no line break
+    /// gives CRLF, the Windows default. A save writes the text with this ending, so a file keeps its own line endings.
+    /// </summary>
+    public static string LineEndingOf(string text)
+    {
+        var crlf = 0;
+        var lf = 0;
+        for (var i = 0; i < text.Length; i++)
+        {
+            if (text[i] != '\n') continue;
+            if (i > 0 && text[i - 1] == '\r') crlf++;
+            else lf++;
+        }
+        return lf > crlf ? "\n" : "\r\n";
+    }
+
+    /// <summary>The text with every line break written as <paramref name="ending"/> (CRLF or LF). The other characters are unchanged.</summary>
+    public static string WithLineEnding(string text, string ending)
+    {
+        var lf = text.Replace("\r\n", "\n").Replace('\r', '\n');
+        return ending == "\n" ? lf : lf.Replace("\n", "\r\n");
+    }
+
+    /// <summary>
     /// Writes the text, unless the file's stamp differs from <paramref name="readStamp"/> (the stamp taken when it was read; null when
     /// the file did not exist then).
     /// </summary>
