@@ -71,6 +71,16 @@ public static class GitChanges
         return string.IsNullOrWhiteSpace(specFolder) ? null : specFolder;
     }
 
+    /// <summary>
+    /// The folder a session's changes are read from (round 7 item 4): the folder its transcript names last, which is the one it edits now
+    /// and can be a worktree under `.claude/worktrees`; else the listing's folder; else the spec's. The transcript's folder is given in its full,
+    /// normalised form, so the same folder spelled two ways is the same folder.
+    /// </summary>
+    public static string? FolderOf(string? transcriptFolder, string? listedFolder, string? specFolder) =>
+        string.IsNullOrWhiteSpace(transcriptFolder)
+            ? FolderOf(listedFolder, specFolder)
+            : Folders.FolderKey.Normalise(transcriptFolder);
+
     /// <summary>Reads the changes of a folder. Nothing is written, and no git command can start a prompt or take the index lock.</summary>
     public static async Task<GitChangesReport> ReadAsync(string folder, IGitRunner git, CancellationToken cancellationToken = default)
     {

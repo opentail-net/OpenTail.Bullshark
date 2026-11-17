@@ -34,7 +34,8 @@ public sealed record TranscriptSummary(
     int Compactions = 0,
     string? ContinuesSessionId = null,
     int FailedToolCalls = 0,
-    IReadOnlyDictionary<string, DateTimeOffset>? FileLastWrites = null)
+    IReadOnlyDictionary<string, DateTimeOffset>? FileLastWrites = null,
+    string? LatestCwd = null)
 {
     public TokenUsage TotalUsage => UsageByModel.Values.Aggregate(TokenUsage.Zero, (sum, next) => sum.Add(next));
 }
@@ -95,6 +96,8 @@ public static class TranscriptReader
         var fileSet = new HashSet<string>(StringComparer.Ordinal);
         // The time of the last write to each file, so an overlap between sessions can say when each one wrote it (FileOverlap).
         var fileLastWrites = new Dictionary<string, DateTimeOffset>(StringComparer.Ordinal);
+        // The working folder that the last record naming one gives: the folder the session edits now, which can be a worktree (round 7 item 4).
+        string? latestCwd = null;
 
         foreach (var line in lines)
         {
@@ -114,6 +117,9 @@ public static class TranscriptReader
             {
                 var root = document.RootElement;
                 records++;
+
+                // Claude Code writes the session's working folder on its records (observed 2026-11-17 on 2.1.326: `cwd` on most lines). A blank value is ignored.
+                if (TryGetString(root, "cwd", out var cwdText) && !string.IsNullOrWhiteSpace(cwdText)) latestCwd = cwdText;
 
                 DateTimeOffset? recordTime = null;
                 if (TryGetString(root, "timestamp", out var timestamp) &&
@@ -224,7 +230,7 @@ public static class TranscriptReader
 
         return new TranscriptSummary(records, users, assistants, tools, turns, lastText, lastTimestamp, lastModel,
             usageLedger.ByFile(file), firstTimestamp, toolNames, filesWritten, contextAtLastTurn, firstUserText,
-            aiTitle, customTitle, lastRecap, lastRecapAt, compactions, continuesSessionId, failedCalls, fileLastWrites);
+            aiTitle, customTitle, lastRecap, lastRecapAt, compactions, continuesSessionId, failedCalls, fileLastWrites, latestCwd);
     }
 
     private static bool TryGetString(JsonElement element, string property, out string? value)

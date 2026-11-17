@@ -1,3 +1,4 @@
+using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Git;
 using OpenTail.Bullshark.Core.Supervisor;
 
@@ -47,7 +48,9 @@ public partial class SessionWindow
     {
         var listed = _allAgents.FirstOrDefault(a => string.Equals(a.SessionId, record.SessionId, StringComparison.OrdinalIgnoreCase))?.Cwd;
         var spec = Specs.FirstOrDefault(s => string.Equals(s.Name, record.Name, StringComparison.Ordinal))?.WorkingDirectory;
-        var folder = GitChanges.FolderOf(listed, spec);
+        // The folder the coder edits now, from its transcript, is checked ahead of the listing's (round 7 item 4).
+        var transcriptFolder = await Task.Run(() => TranscriptWrites.Facts(_options.ProjectsRoot, record.SessionId).Folder);
+        var folder = GitChanges.FolderOf(transcriptFolder, listed, spec);
         if (folder is null)
         {
             _mergeStarted.Remove(record.SessionId);
