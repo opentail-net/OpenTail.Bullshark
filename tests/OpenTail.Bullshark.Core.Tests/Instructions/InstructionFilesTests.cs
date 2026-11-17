@@ -50,4 +50,44 @@ public sealed class InstructionFilesTests
         Assert.Equal(once, InstructionFiles.WithLineEnding(once, "\r\n"));
         Assert.Equal("a\r\nb\r\nc", once);
     }
+
+    [Fact]
+    public void ALoneCarriageReturnIsNotMadeALineBreak()
+    {
+        // A lone CR is not a line break in the file, so a save leaves it as it is (round 5 item 14).
+        Assert.Equal("a\rb", InstructionFiles.WithLineEnding("a\rb", "\r\n"));
+        Assert.Equal("a\rb\nc", InstructionFiles.WithLineEnding("a\rb\r\nc", "\n"));
+    }
+
+    [Fact]
+    public void AMixedFileIsDetectedAndAnEditGivesEveryBreakTheMajorityEnding()
+    {
+        var file = "one\r\ntwo\nthree\r\n";
+
+        Assert.True(InstructionFiles.HasMixedLineEndings(file));
+        Assert.False(InstructionFiles.HasMixedLineEndings("a\r\nb\r\n"));
+        Assert.False(InstructionFiles.HasMixedLineEndings("a\nb\n"));
+
+        // The owner changes one word. The majority of this file is CRLF, so every break is CRLF after the save.
+        var edited = "one\r\ntwo\r\nthree\r\nfour";
+        Assert.Equal("one\r\ntwo\r\nthree\r\nfour", InstructionFiles.TextToSave(file, edited));
+    }
+
+    [Fact]
+    public void AnUneditedSaveWritesAMixedFileBackExactly()
+    {
+        // The editor shows every break as CRLF. With no edit, the file's own text goes back, with its LF line break still LF.
+        var file = "one\r\ntwo\nthree\r\n";
+        var editorView = file.Replace("\n", "\r\n").Replace("\r\r\n", "\r\n");
+
+        Assert.Equal(file, InstructionFiles.TextToSave(file, editorView));
+    }
+
+    [Fact]
+    public void ASaveThatChangesTheTextUsesTheFilesMajorityEnding()
+    {
+        var file = "one\nlf\nthen crlf\r\n";
+
+        Assert.Equal("one\nlf\nthen crlf\nchanged", InstructionFiles.TextToSave(file, "one\r\nlf\r\nthen crlf\r\nchanged"));
+    }
 }

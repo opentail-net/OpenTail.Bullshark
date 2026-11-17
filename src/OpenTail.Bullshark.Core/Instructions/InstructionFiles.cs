@@ -86,11 +86,42 @@ public static class InstructionFiles
         return lf > crlf ? "\n" : "\r\n";
     }
 
-    /// <summary>The text with every line break written as <paramref name="ending"/> (CRLF or LF). The other characters are unchanged.</summary>
+    /// <summary>
+    /// True when the text has both CRLF and LF line breaks. A save of an edit gives every break the more common ending, and the owner is told
+    /// (round 5 item 14).
+    /// </summary>
+    public static bool HasMixedLineEndings(string text)
+    {
+        var crlf = 0;
+        var lf = 0;
+        for (var i = 0; i < text.Length; i++)
+        {
+            if (text[i] != '\n') continue;
+            if (i > 0 && text[i - 1] == '\r') crlf++;
+            else lf++;
+        }
+        return crlf > 0 && lf > 0;
+    }
+
+    /// <summary>
+    /// The text with every line break written as <paramref name="ending"/> (CRLF or LF). A line break is CRLF or LF; a lone CR is not one, so
+    /// it stays as it is (round 5 item 14: it used to become a line break). The other characters are unchanged.
+    /// </summary>
     public static string WithLineEnding(string text, string ending)
     {
-        var lf = text.Replace("\r\n", "\n").Replace('\r', '\n');
+        var lf = text.Replace("\r\n", "\n");
         return ending == "\n" ? lf : lf.Replace("\n", "\r\n");
+    }
+
+    /// <summary>
+    /// The text a save writes, given the file's text as it was read and the editor's text. When the two differ only in their line breaks (an
+    /// unedited save, or an edit that touched no line break), the file's own text is written back exactly, so a mixed file keeps each of its
+    /// line endings. Otherwise every line break takes the file's more common ending (<see cref="LineEndingOf"/>).
+    /// </summary>
+    public static string TextToSave(string fileText, string editorText)
+    {
+        if (WithLineEnding(editorText, "\n") == WithLineEnding(fileText, "\n")) return fileText;
+        return WithLineEnding(editorText, LineEndingOf(fileText));
     }
 
     /// <summary>

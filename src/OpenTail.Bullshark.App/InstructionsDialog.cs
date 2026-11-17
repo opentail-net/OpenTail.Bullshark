@@ -32,6 +32,9 @@ public sealed class InstructionsDialog : Window
     private FileStamp? _stamp;
     private string _loadedText = string.Empty;
 
+    /// <summary>The file's text as it was read, or as it was last saved. A save with no edit writes this back exactly (round 5 item 14).</summary>
+    private string _fileText = string.Empty;
+
     /// <summary>The line ending of the open file (LF or CRLF). A save writes its text with this ending, so the file keeps it.</summary>
     private string _ending = "\r\n";
     private bool _dirty;
@@ -158,12 +161,17 @@ public sealed class InstructionsDialog : Window
         _current = entry;
         _stamp = stamp;
         _ending = InstructionFiles.LineEndingOf(text);
+        _fileText = text;
         _editor.Text = text;
         // The editor reports its line breaks in its own form (CRLF), so the unchanged text is compared in that form.
         _loadedText = _editor.Text;
         SetDirty(false);
         _path.Text = entry.Path;
-        _status.Text = _stamp is null ? "No file yet. Save creates it." : string.Empty;
+        _status.Text = _stamp is null ? "No file yet. Save creates it."
+            : InstructionFiles.HasMixedLineEndings(text)
+                ? "This file mixes line endings. An edit gives every line break the more common one, " +
+                  (_ending == "\n" ? "LF" : "CRLF") + "; a save with no edit keeps the file as it is."
+                : string.Empty;
         return true;
     }
 
@@ -182,7 +190,7 @@ public sealed class InstructionsDialog : Window
     {
         if (_current is null) return;
         var editorText = _editor.Text;
-        var text = InstructionFiles.WithLineEnding(editorText, _ending);
+        var text = InstructionFiles.TextToSave(_fileText, editorText);
         var result = InstructionFiles.Save(_current.Path, text, _stamp);
         if (result.Outcome == SaveOutcome.Changed)
         {
@@ -206,6 +214,7 @@ public sealed class InstructionsDialog : Window
             return;
         }
         _stamp = result.Stamp;
+        _fileText = text;
         _loadedText = editorText;
         SetDirty(_editor.Text != _loadedText);
         _status.Text = "Saved. " + result.Message;
