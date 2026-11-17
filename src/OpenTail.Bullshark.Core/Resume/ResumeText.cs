@@ -140,8 +140,10 @@ public static class ResumeText
 
     /// <summary>
     /// The start text of a resumed session, fitted to the launch. <paramref name="commandLineOf"/> gives the length of the command line
-    /// the text would make (<c>SetupPlan.LongestCommandLine</c>). When it is over <paramref name="limit"/>, the text is composed
-    /// again with the tail cut by the excess, so the latest turn is cut in its middle and the older turns stay whole.
+    /// the text would make (<c>SetupPlan.LongestCommandLine</c>, which counts the escaped arguments). When it is over <paramref name="limit"/>,
+    /// the text is composed again with the tail cut by the excess, so the latest turn is cut in its middle and the older turns stay whole.
+    /// A character cut from the tail can take more than one character off the command line (a quote is written as two), and a character
+    /// that is cut can also leave the rest as it was. So the cut is taken again while the text is still over (round 5 item 12).
     /// </summary>
     public static FittedStart Fit(
         string? summary,
@@ -157,9 +159,20 @@ public static class ResumeText
         var excess = commandLineOf(text) - limit;
         if (excess <= 0) return new FittedStart(text, 0, Fits: true);
 
-        var cutTail = Tail(lines, turns, maxChars: Math.Max(0, fullTail.Length - excess));
-        text = Compose(summary, level, cutTail, turns, sourceSessionId);
-        return new FittedStart(text, fullTail.Length - cutTail.Length, Fits: commandLineOf(text) <= limit);
+        // Even with the tail gone, the text is over: nothing more can be cut to fit it, so the whole tail is left out.
+        if (commandLineOf(Compose(summary, level, string.Empty, turns, sourceSessionId)) > limit)
+            return new FittedStart(Compose(summary, level, string.Empty, turns, sourceSessionId), fullTail.Length, Fits: false);
+
+        var cut = excess;
+        while (true)
+        {
+            var cutTail = Tail(lines, turns, maxChars: Math.Max(0, fullTail.Length - cut));
+            text = Compose(summary, level, cutTail, turns, sourceSessionId);
+            var stillOver = commandLineOf(text) - limit;
+            if (stillOver <= 0 || cut >= fullTail.Length)
+                return new FittedStart(text, fullTail.Length - cutTail.Length, Fits: stillOver <= 0);
+            cut += stillOver;
+        }
     }
 
     /// <summary>The turns of a session, oldest first. Lines before the first "you" line form a turn of their own.</summary>

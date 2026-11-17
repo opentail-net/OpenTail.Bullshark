@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace OpenTail.Bullshark.Core.Claude;
@@ -80,10 +81,57 @@ public sealed class ClaudeCli
     }
 
     /// <summary>
-    /// The most characters the joined launch arguments may take. Windows caps a command line at 32,767 characters. The margin is
-    /// for the executable's path and for the quotes the runtime adds around arguments with spaces (the length is counted before that).
+    /// The most characters the joined launch arguments may take, counted as they are written on the command line (see
+    /// <see cref="EscapeArgument"/>). Windows caps a command line at 32,767 characters. The margin is for the executable's path.
     /// </summary>
     public const int MaxLaunchCharacters = 30_000;
+
+    /// <summary>
+    /// An argument as the runtime writes it on the Windows command line (the rules of <c>ProcessStartInfo.ArgumentList</c>). An argument with
+    /// a space, a tab or a quote is wrapped in quotes; inside them each quote is written as <c>\"</c>, and a run of backslashes before a
+    /// quote is doubled, with the quote's own backslash, so that the program reads the argument back as it was. Any other argument is
+    /// written as it is. Round 5 item 12: a brief full of quotes and backslashes is longer on the command line than its characters.
+    /// </summary>
+    public static string EscapeArgument(string argument)
+    {
+        // An empty argument is written as two quotes, so that the program still gets an argument there.
+        if (argument.Length == 0) return "\"\"";
+        if (!argument.Any(c => char.IsWhiteSpace(c) || c == '"')) return argument;
+
+        var text = new StringBuilder("\"");
+        for (var i = 0; i < argument.Length;)
+        {
+            var backslashes = 0;
+            while (i < argument.Length && argument[i] == '\\')
+            {
+                i++;
+                backslashes++;
+            }
+
+            if (i == argument.Length)
+            {
+                // Backslashes at the end are doubled, so they do not escape the closing quote.
+                text.Append('\\', backslashes * 2);
+            }
+            else if (argument[i] == '"')
+            {
+                // The backslashes before a quote are doubled, and the quote itself is escaped.
+                text.Append('\\', backslashes * 2 + 1);
+                text.Append('"');
+                i++;
+            }
+            else
+            {
+                text.Append('\\', backslashes);
+                text.Append(argument[i]);
+                i++;
+            }
+        }
+        return text.Append('"').ToString();
+    }
+
+    /// <summary>The joined arguments as they are written on the command line, each one escaped by <see cref="EscapeArgument"/>.</summary>
+    private static string CommandLineOf(IEnumerable<string> args) => string.Join(' ', args.Select(EscapeArgument));
 
     /// <summary>Starts a background session and returns its 8-character id.</summary>
     public async Task<string> StartBackgroundAsync(BackgroundLaunch launch, CancellationToken cancellationToken = default)
@@ -110,7 +158,7 @@ public sealed class ClaudeCli
     /// The length of the command line a launch makes, counted as <see cref="StartBackgroundAsync"/> counts it against
     /// <see cref="MaxLaunchCharacters"/>. A caller checks a launch before it writes the run that starts it.
     /// </summary>
-    public static int CommandLineLength(BackgroundLaunch launch) => string.Join(' ', ArgumentsOf(launch)).Length;
+    public static int CommandLineLength(BackgroundLaunch launch) => CommandLineOf(ArgumentsOf(launch)).Length;
 
     /// <summary>
     /// Refuses a launch the command line cannot carry, before `claude` runs. A brief that starts with '-' would be read as an
@@ -124,7 +172,7 @@ public sealed class ClaudeCli
                 $"The brief for '{launch.Name}' starts with '-', so `claude` would read it as an option. " +
                 $"It was not started ({prompt.Length:N0} characters). Begin the brief with a word.");
 
-        var joined = string.Join(' ', args).Length;
+        var joined = CommandLineOf(args).Length;
         if (joined > MaxLaunchCharacters)
             throw new ClaudeCliException(
                 $"The launch for '{launch.Name}' is {joined:N0} characters ({launch.Prompt?.Length ?? 0:N0} of them the brief); " +

@@ -143,6 +143,26 @@ public sealed class ResumeFitTests
     }
 
     [Fact]
+    public void AStartTextFullOfQuotesAndBackslashesFitsOnceCutAsItIsWritten()
+    {
+        // Under the limit by its characters, but each quote is written with a backslash and the backslash is doubled before it, so the
+        // launch is over the limit as written. The fit counts what is written (round 5 item 12).
+        var request = SoloRequest();
+        var quoted = string.Concat(Enumerable.Repeat("\\\"", 12_000));
+        var lines = Conversation("first", quoted);
+        var whole = ResumeText.Compose(null, null, ResumeText.Tail(lines, 10), 10, SourceId);
+        Assert.True(whole.Length < ClaudeCli.MaxLaunchCharacters, "the test needs a start text under the limit by its characters");
+        Assert.True(SetupPlan.LongestCommandLine(request with { Task = whole }) > ClaudeCli.MaxLaunchCharacters,
+            "the test needs a start text over the limit as it is written");
+
+        var fitted = ResumeText.Fit(null, null, lines, 10, SourceId, text => SetupPlan.LongestCommandLine(request with { Task = text }));
+
+        Assert.True(fitted.Fits);
+        Assert.True(fitted.CutCharacters > 0);
+        Assert.True(SetupPlan.LongestCommandLine(request with { Task = fitted.Text }) <= ClaudeCli.MaxLaunchCharacters);
+    }
+
+    [Fact]
     public void TheCommandLineLengthIsWhatTheLaunchCountsAgainstTheLimit()
     {
         var launch = new BackgroundLaunch("bullshark-planner-abcd", @"C:\Work", "opus", "high", Prompt: "hello", PermissionMode: "auto");
