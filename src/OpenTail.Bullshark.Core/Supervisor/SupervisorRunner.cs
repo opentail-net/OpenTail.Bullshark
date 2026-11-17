@@ -41,6 +41,13 @@ public sealed class SupervisorRunner
     /// </summary>
     public DaemonStatus? Daemon { get; set; }
 
+    /// <summary>
+    /// The hold while `claude respawn --all` runs and for <see cref="RespawnHold.Window"/> after it (round 8 item 3). While it is held, a pass makes
+    /// no start or resume: the action is dropped, and the record is not changed by it. It still reads the listing and shows what it finds.
+    /// Null, the default, holds nothing.
+    /// </summary>
+    public RespawnHold? Hold { get; set; }
+
     public SupervisorRunner(
         ClaudeCli cli,
         StateStore store,
@@ -89,6 +96,9 @@ public sealed class SupervisorRunner
         var processed = new List<string>();
         var now = _clock.GetUtcNow();
 
+        // Read once for the whole pass: the hold is taken as it stood when the pass began (round 8 item 3).
+        var held = Hold?.IsHeld == true;
+
         // Saved in a finally: a session started earlier in this pass keeps its record even if a later step throws.
         try
         {
@@ -101,6 +111,10 @@ public sealed class SupervisorRunner
 
                 foreach (var action in actions)
                 {
+                    // A respawn is restarting the workers: no start or resume is carried out until the hold ends. The session is decided on again
+                    // by the next pass that is not held (round 8 item 3).
+                    if (held && action is SupervisorAction.Start or SupervisorAction.Resume) continue;
+
                     try
                     {
                         await Carry(action, spec, records, now, cancellationToken);

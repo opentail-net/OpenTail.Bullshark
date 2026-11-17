@@ -69,6 +69,11 @@ public partial class SessionWindow : Window
     private readonly TranscriptView _transcript = new() { Visibility = Visibility.Hidden };
     private readonly SetupView _setup;
     private bool _passRunning;
+
+    /// <summary>
+    /// The hold on starts and resumes while Respawn all runs and for 20 seconds after it (round 8 item 3). The pass reads it on a pool thread.
+    /// </summary>
+    private readonly RespawnHold _respawnHold = new();
     private IReadOnlyList<AgentInfo> _agents = [];
 
     /// <summary>The background daemon as the last pass read it (round 7 item 1). Used to show a listed session as stale while it is not running.</summary>
@@ -105,7 +110,7 @@ public partial class SessionWindow : Window
         _store = new StateStore(options.StatePath, AppLog.Write);
         _runStore = new RunStore(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(options.StatePath))!, "runs.json"));
         InitLibrary(options.StatePath);
-        var runner = new SupervisorRunner(_cli, _store, TimeProvider.System, log: AppLog.Write);
+        var runner = new SupervisorRunner(_cli, _store, TimeProvider.System, log: AppLog.Write) { Hold = _respawnHold };
         _loop = new SupervisorLoop(runner, _cli, _store, AppLog.Write);
         _runner = runner;
         // The timeline's log sits beside the state file, and the supervisor writes every action to it (additions item 5).
@@ -579,13 +584,14 @@ public partial class SessionWindow : Window
     private async void RespawnButton_Click(object sender, RoutedEventArgs e)
     {
         if (_drift is not { } drift) return;
-        var answer = MessageBox.Show(this,
-            $"Restart all background sessions so they run the installed claude {drift.CliVersion}?\n\n" +
-            "This runs `claude respawn --all`, which restarts the background sessions so that they run the installed version.",
+        var answer = MessageBox.Show(this, RespawnHold.ConfirmationText(drift.CliVersion),
             "Respawn all background sessions", MessageBoxButton.YesNo, MessageBoxImage.Question);
         if (answer != MessageBoxResult.Yes) return;
 
+        // The hold covers the respawn and 20 seconds after it: the workers restart meanwhile, and a pass must not start or resume a session
+        // that is only missing from the listing for now (round 8 item 3).
         RespawnButton.IsEnabled = false;
+        _respawnHold.Begin();
         try
         {
             var result = await Task.Run(() => _cli.RespawnAllAsync());
@@ -602,6 +608,7 @@ public partial class SessionWindow : Window
         }
         finally
         {
+            _respawnHold.End();
             RespawnButton.IsEnabled = true;
         }
         await PassAndRefreshAsync();
