@@ -178,11 +178,13 @@ public partial class SessionWindow
         Resources["BarMuted"] = RailPalette.Brush(palette.Muted);
         Resources["BarHover"] = RailPalette.Brush(palette.IsLight ? "#22000000" : "#33FFFFFF");
         StatusText.Foreground = RailPalette.Brush(palette.Muted);
+        NeedsYouText.Foreground = RailPalette.Brush(palette.Text);
         RailSplitter.Background = RailPalette.Brush(palette.Border);
         Pane.Background = RailPalette.Brush(palette.Background);
         _setup?.ApplyTheme(palette);
         _search.ApplyTheme(palette);
         _transcript.ApplyTheme(palette);
+        _changes.ApplyTheme(palette);
         FilterBox.Background = RailPalette.Brush(palette.Panel);
         FilterBox.BorderBrush = RailPalette.Brush(palette.Muted);
         UpdateFilterMark();
@@ -246,6 +248,8 @@ public partial class SessionWindow
         var records = stored.Values.OrderBy(r => r.Name, StringComparer.Ordinal).ToList();
         // A start that failed has no session, so it gets no terminal (it is listed as a failure below).
         foreach (var record in records.Where(r => !string.IsNullOrEmpty(r.SessionId))) EnsureTerminal(record);
+        _attention = AttentionList.From(records, _agents);
+        UpdateNeedsYouCount();
 
         var groups = new Dictionary<string, RailGroup>(StringComparer.OrdinalIgnoreCase);
         RailGroup Folder(string folder)
@@ -286,6 +290,8 @@ public partial class SessionWindow
         try
         {
             Rail.Items.Clear();
+            // Needs you comes first: a session that waits for the owner is the first thing to see. Shown with the live sessions only.
+            if (ShowsLive && _attention.Count > 0) Rail.Items.Add(NeedsYouSection(stored));
             foreach (var (key, step) in _trustSteps)
                 Rail.Items.Add(NewItem(Label($"Trust: {Path.GetFileName(step.Root)} · choose 'Yes, I trust this folder'"),
                     new RailTag(RailKind.Trust, key), step.Root));
@@ -306,15 +312,7 @@ public partial class SessionWindow
                             new RailTag(RailKind.Heading, "failed:" + record.Name), record.LastAlert));
                         continue;
                     }
-                    var cache = CacheTextFor(record.SessionId);
-                    var title = LiveTitle(record);
-                    var item = NewItem(
-                        ColourEdge(TwoLine(title, ActivityLine(record.SessionId, state, record.StartedAt, state == "working"), string.Empty,
-                            badge: MatchBadge(MatchOf(record.SessionId))), MarkOf(record.SessionId)?.Colour),
-                        new RailTag(RailKind.Session, record.SessionId),
-                        NoteTip(MarkOf(record.SessionId)) + SearchTip(MatchOf(record.SessionId), cache.Full ?? record.SessionId));
-                    item.ContextMenu = RowMenu(record.SessionId, history: false, title);
-                    folderItem.Items.Add(item);
+                    folderItem.Items.Add(LiveRow(record, state));
                 }
                 Rail.Items.Add(folderItem);
             }
@@ -482,7 +480,7 @@ public partial class SessionWindow
 
             // With no live session in the rail, nothing is selected, and every refresh came here and showed the setup over a search
             // or a transcript opened from one. Those keep the pane.
-            if (_activeTab?.Kind is TabKind.Search or TabKind.Transcript) return;
+            if (_activeTab?.Kind is TabKind.Search or TabKind.Transcript or TabKind.Changes) return;
             ShowOnly(_setup);
             return;
         }
@@ -492,7 +490,7 @@ public partial class SessionWindow
 
         // A refresh must not take the pane away from a search, or from a transcript the owner opened from a result: those have no
         // row selected in the rail, so the fallback would show the setup over them.
-        if (_activeTab?.Kind is TabKind.Search or TabKind.Transcript) return;
+        if (_activeTab?.Kind is TabKind.Search or TabKind.Transcript or TabKind.Changes) return;
         _ = ShowRailItemAsync(_selected);
     }
 
@@ -768,6 +766,23 @@ public partial class SessionWindow
              : span.TotalHours < 24 ? $"{(int)span.TotalHours}h"
              : span.TotalDays < 30 ? $"{(int)span.TotalDays}d"
              : when.Value.ToLocalTime().ToString("dd MMM", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// The row of a live session: its title, its activity line and its marks. The same row is used under its folder and under
+    /// Needs you, so both show the same session the same way.
+    /// </summary>
+    private TreeViewItem LiveRow(SessionRecord record, string state)
+    {
+        var cache = CacheTextFor(record.SessionId);
+        var title = LiveTitle(record);
+        var item = NewItem(
+            ColourEdge(TwoLine(title, ActivityLine(record.SessionId, state, record.StartedAt, state == "working"), string.Empty,
+                badge: MatchBadge(MatchOf(record.SessionId))), MarkOf(record.SessionId)?.Colour),
+            new RailTag(RailKind.Session, record.SessionId),
+            NoteTip(MarkOf(record.SessionId)) + SearchTip(MatchOf(record.SessionId), cache.Full ?? record.SessionId));
+        item.ContextMenu = RowMenu(record.SessionId, history: false, title);
+        return item;
     }
 
     private static TreeViewItem NewItem(object header, RailTag tag, string? tooltip = null) =>

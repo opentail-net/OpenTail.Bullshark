@@ -168,6 +168,9 @@ public sealed class SupervisorRunner
                 {
                     Restarts = previous.Restarts + 1,
                     RestartTimes = previous.RestartTimes.Append(now).ToList(),
+                    // The session is back: a restart-loop or failed-resume alert from before is no longer current. Kept, it would
+                    // put the session under "Needs you" the next time it went missing (AttentionList reads it).
+                    LastAlert = null,
                 };
                 _log($"{spec.Name}: resumed {resume.SessionId}");
                 break;
@@ -191,7 +194,7 @@ public sealed class SupervisorRunner
         DateTimeOffset now,
         string message)
     {
-        var detail = $"{(action is SupervisorAction.Start ? "start" : "resume")} failed: {message}";
+        var detail = (action is SupervisorAction.Start ? "start failed: " : AttentionList.ResumeFailedPrefix) + message;
         _log($"{spec.Name}: ALERT {AlertKind.StartFailed} - {detail}");
 
         if (action is SupervisorAction.Start)

@@ -18,6 +18,9 @@ internal static class TerminalColours
 
     private static readonly uint[] CubeLevels = [0x00, 0x5F, 0x87, 0xAF, 0xD7, 0xFF];
 
+    /// <summary>One of the first 16 colours (0 black to 15 bright white) as "#RRGGBB", for text drawn outside a terminal (the Changes tab).</summary>
+    internal static string Hex(int index) => $"#{Campbell[index]:X6}";
+
     /// <summary>A new theme with the default background, foreground, selection and palette.</summary>
     public static TerminalTheme Create() => new()
     {
