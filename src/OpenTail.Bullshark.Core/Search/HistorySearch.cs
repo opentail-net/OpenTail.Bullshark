@@ -75,6 +75,14 @@ public static class HistorySearch
         return results;
     }
 
+    /// <summary>
+    /// True when the word is in the raw JSON line exactly as typed, so a plain substring test on the line is a safe pre-filter. That holds
+    /// for ASCII letters, digits, '-', '_' and '.', which no JSON writer escapes. Any other character may be written escaped in the file
+    /// (a backslash is <c>\\</c>, a quote is <c>\"</c>), so a word with one is not pre-filtered: its lines are parsed, as the text is.
+    /// </summary>
+    public static bool SameInRawLine(string word) =>
+        word.All(c => c is (>= 'a' and <= 'z') or (>= 'A' and <= 'Z') or (>= '0' and <= '9') or '-' or '_' or '.');
+
     /// <summary>A piece of a message around its first match, on one line, with "…" where it was cut.</summary>
     public static string Snippet(string text, string word)
     {
@@ -112,8 +120,9 @@ public static class HistorySearch
                 number++;
                 cancellationToken.ThrowIfCancellationRequested();
 
-                // Cheap first: most lines contain no word at all, so they are never parsed.
-                if (!words.Any(word => raw.Contains(word, StringComparison.OrdinalIgnoreCase))) continue;
+                // Cheap first: most lines contain no word at all, so they are never parsed. A word that the file may write escaped
+                // (see SameInRawLine) cannot be looked for in the raw line, so it does not rule the line out.
+                if (!words.Any(word => !SameInRawLine(word) || raw.Contains(word, StringComparison.OrdinalIgnoreCase))) continue;
 
                 var shown = TranscriptLine.From(number, raw);
                 if (shown is null || shown.Kind is not ("you" or "claude")) continue;

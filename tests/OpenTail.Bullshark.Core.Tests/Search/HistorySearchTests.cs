@@ -108,6 +108,41 @@ public sealed class HistorySearchTests : IDisposable
         Assert.Equal(usable, HistorySearch.IsUsable(query));
 
     [Fact]
+    public void AWindowsPathIsFound()
+    {
+        // The file holds the path with each backslash doubled, so the raw line does not contain it as typed.
+        var session = Session("a", [You(@"the code is in C:\Git\OpenTail.Bullshark\src\Core")], Day);
+
+        var match = Assert.Single(HistorySearch.Run([session], @"OpenTail.Bullshark\src"));
+
+        Assert.Equal(1, match.MatchingMessages);
+    }
+
+    [Fact]
+    public void AQuotedPhraseIsFound()
+    {
+        var session = Session("a", [You("he said \"hello there\" to the team")], Day);
+
+        Assert.Single(HistorySearch.Run([session], "\"hello there\""));
+    }
+
+    [Fact]
+    public void AWordWithAQuoteOrBackslashIsNotPreFiltered()
+    {
+        Assert.False(HistorySearch.SameInRawLine(@"src\Core"));
+        Assert.False(HistorySearch.SameInRawLine("\"hello"));
+        Assert.False(HistorySearch.SameInRawLine("don't"));
+    }
+
+    [Fact]
+    public void APlainWordKeepsTheFastPath()
+    {
+        Assert.True(HistorySearch.SameInRawLine("alpha"));
+        Assert.True(HistorySearch.SameInRawLine("A2A"));
+        Assert.True(HistorySearch.SameInRawLine("file_name.cs"));
+    }
+
+    [Fact]
     public void ASnippetShowsTheWordWithItsContext()
     {
         var text = new string('x', 100) + " target " + new string('y', 100);
