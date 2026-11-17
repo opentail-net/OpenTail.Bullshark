@@ -124,7 +124,8 @@ public sealed record DaemonStatus(
         return new DaemonStatus(
             State: state,
             Pid: pid.Success && int.TryParse(pid.Groups[1].Value, out var pidValue) ? pidValue : null,
-            Version: version.Success ? version.Groups[1].Value : null,
+            // A version is kept only for a running daemon: a "version" word in a not-running or unknown text is not the daemon's (round 8 item 7).
+            Version: state == DaemonState.Running && version.Success ? version.Groups[1].Value : null,
             Uptime: uptime.Success ? uptime.Groups[1].Value.Trim() : null,
             ControlReachable: ControlReachableOf(text),
             BackgroundWorkers: workers.Success && int.TryParse(workers.Groups[1].Value, out var count) ? count : null,

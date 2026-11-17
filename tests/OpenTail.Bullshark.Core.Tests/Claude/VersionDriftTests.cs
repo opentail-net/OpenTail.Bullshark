@@ -49,6 +49,19 @@ public sealed class VersionDriftTests
         Assert.Null(VersionDrift.Of(daemon, cli));
 
     [Fact]
+    public void ADaemonThatIsNotRunningGivesNoDrift()
+    {
+        // Round 8 item 7: a version carried by a status that is not running is not the daemon's, so there is no notice.
+        var carried = new DaemonStatus(DaemonState.NotRunning, null, "2.1.300", null, null, null, null, null, "not running");
+        Assert.Null(VersionDrift.OfStatus(carried, "2.1.326"));
+        Assert.Null(VersionDrift.OfStatus(DaemonStatus.Parse("not running\nversion 2.1.300"), "2.1.326"));
+
+        // A running daemon with another version is drift, as before.
+        var running = DaemonStatus.Parse("running (pid 4312, version 2.1.300, uptime 2h)\n");
+        Assert.NotNull(VersionDrift.OfStatus(running, "2.1.326 (Claude Code)"));
+    }
+
+    [Fact]
     public async Task TheInstalledVersionIsReadWithVersionFlag()
     {
         var runner = new FakeCliRunner(_ => FakeCliRunner.Ok("2.1.326 (Claude Code)\n"));

@@ -28,6 +28,13 @@ public sealed record VersionDrift(string DaemonVersion, string CliVersion)
         return string.Equals(daemon, cli, StringComparison.Ordinal) ? null : new VersionDrift(daemon, cli);
     }
 
+    /// <summary>
+    /// The drift as the window reads it from the daemon status (round 8 item 7): only a running daemon has a version to compare. A status that
+    /// is not running, or is unknown, gives no notice, whatever text it carries.
+    /// </summary>
+    public static VersionDrift? OfStatus(DaemonStatus daemon, string? cliVersion) =>
+        daemon.State == DaemonState.Running ? Of(daemon.Version, cliVersion) : null;
+
     /// <summary>The short form for the status line.</summary>
     public string StatusText => $"background daemon runs claude {DaemonVersion}, installed {CliVersion}: respawn all to switch";
 

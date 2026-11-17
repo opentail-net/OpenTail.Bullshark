@@ -333,7 +333,7 @@ public partial class SessionWindow : Window
         var daemonStatusNotice = daemon.StatusNotice(rawAgents);
         // The installed version is read only when the daemon reports one: there is no drift to show without both (round 7 item 2).
         var cliVersion = daemon.Version is null ? null : await _cli.VersionAsync();
-        var drift = VersionDrift.Of(daemon.Version, cliVersion);
+        var drift = VersionDrift.OfStatus(daemon, cliVersion);
         var (records, recordsProblem) = LoadRecords(_store);
         var (runs, runsProblem) = LoadRuns(_runStore);
         // A run that waits for its start time has no specs here, so it is neither trusted, started nor adopted yet (gems item 5).

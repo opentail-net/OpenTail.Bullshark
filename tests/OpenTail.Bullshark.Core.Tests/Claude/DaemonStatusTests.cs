@@ -182,6 +182,21 @@ public sealed class DaemonStatusTests
     }
 
     [Fact]
+    public void AVersionIsKeptOnlyForARunningDaemon()
+    {
+        // Round 8 item 7: a "version" word in a not-running or an unknown text is not the daemon's version.
+        var notRunning = DaemonStatus.Parse("not running\nversion 2.1.300 (old)\n");
+        Assert.Equal(DaemonState.NotRunning, notRunning.State);
+        Assert.Null(notRunning.Version);
+
+        var unknown = DaemonStatus.Parse("daemon: unreachable, version 2.1.300\n");
+        Assert.Equal(DaemonState.Unknown, unknown.State);
+        Assert.Null(unknown.Version);
+
+        Assert.Equal("2.1.326", DaemonStatus.Parse(RunningOutput).Version);
+    }
+
+    [Fact]
     public void WhileTheDaemonRunsTheListingIsUnchanged()
     {
         var agents = AgentInfo.ParseList(Listing);
