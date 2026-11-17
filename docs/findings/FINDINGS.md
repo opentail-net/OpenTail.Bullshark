@@ -467,3 +467,16 @@ Source: the brief-templates batch from the planner (git-fb), with the owner's de
 - **Old extra text (PlannerExtra, CoderExtra):** read from older `patterns.json` files, and not used. The page has no boxes for them. With no saved brief, a launch starts with the built-in template, expanded, and adds no owner text; `WithOwnerText` is removed. A test checks that a request with extra text and no saved brief launches the expanded template.
 - **Not verified:** a run started from a saved brief (no session is started); the Save and Reset buttons, which sit below the fold in the screenshot.
 - **Not committed.** The files are the six setup files, `RunPlan.cs` (`AssistantClause`), `SessionWindow.xaml.cs` (the option), this finding, and the part-3 files that are still uncommitted (`TranscriptView.cs`, `SessionWindow.SelfTest.cs`, `RunPlan.cs`).
+
+## F61 `claude agents --json` leaves out finished and stopped sessions (checked 2026-11-17, `claude` 2.1.326; bug open)
+
+- **The fact:** without `--all`, `agents --json` prints active sessions only. `claude agents --help`: "--all  With --json: also include completed background sessions". On the owner's machine: 8 sessions without `--all`, 20 with it. Missing from the default list: 10 `background/done`, 2 `background/stopped`. Two `done` sessions were in both lists, so `done` alone does not decide it.
+- **Entry fields seen:** `cwd, id, kind, name, sessionId, startedAt, state` (no `pid`).
+- **The bug:** the supervisor lists without `--all` and treats a missing session as lost, so it resumes a session that finished or that the owner stopped from the CLI or Agent View (with the "You were restarted" prompt; capped at 3 restarts in a sliding hour). Bullshark's own close-tab stop removes the spec first, so it is not affected.
+- **The fix:** planned in `docs/plans/bugs-2026-11-17.md` item 1 (list with `--all` for the pass; `stopped` and `failed` alert, never resume; the window's display list stays the default listing).
+
+## F62 `claude --bg` refuses a folder that has not been trusted (checked 2026-11-17)
+
+- **The fact:** `claude --bg --model haiku --effort low --name gate-plain "<prompt>"` in a new scratch git repo exited 1 with "Workspace not trusted. Run claude in <folder> once and accept the trust prompt, then retry." Nothing started (`agents --json --all` was the same before and after).
+- **Effect:** the worktree-per-coder gate (`docs/plans/additions-2026-11-17.md` item 3) could not run `--bg -w`. Trusting a folder takes an interactive `claude` run that writes `~/.claude.json`, which only the owner does. To finish the gate, the owner trusts one throwaway repo, then the gate is rerun.
+- **Fits the existing trust step:** Bullshark already skips runs in untrusted folders and shows a Trust step (`TrustGate`), so this is the same rule seen from the CLI side.

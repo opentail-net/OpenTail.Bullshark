@@ -2,7 +2,7 @@
 
 Bullshark - saves your bytes.
 
-> **Status (2026-11-16): built, not yet proven end to end.** The window and the supervisor are built, and the spike (P1) passed. The review of 2026-11-15 ([docs/plans/review-2026-11-15.md](docs/plans/review-2026-11-15.md)) is in progress: its Phase 1 is committed, and its end-to-end run with the real `claude` CLI (Phase 3) has not been done. The orchestrator (P8) is a later, optional phase.
+> **Status (2026-11-17): built, not yet proven end to end.** The window and the supervisor are built, and the spike (P1) passed. The review fixes of 2026-11-17 are on `main`, and so are the "Needs you" alerts and the Changes tab (additions Phase A). A known bug is open: the supervisor resumes sessions that finished or were stopped (F61); the fix is planned in `docs/plans/bugs-2026-11-17.md`. The end-to-end run with the real `claude` CLI (review of 2026-11-15, Phase 3) has not been done. The orchestrator (P8) is a later, optional phase. See [Plans](#plans).
 
 ## What it is
 
@@ -30,7 +30,7 @@ On 2026-11-12/13 a planner session directed a second local Claude session (a Hai
 
 Two parts, plus a later optional third:
 
-- **Supervisor** (headless, starts at log-on). It starts the planner and the coder as background sessions (`claude --bg` with `--session-id` and `--name`), keeps their IDs in a state file, and polls `claude agents --json`. If a session has gone, it restarts it. If a session is `blocked`, it raises an alert.
+- **Supervisor** (headless, starts at log-on). It starts the planner and the coder as background sessions (`claude --bg` with `--name`; `--bg` ignores `--session-id`, so the id is read back from the listing, F18), keeps their IDs in a state file, and polls `claude agents --json`. The window runs the same pass every 15 seconds while it is open, off the UI thread. If a session has gone, it restarts it. If a session is `blocked`, it raises an alert.
 - **Window** (opened by the owner). One tab per session. Each tab is an embedded terminal running `claude attach <id>`. Closing a tab detaches; the session keeps running.
 - **Orchestrator** (later, optional, P8). A local model that handles situations the supervisor cannot, such as recovery when a restart is not enough. See its own section.
 
@@ -126,7 +126,7 @@ The sessions see each other directly and live, with `SendMessage` by session nam
 - **Supervisor:** a Windows Task Scheduler task, trigger "At log on", running as the owner's user account. *Expected, not verified:* a Windows Service would run under another account and would not see the owner's Claude login, so a service is the wrong choice.
 - **Window:** opened by the owner. Auto-open at log-on is optional (owner's choice).
 - **Log-on, not power-on.** A PC that boots without logging in does not run OpenTail.Bullshark. Auto-logon would change that (D6).
-- **Blocked sessions:** the supervisor alerts, and the window shows a badge on the tab.
+- **Blocked sessions:** the supervisor alerts once per entry into `blocked`. The window lists the session under "Needs you" at the top of the rail, shows the count in the status bar, and flashes the taskbar button with a sound when a session newly needs the owner (turn off with `"notify": false` in `ui.json`). Windows toast notifications are not built (they need a package; owner decision).
 
 ## Visibility
 
@@ -176,8 +176,23 @@ Not needed for the core. It is useful for recovery when a restart is not enough,
 | D7 | Window stack | C# WPF with WPF-UI.Terminal, to be proven in P1. Fallback: Windows Terminal tabs. Intelligent Terminal not chosen. |
 | D8 | Orchestrator (later): which model, and when to start? | Not now. Start P8 only after P1-P7 work. Stingray with a Qwen3-class model, chosen by testing. |
 | D9 | Orchestrator authority: which actions may it take without asking? | A fixed list only (continue, run tests, wait). Everything else is an alert to the owner. |
-| D10 | How do alerts reach the owner when AFK? | Undecided. Options: a Windows notification, or the Teams path in OpenTail.Orca (already used for approval cards; check its limits). |
+| D10 | How do alerts reach the owner when AFK? | Partly done (2026-11-17): in the window, a "Needs you" rail group, taskbar flash and sound. Still open for AFK: a Windows toast (needs a package), or the Teams path in OpenTail.Orca (already used for approval cards; check its limits). |
 
 ## Repo
 
-Folder: `C:\Git\split\OpenTail.Bullshark` (next to the other `OpenTail.*` projects). No git repo yet. No commits yet. The P1 spike would start in this folder.
+Folder: `C:\Git\split\OpenTail.Bullshark` (next to the other `OpenTail.*` projects). Git repo with remote `origin` = `github.com/opentail-net/OpenTail.Bullshark`, branch `main`.
+
+Projects: `src/OpenTail.Bullshark.Core` (logic, no UI), `src/OpenTail.Bullshark.App` (WPF window), `src/OpenTail.Bullshark.Supervisor` (headless host), `tests/OpenTail.Bullshark.Core.Tests`. Build and test: `dotnet test OpenTail.Bullshark.slnx -nodeReuse:false` (Visual Studio's build nodes otherwise lock new folders).
+
+## Plans
+
+Plans live in `docs/plans/`, as checkbox lists; `DONE_` in a name means finished. Findings (facts checked against the real CLI, and bugs fixed) are in `docs/findings/FINDINGS.md`.
+
+| Plan | State (2026-11-17) |
+|---|---|
+| `review-2026-11-17.md` | Done, on `main` (6 items: trust file read once, pass off the UI thread, one agent listing per pass, launch length guard, testable clock, file lock fixes). |
+| `additions-2026-11-17.md` | Phase A items 1-2 done (Needs you, Changes tab). Item 3 (worktree per coder) skipped at its gate: `claude --bg` refuses an untrusted folder (F62). Phases B and C open. |
+| `bugs-2026-11-17.md` | In progress on branch `bugfixes-2026-11-17` (finished/stopped sessions resumed, alert repeats, history load, transcript file sharing). |
+| `gems-2026-11-17.md` | Open: file-overlap and merge-conflict alerts, live OpenTelemetry data (gated), effort panel, scheduled runs, storage archive. |
+| `review-2026-11-15.md` | Phase 1 done; Phase 3 (end-to-end run) open. |
+| Others (`setup-*`, `session-library`, `tabs-and-panes`, `transcript-activity`, `zoom`) | Status line at the top of each file. |

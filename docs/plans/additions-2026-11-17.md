@@ -1,5 +1,7 @@
 # Additions, 2026-11-17
 
+Status (2026-11-17): Phase A items 1 and 2 built and on `main` (7a18376), compiled but not yet seen in a running window. Item 3 skipped at its gate (F62). Phases B and C not started.
+
 Source: research of 2026-11-17 into similar tools (Agent View, Claude Code desktop, Claude Squad, ccmanager, ChatML, AgentsRoom) and
 current `claude` CLI features. Agent View and the desktop app now cover plain "see all sessions". Bullshark's edge is unattended
 supervision, planner/coder runs, history/search/resume and cache facts on Windows. These additions build on that edge.
