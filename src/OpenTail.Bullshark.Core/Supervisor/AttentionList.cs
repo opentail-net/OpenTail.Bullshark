@@ -185,7 +185,7 @@ public static class AttentionList
         {
             var state = listed.EffectiveState;
             if (string.Equals(state, "blocked", StringComparison.OrdinalIgnoreCase))
-                return Item(record, AttentionReason.Blocked, "waiting for input");
+                return Item(record, AttentionReason.Blocked, listed.Waiting is { } waiting ? $"waiting for {waiting}" : "waiting for input");
             if (string.Equals(state, "stopped", StringComparison.OrdinalIgnoreCase))
                 return Item(record, AttentionReason.Stopped, record.LastAlert ?? "stopped");
             if (string.Equals(state, "failed", StringComparison.OrdinalIgnoreCase))

@@ -45,7 +45,13 @@ public partial class SessionWindow
 
         /// <summary>The session's state, for the small dot. Empty for the setup and transcript tabs.</summary>
         public string State { get; set; } = string.Empty;
+
+        /// <summary>What the listing says the session waits for (round 7 item 3), or null. Shown in the tab's tooltip.</summary>
+        public string? Waiting { get; set; }
     }
+
+    /// <summary>The tab's tooltip: its title, and what the session waits for when the listing says so (round 7 item 3).</summary>
+    private static string TabTooltip(OpenTab tab) => tab.Waiting is { } waiting ? $"{tab.Title}\nwaiting for {waiting}" : tab.Title;
 
     private readonly List<OpenTab> _tabs = new();
 
@@ -330,7 +336,9 @@ public partial class SessionWindow
                 continue;
             }
             tab.Title = record.Name;
-            tab.State = _agents.FirstOrDefault(a => a.SessionId == tab.Key)?.EffectiveState ?? "not listed";
+            var listed = _agents.FirstOrDefault(a => a.SessionId == tab.Key);
+            tab.State = listed?.EffectiveState ?? "not listed";
+            tab.Waiting = listed?.Waiting;
         }
 
         if (SplitOpen || _rightSessions.Count > 0) SettleRightPane();
@@ -417,7 +425,7 @@ public partial class SessionWindow
                 // The drag finds its tab by this, and the tab being dragged is shown faded.
                 Tag = tab,
                 Opacity = _dragging && ReferenceEquals(tab, _dragTab) ? 0.55 : 1,
-                ToolTip = tab.Title,
+                ToolTip = TabTooltip(tab),
             };
             border.MouseLeftButtonUp += (_, _) => ActivateTab(tab);
             if (tab.Kind == TabKind.Session) border.ContextMenu = PaneMenu(tab);

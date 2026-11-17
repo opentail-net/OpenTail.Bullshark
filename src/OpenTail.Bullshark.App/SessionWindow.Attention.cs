@@ -2,6 +2,7 @@ using System.Media;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
+using OpenTail.Bullshark.Core.Claude;
 using OpenTail.Bullshark.Core.Supervisor;
 
 namespace OpenTail.Bullshark.App;
@@ -66,12 +67,20 @@ public partial class SessionWindow
                     new RailTag(RailKind.Heading, NeedsYouKey + ":failed:" + record.Name), item.Detail));
                 continue;
             }
-            var state = _agents.FirstOrDefault(a => string.Equals(a.SessionId, record.SessionId, StringComparison.OrdinalIgnoreCase))
-                            ?.EffectiveState ?? "not listed";
-            section.Items.Add(LiveRow(record, state));
+            var listed = _agents.FirstOrDefault(a => string.Equals(a.SessionId, record.SessionId, StringComparison.OrdinalIgnoreCase));
+            section.Items.Add(LiveRow(record, StateWithWaiting(listed)));
         }
         return section;
     }
+
+    /// <summary>
+    /// The listed state of a session, with what it waits for when the listing says so (round 7 item 3): "blocked · waiting for permission prompt".
+    /// A session the listing does not show is "not listed".
+    /// </summary>
+    private static string StateWithWaiting(AgentInfo? listed) =>
+        listed is null ? "not listed"
+        : listed.Waiting is { } waiting ? $"{listed.EffectiveState} · waiting for {waiting}"
+        : listed.EffectiveState;
 
     /// <summary>
     /// Called after each pass. When a session joined the list since the last pass, the window flashes its taskbar button until it
