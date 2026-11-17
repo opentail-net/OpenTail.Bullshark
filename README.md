@@ -191,8 +191,8 @@ Plans live in `docs/plans/`, as checkbox lists; `DONE_` in a name means finished
 | Plan | State (2026-11-17) |
 |---|---|
 | `review-2026-11-17.md` | Done, on `main` (6 items: trust file read once, pass off the UI thread, one agent listing per pass, launch length guard, testable clock, file lock fixes). |
-| `additions-2026-11-17.md` | Phase A items 1-2 done (Needs you, Changes tab). Item 3 (worktree per coder) skipped at its gate: `claude --bg` refuses an untrusted folder (F62). Phases B and C open. |
+| `additions-2026-11-17.md` | Phase A items 1-2 done (Needs you, Changes tab). Item 3 (worktree per coder) skipped at its gate: `claude --bg` refuses an untrusted folder (F62). Phase B items 4 and 5 (limits per run, run timeline) and item 6's listing argument built; item 6's use of `--cwd` waits on the gate (D6.2). Phase C item 7 (export) built. On branch `gems-2026-11-17`, not pushed or merged. |
 | `bugs-2026-11-17.md` | Done, on `main` (finished/stopped sessions no longer resumed, restart-loop alert once, one bad transcript skipped, one shared rule for opening transcripts). |
-| `gems-2026-11-17.md` | Open: file-overlap and merge-conflict alerts, live OpenTelemetry data (gated), effort panel, scheduled runs, storage archive. |
+| `gems-2026-11-17.md` | Items 1, 2, 4, 5 and 6 built on branch `gems-2026-11-17`: file-overlap and merge-conflict notices, the effort panel, runs with a start time, the storage page and archive. Item 3 (live OpenTelemetry data) waits for the owner's gate. Not pushed or merged. |
 | `review-2026-11-15.md` | Phase 1 done; Phase 3 (end-to-end run) open. |
 | Others (`setup-*`, `session-library`, `tabs-and-panes`, `transcript-activity`, `zoom`) | Status line at the top of each file. |

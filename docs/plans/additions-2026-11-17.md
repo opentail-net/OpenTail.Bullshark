@@ -1,6 +1,6 @@
 # Additions, 2026-11-17
 
-Status (2026-11-17): Phase A items 1 and 2 built and on `main` (7a18376), compiled but not yet seen in a running window. Item 3 skipped at its gate (F62). Phases B and C not started.
+Status (2026-11-17): Phase A items 1 and 2 built and on `main` (7a18376), compiled but not yet seen in a running window. Item 3 skipped at its gate (F62). Phase B items 4 and 5 built; item 6 has its argument but no caller (D6.2); Phase C item 7 built. On `gems-2026-11-17`, not pushed or merged; not seen in a running window.
 
 Source: research of 2026-11-17 into similar tools (Agent View, Claude Code desktop, Claude Squad, ccmanager, ChatML, AgentsRoom) and
 current `claude` CLI features. Agent View and the desktop app now cover plain "see all sessions". Bullshark's edge is unattended
