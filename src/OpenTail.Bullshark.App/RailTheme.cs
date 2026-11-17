@@ -71,23 +71,12 @@ public sealed record RailPalette(string Panel, string Background, string Text, s
 /// </summary>
 public static class ThemeStore
 {
-    public static RailTheme Load(string stateFile)
-    {
-        try
-        {
-            var path = PathFor(stateFile);
-            if (!File.Exists(path)) return RailTheme.Dark;
-            using var document = JsonDocument.Parse(File.ReadAllText(path));
-            return document.RootElement.TryGetProperty("railTheme", out var value) && value.GetString() == nameof(RailTheme.Light)
-                ? RailTheme.Light
-                : RailTheme.Dark;
-        }
-        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
-        {
-            AppLog.Write($"rail theme not read: {ex.Message}");
-            return RailTheme.Dark;
-        }
-    }
+    /// <summary>The saved theme, read through ui.json's own reader (locked, and a damaged file is moved aside). Dark when there is none.</summary>
+    public static RailTheme Load(string stateFile) =>
+        UiFile.Read(stateFile, "railTheme") is System.Text.Json.Nodes.JsonValue value && value.TryGetValue<string>(out var name) &&
+        name == nameof(RailTheme.Light)
+            ? RailTheme.Light
+            : RailTheme.Dark;
 
     public static void Save(string stateFile, RailTheme theme)
     {
@@ -101,7 +90,4 @@ public static class ThemeStore
             AppLog.Write($"rail theme not saved: {ex.Message}");
         }
     }
-
-    private static string PathFor(string stateFile) =>
-        Path.Combine(Path.GetDirectoryName(Path.GetFullPath(stateFile))!, "ui.json");
 }
