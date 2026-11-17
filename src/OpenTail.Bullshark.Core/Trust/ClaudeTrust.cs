@@ -25,15 +25,21 @@ public sealed class ClaudeTrust
     /// </summary>
     public string? Problem { get; }
 
-    /// <summary>Reads the file once. A missing file means Claude has never run here: nothing is trusted and there is no problem.</summary>
+    /// <summary>
+    /// Reads the file once. A missing file means Claude has never run here: nothing is trusted and there is no problem. A file that is there
+    /// but cannot be read is a problem. The file is opened rather than checked with File.Exists first, because that check is false for a file
+    /// the user cannot reach, and such a file would then read as missing (round 5 item 17).
+    /// </summary>
     public static ClaudeTrust Read(string claudeJsonPath)
     {
-        if (!File.Exists(claudeJsonPath)) return new ClaudeTrust(null, new Dictionary<string, bool>(StringComparer.Ordinal));
-
         JsonDocument document;
         try
         {
             document = JsonDocument.Parse(File.ReadAllText(claudeJsonPath));
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return new ClaudeTrust(null, new Dictionary<string, bool>(StringComparer.Ordinal));
         }
         catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
         {

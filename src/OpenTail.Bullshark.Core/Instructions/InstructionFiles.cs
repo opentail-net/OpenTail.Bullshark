@@ -22,10 +22,20 @@ public static class ClaudeConfig
 /// <summary>What a file looked like when it was read: its length and last write time. A save compares it with the file before writing.</summary>
 public sealed record FileStamp(long Length, long WrittenTicks)
 {
-    /// <summary>The stamp of a file that exists, or null when it does not.</summary>
+    /// <summary>
+    /// The stamp of a file that exists, or null when it does not. A file that is there but cannot be reached throws, so that it is not taken
+    /// for a missing one (round 5 item 17).
+    /// </summary>
     public static FileStamp? Of(string path)
     {
-        if (!File.Exists(path)) return null;
+        try
+        {
+            _ = File.GetAttributes(path);
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return null;
+        }
         var info = new FileInfo(path);
         return new FileStamp(info.Length, info.LastWriteTimeUtc.Ticks);
     }
@@ -66,8 +76,21 @@ public static class InstructionFiles
         return File.Exists(second) ? second : first;
     }
 
-    /// <summary>The text of a file, or empty when it does not exist.</summary>
-    public static string Read(string path) => File.Exists(path) ? File.ReadAllText(path) : string.Empty;
+    /// <summary>
+    /// The text of a file, or empty when it does not exist. A file that exists but cannot be read throws (the dialog shows the error and keeps
+    /// the previous file), so an unreadable file is never shown as an empty editor (round 5 item 17).
+    /// </summary>
+    public static string Read(string path)
+    {
+        try
+        {
+            return File.ReadAllText(path);
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return string.Empty;
+        }
+    }
 
     /// <summary>
     /// The line ending a file's text uses: LF, when most of its line breaks are LF alone; otherwise CRLF. A text with no line break
@@ -130,7 +153,16 @@ public static class InstructionFiles
     /// </summary>
     public static SaveResult Save(string path, string text, FileStamp? readStamp)
     {
-        var now = FileStamp.Of(path);
+        FileStamp? now;
+        try
+        {
+            now = FileStamp.Of(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // The file is there but cannot be reached: nothing is written over it, since it cannot be checked for a change first.
+            return new SaveResult(SaveOutcome.Failed, null, $"The file cannot be read, so nothing was written: {ex.Message}");
+        }
         if (!Equals(now, readStamp))
             return new SaveResult(SaveOutcome.Changed, now, "The file changed on disk after it was opened.");
 

@@ -1,3 +1,4 @@
+using OpenTail.Bullshark.Core.Tests.Support;
 using OpenTail.Bullshark.Core.Trust;
 using Xunit;
 
@@ -44,6 +45,19 @@ public sealed class UnreadableClaudeJsonTests : IDisposable
         Assert.NotNull(problem);
         Assert.Contains("cannot be read", problem);
         Assert.Contains("no session starts or restarts", problem);
+    }
+
+    [Fact]
+    public void AFileInAFolderTheUserCannotReachIsAProblemAndNotAMissingFile()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        File.WriteAllText(_json, "{\"projects\":{}}");
+
+        using (Unreadable.FolderWithoutMe(_dir))
+        {
+            // File.Exists is false here, so the old read took the file for a missing one: nothing trusted, and no problem to report (round 5 item 17).
+            Assert.NotNull(TrustCheck.UnreadableProblem(_json));
+        }
     }
 
     [Theory]
