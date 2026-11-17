@@ -83,9 +83,19 @@ public sealed class TranscriptIndex
 
         var files = ListFiles(projectsRoot);
         var reads = new FileRead[files.Count];
-        Parallel.For(0, files.Count, i => reads[i] = ReadOne(files[i]));
+        Parallel.For(0, files.Count, ReadOptions(), i => reads[i] = ReadOne(files[i]));
         return Combine(reads);
     }
+
+    /// <summary>
+    /// The options of the parallel reads, shared by the index and the search: one thread fewer than there are processors, so the window keeps one
+    /// (round 11 item 4), and never fewer than one. The token is passed on, so a cancelled read stops taking new work.
+    /// </summary>
+    internal static ParallelOptions ReadOptions(CancellationToken cancellationToken = default) => new()
+    {
+        MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount - 1),
+        CancellationToken = cancellationToken,
+    };
 
     /// <summary>
     /// The default build, with what each transcript was read as kept in a cache file between builds (round 10 item 2). A transcript with the
@@ -102,7 +112,7 @@ public sealed class TranscriptIndex
         var now = DateTime.UtcNow;
         var reads = new FileRead[files.Count];
         var readNow = new bool[files.Count];
-        Parallel.For(0, files.Count, i =>
+        Parallel.For(0, files.Count, ReadOptions(), i =>
         {
             var file = files[i];
             var read = cached is not null && cached.TryGetValue(file.FullName, out var entry) ? FromCache(file, entry, now) : null;

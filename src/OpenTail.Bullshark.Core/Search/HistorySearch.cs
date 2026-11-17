@@ -86,9 +86,14 @@ public static class HistorySearch
         // The sessions are read a batch at a time, on several threads (round 10 item 2). Their results are taken in the newest-first order, one
         // by one, so the matches, the count of unreadable sessions and the stop at MaxResults are the ones reading them one by one gives.
         var ordered = newestFirst.ToList();
-        for (var start = 0; start < ordered.Count; start += BatchSize)
+        var start = 0;
+        while (start < ordered.Count)
         {
-            var batch = ordered.GetRange(start, Math.Min(BatchSize, ordered.Count - start));
+            // A batch is no larger than the matches still needed, so near the cap a batch holds fewer sessions that can be read past the stop
+            // (round 11 item 4). The results do not change: the stop is taken where it was.
+            var size = Math.Min(BatchSize, MaxResults - results.Count);
+            var batch = ordered.GetRange(start, Math.Min(size, ordered.Count - start));
+            start += batch.Count;
             var read = ReadBatch(batch, words, probes, extraText, cancellationToken);
             for (var i = 0; i < batch.Count; i++)
             {
@@ -118,7 +123,7 @@ public static class HistorySearch
         CancellationToken cancellationToken)
     {
         var read = new (SessionMatch? Match, Exception? Error)[batch.Count];
-        Parallel.For(0, batch.Count, i =>
+        Parallel.For(0, batch.Count, TranscriptIndex.ReadOptions(cancellationToken), i =>
         {
             try
             {

@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text.Json;
 using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Search;
@@ -49,6 +50,68 @@ public sealed class HistorySearchBatchTests : IDisposable
         Assert.Equal(HistorySearch.MaxResults, outcome.Matches.Count);
         Assert.Equal("s100", outcome.Matches[^1].Session.SessionId);
         Assert.Equal(1, outcome.Unreadable);
+    }
+
+    [Fact]
+    public void TheReadsStopAtTheCapAndNoSessionIsReadPastTheLastMatchNeeded()
+    {
+        // 131 sessions, all matching: the 100th match is session 99, so exactly 100 sessions are read, not the whole batch that holds it.
+        var sessions = Enumerable.Range(0, 131).Select(i => Session(i, readable: true)).ToList();
+        var reads = new int[1];
+
+        var outcome = HistorySearch.RunCounted(sessions, "gamma", extraText: _ =>
+        {
+            Interlocked.Increment(ref reads[0]);
+            return null;
+        });
+
+        Assert.Equal(HistorySearch.MaxResults, outcome.Matches.Count);
+        Assert.Equal(HistorySearch.MaxResults, reads[0]);
+    }
+
+    [Fact]
+    public void TheReadsUseOneFewerThreadThanTheProcessorsAndAtLeastOne()
+    {
+        // The limit is read from the helper both the index and the search use (round 11 item 4). The helper is internal, so it is called by
+        // reflection. A timing test cannot show the limit: the search's own threads do not reach it quickly on every machine.
+        var helper = typeof(TranscriptIndex).GetMethod("ReadOptions", BindingFlags.Static | BindingFlags.NonPublic)!;
+        var options = (ParallelOptions)helper.Invoke(null, [CancellationToken.None])!;
+
+        Assert.Equal(Math.Max(1, Environment.ProcessorCount - 1), options.MaxDegreeOfParallelism);
+    }
+
+    [Fact]
+    public void ACancelledSearchDoesNotReadTheRestOfItsBatch()
+    {
+        var sessions = Enumerable.Range(0, 300).Select(i => Session(i, readable: true)).ToList();
+        using var cancel = new CancellationTokenSource();
+        var reads = new int[1];
+
+        Assert.Throws<OperationCanceledException>(() => HistorySearch.RunCounted(sessions, "gamma", cancellationToken: cancel.Token, extraText: _ =>
+        {
+            if (Interlocked.Increment(ref reads[0]) == 10) cancel.Cancel();
+            return null;
+        }));
+
+        // A batch is 32 sessions. Reading them all after the cancel is what the search did before this change.
+        Assert.True(reads[0] < 32, $"{reads[0]} sessions were read after the cancel");
+    }
+
+    [Fact]
+    public void ASearchCancelledBeforeItStartsReadsNothing()
+    {
+        var sessions = Enumerable.Range(0, 40).Select(i => Session(i, readable: true)).ToList();
+        using var cancel = new CancellationTokenSource();
+        cancel.Cancel();
+        var reads = new int[1];
+
+        Assert.Throws<OperationCanceledException>(() => HistorySearch.RunCounted(sessions, "gamma", cancellationToken: cancel.Token, extraText: _ =>
+        {
+            Interlocked.Increment(ref reads[0]);
+            return null;
+        }));
+
+        Assert.Equal(0, reads[0]);
     }
 
     [Fact]
