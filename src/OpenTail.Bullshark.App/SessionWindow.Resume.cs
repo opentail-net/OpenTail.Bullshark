@@ -169,7 +169,7 @@ public partial class SessionWindow
             _store.Update(records => records[name] = RunPlan.ResumedRecord(name, sessionId, DateTimeOffset.UtcNow));
             _runStore.Update(runs => runs.Append(RunPlan.ResumedRun(name, folder, choice.Model, choice.Effort, DateTimeOffset.UtcNow)).ToList());
         }
-        catch (Exception ex) when (ex is StoreUnreadableException or TimeoutException or IOException)
+        catch (Exception ex) when (ex is StoreUnreadableException or TimeoutException or IOException or UnauthorizedAccessException)
         {
             AppLog.Write($"resumed {sessionId ?? shortId} as {name} but it is not kept alive: {ex.Message}");
             SetStatus($"Resumed as {name} but not recorded: {ex.Message}. Check the log.");

@@ -30,15 +30,18 @@ public sealed class SessionLibrary
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
 
     private readonly string _path;
+    private readonly Action<string> _log;
+    private bool _nullEntryLogged;
 
-    public SessionLibrary(string path)
+    public SessionLibrary(string path, Action<string>? log = null)
     {
         _path = path;
+        _log = log ?? (_ => { });
     }
 
     /// <summary>The library that sits beside a state file, so a run with its own state keeps its own marks.</summary>
-    public static SessionLibrary Beside(string stateFile) =>
-        new(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(stateFile))!, "library.json"));
+    public static SessionLibrary Beside(string stateFile, Action<string>? log = null) =>
+        new(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(stateFile))!, "library.json"), log);
 
     public string FilePath => _path;
 
@@ -92,18 +95,50 @@ public sealed class SessionLibrary
             .Distinct(StringComparer.Ordinal)
             .ToList();
 
+    /// <summary>
+    /// The entries as the file holds them. A missing file is empty. The file is opened directly, not checked with File.Exists first:
+    /// a file that exists but cannot be read (denied, or held by another process) is an error, not an empty library that the next
+    /// save would overwrite. An entry that is null is no entry: it is left out, and logged once, rather than failing every later change.
+    /// </summary>
     private Dictionary<string, LibraryEntry> Read()
     {
-        if (!File.Exists(_path)) return new Dictionary<string, LibraryEntry>(StringComparer.Ordinal);
+        string text;
         try
         {
-            var parsed = JsonSerializer.Deserialize<Dictionary<string, LibraryEntry>>(File.ReadAllText(_path), Options);
-            return new Dictionary<string, LibraryEntry>(parsed ?? [], StringComparer.Ordinal);
+            text = File.ReadAllText(_path);
         }
-        catch (Exception ex) when (ex is JsonException or IOException or NotSupportedException)
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return new Dictionary<string, LibraryEntry>(StringComparer.Ordinal);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
         {
             throw new StoreUnreadableException(_path, ex.Message);
         }
+
+        Dictionary<string, LibraryEntry>? parsed;
+        try
+        {
+            parsed = JsonSerializer.Deserialize<Dictionary<string, LibraryEntry>>(text, Options);
+        }
+        catch (JsonException ex)
+        {
+            throw new StoreUnreadableException(_path, ex.Message);
+        }
+
+        var entries = new Dictionary<string, LibraryEntry>(StringComparer.Ordinal);
+        foreach (var pair in parsed ?? new Dictionary<string, LibraryEntry>(StringComparer.Ordinal))
+        {
+            if (pair.Value is not null)
+            {
+                entries[pair.Key] = pair.Value;
+                continue;
+            }
+            if (_nullEntryLogged) continue;
+            _nullEntryLogged = true;
+            _log($"library: an entry with no value is left out ({_path}); the next save drops it.");
+        }
+        return entries;
     }
 
     private void Write(IReadOnlyDictionary<string, LibraryEntry> entries)

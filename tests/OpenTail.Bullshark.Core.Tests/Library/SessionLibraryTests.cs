@@ -113,4 +113,38 @@ public sealed class SessionLibraryTests : IDisposable
 
         Assert.Equal(Path.Combine(_dir, "library.json"), library.FilePath);
     }
+
+    [Fact]
+    public void ANullEntryIsLeftOutLoggedOnceAndDroppedBySaving()
+    {
+        var path = PathIn();
+        File.WriteAllText(path, "{\"a\":null,\"b\":{\"Pinned\":true}}");
+        var logged = new List<string>();
+        var library = new SessionLibrary(path, logged.Add);
+
+        Assert.Equal(new[] { "b" }, library.Load().Keys);
+        Assert.Single(logged);
+
+        library.Update(entries => entries["c"] = new LibraryEntry(Name: "named"));
+
+        Assert.Equal(new[] { "b", "c" }, library.Load().Keys.OrderBy(key => key, StringComparer.Ordinal));
+        Assert.Single(logged);
+    }
+
+    [Fact]
+    public void AFileThatCannotBeReadIsAnErrorAndIsNotReadAsEmpty()
+    {
+        var path = PathIn();
+        File.WriteAllText(path, "{\"b\":{\"Pinned\":true}}");
+        var library = new SessionLibrary(path);
+
+        // Another process holds the file without sharing it. Reading it as empty would let the next save overwrite it.
+        using (new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            Assert.Throws<StoreUnreadableException>(() => library.Load());
+            Assert.Throws<StoreUnreadableException>(() => library.Update(entries => entries["c"] = new LibraryEntry(Name: "x")));
+        }
+
+        Assert.Equal("{\"b\":{\"Pinned\":true}}", File.ReadAllText(path));
+    }
 }

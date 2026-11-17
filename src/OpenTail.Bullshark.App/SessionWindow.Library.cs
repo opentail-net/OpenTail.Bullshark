@@ -25,7 +25,7 @@ public partial class SessionWindow
 
     private void InitLibrary(string statePath)
     {
-        _library = SessionLibrary.Beside(statePath);
+        _library = SessionLibrary.Beside(statePath, AppLog.Write);
         LoadLibrary();
         _transcript.OpenSessionRequested += OpenRailSession;
     }
@@ -41,7 +41,7 @@ public partial class SessionWindow
             _marks = new Dictionary<string, LibraryEntry>(_library.Load(), StringComparer.Ordinal);
             _libraryError = null;
         }
-        catch (Exception ex) when (ex is StoreUnreadableException or TimeoutException or IOException)
+        catch (Exception ex) when (ex is StoreUnreadableException or TimeoutException or IOException or UnauthorizedAccessException)
         {
             _marks = new Dictionary<string, LibraryEntry>(StringComparer.Ordinal);
             if (_libraryError is null)
@@ -106,7 +106,7 @@ public partial class SessionWindow
                 entries[sessionId] = change(current);
             });
         }
-        catch (Exception ex) when (ex is StoreUnreadableException or TimeoutException or IOException)
+        catch (Exception ex) when (ex is StoreUnreadableException or TimeoutException or IOException or UnauthorizedAccessException)
         {
             AppLog.Write($"library not changed: {ex.Message}");
             SetStatus($"Not saved: {ex.Message}");
