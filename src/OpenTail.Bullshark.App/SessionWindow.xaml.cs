@@ -108,6 +108,7 @@ public partial class SessionWindow : Window
         _setup.TrustNeeded += root => ShowTrustStep(root, select: true);
         Pane.Children.Add(_transcript);
         _transcript.ResumeRequested += digest => _ = ResumeAsync(digest);
+        _transcript.ExpandEffort = options.EffortOpen;
         Pane.Children.Add(_setup);
         Pane.Children.Add(_search);
         InitSearch();
@@ -560,7 +561,9 @@ public sealed record LaunchOptions(
     string? SelfTestMode = null,
     string? OpenSessionId = null,
     string? ClaudeHome = null,
-    TestScreenRequest? OpenTab = null)
+    TestScreenRequest? OpenTab = null,
+    /// <summary>--effort-open: the transcript's "Where the effort went" panel starts expanded, for the screenshots (round 5 item 16).</summary>
+    bool EffortOpen = false)
 {
     /// <summary>The folder of the transcripts: the owner's, unless a test home is given (--claude-home).</summary>
     public string ProjectsRoot => ClaudeHome is null ? TranscriptReader.DefaultProjectsRoot : TestHome.ProjectsRootUnder(ClaudeHome);
@@ -607,6 +610,7 @@ public sealed record LaunchOptions(
             SelfTestMode: selfTestMode,
             OpenSessionId: openSession,
             ClaudeHome: claudeHome,
-            OpenTab: TestScreenRequest.Parse(openTab));
+            OpenTab: TestScreenRequest.Parse(openTab),
+            EffortOpen: args.Contains("--effort-open"));
     }
 }

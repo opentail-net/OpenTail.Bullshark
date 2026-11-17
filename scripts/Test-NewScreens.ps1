@@ -177,6 +177,9 @@ $screens = @(
     @{ Name = 'timeline-dark'; Theme = 'Dark'; Options = @('--open-tab', 'timeline') },
     @{ Name = 'timeline-light'; Theme = 'Light'; Options = @('--open-tab', 'timeline') },
     @{ Name = 'transcript-dark'; Theme = 'Dark'; Options = @('--open-transcript', '5e4f3a21-0000-4000-8000-00000000c0d1') },
+    # The effort panel open (--effort-open), in both themes: its contents are what the screens check (round 5 item 16).
+    @{ Name = 'effort-dark'; Theme = 'Dark'; Options = @('--open-transcript', '5e4f3a21-0000-4000-8000-00000000c0d1', '--effort-open') },
+    @{ Name = 'effort-light'; Theme = 'Light'; Options = @('--open-transcript', '5e4f3a21-0000-4000-8000-00000000c0d1', '--effort-open') },
     @{ Name = 'changes-dark'; Theme = 'Dark'; Options = @('--open-tab', 'changes:bullshark-coder-r4a1-1') }
 )
 

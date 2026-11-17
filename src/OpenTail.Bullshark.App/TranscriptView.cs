@@ -72,6 +72,12 @@ public sealed class TranscriptView : UserControl
     /// <summary>The transcript the effort panel was read for, so a jump to a line does not read it again.</summary>
     private string? _effortPath;
 
+    /// <summary>
+    /// Whether the effort panel starts expanded: the test option --effort-open, for the screenshots (round 5 item 16). The owner's own
+    /// choice is not changed: it applies when a transcript's effort is first read, and a jump to a line does not reopen the panel.
+    /// </summary>
+    public bool ExpandEffort { get; set; }
+
     /// <summary>The title the page was last shown with, so a jump to a line keeps the owner's name for the session.</summary>
     private string? _shownTitle;
 
@@ -131,6 +137,7 @@ public sealed class TranscriptView : UserControl
         if (_effortPath != digest.FilePath)
         {
             _effortPath = digest.FilePath;
+            _effort.IsExpanded = ExpandEffort;
             ShowEffortPending();
             _ = LoadEffortAsync(digest.FilePath);
         }
