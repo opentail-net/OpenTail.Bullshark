@@ -59,6 +59,27 @@ public sealed class TranscriptView : UserControl
 
     /// <summary>The "turn finished" lines on screen, by line number, so their facts can be added when they are read.</summary>
     private readonly Dictionary<int, (TextBlock Block, TranscriptLine Line)> _turnLines = new();
+
+    /// <summary>
+    /// The turn facts last read, with the file they came from: its path, length and last write time (UTC). A jump to a line on the same file
+    /// reuses them, since the file has not changed (round 12 B6).
+    /// </summary>
+    private sealed record TurnFactsRead(string Path, long Length, DateTime Stamp, IReadOnlyList<TurnFact> Facts);
+
+    private TurnFactsRead? _turnFactsRead;
+
+    /// <summary>
+    /// The turn facts of a transcript, or <paramref name="known"/> when the file is still the one it was read from (round 12 B6). Runs on a pool
+    /// thread: it reads the file's size and write time, and the file only when they changed.
+    /// </summary>
+    private static TurnFactsRead ReadTurnFacts(string path, TurnFactsRead? known)
+    {
+        var info = new FileInfo(path);
+        var length = info.Length;
+        var stamp = info.LastWriteTimeUtc;
+        if (known is { } kept && kept.Path == path && kept.Length == length && kept.Stamp == stamp) return kept;
+        return new TurnFactsRead(path, length, stamp, TurnFacts.ReadFile(path));
+    }
     private RailPalette _palette = RailPalette.DarkPalette;
 
     /// <summary>
@@ -540,18 +561,22 @@ public sealed class TranscriptView : UserControl
     /// </summary>
     private async Task LoadTurnFactsAsync(string path)
     {
-        IReadOnlyList<TurnFact> facts;
+        TurnFactsRead read;
+        var known = _turnFactsRead;
         try
         {
-            facts = await Task.Run(() => TurnFacts.ReadFile(path));
+            read = await Task.Run(() => ReadTurnFacts(path, known));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             AppLog.Write($"turn facts not read: {ex.Message}");
             return;
         }
+        // Kept even when the session is no longer shown: the next jump on this file reuses it (round 12 B6).
+        _turnFactsRead = read;
         if (_digest?.FilePath != path) return;
 
+        var facts = read.Facts;
         foreach (var fact in facts) _turnFacts[fact.EndLine] = fact;
         _activeText = ActiveTimeText(facts);
         if (_activeValue is not null) _activeValue.Text = _activeText;
