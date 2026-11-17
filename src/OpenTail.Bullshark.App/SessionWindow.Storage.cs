@@ -33,7 +33,7 @@ public partial class SessionWindow
     private async Task RefreshStorageAsync()
     {
         var (projects, archived) = await Task.Run(() =>
-            (StorageReport.Read(TranscriptReader.DefaultProjectsRoot), TranscriptArchive.List(TranscriptArchive.DefaultRoot)));
+            (StorageReport.Read(_options.ProjectsRoot), TranscriptArchive.List(_options.ArchiveRoot)));
         _storage.ShowProjects(projects, archived);
     }
 
@@ -68,7 +68,7 @@ public partial class SessionWindow
             if (record.SessionId.Length > 0) protectedIds.Add(record.SessionId);
 
         var outcomes = await Task.Run(() => TranscriptArchive.Archive(
-            paths, TranscriptReader.DefaultProjectsRoot, TranscriptArchive.DefaultRoot, protectedIds));
+            paths, _options.ProjectsRoot, _options.ArchiveRoot, protectedIds));
         _storage.SetResult(Summary(outcomes));
         if (outcomes.Any(o => o.Moved)) _ = LoadHistoryAsync();
         await RefreshStorageAsync();
@@ -83,7 +83,7 @@ public partial class SessionWindow
             return;
         }
 
-        var outcomes = await Task.Run(() => TranscriptArchive.Restore(paths, TranscriptReader.DefaultProjectsRoot, TranscriptArchive.DefaultRoot));
+        var outcomes = await Task.Run(() => TranscriptArchive.Restore(paths, _options.ProjectsRoot, _options.ArchiveRoot));
         _storage.SetResult(Summary(outcomes));
         if (outcomes.Any(o => o.Moved)) _ = LoadHistoryAsync();
         await RefreshStorageAsync();

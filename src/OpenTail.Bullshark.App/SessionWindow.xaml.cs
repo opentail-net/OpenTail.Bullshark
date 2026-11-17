@@ -8,7 +8,9 @@ using OpenTail.Bullshark.Core.Claude;
 using OpenTail.Bullshark.Core.Folders;
 using OpenTail.Bullshark.Core.Setup;
 using OpenTail.Bullshark.Core.Supervisor;
+using OpenTail.Bullshark.Core.Storage;
 using OpenTail.Bullshark.Core.Trust;
+using OpenTail.Bullshark.Core.Ui;
 using Wpf.Ui.Terminal;
 
 namespace OpenTail.Bullshark.App;
@@ -38,7 +40,8 @@ public partial class SessionWindow : Window
     /// </summary>
     private static (Dictionary<string, TailFacts> Facts, Dictionary<string, string> NewPaths) ReadRunningFacts(
         IEnumerable<string> sessionIds,
-        Dictionary<string, string> knownPaths)
+        Dictionary<string, string> knownPaths,
+        string projectsRoot)
     {
         var facts = new Dictionary<string, TailFacts>(StringComparer.Ordinal);
         var newPaths = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -46,7 +49,7 @@ public partial class SessionWindow : Window
         {
             if (!knownPaths.TryGetValue(id, out var path))
             {
-                path = TranscriptReader.FindTranscript(TranscriptReader.DefaultProjectsRoot, id);
+                path = TranscriptReader.FindTranscript(projectsRoot, id);
                 if (path is null) continue;
                 newPaths[id] = path;
             }
@@ -122,6 +125,7 @@ public partial class SessionWindow : Window
             else await LoadHistoryAsync();
             await PassAndRefreshAsync();
             if (_options.OpenSessionId is { } openId) await OpenHistorySessionAsync(openId);
+            OpenTestScreen();
             StartSelfTestOrScreenshot();
         };
         _timer.Tick += async (_, _) => await PassAndRefreshAsync();
@@ -288,7 +292,7 @@ public partial class SessionWindow : Window
         // The cache facts of the running sessions are read on every pass: a warm session turns cold with no new record, so the
         // labels are recomputed each time.
         var ids = records.Values.Select(r => r.SessionId).Where(id => id.Length > 0).ToList();
-        var (facts, paths) = ReadRunningFacts(ids, known);
+        var (facts, paths) = ReadRunningFacts(ids, known, _options.ProjectsRoot);
         return new PassReads(agents, passAgents, records, plan, facts, paths, recordsProblem ?? runsProblem);
     }
 
@@ -550,11 +554,19 @@ public sealed record LaunchOptions(
     string? FilterName = null,
     string? SetupDetail = null,
     string? SelfTestMode = null,
-    string? OpenSessionId = null)
+    string? OpenSessionId = null,
+    string? ClaudeHome = null,
+    TestScreenRequest? OpenTab = null)
 {
+    /// <summary>The folder of the transcripts: the owner's, unless a test home is given (--claude-home).</summary>
+    public string ProjectsRoot => ClaudeHome is null ? TranscriptReader.DefaultProjectsRoot : TestHome.ProjectsRootUnder(ClaudeHome);
+
+    /// <summary>The folder of the archive: the owner's, unless a test home is given (--claude-home).</summary>
+    public string ArchiveRoot => ClaudeHome is null ? TranscriptArchive.DefaultRoot : TestHome.ArchiveRootUnder(ClaudeHome);
+
     public static LaunchOptions Parse(string[] args)
     {
-        string? workdir = null, task = null, state = null, shot = null, selfTest = null, filterName = null, selfTestMode = null, setupDetail = null, openSession = null;
+        string? workdir = null, task = null, state = null, shot = null, selfTest = null, filterName = null, selfTestMode = null, setupDetail = null, openSession = null, claudeHome = null, openTab = null;
         double shotAfter = 8;
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         if (args.Length > 0 && args[^1] == "--state") throw new ArgumentException("--state needs the path of a state file.");
@@ -572,6 +584,8 @@ public sealed record LaunchOptions(
                 case "--rail-filter": filterName = args[++i]; break;
                 case "--setup-detail": setupDetail = args[++i]; break;
                 case "--open-transcript": openSession = args[++i]; break;
+                case "--claude-home": claudeHome = args[++i]; break;
+                case "--open-tab": openTab = args[++i]; break;
             }
         }
         var defaultState = Path.Combine(
@@ -587,6 +601,8 @@ public sealed record LaunchOptions(
             FilterName: filterName,
             SetupDetail: setupDetail,
             SelfTestMode: selfTestMode,
-            OpenSessionId: openSession);
+            OpenSessionId: openSession,
+            ClaudeHome: claudeHome,
+            OpenTab: TestScreenRequest.Parse(openTab));
     }
 }

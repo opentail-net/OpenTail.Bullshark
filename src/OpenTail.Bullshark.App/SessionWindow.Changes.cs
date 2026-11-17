@@ -52,7 +52,7 @@ public partial class SessionWindow
         var (report, written, writtenNote) = await Task.Run(async () =>
         {
             var changes = await GitChanges.ReadAsync(folder, new ProcessGitRunner());
-            var (files, note) = WrittenFiles(sessionId);
+            var (files, note) = WrittenFiles(_options.ProjectsRoot, sessionId);
             return (changes, files, note);
         });
         if (_changesSession != sessionId) return;
@@ -64,11 +64,11 @@ public partial class SessionWindow
     /// The files the session's transcript says it wrote (Write, Edit, MultiEdit, NotebookEdit). Reads the whole transcript once,
     /// so it runs on a pool thread. A missing transcript is a note, not an error.
     /// </summary>
-    private static (IReadOnlyList<string>? Files, string? Note) WrittenFiles(string sessionId)
+    private static (IReadOnlyList<string>? Files, string? Note) WrittenFiles(string projectsRoot, string sessionId)
     {
         try
         {
-            var path = TranscriptReader.FindTranscript(TranscriptReader.DefaultProjectsRoot, sessionId);
+            var path = TranscriptReader.FindTranscript(projectsRoot, sessionId);
             if (path is null) return (null, "No transcript for this session yet.");
             return (TranscriptReader.ReadFile(path).FilesWritten ?? [], null);
         }

@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Threading;
+using OpenTail.Bullshark.Core.Ui;
 using Wpf.Ui.Terminal;
 
 namespace OpenTail.Bullshark.App;
@@ -26,6 +27,29 @@ public partial class SessionWindow
             else StartSelfTest(_options.SelfTestPath);
         }
         if (_options.ShotPath is not null) ScheduleScreenshot(_options.ShotPath, _options.ShotAfterSeconds);
+    }
+
+    /// <summary>
+    /// Opens the screen that <c>--open-tab</c> names, with no click (round 4, item 5), for the screenshots. A changes request names a
+    /// session by its run name. It does nothing when no record has that name, so the window opens as it would without the option.
+    /// </summary>
+    private void OpenTestScreen()
+    {
+        var request = _options.OpenTab;
+        if (request is null) return;
+        switch (request.Screen)
+        {
+            case TestScreen.Storage:
+                StorageButton_Click(this, new RoutedEventArgs());
+                break;
+            case TestScreen.Timeline:
+                TimelineButton_Click(this, new RoutedEventArgs());
+                break;
+            case TestScreen.Changes:
+                var record = ReadRecords().Values.FirstOrDefault(r => string.Equals(r.Name, request.SessionName, StringComparison.Ordinal));
+                if (record is not null && record.SessionId.Length > 0) OpenChanges(record.SessionId, record.Name);
+                break;
+        }
     }
 
     private void ScheduleScreenshot(string path, double afterSeconds)
