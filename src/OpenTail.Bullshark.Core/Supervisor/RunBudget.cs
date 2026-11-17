@@ -120,6 +120,27 @@ public sealed record RunBudget(double Fraction, bool Notify = true)
         return held;
     }
 
+    /// <summary>
+    /// The budget of every session of every run that has a limit, from the records and the transcripts read for them (round 6 item 1).
+    /// The caller reads them before a pass, so the pass is held to them from its first check. A run with no limit has no entry.
+    /// <paramref name="writes"/> may hold the transcripts of every run: each spend is counted from its own sessions only.
+    /// </summary>
+    public static IReadOnlyDictionary<string, RunBudget> ForRuns(
+        IEnumerable<RunRecord> runs,
+        IReadOnlyDictionary<string, SessionRecord> records,
+        IEnumerable<SessionWrites> writes,
+        DateTimeOffset now)
+    {
+        var all = writes.ToList();
+        var budgets = new Dictionary<string, RunBudget>(StringComparer.Ordinal);
+        foreach (var run in runs)
+        {
+            if (For(run.Limits, RunSpend.Of(run, records, all, now)) is not { } budget) continue;
+            foreach (var pair in ForSessions(run, records, budget)) budgets[pair.Key] = pair.Value;
+        }
+        return budgets;
+    }
+
     /// <summary>The budget of a run with these limits and this spend, or null when the run has no limit.</summary>
     public static RunBudget? For(RunLimits? limits, RunSpend spend)
     {

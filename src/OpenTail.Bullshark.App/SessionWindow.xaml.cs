@@ -207,6 +207,7 @@ public partial class SessionWindow : Window
         TrustPlan Trust,
         Dictionary<string, TailFacts> Facts,
         Dictionary<string, string> NewPaths,
+        IReadOnlyDictionary<string, RunBudget> Budgets,
         string? StoreProblem);
 
     /// <summary>
@@ -230,6 +231,9 @@ public partial class SessionWindow : Window
             _runningFacts = read.Facts;
             foreach (var pair in read.NewPaths) _transcriptPaths[pair.Key] = pair.Value;
             _storeProblem = read.StoreProblem;
+            // The limits this pass is held to are set before it runs (round 6 item 1): a run at its limit gets no start or resume from the
+            // first pass on. The runner is idle here, since a pass runs only when the previous one has finished.
+            _runner.Budgets = read.Budgets;
 
             // While ~/.claude.json cannot be read, trust is unknown: no root is judged untrusted, and no run starts or restarts.
             var plan = read.Trust;
@@ -251,6 +255,7 @@ public partial class SessionWindow : Window
             }
             // The files two sessions of a run both wrote are read off the UI thread, from the transcripts this pass has seen (gems item 1).
             var paths = new Dictionary<string, string>(_transcriptPaths, StringComparer.Ordinal);
+            // The budgets read after the pass are kept for the next one, and the clashes are drawn from them (round 6 item 1).
             var (clashes, budgets) = await Task.Run(() => ReadClashes(records, paths, read.Agents));
             _clashes = clashes;
             _runner.Budgets = budgets;
@@ -297,8 +302,14 @@ public partial class SessionWindow : Window
         // The cache facts of the running sessions are read on every pass: a warm session turns cold with no new record, so the
         // labels are recomputed each time.
         var ids = records.Values.Select(r => r.SessionId).Where(id => id.Length > 0).ToList();
-        var (facts, paths) = ReadRunningFacts(ids, known, _options.ProjectsRoot);
-        return new PassReads(agents, passAgents, records, plan, facts, paths, recordsProblem ?? runsProblem);
+        var (facts, newPaths) = ReadRunningFacts(ids, known, _options.ProjectsRoot);
+
+        // The run limits are read here, before the pass, from the records and transcripts above (round 6 item 1). The transcript paths are
+        // the known ones and the new ones; the cache is used by one pass at a time, so it needs no lock.
+        var paths = new Dictionary<string, string>(known, StringComparer.Ordinal);
+        foreach (var pair in newPaths) paths[pair.Key] = pair.Value;
+        var budgets = BudgetsOf(runs, records, paths);
+        return new PassReads(agents, passAgents, records, plan, facts, newPaths, budgets, recordsProblem ?? runsProblem);
     }
 
     /// <summary>

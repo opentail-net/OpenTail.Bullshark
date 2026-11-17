@@ -22,23 +22,18 @@ public partial class SessionWindow
     private readonly SessionWritesCache _writesCache = new();
 
     /// <summary>
-    /// The clashes of every run, for the sessions in <paramref name="records"/>. Runs on a pool thread: it reads runs.json and the
-    /// transcripts through the cache, and touches no window object. A transcript that cannot be read is skipped, and the rest are read.
+    /// The writes of each run's sessions, for the runs that read their transcripts. A run that can have neither a clash nor a limit does
+    /// not read them (round 5 item 9). Runs on a pool thread, through the cache, and touches no window object. A transcript that cannot be
+    /// read is skipped, and the rest are read.
     /// </summary>
-    private (IReadOnlyList<FileClash> Clashes, IReadOnlyDictionary<string, RunBudget> Budgets) ReadClashes(
+    private List<(RunRecord Run, List<SessionWrites> Writes)> ReadRunWrites(
+        IEnumerable<RunRecord> runs,
         IReadOnlyDictionary<string, SessionRecord> records,
-        IReadOnlyDictionary<string, string> paths,
-        IReadOnlyList<AgentInfo> agents)
+        IReadOnlyDictionary<string, string> paths)
     {
-        var (runs, _) = LoadRuns(_runStore);
-        var clashes = new List<FileClash>();
-        var budgets = new Dictionary<string, RunBudget>(StringComparer.Ordinal);
-        var now = DateTimeOffset.UtcNow;
-        // Only the live sessions can clash: a finished session's shared file no longer needs the owner (round 5 item 7).
-        var live = FileOverlap.LiveRecords(records, agents);
+        var result = new List<(RunRecord Run, List<SessionWrites> Writes)>();
         foreach (var run in runs)
         {
-            // A run that can have neither a clash nor a limit does not need its transcripts read (round 5 item 9).
             if (!FileOverlap.NeedsTranscripts(run)) continue;
             var writes = new List<SessionWrites>();
             foreach (var spec in run.Specs)
@@ -54,13 +49,37 @@ public partial class SessionWindow
                     AppLog.Write($"overlap: transcript of {spec.Name} not read: {ex.Message}");
                 }
             }
-            clashes.AddRange(FileOverlap.Find(run, live, writes));
-
-            // The run's limits, from the same transcripts (additions item 4). The runner applies a budget from the next pass.
-            // Each session is held to the budget; only the run's lead session is told about it, once per level (round 5 item 8).
-            if (RunBudget.For(run.Limits, RunSpend.Of(run, records, writes, now)) is { } budget)
-                foreach (var pair in RunBudget.ForSessions(run, records, budget)) budgets[pair.Key] = pair.Value;
+            result.Add((run, writes));
         }
+        return result;
+    }
+
+    /// <summary>
+    /// The budgets of the runs' sessions, from the records and transcripts a pass has read (round 6 item 1). The pass reads them before it
+    /// runs, so a run at its limit gets no start or resume on the pass that starts after the window opens. Runs on a pool thread.
+    /// </summary>
+    private IReadOnlyDictionary<string, RunBudget> BudgetsOf(
+        IReadOnlyList<RunRecord> runs,
+        IReadOnlyDictionary<string, SessionRecord> records,
+        IReadOnlyDictionary<string, string> paths) =>
+        RunBudget.ForRuns(runs, records, ReadRunWrites(runs, records, paths).SelectMany(read => read.Writes), DateTimeOffset.UtcNow);
+
+    /// <summary>
+    /// The clashes and the budgets of every run, after a pass, for the sessions in <paramref name="records"/>. The budgets are kept for the
+    /// next pass and the clashes are drawn. Runs on a pool thread: it reads runs.json and the transcripts through the cache, and touches no
+    /// window object.
+    /// </summary>
+    private (IReadOnlyList<FileClash> Clashes, IReadOnlyDictionary<string, RunBudget> Budgets) ReadClashes(
+        IReadOnlyDictionary<string, SessionRecord> records,
+        IReadOnlyDictionary<string, string> paths,
+        IReadOnlyList<AgentInfo> agents)
+    {
+        var (runs, _) = LoadRuns(_runStore);
+        // Only the live sessions can clash: a finished session's shared file no longer needs the owner (round 5 item 7).
+        var live = FileOverlap.LiveRecords(records, agents);
+        var read = ReadRunWrites(runs, records, paths);
+        var clashes = read.SelectMany(item => FileOverlap.Find(item.Run, live, item.Writes)).ToList();
+        var budgets = RunBudget.ForRuns(runs, records, read.SelectMany(item => item.Writes), DateTimeOffset.UtcNow);
         return (clashes, budgets);
     }
 

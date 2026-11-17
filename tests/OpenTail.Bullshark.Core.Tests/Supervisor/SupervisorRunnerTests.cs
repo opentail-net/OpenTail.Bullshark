@@ -1,3 +1,4 @@
+using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Claude;
 using OpenTail.Bullshark.Core.Supervisor;
 using OpenTail.Bullshark.Core.Tests.Support;
@@ -356,6 +357,39 @@ public sealed class SupervisorRunnerTests : IDisposable
 
         Assert.Null(store.Load()[TestSpecs.PlannerName].LimitLevel);
         Assert.Single(logged, l => l.Contains("ALERT LimitNear"));
+    }
+
+    [Fact]
+    public async Task ABudgetReadBeforeTheFirstPassStopsAStartAndAResumeAtTheLimit()
+    {
+        // The run's coder is lost, and its transcript already shows the run's whole output limit. The budget is read from the records and
+        // transcripts before the pass (round 6 item 1), so the first pass neither resumes the coder nor starts the planner.
+        const string coderSession = "22222222-3333-4444-5555-666666666666";
+        var store = new StateStore(Path.Combine(_dir, "state.json"));
+        store.Save(new Dictionary<string, SessionRecord>
+        {
+            [TestSpecs.CoderName] = new(SessionRole.Coder, coderSession, TestSpecs.CoderName, DateTimeOffset.UnixEpoch, 0, [], null, null),
+        });
+        var clock = new FakeClock(new DateTimeOffset(2026, 11, 17, 12, 0, 0, TimeSpan.Zero));
+        var cli = new FakeCliRunner(args => args[0] switch
+        {
+            "agents" => FakeCliRunner.Ok("[]"),
+            "--bg" => FakeCliRunner.Ok($"backgrounded · {ShortId} · coder\n"),
+            _ => FakeCliRunner.Ok(),
+        });
+        var run = new RunRecord("abcd", "plan-code", @"C:\W", "auto", clock.Now.AddHours(-1),
+            [TestSpecs.Planner(@"C:\W", "brief"), TestSpecs.Coder(@"C:\W")], null, new RunLimits(1000, null));
+        var writes = new[] { new SessionWrites(coderSession, [], new Dictionary<string, DateTimeOffset>(), new TokenUsage(0, 1000, 0, 0)) };
+
+        var budgets = RunBudget.ForRuns([run], store.Load(), writes, clock.Now);
+        Assert.True(budgets[TestSpecs.CoderName].Reached);
+
+        var runner = Runner(new ClaudeCli(cli), store, clock);
+        runner.Budgets = budgets;
+        var performed = await runner.CheckOnceAsync(run.Specs);
+
+        Assert.DoesNotContain(performed, action => action is SupervisorAction.Start or SupervisorAction.Resume);
+        Assert.DoesNotContain(cli.Calls, c => c.Args[0] == "--bg");
     }
 
     /// <summary>An event log that another process holds: every write times out, as the file lock does after ten seconds.</summary>
