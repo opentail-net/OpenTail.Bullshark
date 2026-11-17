@@ -81,14 +81,36 @@ public sealed record AgentInfo(
             : null;
 
     /// <summary>
-    /// A field that is text, or a newer shape kept as text (round 7 item 3): a string is its value, an object or an array is its raw JSON.
-    /// A number, a boolean or null is not text, and gives null.
+    /// A field that is text, or a newer shape read as text (round 7 item 3, round 8 item 9). A string is its value. An object shows its "kind",
+    /// "text" or "message" string when it has one, else its first string value; an array shows its first string. A number, a boolean, null, or a
+    /// shape with no string in it gives null. The raw JSON is never the value: it would be shown as the reason or as the state.
     /// </summary>
     private static string? ReadText(JsonElement element, string property) =>
-        !element.TryGetProperty(property, out var value) ? null : value.ValueKind switch
-        {
-            JsonValueKind.String => value.GetString(),
-            JsonValueKind.Object or JsonValueKind.Array => value.GetRawText(),
-            _ => null,
-        };
+        element.TryGetProperty(property, out var value) ? TextOf(value) : null;
+
+    private static string? TextOf(JsonElement value) => value.ValueKind switch
+    {
+        JsonValueKind.String => value.GetString(),
+        JsonValueKind.Object => ObjectText(value),
+        JsonValueKind.Array => ArrayText(value),
+        _ => null,
+    };
+
+    /// <summary>The text an object stands for: its "kind", "text" or "message" string, else the first string it holds.</summary>
+    private static string? ObjectText(JsonElement value)
+    {
+        foreach (var name in new[] { "kind", "text", "message" })
+            if (value.TryGetProperty(name, out var named) && named.ValueKind == JsonValueKind.String) return named.GetString();
+        foreach (var property in value.EnumerateObject())
+            if (property.Value.ValueKind == JsonValueKind.String) return property.Value.GetString();
+        return null;
+    }
+
+    /// <summary>The text an array stands for: its first item that is text.</summary>
+    private static string? ArrayText(JsonElement value)
+    {
+        foreach (var item in value.EnumerateArray())
+            if (TextOf(item) is { } text) return text;
+        return null;
+    }
 }

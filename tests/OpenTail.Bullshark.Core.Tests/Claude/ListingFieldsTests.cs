@@ -64,13 +64,41 @@ public sealed class ListingFieldsTests
     }
 
     [Fact]
-    public void AWaitingReasonAsAnObjectIsItsRawJson()
+    public void AWaitingReasonAsAnObjectShowsItsKindNotItsJson()
     {
+        // Round 8 item 9: the object's "kind" is the reason. The raw JSON is never shown.
         var agents = AgentInfo.ParseList(Newer);
 
-        Assert.Equal("{ \"kind\": \"dialog\", \"title\": \"Trust this folder?\" }", agents[1].WaitingFor);
+        Assert.Equal("dialog", agents[1].WaitingFor);
         Assert.Equal("waiting", agents[1].Status);
         Assert.Equal("busy", AgentInfo.ParseList(Current)[1].EffectiveState);
+    }
+
+    [Fact]
+    public void AnObjectOrArrayReasonOrStateShowsItsTextAndNeverItsJson()
+    {
+        const string listing = """
+            [
+              { "kind": "background", "sessionId": "s1", "name": "a", "state": "blocked", "waitingFor": { "message": "answer the question", "n": 3 } },
+              { "kind": "background", "sessionId": "s2", "name": "b", "state": "blocked", "waitingFor": { "title": "Trust this folder?", "n": 3 } },
+              { "kind": "background", "sessionId": "s3", "name": "c", "state": "blocked", "waitingFor": { "n": 3, "ok": true } },
+              { "kind": "background", "sessionId": "s4", "name": "d", "state": "blocked", "waitingFor": ["permission prompt", "x"] },
+              { "kind": "background", "sessionId": "s5", "name": "e", "state": "blocked", "waitingFor": [3, false] },
+              { "kind": "interactive", "pid": 1, "name": "f", "status": { "kind": "busy", "since": 5 } },
+              { "kind": "interactive", "pid": 2, "name": "g", "status": { "n": 1 } }
+            ]
+            """;
+
+        var agents = AgentInfo.ParseList(listing);
+
+        Assert.Equal("answer the question", agents[0].Waiting);
+        Assert.Equal("Trust this folder?", agents[1].Waiting);
+        Assert.Null(agents[2].Waiting);
+        Assert.Equal("permission prompt", agents[3].Waiting);
+        Assert.Null(agents[4].Waiting);
+        Assert.Equal("busy", agents[5].EffectiveState);
+        Assert.Equal("unknown", agents[6].EffectiveState);
+        Assert.All(agents, agent => Assert.False(agent.Waiting?.StartsWith('{') == true || agent.Waiting?.StartsWith('[') == true));
     }
 
     [Fact]
