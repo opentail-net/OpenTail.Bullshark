@@ -3,9 +3,9 @@
 How the day ran: the planner (Opus) reviewed and researched, wrote a checkbox plan per round with the contracts it had to keep, and
 handed each plan to a Haiku builder in its own worktree. Each branch was checked (build, tests, `git ls-remote`, key diffs,
 screenshots) before it was merged to `main` and pushed. Independent read-only Sonnet reviews looked at each round's code. The owner's
-uncommitted pop-out work (`DetachedSessionWindow.cs`, `SessionWindow.PopOut.cs` and edits in five `SessionWindow.*` partials) was set
-aside and put back for every merge; it is still uncommitted and unchanged, except one line in `SessionWindow.Rail.cs` where both
-sides changed it (both kept). Tests: 357 at the start, 980 at the end.
+pop-out work, then uncommitted, (`DetachedSessionWindow.cs`, `SessionWindow.PopOut.cs` and edits in five `SessionWindow.*` partials) was set
+aside and put back for every merge; it was committed unchanged on the owner's word (`050e936`), except one line in `SessionWindow.Rail.cs` where both
+sides changed it (both kept). Tests: 357 at the start, 1007 at the end.
 
 ## What was built (plans in this folder, decisions inside each)
 
@@ -20,6 +20,7 @@ sides changed it (both kept). Tests: 357 at the start, 980 at the end.
 | `round5-2026-11-17.md` .. `round9-2026-11-17.md` | Reviews of the day's code: stop guard, event-log failures, limits from real start, archive safety, attention keys, incremental transcript reads, timeline paging, DST-safe start times, daemon health (F63) with stale rows, Respawn all with a hold, limits kept when a session is closed. |
 | `round10-performance-2026-11-17.md` | Index and search speed on the owner's transcripts: the index built and the search run on several threads, a search pre-filter for escaped words, batched search, and an index cache kept between starts. Merged to `main` and pushed. Numbers in `docs/findings/perf-2026-11-17.md`. Open: the first index read with no cache, about 1.6 s. |
 | `round11-2026-11-17.md` | Review of round 10 (findings R1, R2, R3, R5 and R7): the cache key from a fresh stat, a cache that never fails the history load, a locked atomic cache save, search and index with one thread fewer than the processors and cancellable, and a test that fails when the cache misses a summary or digest field. Merged to `main` and pushed. |
+| `round12-2026-11-17.md` | A bad transcript line or file is skipped, not fatal, in every reader and in the window's pass; shared line helper; the merge check and Changes tab use the writes cache; bounded CLI output reads; supervisor reads logs for live sessions only; the log rotates at 5 MB; the index parses UTF-8 bytes (cold 1.69 s to 1.35 s). Merged to `main` and pushed. |
 
 Findings added: F61 (`agents --json` hides finished/stopped sessions without `--all`), F62 (`--bg` refuses an untrusted folder),
 F63 (daemon not running while the listing still shows sessions; the daemon runs on demand).
@@ -34,8 +35,8 @@ Decisions:
 - A sound when a session that is already waiting goes stale (daemon stopped)? Today: no new sound (round 8 B2.2).
 - Respawn click waiting for a pass that is already running (round 9 item 2, optional part, needs a UI-thread change).
 - Light theme tab labels look pale (#5A6270, about 5.6:1); left as is (round 4).
-- A transcript with a lone surrogate escape makes the whole history load fail (round 11 item 2 finding): skip it as unreadable, or keep failing loudly?
-- The first index read with no cache is still about 1.6 s on the owner's data; a byte-level reader is the next step (round 10).
+- Decided by the owner: a transcript line or file that cannot be read is skipped, and the rest loads (built in round 12).
+- The first index read with no cache is about 1.35 s on the owner's data after round 12 (was 1.6 s); still over the 1 s line. No next step planned.
 
 Gates (need one real, owner-run step; nothing was started on the owner's behalf):
 - Worktree per coder (additions item 3) and using `--cwd` for listings: trust one throwaway git folder (`claude` there once, accept), then rerun the gate in the plan.
@@ -48,5 +49,5 @@ Gates (need one real, owner-run step; nothing was started on the owner's behalf)
 Not verified on screen with real sessions: every screen was checked with `--no-pass`, a scratch state and a stand-in `claude`; none
 with live sessions. The end-to-end run of the review of 2026-11-15 (Phase 3) is still open.
 
-Housekeeping: the remote branch `review-fixes-2026-11-17` (pushed by a builder early in the day, already merged) can be deleted.
+Housekeeping: done. The merged worktrees and branches, and the remote branch `review-fixes-2026-11-17`, were removed on the owner's word.
 P4 (log-on supervisor) stays not wanted, as decided on 2026-11-15.

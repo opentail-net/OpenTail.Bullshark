@@ -161,7 +161,7 @@ public sealed class SupervisorLoopTests : IDisposable
 
         await loop.RunPassAsync([]);
 
-        Assert.Single(runner.Calls.Where(c => c.Args[0] == "logs"));
+        Assert.Single(runner.Calls, c => c.Args[0] == "logs");
         Assert.Single(logged, l => l.Contains("LoginExpiring"));
     }
 
