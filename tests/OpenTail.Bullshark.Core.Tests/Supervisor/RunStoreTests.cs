@@ -1,5 +1,6 @@
 using OpenTail.Bullshark.Core.Claude;
 using OpenTail.Bullshark.Core.Supervisor;
+using OpenTail.Bullshark.Core.Tests.Support;
 using Xunit;
 
 namespace OpenTail.Bullshark.Core.Tests.Supervisor;
@@ -111,5 +112,78 @@ public sealed class RunStoreTests : IDisposable
 
         Assert.True(File.Exists(path));
         Assert.False(File.Exists(path + ".tmp"));
+    }
+
+    [Fact]
+    public void AMissingFileLoadsAsEmpty()
+    {
+        Assert.Empty(new RunStore(Path.Combine(_dir, "none.json")).Load());
+    }
+
+    [Fact]
+    public void AFolderTheUserCannotOpenIsUnreadableAndNotOverwritten()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var path = Path.Combine(_dir, "runs.json");
+        var store = new RunStore(path);
+        store.Save([NewRun("ab12", Now)]);
+        var before = File.ReadAllText(path);
+
+        using (Unreadable.FolderWithoutMe(_dir))
+        {
+            // File.Exists is false here. The old read took that for "no runs", and the next save wrote over the file.
+            Assert.False(File.Exists(path));
+            Assert.Throws<StoreUnreadableException>(() => store.Load());
+            var applied = false;
+            Assert.Throws<StoreUnreadableException>(() => store.Update(runs => { applied = true; return runs; }));
+            Assert.False(applied);
+        }
+
+        Assert.Equal(before, File.ReadAllText(path));
+    }
+
+    [Fact]
+    public void AFileTheUserCannotReadIsUnreadableAndNotOverwritten()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var path = Path.Combine(_dir, "runs.json");
+        var store = new RunStore(path);
+        store.Save([NewRun("ab12", Now)]);
+        var before = File.ReadAllText(path);
+
+        using (Unreadable.FileDenyingRead(path))
+        {
+            Assert.Throws<StoreUnreadableException>(() => store.Load());
+            Assert.Throws<StoreUnreadableException>(() => store.Update(runs => runs));
+        }
+
+        Assert.Equal(before, File.ReadAllText(path));
+    }
+
+    [Fact]
+    public void AFileHeldExclusivelyIsUnreadableAndNotOverwritten()
+    {
+        var path = Path.Combine(_dir, "runs.json");
+        var store = new RunStore(path);
+        store.Save([NewRun("ab12", Now)]);
+        var before = File.ReadAllText(path);
+
+        using (new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            Assert.Throws<StoreUnreadableException>(() => store.Load());
+        }
+
+        Assert.Equal(before, File.ReadAllText(path));
+    }
+
+    [Fact]
+    public void ANonJsonFileIsUnreadableAndNotOverwritten()
+    {
+        var path = Path.Combine(_dir, "runs.json");
+        File.WriteAllText(path, "[{\"RunId\":\"ab12\"");
+
+        Assert.Throws<StoreUnreadableException>(() => new RunStore(path).Load());
+        Assert.Throws<StoreUnreadableException>(() => new RunStore(path).Update(runs => runs));
+        Assert.Equal("[{\"RunId\":\"ab12\"", File.ReadAllText(path));
     }
 }

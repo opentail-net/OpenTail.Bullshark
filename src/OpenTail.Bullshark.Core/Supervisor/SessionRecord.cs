@@ -74,17 +74,33 @@ public sealed class StateStore
         foreach (var pair in records) current[pair.Key] = pair.Value;
     });
 
+    /// <summary>
+    /// The file's records. The file is opened directly, not checked with File.Exists first: a file the user cannot open must throw
+    /// <see cref="StoreUnreadableException"/>, because the supervisor pass then stops before it starts or writes anything.
+    /// </summary>
     private Dictionary<string, SessionRecord> Read()
     {
         var byName = new Dictionary<string, SessionRecord>(StringComparer.Ordinal);
-        if (!File.Exists(_path)) return byName;
+        string text;
+        try
+        {
+            text = File.ReadAllText(_path);
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return byName;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
+        {
+            throw new StoreUnreadableException(_path, ex.Message);
+        }
 
         List<SessionRecord>? records;
         try
         {
-            records = JsonSerializer.Deserialize<List<SessionRecord>>(File.ReadAllText(_path), Options);
+            records = JsonSerializer.Deserialize<List<SessionRecord>>(text, Options);
         }
-        catch (Exception ex) when (ex is JsonException or IOException or NotSupportedException)
+        catch (Exception ex) when (ex is JsonException or NotSupportedException)
         {
             throw new StoreUnreadableException(_path, ex.Message);
         }

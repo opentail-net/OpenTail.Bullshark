@@ -102,6 +102,29 @@ public sealed class EventLogTests : IDisposable
         Assert.Equal("alert:StartFailed", alert.Event);
     }
 
+    [Fact]
+    public void AMissingLogReadsAsEmpty()
+    {
+        Assert.Empty(new EventLog(Path_()).Read());
+    }
+
+    [Fact]
+    public void AFolderTheUserCannotOpenIsAnErrorNotAnEmptyTimeline()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var log = new EventLog(Path_());
+        log.Write(Event(1));
+
+        using (Unreadable.FolderWithoutMe(_dir))
+        {
+            // File.Exists is false here. The old read skipped the file and showed an empty timeline with no error.
+            var error = Record.Exception(() => log.Read());
+
+            Assert.True(error is UnauthorizedAccessException or IOException,
+                $"expected an access error, got {error?.GetType().Name ?? "no error"}");
+        }
+    }
+
     /// <summary>Keeps what the runner writes, in memory.</summary>
     private sealed class ListSink : IEventSink
     {

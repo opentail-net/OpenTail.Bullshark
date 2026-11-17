@@ -72,17 +72,31 @@ public sealed class EventLog : IEventSink
         var events = new List<SupervisorEvent>();
         foreach (var file in new[] { RotatedFilePath, FilePath })
         {
-            if (!File.Exists(file)) continue;
-            foreach (var line in File.ReadLines(file))
+            // Opened directly, not checked with File.Exists first: a file the user cannot open is an error, not an empty timeline.
+            StreamReader reader;
+            try
             {
-                if (string.IsNullOrWhiteSpace(line)) continue;
-                try
+                reader = new StreamReader(File.OpenRead(file));
+            }
+            catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+            {
+                continue;
+            }
+
+            using (reader)
+            {
+                string? line;
+                while ((line = reader.ReadLine()) is not null)
                 {
-                    if (JsonSerializer.Deserialize<SupervisorEvent>(line) is { } evt) events.Add(evt);
-                }
-                catch (JsonException)
-                {
-                    // A line cut off at the end of a file that is still being written.
+                    if (string.IsNullOrWhiteSpace(line)) continue;
+                    try
+                    {
+                        if (JsonSerializer.Deserialize<SupervisorEvent>(line) is { } evt) events.Add(evt);
+                    }
+                    catch (JsonException)
+                    {
+                        // A line cut off at the end of a file that is still being written.
+                    }
                 }
             }
         }

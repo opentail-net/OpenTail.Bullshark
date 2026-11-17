@@ -57,14 +57,31 @@ public sealed class RunStore
     /// <summary>Replaces every run. Callers that add or remove one run use <see cref="Update"/>.</summary>
     public void Save(IReadOnlyList<RunRecord> runs) => Update(_ => runs);
 
+    /// <summary>
+    /// The file's runs. The file is opened directly, not checked with File.Exists first: that check is false for a file in a folder the
+    /// user cannot open, which would read as "no runs" and let the next save replace the file.
+    /// </summary>
     private List<RunRecord> Read()
     {
-        if (!File.Exists(_path)) return [];
+        string text;
         try
         {
-            return JsonSerializer.Deserialize<List<RunRecord>>(File.ReadAllText(_path), Options) ?? [];
+            text = File.ReadAllText(_path);
         }
-        catch (Exception ex) when (ex is JsonException or IOException or NotSupportedException)
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return [];
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
+        {
+            throw new StoreUnreadableException(_path, ex.Message);
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<RunRecord>>(text, Options) ?? [];
+        }
+        catch (Exception ex) when (ex is JsonException or NotSupportedException)
         {
             throw new StoreUnreadableException(_path, ex.Message);
         }

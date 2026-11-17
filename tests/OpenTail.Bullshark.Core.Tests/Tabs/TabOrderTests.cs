@@ -1,4 +1,5 @@
 using OpenTail.Bullshark.Core.Tabs;
+using OpenTail.Bullshark.Core.Tests.Support;
 
 namespace OpenTail.Bullshark.Core.Tests.Tabs;
 
@@ -127,5 +128,61 @@ public class TabOrderTests
         {
             Directory.Delete(folder, recursive: true);
         }
+    }
+}
+
+/// <summary>The saved tab order on disk: a file the user cannot read is logged, and is never replaced by a save.</summary>
+public sealed class TabOrderFileTests : IDisposable
+{
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "bullshark-tabfile-" + Guid.NewGuid().ToString("N")[..8]);
+
+    public TabOrderFileTests() => Directory.CreateDirectory(_dir);
+
+    public void Dispose()
+    {
+        try { Directory.Delete(_dir, recursive: true); } catch (IOException) { }
+    }
+
+    [Fact]
+    public void AMissingFileGivesNoLayoutAndNoLogLine()
+    {
+        var logged = new List<string>();
+
+        Assert.Empty(TabOrder.Load(Path.Combine(_dir, "tabs.json"), logged.Add).Order);
+        Assert.Empty(logged);
+    }
+
+    [Fact]
+    public void AFolderTheUserCannotOpenGivesNoLayoutAndIsLogged()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var path = Path.Combine(_dir, "tabs.json");
+        TabOrder.Save(path, new TabLayout(["s1"], []));
+        var logged = new List<string>();
+
+        using (Unreadable.FolderWithoutMe(_dir))
+        {
+            Assert.Empty(TabOrder.Load(path, logged.Add).Order);
+        }
+
+        Assert.Contains(logged, line => line.Contains("not read", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ASaveLeavesAFileTheUserCannotReadAsItIs()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var path = Path.Combine(_dir, "tabs.json");
+        TabOrder.Save(path, new TabLayout(["s1"], []));
+        var before = File.ReadAllText(path);
+        var logged = new List<string>();
+
+        using (Unreadable.FileDenyingRead(path))
+        {
+            TabOrder.Save(path, new TabLayout(["s2", "s1"], []), logged.Add);
+        }
+
+        Assert.Equal(before, File.ReadAllText(path));
+        Assert.Contains(logged, line => line.Contains("not saved", StringComparison.Ordinal));
     }
 }

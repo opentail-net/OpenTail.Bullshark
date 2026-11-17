@@ -58,29 +58,69 @@ public static class TabOrder
     /// <summary>The saved layout. Empty when the file is missing or cannot be read.</summary>
     public static TabLayout Load(string path, Action<string>? log = null)
     {
+        string text;
         try
         {
-            if (!File.Exists(path)) return TabLayout.Empty;
-            var read = JsonSerializer.Deserialize<TabLayout>(File.ReadAllText(path));
+            text = File.ReadAllText(path);
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return TabLayout.Empty;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
+        {
+            log?.Invoke($"tab layout not read: {ex.Message}");
+            return TabLayout.Empty;
+        }
+
+        try
+        {
+            var read = JsonSerializer.Deserialize<TabLayout>(text);
             return new TabLayout(read?.Order ?? [], read?.Right ?? []);
         }
-        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
+        catch (JsonException ex)
         {
             log?.Invoke($"tab layout not read: {ex.Message}");
             return TabLayout.Empty;
         }
     }
 
-    /// <summary>Saves the layout. A file that cannot be written is logged; the layout then lasts until the window closes.</summary>
+    /// <summary>
+    /// Saves the layout. A file that cannot be written is logged; the layout then lasts until the window closes. A file that is there
+    /// but cannot be read is not replaced: its order is not known, so the save is logged and left out, as the stores do.
+    /// </summary>
     public static void Save(string path, TabLayout layout, Action<string>? log = null)
     {
         try
         {
+            if (CannotBeRead(path))
+            {
+                log?.Invoke($"tab layout not saved: {path} cannot be read, so it is left as it is.");
+                return;
+            }
             FileLock.WriteAtomic(path, JsonSerializer.Serialize(layout));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             log?.Invoke($"tab layout not saved: {ex.Message}");
+        }
+    }
+
+    /// <summary>True when the file is there but cannot be opened for reading. A missing file is not one: there is nothing to keep.</summary>
+    private static bool CannotBeRead(string path)
+    {
+        try
+        {
+            using var _ = File.OpenRead(path);
+            return false;
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return false;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
+        {
+            return true;
         }
     }
 }

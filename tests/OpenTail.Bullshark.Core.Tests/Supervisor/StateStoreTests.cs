@@ -1,4 +1,5 @@
 using OpenTail.Bullshark.Core.Supervisor;
+using OpenTail.Bullshark.Core.Tests.Support;
 using Xunit;
 
 namespace OpenTail.Bullshark.Core.Tests.Supervisor;
@@ -165,5 +166,75 @@ public sealed class StateStoreTests : IDisposable
         var line = Assert.Single(logged);
         Assert.Contains("old-session", line);
         Assert.Contains("new-session", line);
+    }
+
+    [Fact]
+    public void AFolderTheUserCannotOpenIsUnreadableAndNotOverwritten()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var path = Path.Combine(_dir, "state.json");
+        var store = new StateStore(path);
+        var when = new DateTimeOffset(2026, 11, 15, 10, 0, 0, TimeSpan.Zero);
+        store.Save(new Dictionary<string, SessionRecord> { ["coder"] = new(SessionRole.Coder, "s1", "coder", when, 0, [], null, null) });
+        var before = File.ReadAllText(path);
+
+        using (Unreadable.FolderWithoutMe(_dir))
+        {
+            // File.Exists is false here. The old read took that for "no records", and the next save wrote over the file.
+            Assert.False(File.Exists(path));
+            Assert.Throws<StoreUnreadableException>(() => store.Load());
+            var applied = false;
+            Assert.Throws<StoreUnreadableException>(() => store.Update(records => { applied = true; }));
+            Assert.False(applied);
+        }
+
+        Assert.Equal(before, File.ReadAllText(path));
+    }
+
+    [Fact]
+    public void AFileTheUserCannotReadIsUnreadableAndNotOverwritten()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var path = Path.Combine(_dir, "state.json");
+        var store = new StateStore(path);
+        var when = new DateTimeOffset(2026, 11, 15, 10, 0, 0, TimeSpan.Zero);
+        store.Save(new Dictionary<string, SessionRecord> { ["coder"] = new(SessionRole.Coder, "s1", "coder", when, 0, [], null, null) });
+        var before = File.ReadAllText(path);
+
+        using (Unreadable.FileDenyingRead(path))
+        {
+            Assert.Throws<StoreUnreadableException>(() => store.Load());
+            Assert.Throws<StoreUnreadableException>(() => store.Forget("coder"));
+        }
+
+        Assert.Equal(before, File.ReadAllText(path));
+    }
+
+    [Fact]
+    public void AFileHeldExclusivelyIsUnreadableAndNotOverwritten()
+    {
+        var path = Path.Combine(_dir, "state.json");
+        var store = new StateStore(path);
+        var when = new DateTimeOffset(2026, 11, 15, 10, 0, 0, TimeSpan.Zero);
+        store.Save(new Dictionary<string, SessionRecord> { ["coder"] = new(SessionRole.Coder, "s1", "coder", when, 0, [], null, null) });
+        var before = File.ReadAllText(path);
+
+        using (new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            Assert.Throws<StoreUnreadableException>(() => store.Load());
+        }
+
+        Assert.Equal(before, File.ReadAllText(path));
+    }
+
+    [Fact]
+    public void ANonJsonFileIsUnreadableAndNotOverwritten()
+    {
+        var path = Path.Combine(_dir, "state.json");
+        File.WriteAllText(path, "[{\"Name\":\"coder\"");
+
+        Assert.Throws<StoreUnreadableException>(() => new StateStore(path).Load());
+        Assert.Throws<StoreUnreadableException>(() => new StateStore(path).Forget("coder"));
+        Assert.Equal("[{\"Name\":\"coder\"", File.ReadAllText(path));
     }
 }
