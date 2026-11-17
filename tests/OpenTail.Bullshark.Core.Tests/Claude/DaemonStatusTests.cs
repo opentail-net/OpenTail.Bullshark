@@ -242,6 +242,52 @@ public sealed class DaemonStatusTests
         Assert.DoesNotContain(healthy, part => part.Contains("daemon"));
     }
 
+    [Fact]
+    public void ARowIsStaleOnlyWhenBothReadsOfTheDaemonSayNotRunning()
+    {
+        // Round 9 item 3: the daemon is read before the listings and after them. Both orders of a start or an exit are tested.
+        var agents = AgentInfo.ParseList(Listing);
+        var notRunning = DaemonStatus.Parse(NotRunningOutput);
+        var running = DaemonStatus.Parse(RunningOutput);
+
+        // Not running, then running: the owner started a session before the listing. The row is live.
+        var startedDuringPass = DaemonStatus.Around(notRunning, running);
+        Assert.Same(agents, startedDuringPass.IdleListing(agents));
+        Assert.False(startedDuringPass.IsNotRunning);
+
+        // Running, then not running: the last session finished and the daemon exited after the listing. The row is live for this pass, and the
+        // next pass reads both reads as not running and decides on it then.
+        var exitedDuringPass = DaemonStatus.Around(running, notRunning);
+        Assert.Same(agents, exitedDuringPass.IdleListing(agents));
+        Assert.False(exitedDuringPass.IsNotRunning);
+        Assert.Equal(DaemonState.Running, exitedDuringPass.State);
+        Assert.Equal("2.1.326", exitedDuringPass.Version);
+
+        // Not running at both reads: the rows are stale.
+        var idle = DaemonStatus.Around(notRunning, notRunning);
+        Assert.True(idle.IsNotRunning);
+        Assert.Equal(DaemonStatus.StaleState, idle.IdleListing(agents)[0].EffectiveState);
+    }
+
+    [Fact]
+    public void AnUnknownReadKeepsTheRowsLive()
+    {
+        var agents = AgentInfo.ParseList(Listing);
+        var notRunning = DaemonStatus.Parse(NotRunningOutput);
+        var unknown = DaemonStatus.Unknown("status failed");
+
+        // A read that could not say is not "not running": the listing is used as it is, whichever read was the unknown one.
+        var lateUnknown = DaemonStatus.Around(notRunning, unknown);
+        Assert.Same(agents, lateUnknown.IdleListing(agents));
+        Assert.Equal(DaemonState.Unknown, lateUnknown.State);
+
+        var earlyUnknown = DaemonStatus.Around(unknown, notRunning);
+        Assert.Same(agents, earlyUnknown.IdleListing(agents));
+        Assert.Equal(DaemonState.Unknown, earlyUnknown.State);
+        // The text kept is the later read's when it has any, so the owner still sees what the daemon said.
+        Assert.Equal(notRunning.Raw, earlyUnknown.Raw);
+    }
+
     /// <summary>A runner that cannot start the command, as when `claude` is not on the path.</summary>
     private sealed class ThrowingRunner : ICliRunner
     {

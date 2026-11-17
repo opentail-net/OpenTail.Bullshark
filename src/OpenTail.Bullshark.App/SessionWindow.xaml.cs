@@ -315,16 +315,20 @@ public partial class SessionWindow : Window
     }
 
     /// <summary>
-    /// The reads a pass needs, on a pool thread. The agent listings come first: if one fails, nothing else is read and no pass runs.
+    /// The reads a pass needs, on a pool thread. The daemon is read before the agent listings and again after them; if a listing fails, nothing else is read and no pass runs.
     /// The active listing is for the rail; the pass gets its own listing with the completed sessions, so that a session that
     /// finished or was stopped is not taken for a lost one. Touches no window object.
     /// </summary>
     private async Task<PassReads> ReadForPassAsync(Dictionary<string, string> known)
     {
+        // The daemon is read before the listings and again after them, and never throws: an unknown status lets the pass go on as before
+        // (round 7 item 1). A listed row is stale only when both reads say not running (round 9 item 3), so a daemon that starts or exits
+        // while the listings are read does not turn a live row into a stale one, or the reverse.
+        var daemonBefore = await _cli.DaemonStatusAsync();
         var rawAgents = await _cli.ListAgentsAsync();
         var rawPassAgents = await _cli.ListAgentsAsync(includeCompleted: true);
-        // The daemon is read with the listings, and never throws: an unknown status lets the pass go on as before (round 7 item 1).
-        var daemon = await _cli.DaemonStatusAsync();
+        var daemonAfter = await _cli.DaemonStatusAsync();
+        var daemon = DaemonStatus.Around(daemonBefore, daemonAfter);
         // While the daemon is not running (its normal idle state), a listed working or blocked session is shown and decided on as stale. The
         // Needs-you note and the status note count those sessions, and never block anything (round 7 item 1, revised by the planner).
         var agents = daemon.IdleListing(rawAgents);

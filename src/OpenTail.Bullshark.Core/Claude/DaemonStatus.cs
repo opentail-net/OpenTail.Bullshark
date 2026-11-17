@@ -103,6 +103,20 @@ public sealed record DaemonStatus(
         new(DaemonState.Unknown, null, null, null, null, null, null, null, raw);
 
     /// <summary>
+    /// The daemon for one pass, from the status read before the listings and the one read after them (round 9 item 3). The daemon can start or
+    /// exit while the listings are read, so a listed row is stale only when both reads say not running. Any other pair decides on the rows as
+    /// live: a daemon that was running at either read, or whose reads were unknown, is not shown as idle. The result is the running read when
+    /// there is one, else the later read when both say not running, else Unknown.
+    /// </summary>
+    public static DaemonStatus Around(DaemonStatus before, DaemonStatus after)
+    {
+        if (before.IsNotRunning && after.IsNotRunning) return after;
+        if (after.State == DaemonState.Running) return after;
+        if (before.State == DaemonState.Running) return before;
+        return Unknown(after.Raw.Length > 0 ? after.Raw : before.Raw);
+    }
+
+    /// <summary>
     /// Reads the text of `claude daemon status` (standard output and standard error together). The state comes from a line that starts with
     /// "running" or "not running"; the other fields come from the lines that name them. Text that matches neither is Unknown with every
     /// field null, never an error.
