@@ -6,11 +6,12 @@ public enum TestScreen
     Storage,
     Timeline,
     Changes,
+    Setup,
 }
 
 /// <summary>
-/// What <c>--open-tab</c> asks for: <c>storage</c>, <c>timeline</c>, or <c>changes:&lt;session name&gt;</c>. <see cref="SessionName"/> is set
-/// for the changes screen only.
+/// What <c>--open-tab</c> asks for: <c>storage</c>, <c>timeline</c>, <c>setup</c>, or <c>changes:&lt;session name&gt;</c>. <see cref="SessionName"/>
+/// is set for the changes screen only.
 /// </summary>
 public sealed record TestScreenRequest(TestScreen Screen, string? SessionName)
 {
@@ -28,6 +29,7 @@ public sealed record TestScreenRequest(TestScreen Screen, string? SessionName)
         {
             "storage" when name is null => new TestScreenRequest(TestScreen.Storage, null),
             "timeline" when name is null => new TestScreenRequest(TestScreen.Timeline, null),
+            "setup" when name is null => new TestScreenRequest(TestScreen.Setup, null),
             "changes" when !string.IsNullOrEmpty(name) => new TestScreenRequest(TestScreen.Changes, name),
             _ => null,
         };

@@ -11,7 +11,8 @@ public sealed class TestScreensTests
     [InlineData("Storage", TestScreen.Storage)]
     [InlineData("timeline", TestScreen.Timeline)]
     [InlineData(" TIMELINE ", TestScreen.Timeline)]
-    public void TheTwoPlainScreensParse(string value, TestScreen screen)
+    [InlineData("setup", TestScreen.Setup)]
+    public void ThePlainScreensParse(string value, TestScreen screen)
     {
         var request = TestScreenRequest.Parse(value);
 
@@ -43,8 +44,9 @@ public sealed class TestScreensTests
     [InlineData("changes:   ")]
     [InlineData("storage:extra")]
     [InlineData("timeline:extra")]
+    [InlineData("setup:extra")]
     [InlineData("storag")]
-    [InlineData("setup")]
+    [InlineData("setups")]
     public void AnythingElseOpensNothing(string? value)
     {
         Assert.Null(TestScreenRequest.Parse(value));

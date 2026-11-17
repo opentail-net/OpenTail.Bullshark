@@ -45,6 +45,9 @@ public partial class SessionWindow
             case TestScreen.Timeline:
                 TimelineButton_Click(this, new RoutedEventArgs());
                 break;
+            case TestScreen.Setup:
+                OpenSetupTab(null);
+                break;
             case TestScreen.Changes:
                 var record = ReadRecords().Values.FirstOrDefault(r => string.Equals(r.Name, request.SessionName, StringComparison.Ordinal));
                 if (record is not null && record.SessionId.Length > 0) OpenChanges(record.SessionId, record.Name);
