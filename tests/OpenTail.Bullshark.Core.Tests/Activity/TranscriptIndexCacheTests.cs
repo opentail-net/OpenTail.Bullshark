@@ -51,6 +51,8 @@ public sealed class TranscriptIndexCacheTests : IDisposable
             var path = Path.Combine(folders[i % 2], $"cccccccc-0000-0000-0000-{i:D12}.jsonl");
             File.WriteAllLines(path, lines);
             File.SetCreationTimeUtc(path, created.AddDays(i * 4 % 6));
+            // Written an hour ago, so each file is outside the two-minute window in which the cache is not used (round 11 item 1).
+            File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddHours(-1));
             paths.Add(path);
         }
         return paths;
@@ -103,6 +105,30 @@ public sealed class TranscriptIndexCacheTests : IDisposable
         // The file changed in content only: the cache's entry is used, as the rule says, and the reader would see the change.
         Assert.Equal(before, warm);
         Assert.NotEqual(Reader(_root), warm);
+    }
+
+    [Fact]
+    public void ATranscriptWrittenInTheLastTwoMinutesIsReadAgainEvenWhenItsEntryMatches()
+    {
+        var paths = WriteTranscripts();
+        // A live session: written just now. Its entry is kept with that write time; then the contents change, with the length and the
+        // write time kept, so the entry matches the file as it is. The file is inside the two-minute window, so it is read again.
+        File.SetLastWriteTimeUtc(paths[2], DateTime.UtcNow);
+        TranscriptIndex.Build(_root, _cache);
+        ChangeSameLength(paths[2], "hello from file 2", "hello from file 9");
+
+        Assert.Equal(Reader(_root), IndexFixture.Describe(TranscriptIndex.Build(_root, _cache)));
+    }
+
+    [Fact]
+    public void ASameLengthTranscriptWithANewWriteTimeIsReadAgain()
+    {
+        var paths = WriteTranscripts();
+        TranscriptIndex.Build(_root, _cache);
+        ChangeSameLength(paths[1], "hello from file 1", "hello from file 7");
+        File.SetLastWriteTimeUtc(paths[1], DateTime.UtcNow.AddHours(-2));
+
+        Assert.Equal(Reader(_root), IndexFixture.Describe(TranscriptIndex.Build(_root, _cache)));
     }
 
     [Fact]

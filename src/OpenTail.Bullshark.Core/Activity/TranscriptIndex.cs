@@ -99,12 +99,13 @@ public sealed class TranscriptIndex
 
         var files = ListFiles(projectsRoot);
         var cached = IndexCache.Load(cachePath);
+        var now = DateTime.UtcNow;
         var reads = new FileRead[files.Count];
         var readNow = new bool[files.Count];
         Parallel.For(0, files.Count, i =>
         {
             var file = files[i];
-            var read = cached is not null && cached.TryGetValue(file.FullName, out var entry) ? FromCache(file, entry) : null;
+            var read = cached is not null && cached.TryGetValue(file.FullName, out var entry) ? FromCache(file, entry, now) : null;
             if (read is null)
             {
                 reads[i] = ReadOne(file);
@@ -121,26 +122,51 @@ public sealed class TranscriptIndex
         foreach (var read in reads)
         {
             if (read.Error is null && read.Summary is { } summary)
-                entries.Add(IndexCache.EntryOf(read.Info.FullName, read.Info.Length, read.Info.LastWriteTimeUtc, summary, read.Ledger.Pairs));
+                entries.Add(IndexCache.EntryOf(read.Info.FullName, read.Length, read.Written, summary, read.Ledger.Pairs));
         }
         if (cached is null || cached.Count != entries.Count || readNow.Any(read => read)) IndexCache.Save(cachePath, entries);
         return index;
     }
 
-    /// <summary>The read of a transcript from its cache entry, or null when the entry is not for the file as it is now.</summary>
-    private static FileRead? FromCache(FileInfo file, IndexCache.Entry entry)
+    /// <summary>
+    /// The read of a transcript from its cache entry, or null when the entry is not for the file as it is now, or the file was written within
+    /// <see cref="LiveWindow"/> of <paramref name="utcNow"/>. A live session writes its transcript often, and the metadata the listing gave can
+    /// lag the file, so such a file is read again (round 11 item 1).
+    /// </summary>
+    private static FileRead? FromCache(FileInfo file, IndexCache.Entry entry, DateTime utcNow)
     {
-        if (entry.Length != file.Length || entry.Written != file.LastWriteTimeUtc.Ticks) return null;
+        (long Length, DateTime Written) fresh;
+        try
+        {
+            fresh = StatNow(file);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Not readable now: the read reports it, as it does for any file that cannot be read.
+            return null;
+        }
+        if (entry.Length != fresh.Length || entry.Written != fresh.Written.Ticks) return null;
+        if (fresh.Written > utcNow - LiveWindow) return null;
         try
         {
             var (summary, ledger) = IndexCache.Restore(entry);
-            return new FileRead(file, ledger, summary, null);
+            return new FileRead(file, ledger, summary, null, fresh.Length, fresh.Written);
         }
         catch (Exception)
         {
             // A damaged entry is no entry: the file is read instead.
             return null;
         }
+    }
+
+    /// <summary>A transcript written this recently may still be a live session, so the cache is not used for it.</summary>
+    private static readonly TimeSpan LiveWindow = TimeSpan.FromMinutes(2);
+
+    /// <summary>The length and write time the disk gives for the file now. A fresh stat, not the copy the listing took (round 11 item 1).</summary>
+    private static (long Length, DateTime Written) StatNow(FileInfo file)
+    {
+        file.Refresh();
+        return (file.Length, file.LastWriteTimeUtc);
     }
 
     /// <summary>
@@ -207,19 +233,23 @@ public sealed class TranscriptIndex
         return new TranscriptIndex(digests, new IndexTotals(ledger.Total, ledger.ByModel(), ledger.Count), skipped);
     }
 
-    /// <summary>One transcript as it was read on its own: its file, its ledger, and either its summary or the error it failed with.</summary>
-    private sealed record FileRead(FileInfo Info, UsageLedger Ledger, TranscriptSummary? Summary, Exception? Error);
+    /// <summary>
+    /// One transcript as it was read on its own: its file, its ledger, and either its summary or the error it failed with. Length and Written
+    /// are the fresh stat taken before the read (the cache key), so a file that grows during the read is read again next time.
+    /// </summary>
+    private sealed record FileRead(FileInfo Info, UsageLedger Ledger, TranscriptSummary? Summary, Exception? Error, long Length, DateTime Written);
 
     private static FileRead ReadOne(FileInfo file)
     {
         var ledger = new UsageLedger();
         try
         {
-            return new FileRead(file, ledger, TranscriptReader.ReadFile(file.FullName, ledger), null);
+            var (length, written) = StatNow(file);
+            return new FileRead(file, ledger, TranscriptReader.ReadFile(file.FullName, ledger), null, length, written);
         }
         catch (Exception ex)
         {
-            return new FileRead(file, ledger, null, ex);
+            return new FileRead(file, ledger, null, ex, 0, DateTime.MinValue);
         }
     }
 
