@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using OpenTail.Bullshark.Core.Claude;
 using OpenTail.Bullshark.Core.Storage;
 
 namespace OpenTail.Bullshark.App;
@@ -172,7 +173,7 @@ public sealed class StorageView : UserControl
     /// </summary>
     private CheckBox FileRow(TranscriptFileInfo file, bool marked)
     {
-        var text = $"{file.SessionId[..Math.Min(8, file.SessionId.Length)]} · {Size(file.Bytes)} · {file.Written.ToLocalTime():yyyy-MM-dd HH:mm}";
+        var text = $"{ClaudeCli.ShortIdOf(file.SessionId)} · {Size(file.Bytes)} · {file.Written.ToLocalTime():yyyy-MM-dd HH:mm}";
         if (marked)
         {
             var age = DateTimeOffset.UtcNow - file.Written;

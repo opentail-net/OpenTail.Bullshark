@@ -6,6 +6,7 @@ using System.Windows.Media;
 using System.Windows.Input;
 using System.Windows.Threading;
 using OpenTail.Bullshark.Core.Activity;
+using OpenTail.Bullshark.Core.Claude;
 using OpenTail.Bullshark.Core.Resume;
 
 namespace OpenTail.Bullshark.App;
@@ -333,7 +334,7 @@ public sealed class TranscriptView : UserControl
             Cursor = Cursors.Hand,
             Margin = new Thickness(0, 0, 14, 0),
             FontSize = 12,
-            ToolTip = $"Open session {sessionId[..Math.Min(8, sessionId.Length)]}",
+            ToolTip = $"Open session {ClaudeCli.ShortIdOf(sessionId)}",
         };
         link.MouseLeftButtonUp += (_, _) => OpenSessionRequested?.Invoke(sessionId);
         var row = new StackPanel { Orientation = Orientation.Horizontal };
@@ -593,7 +594,7 @@ public sealed class TranscriptView : UserControl
         var dialog = new Microsoft.Win32.SaveFileDialog
         {
             Title = "Export session",
-            FileName = digest.SessionId[..Math.Min(8, digest.SessionId.Length)] + ".md",
+            FileName = ClaudeCli.ShortIdOf(digest.SessionId) + ".md",
             Filter = "Markdown (*.md)|*.md",
             DefaultExt = ".md",
         };

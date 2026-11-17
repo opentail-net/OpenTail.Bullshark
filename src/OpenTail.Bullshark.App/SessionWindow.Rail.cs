@@ -821,5 +821,5 @@ public partial class SessionWindow
     }
 
     private static TreeViewItem? FindItem(ItemCollection items, RailTag wanted) =>
-        AllItems(items).FirstOrDefault(i => i.Tag is RailTag t && t.Kind == wanted.Kind && t.Key == wanted.Key);
+        AllItems(items).FirstOrDefault(i => i.Tag is RailTag t && t.Kind == wanted.Kind && SameId(t.Key, wanted.Key));
 }

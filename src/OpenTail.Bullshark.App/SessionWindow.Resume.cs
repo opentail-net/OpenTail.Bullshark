@@ -115,7 +115,7 @@ public partial class SessionWindow
         }
 
         if (_agents.Any(a => string.Equals(a.SessionId, digest.SessionId, StringComparison.OrdinalIgnoreCase))
-            || ReadRecords().Values.Any(r => r.SessionId == digest.SessionId))
+            || ReadRecords().Values.Any(r => SameId(r.SessionId, digest.SessionId)))
         {
             SetStatus($"Not resumed: session {ShortId(digest.SessionId)} is already open in the rail.");
             return;

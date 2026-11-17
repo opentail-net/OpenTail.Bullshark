@@ -41,7 +41,7 @@ public partial class SessionWindow
 
         try
         {
-            var record = ReadRecords().Values.FirstOrDefault(r => string.Equals(r.SessionId, sessionId, StringComparison.Ordinal));
+            var record = ReadRecords().Values.FirstOrDefault(r => SameId(r.SessionId, sessionId));
             var listed = _agents.FirstOrDefault(a => string.Equals(a.SessionId, sessionId, StringComparison.OrdinalIgnoreCase))?.Cwd;
             var spec = record is null ? null : Specs.FirstOrDefault(s => string.Equals(s.Name, record.Name, StringComparison.Ordinal))?.WorkingDirectory;
             // The transcript is read first, on a pool thread. Its latest folder is the one the session edits now, which can be a worktree,
@@ -50,7 +50,7 @@ public partial class SessionWindow
             var known = _transcriptPaths.TryGetValue(sessionId, out var knownPath) ? knownPath : null;
             var projectsRoot = _options.ProjectsRoot;
             var facts = await Task.Run(() => TranscriptFactsOf(sessionId, known, projectsRoot));
-            if (_changesSession != sessionId) return;
+            if (!SameId(_changesSession, sessionId)) return;
             var folder = GitChanges.FolderOf(facts.Folder, listed, spec);
             if (folder is null)
             {
@@ -60,7 +60,7 @@ public partial class SessionWindow
 
             _changes.ShowLoading(folder);
             var changes = await Task.Run(() => GitChanges.ReadAsync(folder, new ProcessGitRunner()));
-            if (_changesSession != sessionId) return;
+            if (!SameId(_changesSession, sessionId)) return;
             _changes.Show(changes, facts.Files, facts.Note, SharedLinesFor(record));
             _changes.ResolvePrompt = ResolvePromptFor(record);
         }
@@ -69,7 +69,7 @@ public partial class SessionWindow
             // A read that fails is said in the tab, not left on its old view (round 12 B2). A folder that cannot be read is said so too
             // (round 5 item 11).
             AppLog.Write($"changes not read: {ex.GetType().Name}: {ex.Message}");
-            if (_changesSession == sessionId) _changes.ShowMessage("Changes", $"The changes cannot be read: {ex.Message}");
+            if (SameId(_changesSession, sessionId)) _changes.ShowMessage("Changes", $"The changes cannot be read: {ex.Message}");
         }
     }
 }
