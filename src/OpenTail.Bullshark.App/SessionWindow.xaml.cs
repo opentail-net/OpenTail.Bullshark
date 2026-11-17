@@ -132,30 +132,47 @@ public partial class SessionWindow : Window
     /// </summary>
     private IReadOnlyDictionary<string, SessionRecord> ReadRecords()
     {
-        try
-        {
-            return _store.Load();
-        }
-        catch (StoreUnreadableException ex)
-        {
-            _storeProblem = ex.Message;
-            AppLog.Write(ex.Message);
-            return new Dictionary<string, SessionRecord>(StringComparer.Ordinal);
-        }
+        var (records, problem) = LoadRecords(_store);
+        if (problem is not null) _storeProblem = problem;
+        return records;
     }
 
     /// <summary>The runs as they are on disk. An unreadable file shows as no runs, as ReadRecords does.</summary>
     private IReadOnlyList<RunRecord> ReadRuns()
     {
+        var (runs, problem) = LoadRuns(_runStore);
+        if (problem is not null) _storeProblem = problem;
+        return runs;
+    }
+
+    /// <summary>
+    /// The records as they are on disk, or nothing and the reason when the file cannot be read. It touches no window object,
+    /// so it runs on a pool thread as well as on the UI thread.
+    /// </summary>
+    private static (IReadOnlyDictionary<string, SessionRecord> Records, string? Problem) LoadRecords(StateStore store)
+    {
         try
         {
-            return _runStore.Load();
+            return (store.Load(), null);
         }
         catch (StoreUnreadableException ex)
         {
-            _storeProblem = ex.Message;
             AppLog.Write(ex.Message);
-            return [];
+            return (new Dictionary<string, SessionRecord>(StringComparer.Ordinal), ex.Message);
+        }
+    }
+
+    /// <summary>The runs on disk, or nothing and the reason when the file cannot be read. Safe on any thread, as LoadRecords is.</summary>
+    private static (IReadOnlyList<RunRecord> Runs, string? Problem) LoadRuns(RunStore runStore)
+    {
+        try
+        {
+            return (runStore.Load(), null);
+        }
+        catch (StoreUnreadableException ex)
+        {
+            AppLog.Write(ex.Message);
+            return (Array.Empty<RunRecord>(), ex.Message);
         }
     }
 
@@ -163,52 +180,59 @@ public partial class SessionWindow : Window
     private string? _storeProblem;
 
     /// <summary>
-    /// Runs one supervisor pass off the UI thread, then refreshes the rail. Untrusted folders get a Trust step and their
-    /// runs are skipped; every other run is supervised. With --no-pass, nothing is started.
+    /// What a pass reads before it runs, gathered on a pool thread. The window copies it into its fields on the UI thread.
+    /// </summary>
+    private sealed record PassReads(
+        IReadOnlyList<AgentInfo> Agents,
+        IReadOnlyDictionary<string, SessionRecord> Records,
+        TrustPlan Trust,
+        Dictionary<string, TailFacts> Facts,
+        Dictionary<string, string> NewPaths,
+        string? StoreProblem);
+
+    /// <summary>
+    /// Runs one supervisor pass, then refreshes the rail. The reads and the pass itself run on a pool thread, so the window does
+    /// not freeze while a folder lock is waited for or a `claude` command runs. Only the drawing happens on the UI thread, after
+    /// the awaits. Untrusted folders get a Trust step and their runs are skipped; every other run is supervised. With --no-pass,
+    /// or while Claude's trust record cannot be read, nothing is started.
     /// </summary>
     private async Task PassAndRefreshAsync()
     {
         if (_passRunning) return;
         _passRunning = true;
-        _storeProblem = null;
         try
         {
-            _agents = await Task.Run(() => _cli.ListAgentsAsync());
+            var known = new Dictionary<string, string>(_transcriptPaths, StringComparer.Ordinal);
+            var read = await Task.Run(() => ReadForPassAsync(known));
 
-            // The cache facts of the running sessions are read here, off the UI thread, on every pass: a warm session turns cold
-            // with no new record, so the labels are recomputed each time.
-            var ids = ReadRecords().Values.Select(r => r.SessionId).Where(id => id.Length > 0).ToList();
-            var (facts, paths) = await Task.Run(() => ReadRunningFacts(ids,
-                new Dictionary<string, string>(_transcriptPaths, StringComparer.Ordinal)));
-            _runningFacts = facts;
-            foreach (var pair in paths) _transcriptPaths[pair.Key] = pair.Value;
+            _agents = read.Agents;
+            _runningFacts = read.Facts;
+            foreach (var pair in read.NewPaths) _transcriptPaths[pair.Key] = pair.Value;
+            _storeProblem = read.StoreProblem;
 
-            // Read the specs once, on the UI thread, before the pass runs on a pool thread.
-            var specs = Specs;
-            // While ~/.claude.json cannot be read, trust is unknown: nothing is judged untrusted, and no run starts or restarts.
-            var trustProblem = TrustCheck.UnreadableProblem(TrustCheck.DefaultClaudeJsonPath);
-            var (runnable, untrusted) = trustProblem is null
-                ? TrustGate.Filter(specs, TrustCheck.DefaultClaudeJsonPath)
-                : (new List<SessionSpec>(), new List<string>());
-            var needed = untrusted.Select(FolderKey.From).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            foreach (var root in untrusted) ShowTrustStep(root, select: false);
+            // While ~/.claude.json cannot be read, trust is unknown: no root is judged untrusted, and no run starts or restarts.
+            var plan = read.Trust;
+            var needed = plan.UntrustedRoots.Select(FolderKey.From).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var root in plan.UntrustedRoots) ShowTrustStep(root, select: false);
             foreach (var key in _trustSteps.Keys.Where(k => !needed.Contains(k)).ToList()) HideTrustStep(key);
-            var waiting = specs.Count(s => needed.Contains(FolderKey.From(s.WorkingDirectory)));
             TrustButton.Tag = _trustSteps.Values.FirstOrDefault()?.Root;
             TrustButton.Visibility = _trustSteps.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
             if (_searchMatches is null && SearchBusy.Visibility != Visibility.Visible) SetStatus("checking sessions…");
-            var actions = _options.NoPass || trustProblem is not null ? 0 : await Task.Run(() => _loop.RunPassAsync(runnable));
-            RefreshRail();
 
-            var failed = ReadRecords().Values.Count(r => string.IsNullOrEmpty(r.SessionId));
+            var actions = 0;
+            var records = read.Records;
+            if (!_options.NoPass && plan.Problem is null)
+            {
+                // The records the pass leaves are read on the pool thread too, so the rail is drawn from that one read.
+                (actions, records, var afterProblem) = await Task.Run(() => RunPassAndReadAsync(read));
+                _storeProblem = afterProblem ?? _storeProblem;
+            }
+            RefreshRail(records);
+
+            var failed = PassSnapshot.FailedStarts(records.Values);
             RetryButton.Visibility = failed > 0 ? Visibility.Visible : Visibility.Collapsed;
-            var parts = new List<string> { $"{DateTime.Now:HH:mm:ss}  {actions} action(s) this pass" };
-            if (waiting > 0) parts.Add($"{waiting} session(s) wait for trust (see the Trust step)");
-            if (failed > 0) parts.Add($"{failed} start(s) failed: see the rail, then Retry failed starts");
-            if (_storeProblem is { } problem) parts.Add($"state file cannot be read, nothing is changed: {problem}");
-            if (trustProblem is not null) parts.Add(trustProblem);
-            parts.Add("closing the window detaches the terminals; the sessions keep running");
+            var parts = PassSnapshot.StatusParts(DateTime.Now, actions, plan.Waiting, failed, _storeProblem, plan.Problem);
 
             // A search owns the status line while it runs or while its results are shown: the pass's summary waits for it to end.
             if (_searchMatches is null && SearchBusy.Visibility != Visibility.Visible) SetStatus(string.Join("  ·  ", parts));
@@ -222,6 +246,35 @@ public partial class SessionWindow : Window
         {
             _passRunning = false;
         }
+    }
+
+    /// <summary>
+    /// The reads a pass needs, on a pool thread. The agent listing comes first: if it fails, nothing else is read and no pass runs.
+    /// Touches no window object.
+    /// </summary>
+    private async Task<PassReads> ReadForPassAsync(Dictionary<string, string> known)
+    {
+        var agents = await _cli.ListAgentsAsync();
+        var (records, recordsProblem) = LoadRecords(_store);
+        var (runs, runsProblem) = LoadRuns(_runStore);
+        var plan = PassSnapshot.Trust(RunStore.SpecsOf(runs), ClaudeTrust.Read(TrustCheck.DefaultClaudeJsonPath));
+
+        // The cache facts of the running sessions are read on every pass: a warm session turns cold with no new record, so the
+        // labels are recomputed each time.
+        var ids = records.Values.Select(r => r.SessionId).Where(id => id.Length > 0).ToList();
+        var (facts, paths) = ReadRunningFacts(ids, known);
+        return new PassReads(agents, records, plan, facts, paths, recordsProblem ?? runsProblem);
+    }
+
+    /// <summary>
+    /// The pass itself, then the records it left, on a pool thread. A failed start is recorded by the runner, and the window
+    /// counts the failed starts from these records.
+    /// </summary>
+    private async Task<(int Actions, IReadOnlyDictionary<string, SessionRecord> Records, string? Problem)> RunPassAndReadAsync(PassReads read)
+    {
+        var actions = await _loop.RunPassAsync(read.Trust.Runnable);
+        var (records, problem) = LoadRecords(_store);
+        return (actions, records, problem);
     }
 
     /// <summary>

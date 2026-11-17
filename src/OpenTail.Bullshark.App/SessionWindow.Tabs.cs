@@ -279,9 +279,9 @@ public partial class SessionWindow
     /// One tab for each recorded session, so every live session is visible. A tab whose session is gone is removed.
     /// Called on every refresh of the rail.
     /// </summary>
-    private void SyncSessionTabs()
+    private void SyncSessionTabs(IReadOnlyDictionary<string, SessionRecord> known)
     {
-        var records = ReadRecords().Values.Where(r => !string.IsNullOrEmpty(r.SessionId)).ToList();
+        var records = known.Values.Where(r => !string.IsNullOrEmpty(r.SessionId)).ToList();
         // New tabs open in the order the owner last left them (T1); a session with no saved place goes after those, by name.
         foreach (var record in TabOrder.Arrange(records.OrderBy(r => r.Name, StringComparer.Ordinal), r => r.SessionId, _savedTabOrder))
         {

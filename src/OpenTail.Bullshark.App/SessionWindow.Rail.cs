@@ -234,12 +234,16 @@ public partial class SessionWindow
             _expanded[tag.Key] = item.IsExpanded;
     }
 
-    /// <summary>Rebuilds the rail from the state file, the last agent listing, the cache facts and the history read so far.</summary>
-    private void RefreshRail()
+    /// <summary>
+    /// Rebuilds the rail from the state file, the last agent listing, the cache facts and the history read so far. The pass
+    /// passes the records it read on a pool thread, so the drawing does not read the file again; other callers leave them out.
+    /// </summary>
+    private void RefreshRail(IReadOnlyDictionary<string, SessionRecord>? known = null)
     {
         // The marks are read again on every refresh: they are small, and another process may have changed them (D-L3 is inside).
         LoadLibrary();
-        var records = ReadRecords().Values.OrderBy(r => r.Name, StringComparer.Ordinal).ToList();
+        var stored = known ?? ReadRecords();
+        var records = stored.Values.OrderBy(r => r.Name, StringComparer.Ordinal).ToList();
         // A start that failed has no session, so it gets no terminal (it is listed as a failure below).
         foreach (var record in records.Where(r => !string.IsNullOrEmpty(r.SessionId))) EnsureTerminal(record);
 
@@ -317,10 +321,10 @@ public partial class SessionWindow
 
             // The names of the live folders, so the History section uses the same name for the same folder.
             var liveNames = groups.Values.ToDictionary(g => g.Key, g => g.Header, StringComparer.OrdinalIgnoreCase);
-            if (ShowsHistory) Rail.Items.Add(HistorySection(liveNames));
+            if (ShowsHistory) Rail.Items.Add(HistorySection(liveNames, stored));
 
             RestoreSelection();
-            SyncSessionTabs();
+            SyncSessionTabs(stored);
         }
         finally
         {
@@ -332,7 +336,7 @@ public partial class SessionWindow
     /// The History section: one label at its top, with the 🔄 mark that reloads it, and past sessions grouped by folder below.
     /// The folder name is the live folder's name when the folder is one of this window's, and the name Claude gave it otherwise.
     /// </summary>
-    private TreeViewItem HistorySection(IReadOnlyDictionary<string, string> liveNames)
+    private TreeViewItem HistorySection(IReadOnlyDictionary<string, string> liveNames, IReadOnlyDictionary<string, SessionRecord> records)
     {
         var header = new StackPanel { Orientation = Orientation.Horizontal };
         header.Children.Add(Label("History", bold: true));
@@ -374,7 +378,7 @@ public partial class SessionWindow
 
         // The sessions open now, listed by the agents or recorded. A history row for one of them gets no ⏩: it is already running.
         var openIds = _agents.Select(a => a.SessionId)
-            .Concat(ReadRecords().Values.Select(r => r.SessionId))
+            .Concat(records.Values.Select(r => r.SessionId))
             .Where(id => !string.IsNullOrEmpty(id))
             .Select(id => id!)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
