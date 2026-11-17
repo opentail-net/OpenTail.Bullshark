@@ -2,6 +2,7 @@ using System.IO;
 using System.Windows;
 using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Git;
+using OpenTail.Bullshark.Core.Supervisor;
 
 namespace OpenTail.Bullshark.App;
 
@@ -49,33 +50,23 @@ public partial class SessionWindow
         }
 
         _changes.ShowLoading(folder);
-        var (report, written, writtenNote) = await Task.Run(async () =>
-        {
-            var changes = await GitChanges.ReadAsync(folder, new ProcessGitRunner());
-            var (files, note) = WrittenFiles(_options.ProjectsRoot, sessionId);
-            return (changes, files, note);
-        });
-        if (_changesSession != sessionId) return;
-        _changes.Show(report, written, writtenNote, SharedLinesFor(record));
-        _changes.ResolvePrompt = ResolvePromptFor(record);
-    }
-
-    /// <summary>
-    /// The files the session's transcript says it wrote (Write, Edit, MultiEdit, NotebookEdit). Reads the whole transcript once,
-    /// so it runs on a pool thread. A missing transcript is a note, not an error.
-    /// </summary>
-    private static (IReadOnlyList<string>? Files, string? Note) WrittenFiles(string projectsRoot, string sessionId)
-    {
         try
         {
-            var path = TranscriptReader.FindTranscript(projectsRoot, sessionId);
-            if (path is null) return (null, "No transcript for this session yet.");
-            return (TranscriptReader.ReadFile(path).FilesWritten ?? [], null);
+            var (report, written, writtenNote) = await Task.Run(async () =>
+            {
+                var changes = await GitChanges.ReadAsync(folder, new ProcessGitRunner());
+                var (files, note) = TranscriptWrites.Of(_options.ProjectsRoot, sessionId);
+                return (changes, files, note);
+            });
+            if (_changesSession != sessionId) return;
+            _changes.Show(report, written, writtenNote, SharedLinesFor(record));
+            _changes.ResolvePrompt = ResolvePromptFor(record);
         }
-        catch (IOException ex)
+        catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
-            AppLog.Write($"changes: transcript not read: {ex.Message}");
-            return (null, $"The transcript cannot be read: {ex.Message}");
+            // A folder that cannot be read used to leave the tab on "Reading the changes…" with Refresh off. It is said instead (round 5 item 11).
+            AppLog.Write($"changes not read: {ex.Message}");
+            if (_changesSession == sessionId) _changes.ShowMessage("Changes", $"The changes cannot be read: {ex.Message}");
         }
     }
 }

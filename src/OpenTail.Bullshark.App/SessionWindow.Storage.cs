@@ -2,6 +2,7 @@ using System.IO;
 using System.Windows;
 using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Storage;
+using OpenTail.Bullshark.Core.Supervisor;
 
 namespace OpenTail.Bullshark.App;
 
@@ -41,18 +42,47 @@ public partial class SessionWindow
         _ = RefreshStorageAsync();
     }
 
-    /// <summary>Reads the project sizes and the archive, then draws them.</summary>
+    /// <summary>The project folder whose transcripts the middle list shows, so the list can be read again after a move (round 5 item 11).</summary>
+    private string? _storageFolder;
+
+    /// <summary>Reads the project sizes and the archive, then draws them. A folder that cannot be read is said in the note, not dropped.</summary>
     private async Task RefreshStorageAsync()
     {
-        var (projects, archived) = await Task.Run(() =>
-            (StorageReport.Read(_options.ProjectsRoot), TranscriptArchive.List(_options.ArchiveRoot)));
-        _storage.ShowProjects(projects, archived);
+        try
+        {
+            var (projects, archived) = await Task.Run(() =>
+                (StorageReport.Read(_options.ProjectsRoot), TranscriptArchive.List(_options.ArchiveRoot)));
+            _storage.ShowProjects(projects, archived);
+        }
+        catch (Exception ex) when (StoreErrors.IsExpected(ex))
+        {
+            AppLog.Write($"storage not read: {ex.Message}");
+            _storage.SetResult($"The storage cannot be read: {ex.Message}");
+        }
     }
 
     private async Task ShowProjectAsync(string folder)
     {
-        var files = await Task.Run(() => StorageReport.FilesOf(folder));
-        _storage.ShowTranscripts(Path.GetFileName(folder), files);
+        _storageFolder = folder;
+        try
+        {
+            var files = await Task.Run(() => StorageReport.FilesOf(folder));
+            _storage.ShowTranscripts(Path.GetFileName(folder), files);
+        }
+        catch (Exception ex) when (StoreErrors.IsExpected(ex))
+        {
+            AppLog.Write($"storage project not read: {ex.Message}");
+            _storage.SetResult($"The transcripts of {Path.GetFileName(folder)} cannot be read: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// The middle list shows the chosen project again. After an archive or a restore it is read again too, so a transcript that moved
+    /// leaves the list, and a checkbox does not point at a file that is gone (round 5 item 11).
+    /// </summary>
+    private async Task RefreshChosenProjectAsync()
+    {
+        if (_storageFolder is { } folder) await ShowProjectAsync(folder);
     }
 
     /// <summary>
@@ -92,6 +122,7 @@ public partial class SessionWindow
         _storage.SetResult(Summary(outcomes));
         if (outcomes.Any(o => o.Moved)) _ = LoadHistoryAsync();
         await RefreshStorageAsync();
+        await RefreshChosenProjectAsync();
     }
 
     /// <summary>Moves the checked archived transcripts back to where they were. Restoring is reversible, so it is not asked about.</summary>
@@ -107,6 +138,7 @@ public partial class SessionWindow
         _storage.SetResult(Summary(outcomes));
         if (outcomes.Any(o => o.Moved)) _ = LoadHistoryAsync();
         await RefreshStorageAsync();
+        await RefreshChosenProjectAsync();
     }
 
     private static string Summary(IReadOnlyList<ArchiveOutcome> outcomes)
