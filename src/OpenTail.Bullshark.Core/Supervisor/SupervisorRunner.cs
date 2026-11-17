@@ -102,6 +102,9 @@ public sealed class SupervisorRunner
                         continue;
                     }
 
+                    // A limit level that went down is recorded (Carry) and is not an action the owner hears about (round 5 item 8).
+                    if (action is SupervisorAction.LimitLevelSet) continue;
+
                     // Outside the try above: a session that started is never recorded as failed because the event log could not be
                     // written (round 5 item 2). Write itself logs the failure and the pass goes on.
                     performed.Add(action);
@@ -239,8 +242,19 @@ public sealed class SupervisorRunner
                 break;
 
             case SupervisorAction.Alert alert:
-                records[spec.Name] = records[spec.Name] with { LastAlert = $"{alert.Kind}: {alert.Detail}" };
+                // A limit notice also records its level, which is what keeps it from being repeated (round 5 item 8).
+                var level = alert.Kind switch
+                {
+                    AlertKind.LimitNear => RunBudget.NearLevel,
+                    AlertKind.LimitReached => RunBudget.ReachedLevel,
+                    _ => records[spec.Name].LimitLevel,
+                };
+                records[spec.Name] = records[spec.Name] with { LastAlert = $"{alert.Kind}: {alert.Detail}", LimitLevel = level };
                 _log($"{spec.Name}: ALERT {alert.Kind} - {alert.Detail}");
+                break;
+
+            case SupervisorAction.LimitLevelSet levelSet:
+                records[spec.Name] = records[spec.Name] with { LimitLevel = levelSet.Level };
                 break;
         }
     }

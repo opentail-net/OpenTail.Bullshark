@@ -22,8 +22,8 @@ public sealed class RunLimitTests
     private static RunRecord Run(RunLimits? limits = null) =>
         new("abcd", "solo", @"C:\work", "auto", Created, [Spec()], null, limits);
 
-    private static SessionRecord Record(string? lastAlert = null, string sessionId = CoderId) =>
-        new(SessionRole.Coder, sessionId, Coder, Created, 0, [], null, lastAlert);
+    private static SessionRecord Record(string? lastAlert = null, string sessionId = CoderId, string? limitLevel = null) =>
+        new(SessionRole.Coder, sessionId, Coder, Created, 0, [], null, lastAlert, limitLevel);
 
     private static AgentInfo Working() =>
         new(Id: CoderId[..8], SessionId: CoderId, Name: Coder, Kind: "background", State: "working", Status: null,
@@ -94,7 +94,8 @@ public sealed class RunLimitTests
         Assert.Equal(AlertKind.LimitNear, Assert.IsType<SupervisorAction.Alert>(alert).Kind);
 
         // The record now says so, so the next pass stays quiet.
-        var again = SupervisorPolicy.Decide(Spec(), Record("LimitNear: the run has used 85% of its limit."), [Working()], Now, SupervisorRules.Default, budget);
+        var again = SupervisorPolicy.Decide(Spec(), Record("LimitNear: the run has used 85% of its limit.", limitLevel: RunBudget.NearLevel),
+            [Working()], Now, SupervisorRules.Default, budget);
         Assert.Empty(again);
     }
 
@@ -110,7 +111,8 @@ public sealed class RunLimitTests
         var alert = Assert.IsType<SupervisorAction.Alert>(Assert.Single(actions));
         Assert.Equal(AlertKind.LimitReached, alert.Kind);
 
-        var again = SupervisorPolicy.Decide(Spec(), Record("LimitReached: the run reached its limit."), [], Now, SupervisorRules.Default, budget);
+        var again = SupervisorPolicy.Decide(Spec(), Record("LimitReached: the run reached its limit.", limitLevel: RunBudget.ReachedLevel),
+            [], Now, SupervisorRules.Default, budget);
         Assert.Empty(again);
     }
 
@@ -169,6 +171,92 @@ public sealed class RunLimitTests
         var run = Assert.Single(started);
         Assert.Equal(now, run.StartAt);
         Assert.Equal(TimeSpan.FromMinutes(30), RunSpend.ElapsedOf(run, now.AddMinutes(30)));
+    }
+
+    [Fact]
+    public void ANoticeIsNotRepeatedWhenAnotherAlertReplacedTheLastAlert()
+    {
+        // The owner was told the run is near its limit, and a blocked alert has since replaced the last alert. The level still says so.
+        var actions = SupervisorPolicy.Decide(Spec(), Record("Blocked: waiting for input.", limitLevel: RunBudget.NearLevel),
+            [Working()], Now, SupervisorRules.Default, new RunBudget(0.85));
+
+        Assert.Empty(actions);
+    }
+
+    [Fact]
+    public void ReachingTheLimitAfterANearNoticeIsNoticedOnce()
+    {
+        var actions = SupervisorPolicy.Decide(Spec(), Record("LimitNear: the run has used 85% of its limit.", limitLevel: RunBudget.NearLevel),
+            [Working()], Now, SupervisorRules.Default, new RunBudget(1.0));
+
+        Assert.Equal(AlertKind.LimitReached, Assert.IsType<SupervisorAction.Alert>(Assert.Single(actions)).Kind);
+    }
+
+    [Fact]
+    public void WhenTheOwnerRaisesTheLimitTheLevelGoesDownWithoutANotice()
+    {
+        var lowered = SupervisorPolicy.Decide(Spec(), Record("LimitReached: the run reached its limit.", limitLevel: RunBudget.ReachedLevel),
+            [Working()], Now, SupervisorRules.Default, new RunBudget(0.85));
+
+        Assert.Equal(RunBudget.NearLevel, Assert.IsType<SupervisorAction.LimitLevelSet>(Assert.Single(lowered)).Level);
+
+        var cleared = SupervisorPolicy.Decide(Spec(), Record(limitLevel: RunBudget.NearLevel), [Working()], Now, SupervisorRules.Default,
+            new RunBudget(0.5));
+
+        Assert.Null(Assert.IsType<SupervisorAction.LimitLevelSet>(Assert.Single(cleared)).Level);
+    }
+
+    [Fact]
+    public void ASessionTheBudgetDoesNotNotifyIsHeldToTheLimitButNotTold()
+    {
+        // A lost session of a run at its limit is not resumed, and it gets no notice: the lead session is the one that is told.
+        var held = new RunBudget(1.0, Notify: false);
+        Assert.Empty(SupervisorPolicy.Decide(Spec(), Record(), [], Now, SupervisorRules.Default, held));
+
+        Assert.Empty(SupervisorPolicy.Decide(Spec(), Record(), [Working()], Now, SupervisorRules.Default, new RunBudget(0.9, Notify: false)));
+    }
+
+    [Fact]
+    public void TheFirstSessionWithAnIdLeadsTheRunAndEverySessionIsHeldToTheSameBudget()
+    {
+        var planner = new SessionSpec(SessionRole.Planner, "bullshark-planner-abcd", @"C:\work", "opus", "high", "brief", "auto");
+        var run = new RunRecord("abcd", "plan-code", @"C:\work", "auto", Created, [planner, Spec()]);
+        var records = new Dictionary<string, SessionRecord>(StringComparer.Ordinal)
+        {
+            // The planner's start failed, so it has no session id, and the coder leads.
+            [planner.Name] = new(SessionRole.Planner, string.Empty, planner.Name, Created, 0, [], null, "start failed"),
+            [Coder] = Record(),
+        };
+
+        var held = RunBudget.ForSessions(run, records, new RunBudget(0.9));
+
+        Assert.False(held[planner.Name].Notify);
+        Assert.True(held[Coder].Notify);
+        Assert.Equal(0.9, held[planner.Name].Fraction);
+        Assert.Equal(0.9, held[Coder].Fraction);
+    }
+
+    private static AgentInfo Listed(string state) =>
+        new(Id: CoderId[..8], SessionId: CoderId, Name: Coder, Kind: "background", State: state, Status: null,
+            Cwd: null, Pid: null, StartedAt: null);
+
+    [Fact]
+    public void ARunThatReachedItsLimitShowsItsLeadUnderNeedsYou()
+    {
+        var item = Assert.Single(AttentionList.From([Record(limitLevel: RunBudget.ReachedLevel)], [Listed("working")]));
+
+        Assert.Equal(AttentionReason.LimitReached, item.Reason);
+        Assert.Equal(Coder, item.Name);
+    }
+
+    [Fact]
+    public void ANearLimitIsNotInNeedsYouAndABlockedSessionKeepsItsBlock()
+    {
+        Assert.Empty(AttentionList.From([Record(limitLevel: RunBudget.NearLevel)], [Listed("working")]));
+
+        // The session's own reason comes first: one row per session.
+        var item = Assert.Single(AttentionList.From([Record(limitLevel: RunBudget.ReachedLevel)], [Listed("blocked")]));
+        Assert.Equal(AttentionReason.Blocked, item.Reason);
     }
 
     [Fact]

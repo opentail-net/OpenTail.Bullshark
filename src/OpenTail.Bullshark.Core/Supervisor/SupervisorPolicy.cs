@@ -54,6 +54,12 @@ public abstract record SupervisorAction(SessionRole Role)
 
     /// <summary>Tell the owner something. The supervisor never answers a prompt on its own.</summary>
     public sealed record Alert(SessionRole Role, AlertKind Kind, string Detail) : SupervisorAction(Role);
+
+    /// <summary>
+    /// The run's limit level went down, because the owner raised the limit. The record follows (<see cref="SessionRecord.LimitLevel"/>),
+    /// and nobody is told: it is not counted as an action of the pass.
+    /// </summary>
+    public sealed record LimitLevelSet(SessionRole Role, string? Level) : SupervisorAction(Role);
 }
 
 /// <summary>Limits the supervisor applies, from the README decisions.</summary>
@@ -73,8 +79,9 @@ public static class SupervisorPolicy
 
     /// <summary>
     /// The actions for one session, with its run's limit state when the run has one (additions item 4). A run at its limit gets no new
-    /// starts or resumes. The limit notices are added here, once per level: a session already told about the level is not told again
-    /// while its last alert still says so.
+    /// starts or resumes. The limit notices are added here, once per level: the level the owner was last told is kept in
+    /// <see cref="SessionRecord.LimitLevel"/>, so a later alert does not make the notice repeat (round 5 item 8). Only the session the
+    /// budget says to notify gets a notice, and a level that went down (the limit was raised) is recorded without one.
     /// </summary>
     public static IReadOnlyList<SupervisorAction> Decide(
         SessionSpec spec,
@@ -87,20 +94,33 @@ public static class SupervisorPolicy
         var reached = budget is { Reached: true };
         var actions = DecideSession(spec, record, agents, now, rules, reached).ToList();
 
-        if (budget is not null && record is { } known && !string.IsNullOrEmpty(known.SessionId))
+        if (budget is { Notify: true } && record is { } known && !string.IsNullOrEmpty(known.SessionId))
         {
-            if (reached && !HasAlert(known, AlertKind.LimitReached))
-                actions.Add(new SupervisorAction.Alert(spec.Role, AlertKind.LimitReached,
-                    "the run reached its limit. Nothing new is started or resumed; a running session is not stopped. Stop it, or raise the limit."));
-            else if (!reached && budget.Near && !HasAlert(known, AlertKind.LimitNear))
-                actions.Add(new SupervisorAction.Alert(spec.Role, AlertKind.LimitNear,
-                    $"the run has used {budget.Fraction:P0} of its limit."));
+            var wanted = LevelRank(budget.Level);
+            var told = LevelRank(known.LimitLevel);
+            if (wanted > told)
+            {
+                actions.Add(reached
+                    ? new SupervisorAction.Alert(spec.Role, AlertKind.LimitReached,
+                        "the run reached its limit. Nothing new is started or resumed; a running session is not stopped. Stop it, or raise the limit.")
+                    : new SupervisorAction.Alert(spec.Role, AlertKind.LimitNear,
+                        $"the run has used {budget.Fraction:P0} of its limit."));
+            }
+            else if (wanted < told)
+            {
+                actions.Add(new SupervisorAction.LimitLevelSet(spec.Role, budget.Level));
+            }
         }
         return actions;
     }
 
-    private static bool HasAlert(SessionRecord record, AlertKind kind) =>
-        record.LastAlert?.StartsWith($"{kind}: ", StringComparison.Ordinal) == true;
+    /// <summary>The order of the limit levels: none, near, reached. A higher level is a new notice; a lower one is recorded silently.</summary>
+    private static int LevelRank(string? level) => level switch
+    {
+        RunBudget.ReachedLevel => 2,
+        RunBudget.NearLevel => 1,
+        _ => 0,
+    };
 
     /// <summary>True for the listed states `stopped` and `failed`, in any letter case: the states the supervisor never brings back.</summary>
     public static bool IsStoppedOrFailed(string? state) => Is(state, "stopped") || Is(state, "failed");

@@ -15,7 +15,13 @@ public sealed record SessionRecord(
     int Restarts,
     IReadOnlyList<DateTimeOffset> RestartTimes,
     string? LastState,
-    string? LastAlert);
+    string? LastAlert,
+    /// <summary>
+    /// The highest limit level the owner has been told about for this session's run: <see cref="RunBudget.NearLevel"/> or
+    /// <see cref="RunBudget.ReachedLevel"/>, or null. It is kept apart from <see cref="LastAlert"/>, which another alert replaces, so one
+    /// notice is given per level (round 5 item 8). Files from before the field load as null.
+    /// </summary>
+    string? LimitLevel = null);
 
 /// <summary>
 /// Reads and writes the state file. Every change goes through <see cref="Update"/>: the file is read again under the lock,

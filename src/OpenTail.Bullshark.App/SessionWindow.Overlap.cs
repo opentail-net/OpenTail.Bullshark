@@ -55,8 +55,9 @@ public partial class SessionWindow
             clashes.AddRange(FileOverlap.Find(run, live, writes));
 
             // The run's limits, from the same transcripts (additions item 4). The runner applies a budget from the next pass.
+            // Each session is held to the budget; only the run's lead session is told about it, once per level (round 5 item 8).
             if (RunBudget.For(run.Limits, RunSpend.Of(run, records, writes, now)) is { } budget)
-                foreach (var spec in run.Specs) budgets[spec.Name] = budget;
+                foreach (var pair in RunBudget.ForSessions(run, records, budget)) budgets[pair.Key] = pair.Value;
         }
         return (clashes, budgets);
     }

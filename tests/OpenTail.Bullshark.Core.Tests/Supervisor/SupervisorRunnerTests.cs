@@ -320,6 +320,44 @@ public sealed class SupervisorRunnerTests : IDisposable
         Assert.Equal(string.Empty, store.Load()[TestSpecs.PlannerName].SessionId);
     }
 
+    [Fact]
+    public async Task TheLimitNoticeIsGivenOncePerLevelAndTheLevelFollowsTheLimit()
+    {
+        var store = new StateStore(Path.Combine(_dir, "state.json"));
+        store.Save(new Dictionary<string, SessionRecord>
+        {
+            [TestSpecs.PlannerName] = new(SessionRole.Planner, PlannerSession, TestSpecs.PlannerName, DateTimeOffset.UnixEpoch, 0, [], null, null),
+        });
+        var clock = new FakeClock(new DateTimeOffset(2026, 11, 17, 12, 0, 0, TimeSpan.Zero));
+        var listing = Listing(PlannerSession, "working");
+        var cli = new FakeCliRunner(args => args[0] switch
+        {
+            "agents" => FakeCliRunner.Ok(listing),
+            _ => FakeCliRunner.Ok(),
+        });
+        var logged = new List<string>();
+        var runner = Runner(new ClaudeCli(cli), store, clock, logged.Add);
+        var spec = TestSpecs.Planner(@"C:\W", "brief");
+
+        runner.Budgets = new Dictionary<string, RunBudget>(StringComparer.Ordinal) { [TestSpecs.PlannerName] = new RunBudget(0.9) };
+        await runner.CheckOnceAsync([spec]);
+
+        // A blocked alert replaces the limit notice as the last alert. The notice is not given again.
+        listing = Listing(PlannerSession, "blocked");
+        await runner.CheckOnceAsync([spec]);
+        await runner.CheckOnceAsync([spec]);
+
+        Assert.Single(logged, l => l.Contains("ALERT LimitNear"));
+        Assert.Equal(RunBudget.NearLevel, store.Load()[TestSpecs.PlannerName].LimitLevel);
+
+        // The owner raises the limit: the level goes down, quietly, and no alert is written.
+        runner.Budgets = new Dictionary<string, RunBudget>(StringComparer.Ordinal) { [TestSpecs.PlannerName] = new RunBudget(0.5) };
+        await runner.CheckOnceAsync([spec]);
+
+        Assert.Null(store.Load()[TestSpecs.PlannerName].LimitLevel);
+        Assert.Single(logged, l => l.Contains("ALERT LimitNear"));
+    }
+
     /// <summary>An event log that another process holds: every write times out, as the file lock does after ten seconds.</summary>
     private sealed class HeldLogSink : IEventSink
     {

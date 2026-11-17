@@ -83,14 +83,42 @@ public sealed record RunSpend(long OutputTokens, TimeSpan Elapsed)
 /// How far a run is through its limits: the larger of its token and time fractions, where 1 is the limit. The policy alerts at
 /// <see cref="NearFraction"/> and stops new starts and resumes at 1.
 /// </summary>
-public sealed record RunBudget(double Fraction)
+public sealed record RunBudget(double Fraction, bool Notify = true)
 {
     /// <summary>The fraction at which the owner is told the run is near its limit (80 %).</summary>
     public const double NearFraction = 0.8;
 
+    /// <summary>The level a session record holds once the owner was told the run is near its limit.</summary>
+    public const string NearLevel = "near";
+
+    /// <summary>The level a session record holds once the owner was told the run reached its limit.</summary>
+    public const string ReachedLevel = "reached";
+
     public bool Near => Fraction >= NearFraction;
 
     public bool Reached => Fraction >= 1.0;
+
+    /// <summary>The level this budget is at: <see cref="ReachedLevel"/>, <see cref="NearLevel"/>, or null below 80 %.</summary>
+    public string? Level => Reached ? ReachedLevel : Near ? NearLevel : null;
+
+    /// <summary>
+    /// The budget each session of a run is held to. Every session gets it, so none starts or resumes at the limit. Only the lead
+    /// session, the first one of the run with a session id, is told about the limit: the owner gets one notice per run and level
+    /// (round 5 item 8). <see cref="Notify"/> is false for the others.
+    /// </summary>
+    public static IReadOnlyDictionary<string, RunBudget> ForSessions(
+        RunRecord run,
+        IReadOnlyDictionary<string, SessionRecord> records,
+        RunBudget budget)
+    {
+        var lead = run.Specs
+            .DistinctBy(spec => spec.Name, StringComparer.Ordinal)
+            .FirstOrDefault(spec => records.TryGetValue(spec.Name, out var record) && record.SessionId.Length > 0)?.Name;
+        var held = new Dictionary<string, RunBudget>(StringComparer.Ordinal);
+        foreach (var spec in run.Specs.DistinctBy(s => s.Name, StringComparer.Ordinal))
+            held[spec.Name] = budget with { Notify = string.Equals(spec.Name, lead, StringComparison.Ordinal) };
+        return held;
+    }
 
     /// <summary>The budget of a run with these limits and this spend, or null when the run has no limit.</summary>
     public static RunBudget? For(RunLimits? limits, RunSpend spend)
