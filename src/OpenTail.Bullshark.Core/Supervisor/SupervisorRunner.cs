@@ -151,9 +151,13 @@ public sealed class SupervisorRunner
                     // alert. The alert is cleared here, so a later loss is not read as a stop (round 6 item 2).
                     var revived = observed is not null && !SupervisorPolicy.IsStoppedOrFailed(observed);
                     // The stale-blocked alert stands while the session is stale or not listed. A listing that shows it live again clears it, so the
-                    // next time it goes stale it is alerted again (round 8 item 1).
+                    // next time it goes stale it is alerted again (round 8 item 1). Only a daemon known to be running clears it (round 9 item 5): on an
+                    // unknown status the listing is used as it is, so a row that claims blocked clears the alert and the next not-running read
+                    // alerts the same session again.
                     var listedLive = seen is not null && !string.Equals(seen.EffectiveState, DaemonStatus.StaleState, StringComparison.OrdinalIgnoreCase);
-                    var clear = (revived && IsStopOrFailureAlert(current.LastAlert)) || (listedLive && AttentionList.IsStaleBlockedAlert(current.LastAlert));
+                    var daemonRunning = Daemon?.State == DaemonState.Running;
+                    var clear = (revived && IsStopOrFailureAlert(current.LastAlert))
+                        || (listedLive && daemonRunning && AttentionList.IsStaleBlockedAlert(current.LastAlert));
                     records[spec.Name] = current with { LastState = kept, LastAlert = clear ? null : current.LastAlert };
                 }
             }

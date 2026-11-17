@@ -178,6 +178,55 @@ public sealed class DaemonGateTests : IDisposable
     }
 
     [Fact]
+    public async Task AnUnknownStatusDoesNotClearTheStaleBlockedAlertSoItIsNotRaisedAgain()
+    {
+        // Round 9 item 5 (R4): an unknown status shows the listing as it is, so the row reads blocked. That must not clear the alert, or the next
+        // not-running read alerts the same session a second time.
+        var claude = new FakeClaude(listedState: "blocked");
+        var store = StoreWith(RecordOfPlanner("working"));
+        var spec = TestSpecs.Planner(@"C:\W", "t");
+        var unknown = DaemonStatus.Unknown("status failed");
+
+        var idle = await RunnerFor(claude, store, NotRunning).CheckOnceAsync([spec]);
+        var unknownPass = await RunnerFor(claude, store, unknown).CheckOnceAsync([spec]);
+        var idleAgain = await RunnerFor(claude, store, NotRunning).CheckOnceAsync([spec]);
+
+        Assert.Equal(AttentionList.StaleBlockedDetail, Assert.IsType<SupervisorAction.Alert>(Assert.Single(idle)).Detail);
+        Assert.Empty(unknownPass);
+        Assert.Empty(idleAgain);
+        Assert.True(AttentionList.IsStaleBlockedAlert(store.Load().Values.Single().LastAlert));
+    }
+
+    [Fact]
+    public async Task ANotRunningDaemonDoesNotClearTheStaleBlockedAlertEitherWhenTheRowIsListedDone()
+    {
+        // Only a running daemon clears it: a row listed done, while the daemon is idle, keeps the alert until a running daemon shows it live.
+        var claude = new FakeClaude(listedState: "done");
+        var store = StoreWith(RecordOfPlanner("blocked") with
+        {
+            LastAlert = AttentionList.StaleBlockedAlertPrefix,
+        });
+
+        await RunnerFor(claude, store, NotRunning).CheckOnceAsync([TestSpecs.Planner(@"C:\W", "t")]);
+
+        Assert.True(AttentionList.IsStaleBlockedAlert(store.Load().Values.Single().LastAlert));
+    }
+
+    [Fact]
+    public async Task ARunningDaemonClearsTheStaleBlockedAlertWhenTheRowIsLiveAgain()
+    {
+        var claude = new FakeClaude(listedState: "working");
+        var store = StoreWith(RecordOfPlanner("blocked") with
+        {
+            LastAlert = AttentionList.StaleBlockedAlertPrefix,
+        });
+
+        await RunnerFor(claude, store, Healthy).CheckOnceAsync([TestSpecs.Planner(@"C:\W", "t")]);
+
+        Assert.Null(store.Load().Values.Single().LastAlert);
+    }
+
+    [Fact]
     public async Task AnUnreachableDaemonChangesNothing()
     {
         // "unreachable" without a "not running" line is Unknown: the listing is decided on as it is, so a blocked session gets the normal alert.
