@@ -434,6 +434,8 @@ public partial class SessionWindow
             _history = index.Sessions.ToList();
             _historyFacts = facts;
             AppLog.Write($"history read: {index.Sessions.Count} transcripts, {index.Totals.CountedMessages} messages counted once");
+            if (index.Skipped.Count > 0)
+                AppLog.Write($"history: {index.Skipped.Count} transcript(s) could not be read and were left out");
         }
         catch (Exception ex)
         {

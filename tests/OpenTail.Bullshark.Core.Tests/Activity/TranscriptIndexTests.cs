@@ -144,4 +144,64 @@ public sealed class TranscriptIndexTests : IDisposable
         Assert.Equal(9, index.Totals.Total.Output);
         Assert.Equal(1, index.Sessions.Single().AssistantMessages);
     }
+
+    [Fact]
+    public void AFileRemovedAfterItWasListedIsSkippedAndTheOthersStillCome()
+    {
+        var projects = Project("C--Git-vanished");
+        var kept = Path.Combine(projects, "f1f1f1f1-0000-0000-0000-000000000006.jsonl");
+        var vanished = Path.Combine(projects, "f2f2f2f2-0000-0000-0000-000000000007.jsonl");
+        Create(kept, DateTime.UtcNow.AddHours(-2), [Assistant("v1", "rv1", 11, "2026-11-07T10:00:00.000Z")]);
+        Create(vanished, DateTime.UtcNow.AddHours(-1), [Assistant("v2", "rv2", 22, "2026-11-07T10:01:00.000Z")]);
+
+        // The file is listed, then removed before it is read: the way Claude's own cleanup can remove a transcript.
+        var index = TranscriptIndex.Build(_root, (path, ledger) =>
+        {
+            if (Path.GetFileName(path) == Path.GetFileName(vanished)) File.Delete(path);
+            return TranscriptReader.ReadFile(path, ledger);
+        });
+
+        Assert.Equal(Path.GetFileName(kept), Path.GetFileName(Assert.Single(index.Sessions).FilePath));
+        Assert.Equal(11, index.Totals.Total.Output);
+        var skipped = Assert.Single(index.Skipped);
+        Assert.Equal(Path.GetFileName(vanished), Path.GetFileName(skipped.FilePath));
+        Assert.False(string.IsNullOrEmpty(skipped.Reason));
+    }
+
+    [Fact]
+    public void AFileThatCannotBeOpenedIsSkippedAndTheOthersStillCome()
+    {
+        var projects = Project("C--Git-locked");
+        var readable = Path.Combine(projects, "f3f3f3f3-0000-0000-0000-000000000008.jsonl");
+        var locked = Path.Combine(projects, "f4f4f4f4-0000-0000-0000-000000000009.jsonl");
+        Create(readable, DateTime.UtcNow.AddHours(-2), [Assistant("l1", "rl1", 33, "2026-11-08T10:00:00.000Z")]);
+        Create(locked, DateTime.UtcNow.AddHours(-1), [Assistant("l2", "rl2", 44, "2026-11-08T10:01:00.000Z")]);
+
+        // Another process holds the file with no sharing at all, so it cannot be opened for reading now.
+        using var held = new FileStream(locked, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+
+        var index = TranscriptIndex.Build(_root);
+
+        Assert.Equal(Path.GetFileName(readable), Path.GetFileName(Assert.Single(index.Sessions).FilePath));
+        Assert.Equal(33, index.Totals.Total.Output);
+        Assert.Equal(Path.GetFileName(locked), Path.GetFileName(Assert.Single(index.Skipped).FilePath));
+    }
+
+    [Fact]
+    public void AFileWithNoAccessIsSkippedToo()
+    {
+        var projects = Project("C--Git-denied");
+        var denied = Path.Combine(projects, "f5f5f5f5-0000-0000-0000-000000000010.jsonl");
+        var allowed = Path.Combine(projects, "f6f6f6f6-0000-0000-0000-000000000011.jsonl");
+        Create(denied, DateTime.UtcNow.AddHours(-2), [Assistant("d1", "rd1", 1, "2026-11-09T10:00:00.000Z")]);
+        Create(allowed, DateTime.UtcNow.AddHours(-1), [Assistant("d2", "rd2", 2, "2026-11-09T10:01:00.000Z")]);
+
+        var index = TranscriptIndex.Build(_root, (path, ledger) =>
+            Path.GetFileName(path) == Path.GetFileName(denied)
+                ? throw new UnauthorizedAccessException("access denied")
+                : TranscriptReader.ReadFile(path, ledger));
+
+        Assert.Equal(2, index.Totals.Total.Output);
+        Assert.Equal("access denied", Assert.Single(index.Skipped).Reason);
+    }
 }

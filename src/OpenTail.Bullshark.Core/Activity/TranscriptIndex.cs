@@ -43,6 +43,9 @@ public sealed record SessionDigest(
 /// <summary>All counted usage across every transcript file, once per message (the ccusage rule, F35).</summary>
 public sealed record IndexTotals(TokenUsage Total, IReadOnlyDictionary<string, TokenUsage> ByModel, int CountedMessages);
 
+/// <summary>A transcript the index could not read, so it is left out. <see cref="Reason"/> is the error's message.</summary>
+public sealed record SkippedTranscript(string FilePath, string Reason);
+
 /// <summary>
 /// The index over every transcript under the projects folder. Files are read as streams, one at a time, and only the
 /// digests are kept. Files are read oldest first, so a message copied into a later (for example resumed) file is
@@ -50,23 +53,38 @@ public sealed record IndexTotals(TokenUsage Total, IReadOnlyDictionary<string, T
 /// </summary>
 public sealed class TranscriptIndex
 {
-    private TranscriptIndex(IReadOnlyList<SessionDigest> sessions, IndexTotals totals)
+    private TranscriptIndex(IReadOnlyList<SessionDigest> sessions, IndexTotals totals, IReadOnlyList<SkippedTranscript> skipped)
     {
         Sessions = sessions;
         Totals = totals;
+        Skipped = skipped;
     }
 
     public IReadOnlyList<SessionDigest> Sessions { get; }
 
     public IndexTotals Totals { get; }
 
+    /// <summary>
+    /// The transcripts that could not be read, and why. Claude can delete or lock a transcript after it was listed; such a file
+    /// is left out and the rest are still read. Empty when every file was read.
+    /// </summary>
+    public IReadOnlyList<SkippedTranscript> Skipped { get; }
+
     /// <summary>Builds the index. A missing folder gives an empty index.</summary>
-    public static TranscriptIndex Build(string projectsRoot)
+    public static TranscriptIndex Build(string projectsRoot) => Build(projectsRoot, TranscriptReader.ReadFile);
+
+    /// <summary>
+    /// Builds the index, reading each transcript with <paramref name="readFile"/> (the default is <see cref="TranscriptReader.ReadFile"/>).
+    /// A file that throws an <see cref="IOException"/> or an <see cref="UnauthorizedAccessException"/> is skipped and listed in
+    /// <see cref="Skipped"/>; the other files are still read. A missing folder gives an empty index.
+    /// </summary>
+    public static TranscriptIndex Build(string projectsRoot, Func<string, UsageLedger, TranscriptSummary> readFile)
     {
         var ledger = new UsageLedger();
         var digests = new List<SessionDigest>();
+        var skipped = new List<SkippedTranscript>();
         if (!Directory.Exists(projectsRoot))
-            return new TranscriptIndex(digests, new IndexTotals(TokenUsage.Zero, new Dictionary<string, TokenUsage>(), 0));
+            return new TranscriptIndex(digests, new IndexTotals(TokenUsage.Zero, new Dictionary<string, TokenUsage>(), 0), skipped);
 
         var files = new DirectoryInfo(projectsRoot)
             .EnumerateFiles("*.jsonl", SearchOption.AllDirectories)
@@ -76,7 +94,19 @@ public sealed class TranscriptIndex
 
         foreach (var file in files)
         {
-            var summary = TranscriptReader.ReadFile(file.FullName, ledger);
+            TranscriptSummary summary;
+            try
+            {
+                summary = readFile(file.FullName, ledger);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Includes FileNotFoundException: a transcript removed after it was listed. Messages this file had already
+                // counted stay in the ledger (a known limit, see the plan's decisions).
+                skipped.Add(new SkippedTranscript(file.FullName, ex.Message));
+                continue;
+            }
+
             var directory = file.DirectoryName ?? string.Empty;
             digests.Add(new SessionDigest(
                 SessionId: Path.GetFileNameWithoutExtension(file.Name),
@@ -105,6 +135,6 @@ public sealed class TranscriptIndex
                 FailedToolCalls: summary.FailedToolCalls));
         }
 
-        return new TranscriptIndex(digests, new IndexTotals(ledger.Total, ledger.ByModel(), ledger.Count));
+        return new TranscriptIndex(digests, new IndexTotals(ledger.Total, ledger.ByModel(), ledger.Count), skipped);
     }
 }
