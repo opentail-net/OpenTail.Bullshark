@@ -82,8 +82,8 @@ Now: a `blocked` session raises `AlertKind.Blocked`, which goes to the log and t
 ## Phase C
 
 ### 7. Export a past session
-- [ ] Transcript tab: "Export…" writes Markdown (title, date, folder, model; then turns as `## You` / `## Claude`, tool calls as one-line summaries, no thinking blocks) and, if a resume summary exists, the summary first. Reuse the existing transcript line reading; no new parser.
-- [ ] Tests on a small sample transcript.
+- [x] Transcript tab: "Export…" writes Markdown (title, date, folder, model; then turns as `## You` / `## Claude`, tool calls as one-line summaries, no thinking blocks) and, if a resume summary exists, the summary first. Reuse the existing transcript line reading; no new parser.
+- [x] Tests on a small sample transcript.
 
 ## Not in this plan (and why)
 
@@ -153,3 +153,11 @@ Now: a `blocked` session raises `AlertKind.Blocked`, which goes to the log and t
 - D6.1 The folder is a required parameter: `ListAgentsAsync(string? cwd, bool includeCompleted, ct)`. A default value would make the existing call `ListAgentsAsync()` ambiguous with the overload that takes a cancellation token, so the call sites stay as they were. A null or blank folder gives the full listing. The existing `bool` overload now calls the new one with null, and its command is unchanged (a test checks the argument lists).
 - D6.2 Used nowhere, as the brief for this build says. The second box stays open: the plan requires the gate of item 3 first, and that gate was skipped (D3.1). So it is not known whether `--cwd` returns a worktree session that was started from a folder. The option itself is confirmed in `claude agents --help` (a read-only command).
 - D6.3 Verified: 4 new Core tests (`ListAgentsCwdTests`), 564 passing in all.
+
+### Item 7 (export a past session)
+
+- D7.1 "If a resume summary exists" is read as Claude's own recap in the transcript (`LastRecap`, from its away-summary records), not the saved resume summary files. Those files are named by date, level and session name, and the window has no lookup from a session to its file. Owner decision, if the saved summary should be exported too.
+- D7.2 The export is built from `TranscriptLine`, the reader the transcript tab shows, so it lists the same lines as on screen. Tool results and turn-finished lines are left out, since they are long and add nothing a reader needs. Thinking blocks never reach that reader, so they are not exported.
+- D7.3 "Folder" is the project folder name as Claude encodes it (the name of the folder under `~/.claude/projects`). The transcript does not give the working folder in a form the window reads back.
+- D7.4 The Export button sits in the transcript header. It opens the standard save dialog, which suggests the first eight characters of the session id as the file name. A file that cannot be written gets a message box.
+- D7.5 Not verified in a window: the button and the saved file. Verified: 5 new Core tests (`TranscriptExportTests`), 569 passing in all, and the solution builds with App.

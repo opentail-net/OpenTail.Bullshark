@@ -66,6 +66,9 @@ public sealed class TranscriptView : UserControl
     /// </summary>
     private readonly Expander _effort = new();
 
+    /// <summary>"Export…" beside the title: writes the session as Markdown (additions item 7).</summary>
+    private readonly Button _export = new() { Content = "Export…", Padding = new Thickness(8, 0, 8, 0), Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+
     /// <summary>The transcript the effort panel was read for, so a jump to a line does not read it again.</summary>
     private string? _effortPath;
 
@@ -191,6 +194,9 @@ public sealed class TranscriptView : UserControl
         _titleRow.Orientation = Orientation.Horizontal;
         _titleRow.Children.Add(_historyTitle);
         _titleRow.Children.Add(_historyInfo);
+        _export.Click += (_, _) => _ = ExportAsync();
+        _export.ToolTip = "Writes this session as a Markdown file: the turns, the tool calls as one-line summaries, and Claude's recap.";
+        _titleRow.Children.Add(_export);
 
         // The header is one card: the title (with the past-session note on its line), the stats, the tokens, the files and the links.
         var header = new StackPanel();
@@ -521,6 +527,38 @@ public sealed class TranscriptView : UserControl
         _activeText = ActiveTimeText(facts);
         if (_activeValue is not null) _activeValue.Text = _activeText;
         foreach (var (block, line) in _turnLines.Values) block.Text = LineText(line);
+    }
+
+    /// <summary>
+    /// Writes the shown session as Markdown to a file the owner picks. The transcript is read on a pool thread. A file that cannot be
+    /// written is reported in a message box; nothing else changes.
+    /// </summary>
+    private async Task ExportAsync()
+    {
+        if (_digest is not { } digest) return;
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "Export session",
+            FileName = digest.SessionId[..Math.Min(8, digest.SessionId.Length)] + ".md",
+            Filter = "Markdown (*.md)|*.md",
+            DefaultExt = ".md",
+        };
+        if (dialog.ShowDialog() != true) return;
+
+        var target = dialog.FileName;
+        var title = _shownTitle ?? digest.Title;
+        try
+        {
+            var markdown = await Task.Run(() => OpenTail.Bullshark.Core.Export.TranscriptExport.Markdown(
+                TranscriptFile.ReadLines(digest.FilePath), title, digest.FirstActivity, digest.ProjectFolder, digest.LastModel, digest.LastRecap));
+            await File.WriteAllTextAsync(target, markdown, new System.Text.UTF8Encoding(false));
+            AppLog.Write($"exported {digest.SessionId} to {target}");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            AppLog.Write($"export not written: {ex.Message}");
+            MessageBox.Show($"The export was not written: {ex.Message}", "Export", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
 
     private void ShowEffortPending() =>
