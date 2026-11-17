@@ -176,4 +176,64 @@ public sealed class SetupCheckTests : IDisposable
 
         Assert.Contains(Run(), i => i.Name == "CLAUDE.md" && i.State == SetupState.Ok);
     }
+
+    [Theory]
+    [InlineData("[]")]
+    [InlineData("\"text\"")]
+    [InlineData("null")]
+    public void ASettingsFileThatIsNotAnObjectIsAProblemAndTheCheckGoesOn(string json)
+    {
+        WriteSettings(json);
+        WriteClaudeJson("{}");
+        WriteInstructions();
+
+        var items = Run();
+
+        Assert.Contains(items, i => i.Area == "Settings" && i.State == SetupState.Problem);
+        Assert.Contains(items, i => i.Name == ".claude.json" && i.State == SetupState.Ok);
+    }
+
+    [Theory]
+    [InlineData("[]")]
+    [InlineData("\"text\"")]
+    public void AClaudeJsonThatIsNotAnObjectIsAProblem(string json)
+    {
+        WriteSettings("{}");
+        WriteClaudeJson(json);
+        WriteInstructions();
+
+        var items = Run();
+
+        Assert.Contains(items, i => i.Area == "State" && i.State == SetupState.Problem);
+    }
+
+    [Theory]
+    [InlineData("{\"hooks\":\"text\"}")]
+    [InlineData("{\"hooks\":[]}")]
+    [InlineData("{\"hooks\":{\"PreToolUse\":\"text\"}}")]
+    [InlineData("{\"hooks\":{\"PreToolUse\":[{\"hooks\":\"text\"}]}}")]
+    public void HooksOfAnOddShapeDoNotStopTheCheck(string json)
+    {
+        WriteSettings(json);
+        WriteClaudeJson("{\"projects\":[]}");
+        WriteInstructions();
+
+        var items = Run();
+
+        Assert.Contains(items, i => i.Area == "Settings" && i.State == SetupState.Ok);
+    }
+
+    [Fact]
+    public void AHookThatIsNotAnObjectIsAProblemAndTheOthersAreStillChecked()
+    {
+        var tool = Tool("hook.exe");
+        WriteSettings($"{{\"hooks\":{{\"PreToolUse\":[\"text\",null,{{\"hooks\":[\"text\",{{\"command\":\"{Json(tool)}\"}}]}}]}}}}");
+        WriteClaudeJson("{}");
+        WriteInstructions();
+
+        var items = Run();
+
+        Assert.Equal(3, items.Count(i => i.Area == "Hook PreToolUse" && i.State == SetupState.Problem));
+        Assert.Contains(items, i => i.Area == "Hook PreToolUse" && i.State == SetupState.Ok);
+    }
 }

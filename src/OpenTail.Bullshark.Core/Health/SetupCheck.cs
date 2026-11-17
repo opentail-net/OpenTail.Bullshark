@@ -53,6 +53,11 @@ public static class SetupCheck
 
         using var document = ReadJson(file, area, "settings.json", items);
         if (document is null) return;
+        if (!IsObject(document.RootElement))
+        {
+            items.Add(new SetupItem(area, "settings.json", SetupState.Problem, "it is not a JSON object, so Claude Code cannot read its settings"));
+            return;
+        }
         items.Add(new SetupItem(area, "settings.json", SetupState.Ok, "reads as valid JSON"));
 
         var hooks = 0;
@@ -63,9 +68,19 @@ public static class SetupCheck
                 if (eventGroup.Value.ValueKind != JsonValueKind.Array) continue;
                 foreach (var group in eventGroup.Value.EnumerateArray())
                 {
+                    if (!IsObject(group))
+                    {
+                        items.Add(new SetupItem($"Hook {eventGroup.Name}", "entry", SetupState.Problem, "the entry is not an object"));
+                        continue;
+                    }
                     if (!group.TryGetProperty("hooks", out var commands) || commands.ValueKind != JsonValueKind.Array) continue;
                     foreach (var hook in commands.EnumerateArray())
                     {
+                        if (!IsObject(hook))
+                        {
+                            items.Add(new SetupItem($"Hook {eventGroup.Name}", "entry", SetupState.Problem, "the hook is not an object"));
+                            continue;
+                        }
                         if (!hook.TryGetProperty("command", out var command) || command.ValueKind != JsonValueKind.String) continue;
                         CheckHook(eventGroup.Name, command.GetString() ?? string.Empty, path, items);
                         hooks++;
@@ -87,6 +102,11 @@ public static class SetupCheck
 
         using var document = ReadJson(file, area, ".claude.json", items);
         if (document is null) return;
+        if (!IsObject(document.RootElement))
+        {
+            items.Add(new SetupItem(area, ".claude.json", SetupState.Problem, "it is not a JSON object, so Claude Code cannot read its state"));
+            return;
+        }
         items.Add(new SetupItem(area, ".claude.json", SetupState.Ok, "reads as valid JSON"));
 
         var servers = 0;
@@ -96,7 +116,7 @@ public static class SetupCheck
         {
             foreach (var project in projects.EnumerateObject())
             {
-                if (project.Value.ValueKind == JsonValueKind.Object && project.Value.TryGetProperty("mcpServers", out var projectServers))
+                if (IsObject(project.Value) && project.Value.TryGetProperty("mcpServers", out var projectServers))
                     servers += CheckServers(FolderName(project.Name), projectServers, path, items);
             }
         }
@@ -191,6 +211,12 @@ public static class SetupCheck
             ? new SetupItem(area, name, SetupState.Ok, Clip($"found: {expanded}"))
             : new SetupItem(area, name, SetupState.Problem, Clip(string.Join("; ", problems))));
     }
+
+    /// <summary>
+    /// True for a JSON object. TryGetProperty throws on any other kind, and the files are hand-edited: an array, a string or null where an
+    /// object should be is reported as a problem, not allowed to stop the check.
+    /// </summary>
+    private static bool IsObject(JsonElement element) => element.ValueKind == JsonValueKind.Object;
 
     private static JsonDocument? ReadJson(string file, string area, string name, List<SetupItem> items)
     {
