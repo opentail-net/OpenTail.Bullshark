@@ -47,20 +47,21 @@ public partial class SessionWindow : Window
         var newPaths = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var id in sessionIds)
         {
-            if (!knownPaths.TryGetValue(id, out var path))
-            {
-                path = TranscriptReader.FindTranscript(projectsRoot, id);
-                if (path is null) continue;
-                newPaths[id] = path;
-            }
+            // A failure is this session's alone (round 12 B1): before it, one unreadable transcript failed every pass.
             try
             {
+                if (!knownPaths.TryGetValue(id, out var path))
+                {
+                    path = TranscriptReader.FindTranscript(projectsRoot, id);
+                    if (path is null) continue;
+                    newPaths[id] = path;
+                }
                 var tail = TranscriptTail.Read(path);
                 if (tail is not null) facts[id] = tail;
             }
-            catch (IOException ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                AppLog.Write($"transcript tail not read: {ex.Message}");
+                AppLog.Write($"transcript tail not read ({ClaudeCli.ShortIdOf(id)}): {ex.GetType().Name}: {ex.Message}");
             }
         }
         return (facts, newPaths);
@@ -284,13 +285,15 @@ public partial class SessionWindow : Window
             }
             // The files two sessions of a run both wrote are read off the UI thread, from the transcripts this pass has seen (gems item 1).
             var paths = new Dictionary<string, string>(_transcriptPaths, StringComparer.Ordinal);
-            // The budgets read after the pass are kept for the next one, and the clashes are drawn from them (round 6 item 1).
-            var (clashes, budgets) = await Task.Run(() => ReadClashes(records, paths, read.Agents));
+            // The budgets read after the pass are kept for the next one, and the clashes are drawn from them (round 6 item 1). The runs read here
+            // are the rail's and the merge checks' (round 12 B4): a runs.json that cannot be read shows its problem, as ReadRuns did.
+            var (clashes, budgets, runs, runsProblem) = await Task.Run(() => ReadClashes(records, paths, read.Agents));
             _clashes = clashes;
             _runner.Budgets = budgets;
+            if (runsProblem is not null) _storeProblem = runsProblem;
             // A coder that has just entered done gets its merge check, on a pool thread; its result shows on a later pass (gems item 2).
-            UpdateMergeChecks(records);
-            RefreshRail(records);
+            UpdateMergeChecks(records, RunStore.SpecsOf(runs));
+            RefreshRail(records, runs);
             AnnounceAttention();
 
             var failed = PassSnapshot.FailedStarts(records.Values);
@@ -349,7 +352,7 @@ public partial class SessionWindow : Window
         var (facts, newPaths) = ReadRunningFacts(ids, known, _options.ProjectsRoot);
 
         // The run limits are read here, before the pass, from the records and transcripts above (round 6 item 1). The transcript paths are
-        // the known ones and the new ones; the cache is used by one pass at a time, so it needs no lock.
+        // the known ones and the new ones. The cache is read under its lock (round 12 B3).
         var paths = new Dictionary<string, string>(known, StringComparer.Ordinal);
         foreach (var pair in newPaths) paths[pair.Key] = pair.Value;
         var budgets = BudgetsOf(runs, records, paths);

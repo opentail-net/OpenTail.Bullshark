@@ -95,7 +95,7 @@ public partial class SessionWindow
     }
 
     private OpenTab TabFor(TabKind kind, string key, Func<string> title) =>
-        _tabs.FirstOrDefault(t => t.Kind == kind && t.Key == key) ?? AddTab(kind, key, title());
+        _tabs.FirstOrDefault(t => t.Kind == kind && SameId(t.Key, key)) ?? AddTab(kind, key, title());
 
     private OpenTab AddTab(TabKind kind, string key, string title)
     {
@@ -127,7 +127,7 @@ public partial class SessionWindow
                 break;
 
             case TabKind.Transcript:
-                var digest = _history?.FirstOrDefault(d => d.SessionId == tab.Key);
+                var digest = _history?.FirstOrDefault(d => SameId(d.SessionId, tab.Key));
                 if (digest is not null) await ShowRailItemAsync(new RailTag(RailKind.History, tab.Key, digest));
                 break;
 
@@ -233,7 +233,7 @@ public partial class SessionWindow
             return;
         }
 
-        var listed = _agents.FirstOrDefault(a => a.SessionId == sessionId);
+        var listed = _agents.FirstOrDefault(a => SameId(a.SessionId, sessionId));
         // An idle (done) session is not stopped here, and a stale one is not alive to stop (AgentInfo.NeedsStopOnClose, round 9 item 6).
         // Whether closing a done session should stop it too is the owner's call (review question 6).
         var needsStop = listed is not null && listed.NeedsStopOnClose;
@@ -248,7 +248,7 @@ public partial class SessionWindow
         // What the session leaves on its run (round 9 item 1): its first start, and the output tokens its transcript holds now, before the
         // close. Without them the run's clock and spend would restart from its next session. A transcript that exists but cannot be read stops
         // the close, since its tokens would be lost from the spend; a session with no transcript has written none.
-        var closedStart = recordBefore is { } before && before.SessionId == sessionId ? before.StartedAt : (DateTimeOffset?)null;
+        var closedStart = recordBefore is { } before && SameId(before.SessionId, sessionId) ? before.StartedAt : (DateTimeOffset?)null;
         long closedOutput;
         try
         {
@@ -256,9 +256,10 @@ public partial class SessionWindow
             var projectsRoot = _options.ProjectsRoot;
             closedOutput = await Task.Run(() => RunSpend.OutputOfTranscript(sessionId, known ?? TranscriptReader.FindTranscript(projectsRoot, sessionId)));
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        // Any failure but cancellation stops the close and keeps the status (round 12 B2): InvalidOperationException was missed here before.
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            AppLog.Write($"session not closed: its transcript could not be read: {ex.Message}");
+            AppLog.Write($"session not closed: its transcript could not be read: {ex.GetType().Name}: {ex.Message}");
             SetStatus($"Not closed: {name} is unchanged, because its transcript could not be read. {ex.Message}");
             return;
         }
@@ -338,7 +339,7 @@ public partial class SessionWindow
         foreach (var record in TabOrder.Arrange(records.OrderBy(r => r.Name, StringComparer.Ordinal), r => r.SessionId, _savedTabOrder))
         {
             if (_hiddenSessions.Contains(record.SessionId)) continue;
-            if (!_tabs.Any(t => t.Kind == TabKind.Session && t.Key == record.SessionId))
+            if (!_tabs.Any(t => t.Kind == TabKind.Session && SameId(t.Key, record.SessionId)))
             {
                 AddTab(TabKind.Session, record.SessionId, record.Name);
                 // A session that was at the right when the window last closed opens there again (T2).
@@ -349,7 +350,7 @@ public partial class SessionWindow
 
         foreach (var tab in _tabs.Where(t => t.Kind == TabKind.Session).ToList())
         {
-            var record = records.FirstOrDefault(r => r.SessionId == tab.Key);
+            var record = records.FirstOrDefault(r => SameId(r.SessionId, tab.Key));
             if (record is null)
             {
                 _tabs.Remove(tab);
@@ -359,7 +360,7 @@ public partial class SessionWindow
                 continue;
             }
             tab.Title = record.Name;
-            var listed = _agents.FirstOrDefault(a => a.SessionId == tab.Key);
+            var listed = _agents.FirstOrDefault(a => SameId(a.SessionId, tab.Key));
             tab.State = listed?.EffectiveState ?? "not listed";
             tab.Waiting = listed?.Waiting;
         }
@@ -499,5 +500,11 @@ public partial class SessionWindow
 
     private string TitleOfSession(string sessionId) => TitleOfSessionNow(sessionId, ReadRecords().Values);
 
-    private static string ShortId(string sessionId) => sessionId[..Math.Min(8, sessionId.Length)];
+    private static string ShortId(string sessionId) => ClaudeCli.ShortIdOf(sessionId);
+
+    /// <summary>
+    /// Whether two session ids are the same session (round 12 B7). One rule for every id compare in the window: case is ignored, as the
+    /// other lookups by id do. A case-sensitive compare could miss a session.
+    /// </summary>
+    private static bool SameId(string? a, string? b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
 }

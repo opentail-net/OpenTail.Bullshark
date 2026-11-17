@@ -16,10 +16,39 @@ public partial class SessionWindow
     private IReadOnlyList<FileClash> _clashes = [];
 
     /// <summary>
-    /// The writes of each transcript, kept between passes. Used only by the pass, which runs one at a time (the _passRunning guard),
-    /// so it needs no lock.
+    /// The writes of each transcript, kept between passes. It is not thread-safe, and since round 12 three callers read it on pool threads
+    /// (the pass, a merge check and the Changes tab), so every read goes through <see cref="ReadWrites"/>, under <see cref="_writesLock"/>.
     /// </summary>
     private readonly SessionWritesCache _writesCache = new();
+
+    /// <summary>Guards <see cref="_writesCache"/>. Taken on pool threads only; the UI thread never reads the cache.</summary>
+    private readonly object _writesLock = new();
+
+    /// <summary>The writes of one transcript through the cache, under <see cref="_writesLock"/> (round 12 B3). Throws what the read throws.</summary>
+    private SessionWrites ReadWrites(string sessionId, string path)
+    {
+        lock (_writesLock) return _writesCache.Read(sessionId, path);
+    }
+
+    /// <summary>
+    /// The files and folder a session's transcript says it wrote, for the Changes tab and the merge check (round 12 B3). The path is the one
+    /// the pass found, else the transcript is looked for. The notes are <see cref="TranscriptWrites.Facts"/>'s: a missing transcript and one
+    /// that cannot be read. Runs on a pool thread and touches no window object.
+    /// </summary>
+    private TranscriptWrites.TranscriptFacts TranscriptFactsOf(string sessionId, string? knownPath, string projectsRoot)
+    {
+        try
+        {
+            var path = knownPath ?? TranscriptReader.FindTranscript(projectsRoot, sessionId);
+            if (path is null) return new TranscriptWrites.TranscriptFacts(null, "No transcript for this session yet.", null);
+            var writes = ReadWrites(sessionId, path);
+            return new TranscriptWrites.TranscriptFacts(writes.Files, null, writes.Folder);
+        }
+        catch (Exception ex) when (StoreErrors.IsExpected(ex))
+        {
+            return new TranscriptWrites.TranscriptFacts(null, $"The transcript cannot be read: {ex.Message}", null);
+        }
+    }
 
     /// <summary>
     /// The writes of each run's sessions, for the runs that read their transcripts. A run that can have neither a clash nor a limit does
@@ -42,11 +71,12 @@ public partial class SessionWindow
                 if (!paths.TryGetValue(record.SessionId, out var path)) continue;
                 try
                 {
-                    writes.Add(_writesCache.Read(record.SessionId, path));
+                    writes.Add(ReadWrites(record.SessionId, path));
                 }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                // Any failure is this session's alone (round 12 B1): the other sessions of the run are still read.
+                catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    AppLog.Write($"overlap: transcript of {spec.Name} not read: {ex.Message}");
+                    AppLog.Write($"overlap: transcript of {spec.Name} not read: {ex.GetType().Name}: {ex.Message}");
                 }
             }
             result.Add((run, writes));
@@ -66,21 +96,23 @@ public partial class SessionWindow
 
     /// <summary>
     /// The clashes and the budgets of every run, after a pass, for the sessions in <paramref name="records"/>. The budgets are kept for the
-    /// next pass and the clashes are drawn. Runs on a pool thread: it reads runs.json and the transcripts through the cache, and touches no
+    /// next pass and the clashes are drawn. The runs it read, and the problem reading them, go back too: the rail and the merge checks take
+    /// the runs from this read (round 12 B4). Runs on a pool thread: it reads runs.json and the transcripts through the cache, and touches no
     /// window object.
     /// </summary>
-    private (IReadOnlyList<FileClash> Clashes, IReadOnlyDictionary<string, RunBudget> Budgets) ReadClashes(
+    private (IReadOnlyList<FileClash> Clashes, IReadOnlyDictionary<string, RunBudget> Budgets, IReadOnlyList<RunRecord> Runs, string? RunsProblem)
+        ReadClashes(
         IReadOnlyDictionary<string, SessionRecord> records,
         IReadOnlyDictionary<string, string> paths,
         IReadOnlyList<AgentInfo> agents)
     {
-        var (runs, _) = LoadRuns(_runStore);
+        var (runs, runsProblem) = LoadRuns(_runStore);
         // Only the live sessions can clash: a finished session's shared file no longer needs the owner (round 5 item 7).
         var live = FileOverlap.LiveRecords(records, agents);
         var read = ReadRunWrites(runs, records, paths);
         var clashes = read.SelectMany(item => FileOverlap.Find(item.Run, live, item.Writes)).ToList();
         var budgets = RunBudget.ForRuns(runs, records, read.SelectMany(item => item.Writes), DateTimeOffset.UtcNow);
-        return (clashes, budgets);
+        return (clashes, budgets, runs, runsProblem);
     }
 
     /// <summary>The supervisor runner, which the limits are given to after each pass (additions item 4).</summary>

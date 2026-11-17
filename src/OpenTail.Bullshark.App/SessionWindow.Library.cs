@@ -72,9 +72,9 @@ public partial class SessionWindow
     /// <summary>The title of a session's tab, whichever list it came from. The records are passed in, so a strip reads them once.</summary>
     private string TitleOfSessionNow(string sessionId, IEnumerable<SessionRecord> records)
     {
-        var record = records.FirstOrDefault(r => r.SessionId == sessionId);
+        var record = records.FirstOrDefault(r => SameId(r.SessionId, sessionId));
         if (record is not null) return LiveTitle(record);
-        var digest = _history?.FirstOrDefault(d => d.SessionId == sessionId);
+        var digest = _history?.FirstOrDefault(d => SameId(d.SessionId, sessionId));
         return digest is not null ? DisplayTitle(digest) : $"Session {ShortId(sessionId)}";
     }
 

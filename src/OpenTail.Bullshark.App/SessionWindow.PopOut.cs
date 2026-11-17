@@ -63,7 +63,7 @@ public partial class SessionWindow
     }
 
     /// <summary>True while a session is shown in its own window. The main window must not attach a second client to it.</summary>
-    private bool IsInOwnWindow(string sessionId) => _detached.Any(w => w.SessionId == sessionId);
+    private bool IsInOwnWindow(string sessionId) => _detached.Any(w => SameId(w.SessionId, sessionId));
 
     /// <summary>Closes the windows of sessions opened in their own windows. Their terminals are released; the sessions keep running.</summary>
     private void CloseDetachedWindows()
