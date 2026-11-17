@@ -196,9 +196,9 @@ public sealed class TranscriptIndex
 
             if (read.Error is { } error)
             {
-                // The same rule as the one-after-another read: a file that cannot be read is left out, the messages it had counted stay
-                // counted, and any other failure stops the build, as it does there.
-                if (error is not (IOException or UnauthorizedAccessException)) ExceptionDispatchInfo.Capture(error).Throw();
+                // The same rule as the one-after-another read: a file that fails is left out and listed, the messages it had counted stay
+                // counted, and only a cancellation stops the build (round 12 item A2).
+                if (error is OperationCanceledException) ExceptionDispatchInfo.Capture(error).Throw();
                 skipped.Add(new SkippedTranscript(read.Info.FullName, error.Message));
                 continue;
             }
@@ -211,9 +211,10 @@ public sealed class TranscriptIndex
 
     /// <summary>
     /// Builds the index, reading each transcript with <paramref name="readFile"/> (the default is <see cref="TranscriptReader.ReadFile"/>).
-    /// The files are read one after another, with one ledger shared by all of them. A file that throws an <see cref="IOException"/> or an
-    /// <see cref="UnauthorizedAccessException"/> is skipped and listed in <see cref="Skipped"/>; the other files are still read. A missing
-    /// folder gives an empty index.
+    /// The files are read one after another, with one ledger shared by all of them. A file whose read throws is skipped and listed in
+    /// <see cref="Skipped"/>, and the other files are still read: any exception except a cancellation (round 12 item A2). That includes
+    /// <see cref="IOException"/> and <see cref="UnauthorizedAccessException"/>, and a transcript the reader cannot decode. A missing folder
+    /// gives an empty index.
     /// </summary>
     public static TranscriptIndex Build(string projectsRoot, Func<string, UsageLedger, TranscriptSummary> readFile)
     {
@@ -229,7 +230,7 @@ public sealed class TranscriptIndex
             {
                 summary = readFile(file.FullName, ledger);
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 // Includes FileNotFoundException: a transcript removed after it was listed. Messages this file had already
                 // counted stay in the ledger (a known limit, see the plan's decisions).
