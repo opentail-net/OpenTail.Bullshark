@@ -98,7 +98,7 @@ public sealed class SupervisorRunner
                         // Any failure to start or resume is a failed start for this session only: the pass goes on (F48).
                         var failure = Failed(action, spec, records, now, ex.Message);
                         performed.Add(failure);
-                        Emit(spec.Name, failure, now);
+                        Emit(spec, failure, now);
                         continue;
                     }
 
@@ -108,7 +108,7 @@ public sealed class SupervisorRunner
                     // Outside the try above: a session that started is never recorded as failed because the event log could not be
                     // written (round 5 item 2). Write itself logs the failure and the pass goes on.
                     performed.Add(action);
-                    Emit(spec.Name, action, now);
+                    Emit(spec, action, now);
                 }
 
                 // Remember the state we saw, so the next pass can tell a change of state from a repeat. A session the listing no
@@ -120,7 +120,7 @@ public sealed class SupervisorRunner
                     var observed = seen?.EffectiveState;
                     var kept = observed is null && SupervisorPolicy.IsStoppedOrFailed(current.LastState) ? current.LastState : observed;
                     if (!string.Equals(current.LastState, kept, StringComparison.Ordinal))
-                        EmitState(spec.Name, current.LastState, observed ?? "not listed", now);
+                        EmitState(spec, current.LastState, observed ?? "not listed", now);
                     records[spec.Name] = current with { LastState = kept };
                 }
             }
@@ -133,8 +133,8 @@ public sealed class SupervisorRunner
         return performed;
     }
 
-    /// <summary>Writes one performed action to the event sink, if there is one.</summary>
-    private void Emit(string session, SupervisorAction action, DateTimeOffset now)
+    /// <summary>Writes one performed action to the event sink, if there is one. The event names the session's run (round 5 item 10).</summary>
+    private void Emit(SessionSpec spec, SupervisorAction action, DateTimeOffset now)
     {
         var (kind, detail) = action switch
         {
@@ -144,11 +144,11 @@ public sealed class SupervisorRunner
             SupervisorAction.Alert alert => ($"alert:{alert.Kind}", alert.Detail),
             _ => ("other", string.Empty),
         };
-        Write(new SupervisorEvent(now, session, kind, detail));
+        Write(new SupervisorEvent(now, spec.Name, kind, detail, spec.RunId));
     }
 
-    private void EmitState(string session, string? from, string to, DateTimeOffset now) =>
-        Write(new SupervisorEvent(now, session, "state", $"{from ?? "-"} -> {to}"));
+    private void EmitState(SessionSpec spec, string? from, string to, DateTimeOffset now) =>
+        Write(new SupervisorEvent(now, spec.Name, "state", $"{from ?? "-"} -> {to}", spec.RunId));
 
     /// <summary>
     /// Writes one event. Every failure the stores report is logged here, and the pass goes on: the lock of the event log can time out

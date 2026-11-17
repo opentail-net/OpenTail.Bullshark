@@ -5,8 +5,9 @@ namespace OpenTail.Bullshark.Core.Supervisor;
 /// <summary>
 /// One thing the supervisor did or saw (additions item 5): a start, an adoption, a resume, an alert, or a session's state change.
 /// <see cref="Event"/> is "start", "adopt", "resume", "state", or "alert:" and the alert kind. <see cref="Session"/> is the spec's name.
+/// <see cref="RunId"/> is the run the session belongs to (round 5 item 10). Lines written before it have none, and read as null.
 /// </summary>
-public sealed record SupervisorEvent(DateTimeOffset At, string Session, string Event, string Detail);
+public sealed record SupervisorEvent(DateTimeOffset At, string Session, string Event, string Detail, string? RunId = null);
 
 /// <summary>Receives the supervisor's events. The runner writes through it; with no sink, nothing is recorded.</summary>
 public interface IEventSink

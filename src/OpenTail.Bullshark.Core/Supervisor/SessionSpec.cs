@@ -22,7 +22,12 @@ public sealed record SessionSpec(
     string Effort,
     string Brief,
     string PermissionMode,
-    string ResumePrompt = "You were restarted and are continuing where you left off. Do not ask questions: make the sensible decision. Tell the other session what you decided, and ask it to resend the current batch, with SendMessage. If nothing is pending, reply with one line saying so.")
+    string ResumePrompt = "You were restarted and are continuing where you left off. Do not ask questions: make the sensible decision. Tell the other session what you decided, and ask it to resend the current batch, with SendMessage. If nothing is pending, reply with one line saying so.",
+    /// <summary>
+    /// The run this session belongs to (round 5 item 10). The timeline uses it to tell a reused name apart. Null for a spec from a run that
+    /// was saved before this field, which the timeline then matches by name.
+    /// </summary>
+    string? RunId = null)
 {
     // A resumed session with no prompt sits idle and is reported as `blocked` (finding F19). So a resume always
     // carries a continuation prompt. It must not invite a question, because a session that asks one also shows

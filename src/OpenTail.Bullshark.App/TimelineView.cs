@@ -18,18 +18,26 @@ public sealed class TimelineView : UserControl
 
     private readonly ComboBox _runs = new() { MinWidth = 320, DisplayMemberPath = nameof(RunChoice.Label) };
     private readonly ComboBox _sessions = new() { MinWidth = 240, Margin = new Thickness(8, 0, 0, 0) };
+    // The list is not inside a ScrollViewer: the ListBox scrolls and virtualizes its own rows (round 5 item 10).
     private readonly ListBox _lines = new()
     {
         FontFamily = new FontFamily("Consolas"),
         FontSize = 12,
         BorderThickness = new Thickness(0),
         Background = Brushes.Transparent,
+        MaxHeight = 600,
     };
     private readonly TextBlock _caption = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 6) };
+    private readonly TextBlock _olderText = new() { VerticalAlignment = VerticalAlignment.Center };
+    private readonly Button _showOlder = new() { Content = "Show older", Padding = new Thickness(10, 2, 10, 2), Margin = new Thickness(8, 0, 0, 0) };
+    private readonly StackPanel _olderRow = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 4), Visibility = Visibility.Collapsed };
 
     private IReadOnlyList<SupervisorEvent> _events = [];
     private bool _loading;
     private RailPalette _palette = RailPalette.DarkPalette;
+
+    /// <summary>How many rows of the chosen run are drawn. "Show older" raises it; a new run or session starts again at the default.</summary>
+    private int _limit = TimelineRows.DefaultLimit;
 
     public TimelineView()
     {
@@ -43,22 +51,34 @@ public sealed class TimelineView : UserControl
         choosers.Children.Add(_sessions);
         choosers.Children.Add(refresh);
 
+        _olderRow.Children.Add(_olderText);
+        _olderRow.Children.Add(_showOlder);
+        _showOlder.Click += (_, _) =>
+        {
+            _limit += TimelineRows.DefaultLimit;
+            Draw();
+        };
+
         var root = new StackPanel { Margin = new Thickness(12, 8, 12, 8) };
         root.Children.Add(new TextBlock { Text = "Timeline", FontSize = 17, FontWeight = FontWeights.SemiBold });
         root.Children.Add(_caption);
         root.Children.Add(choosers);
-        root.Children.Add(new ScrollViewer { Content = _lines, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, MaxHeight = 600 });
+        root.Children.Add(_olderRow);
+        root.Children.Add(_lines);
         Content = root;
 
         _runs.SelectionChanged += (_, _) =>
         {
             if (_loading) return;
             FillSessions();
+            _limit = TimelineRows.DefaultLimit;
             Draw();
         };
         _sessions.SelectionChanged += (_, _) =>
         {
-            if (!_loading) Draw();
+            if (_loading) return;
+            _limit = TimelineRows.DefaultLimit;
+            Draw();
         };
     }
 
@@ -74,6 +94,7 @@ public sealed class TimelineView : UserControl
         _palette = palette;
         Foreground = RailPalette.Brush(palette.Text);
         _caption.Foreground = RailPalette.Brush(palette.Muted);
+        _olderText.Foreground = RailPalette.Brush(palette.Muted);
         Draw();
     }
 
@@ -111,28 +132,35 @@ public sealed class TimelineView : UserControl
         _sessions.SelectedIndex = 0;
     }
 
-    /// <summary>The events of the chosen run, in the order they were written, filtered by the chosen session.</summary>
+    /// <summary>
+    /// The events of the chosen run, in the order they were written, filtered by the chosen session. The newest rows are drawn, up to the
+    /// limit; the rest wait behind "Show older". The rules are in <see cref="TimelineRows"/>, which a test reaches (round 5 item 10).
+    /// </summary>
     private void Draw()
     {
         _lines.Items.Clear();
+        _olderRow.Visibility = Visibility.Collapsed;
         if (_runs.SelectedItem is not RunChoice choice)
         {
             _lines.Items.Add(Line("Nothing to show yet."));
             return;
         }
 
-        var names = choice.Run.Specs.Select(s => s.Name).ToHashSet(StringComparer.Ordinal);
         var session = _sessions.SelectedItem as string;
-        var shown = _events
-            .Where(e => names.Contains(e.Session) && (session is null || session == AllSessions || e.Session == session))
-            .ToList();
-        if (shown.Count == 0)
+        var all = TimelineRows.ForRun(_events, choice.Run, session is null or AllSessions ? null : session);
+        if (all.Count == 0)
         {
             _lines.Items.Add(Line("No events for this run yet."));
             return;
         }
-        foreach (var e in shown)
-            _lines.Items.Add(Line($"{e.At.ToLocalTime():HH:mm:ss}  {e.Session,-28} {e.Event,-24} {e.Detail}"));
+
+        var page = TimelineRows.Newest(all, _limit);
+        if (page.Older > 0)
+        {
+            _olderText.Text = $"{page.Older:N0} older events are not drawn.";
+            _olderRow.Visibility = Visibility.Visible;
+        }
+        foreach (var e in page.Rows) _lines.Items.Add(Line(TimelineRows.Line(e)));
     }
 
     /// <summary>One line of the list, in the palette's text colour.</summary>

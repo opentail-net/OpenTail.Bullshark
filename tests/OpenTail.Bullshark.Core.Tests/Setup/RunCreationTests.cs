@@ -9,6 +9,16 @@ public sealed class RunCreationTests
         new(pattern, folder, "Build it", coders, "opus", "high", "haiku", "medium");
 
     [Fact]
+    public void EverySessionOfARunNamesTheRunItBelongsTo()
+    {
+        // The timeline tells a reused session name apart by the run id on each event (round 5 item 10), which comes from the spec.
+        var run = SetupPlan.CreateRun(Request(Path.GetTempPath(), "plan-many", 2), ["ovc-coder"], DateTimeOffset.UtcNow);
+
+        Assert.NotEmpty(run.Specs);
+        Assert.All(run.Specs, spec => Assert.Equal(run.RunId, spec.RunId));
+    }
+
+    [Fact]
     public void ANewRunHasAFreshIdAndNamesNoExistingNameUses()
     {
         var taken = new[] { "ovc-planner", "ovc-coder", "bullshark-planner-ab12" };

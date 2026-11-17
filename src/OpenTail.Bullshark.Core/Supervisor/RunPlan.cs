@@ -111,7 +111,7 @@ public static class RunPlan
             return
             [
                 new SessionSpec(SessionRole.Planner, planner, workDir, PlannerModel, PlannerEffort,
-                    SoloBrief(task), permissionMode, SoloResumePrompt),
+                    SoloBrief(task), permissionMode, SoloResumePrompt, runId),
             ];
         }
 
@@ -126,15 +126,15 @@ public static class RunPlan
         var specs = new List<SessionSpec>
         {
             new(SessionRole.Planner, planner, workDir, PlannerModel, PlannerEffort,
-                PlannerBrief(planner, coderNames, task, reviewer), permissionMode, PlannerResumePrompt(coderNames)),
+                PlannerBrief(planner, coderNames, task, reviewer), permissionMode, PlannerResumePrompt(coderNames), runId),
         };
         specs.AddRange(coderNames.Select(coder => new SessionSpec(
             SessionRole.Coder, coder, workDir, CoderModel, CoderEffort,
-            CoderBrief(coder, planner, helper), permissionMode, CoderResumePrompt(planner))));
+            CoderBrief(coder, planner, helper), permissionMode, CoderResumePrompt(planner), runId)));
         // helper is set exactly when the assistant is a session, so the name is read here as a non-null value.
         if (assistant == AssistantChoice.Session && helper is { } assistantName)
             specs.Add(new SessionSpec(SessionRole.Assistant, assistantName, workDir, AssistantModel, AssistantEffort,
-                AssistantBrief(assistantName, coderNames, planner), permissionMode, AssistantResumePrompt));
+                AssistantBrief(assistantName, coderNames, planner), permissionMode, AssistantResumePrompt, runId));
         return specs;
     }
 

@@ -116,6 +116,24 @@ public sealed class EventLogTests : IDisposable
     }
 
     [Fact]
+    public async Task TheRunnerNamesTheRunOfEachEvent()
+    {
+        // Each event carries the run id of its session, so the timeline can tell a reused name apart (round 5 item 10).
+        var sink = new ListSink();
+        var runner = new SupervisorRunner(new ClaudeCli(new FakeCliRunner()), new StateStore(Path_("state.json")), TimeProvider.System,
+            resolveTimeout: TimeSpan.FromMilliseconds(1))
+        {
+            Events = sink,
+        };
+        var spec = new SessionSpec(SessionRole.Coder, "bullshark-coder-abcd", @"C:\work", "haiku", "medium", "brief", "auto", RunId: "abcd");
+
+        await runner.CheckOnceAsync([spec], agents: []);
+
+        Assert.NotEmpty(sink.Items);
+        Assert.All(sink.Items, e => Assert.Equal("abcd", e.RunId));
+    }
+
+    [Fact]
     public void AMissingLogReadsAsEmpty()
     {
         Assert.Empty(new EventLog(Path_()).Read());
