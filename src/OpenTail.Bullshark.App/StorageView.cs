@@ -11,6 +11,17 @@ namespace OpenTail.Bullshark.App;
 public sealed class StorageView : UserControl
 {
     private readonly TextBlock _note = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 8) };
+
+    /// <summary>The line that says how long Claude keeps transcripts (round 7 item 5). It shows under the note.</summary>
+    private readonly TextBlock _retention = new()
+    {
+        TextWrapping = TextWrapping.Wrap,
+        Margin = new Thickness(0, 0, 0, 8),
+        Text = TranscriptRetention.Sentence(TranscriptRetention.DefaultDays, fromSettings: false),
+    };
+
+    /// <summary>The deletion age the transcript rows are marked against (round 7 item 5).</summary>
+    private int _retentionDays = TranscriptRetention.DefaultDays;
     private readonly StackPanel _projects = new();
     private readonly StackPanel _transcripts = new();
     private readonly StackPanel _archived = new();
@@ -72,6 +83,7 @@ public sealed class StorageView : UserControl
             FontWeight = FontWeights.SemiBold,
         });
         root.Children.Add(_note);
+        root.Children.Add(_retention);
         root.Children.Add(toolbar);
         root.Children.Add(columns);
         root.Children.Add(bottom);
@@ -119,16 +131,27 @@ public sealed class StorageView : UserControl
         if (projects.Count == 0) _projects.Children.Add(new TextBlock { Text = "No transcripts were found.", Margin = new Thickness(0, 4, 0, 0) });
 
         _archived.Children.Clear();
-        foreach (var file in archived) _archived.Children.Add(FileRow(file));
+        foreach (var file in archived) _archived.Children.Add(FileRow(file, marked: false));
         _archivedCaption.Text = archived.Count == 0 ? "Archived: none" : $"Archived: {archived.Count}";
     }
 
-    /// <summary>Shows the transcripts of one project, with checkboxes.</summary>
+    /// <summary>Shows the transcripts of one project, with checkboxes. The ones near their deletion, or past it, say so.</summary>
     public void ShowTranscripts(string projectName, IReadOnlyList<TranscriptFileInfo> files)
     {
         _transcriptsCaption.Text = $"Transcripts in {projectName}: {files.Count}";
         _transcripts.Children.Clear();
-        foreach (var file in files) _transcripts.Children.Add(FileRow(file));
+        foreach (var file in files) _transcripts.Children.Add(FileRow(file, marked: true));
+    }
+
+    /// <summary>
+    /// Shows how long Claude keeps transcripts, under the note (round 7 item 5). The sentence says whether the age is the default or the owner's
+    /// setting, and a problem with settings.json is said after it, with the default shown.
+    /// </summary>
+    public void SetRetention(int days, bool fromSettings, string? problem)
+    {
+        _retentionDays = days;
+        var sentence = TranscriptRetention.Sentence(days, fromSettings);
+        _retention.Text = problem is null ? sentence : $"{sentence} settings.json could not be used ({problem}), so Claude's default is shown.";
     }
 
     /// <summary>Shows a line under the note: the outcome of the last archive or restore.</summary>
@@ -143,13 +166,29 @@ public sealed class StorageView : UserControl
         _archiveWait.Visibility = available ? Visibility.Collapsed : Visibility.Visible;
     }
 
-    private static CheckBox FileRow(TranscriptFileInfo file) => new()
+    /// <summary>
+    /// One transcript as a checkbox. A transcript that is marked (near its deletion, or past it) says so: "deleted in 2 days" or "due for
+    /// deletion at the next clean-up". Its age is counted from its last write (round 7 item 5).
+    /// </summary>
+    private CheckBox FileRow(TranscriptFileInfo file, bool marked)
     {
-        Content = $"{file.SessionId[..Math.Min(8, file.SessionId.Length)]} · {Size(file.Bytes)} · {file.Written.ToLocalTime():yyyy-MM-dd HH:mm}",
-        Tag = file.Path,
-        ToolTip = file.Path,
-        Margin = new Thickness(0, 0, 0, 3),
-    };
+        var text = $"{file.SessionId[..Math.Min(8, file.SessionId.Length)]} · {Size(file.Bytes)} · {file.Written.ToLocalTime():yyyy-MM-dd HH:mm}";
+        if (marked)
+        {
+            var age = DateTimeOffset.UtcNow - file.Written;
+            var mark = TranscriptRetention.MarkOf(age, _retentionDays);
+            if (mark == RetentionMark.Near)
+            {
+                var left = TranscriptRetention.DaysLeft(age, _retentionDays);
+                text += $" · deleted in {left} day{(left == 1 ? string.Empty : "s")}";
+            }
+            else if (mark == RetentionMark.Due)
+            {
+                text += " · due for deletion at the next clean-up";
+            }
+        }
+        return new CheckBox { Content = text, Tag = file.Path, ToolTip = file.Path, Margin = new Thickness(0, 0, 0, 3) };
+    }
 
     private static IReadOnlyList<string> Checked(StackPanel list) =>
         list.Children.OfType<CheckBox>().Where(box => box.IsChecked == true).Select(box => (string)box.Tag).ToList();

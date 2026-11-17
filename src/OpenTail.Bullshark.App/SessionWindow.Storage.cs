@@ -53,8 +53,11 @@ public partial class SessionWindow
     {
         try
         {
-            var (projects, archived) = await Task.Run(() =>
-                (StorageReport.Read(_options.ProjectsRoot), TranscriptArchive.List(_options.ArchiveRoot)));
+            // The setting is read from the settings file beside the projects folder (round 7 item 5). It is read only, and never written.
+            var (projects, archived, retention) = await Task.Run(() =>
+                (StorageReport.Read(_options.ProjectsRoot), TranscriptArchive.List(_options.ArchiveRoot),
+                 TranscriptRetention.ReadDays(Path.Combine(Path.GetDirectoryName(_options.ProjectsRoot)!, "settings.json"))));
+            _storage.SetRetention(retention.Days ?? TranscriptRetention.DefaultDays, retention.Days is not null, retention.Problem);
             _storage.ShowProjects(projects, archived);
         }
         catch (Exception ex) when (StoreErrors.IsExpected(ex))

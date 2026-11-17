@@ -216,7 +216,10 @@ $screens = @(
     @{ Name = 'daemon-down-dark'; Theme = 'Dark'; Options = @(); Env = @{ FAKECLAUDE_DAEMON = 'down' } },
     @{ Name = 'daemon-down-light'; Theme = 'Light'; Options = @(); Env = @{ FAKECLAUDE_DAEMON = 'down' } },
     # Round 7 item 2: the running daemon reports 2.1.300 and claude is 2.1.326, so the Respawn all button shows in the bar.
-    @{ Name = 'daemon-drift-dark'; Theme = 'Dark'; Options = @(); Env = @{ FAKECLAUDE_DAEMON = 'running'; FAKECLAUDE_DAEMON_VERSION = '2.1.300' } }
+    @{ Name = 'daemon-drift-dark'; Theme = 'Dark'; Options = @(); Env = @{ FAKECLAUDE_DAEMON = 'running'; FAKECLAUDE_DAEMON_VERSION = '2.1.300' } },
+    # Round 7 item 5: the Storage page says how long Claude keeps transcripts. This screen has a settings.json that sets 45 days; the
+    # default screens above have none (Settings is written for this screen only, and removed after it).
+    @{ Name = 'storage-retention-dark'; Theme = 'Dark'; Options = @('--open-tab', 'storage'); Settings = '{ "cleanupPeriodDays": 45 }' }
 )
 
 # The stand-in goes first on PATH for these runs only: the window's claude calls reach it, not the owner's claude.
@@ -228,6 +231,9 @@ foreach ($screen in $screens) {
     # Each screen sets its own stand-in answers and clears the others, so one screen's daemon does not leak into the next.
     foreach ($key in 'FAKECLAUDE_DAEMON', 'FAKECLAUDE_DAEMON_VERSION') { Remove-Item "Env:$key" -ErrorAction SilentlyContinue }
     if ($screen.Env) { foreach ($key in $screen.Env.Keys) { Set-Item -Path "Env:$key" -Value $screen.Env[$key] } }
+    # The settings file of the test home is there only for the screens that set it (round 7 item 5).
+    $settingsPath = Join-Path $claudeHome 'settings.json'
+    if ($screen.Settings) { Set-Content -LiteralPath $settingsPath -Value $screen.Settings -Encoding UTF8 } else { Remove-Item -LiteralPath $settingsPath -ErrorAction SilentlyContinue }
     Set-Content -LiteralPath "$state\ui.json" -Value ('{"railTheme": "' + $screen.Theme + '"}') -Encoding UTF8
     $png = Join-Path $shots "$name.png"
     $argList = @('--state', "$state\state.json", '--no-pass', '--workdir', $repo, '--claude-home', $claudeHome,
