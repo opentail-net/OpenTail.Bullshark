@@ -313,6 +313,34 @@ public sealed class AttentionTests : IDisposable
     }
 
     [Fact]
+    public void TheNeedsYouCountIsTheRowsListedUnderIt()
+    {
+        // Round 8 item 5: a session and the daemon note are two rows, so the header says 2 (never 1 with two rows).
+        var records = new Dictionary<string, SessionRecord> { ["coder"] = Record("coder", SessionA, Now.AddHours(-1)) };
+        var session = Item("coder", AttentionReason.Blocked, Now);
+
+        Assert.Equal(2, AttentionList.NeedsYouRowCount([session], records, daemonNote: true));
+        // The daemon note alone is one row: the header says 1, not 0 above a row.
+        Assert.Equal(1, AttentionList.NeedsYouRowCount([], records, daemonNote: true));
+        Assert.Equal(0, AttentionList.NeedsYouRowCount([], records, daemonNote: false));
+    }
+
+    [Fact]
+    public void ASessionWithoutARecordAndTwoReasonsCountOnce()
+    {
+        // A session with two reasons is one row; a session with no record has no row, so it is not counted.
+        var records = new Dictionary<string, SessionRecord> { ["coder"] = Record("coder", SessionA, Now.AddHours(-1)) };
+        var reasons = new[]
+        {
+            Item("coder", AttentionReason.Blocked, Now),
+            Item("coder", AttentionReason.Overlap, Now),
+            Item("ghost", AttentionReason.Blocked, Now),
+        };
+
+        Assert.Equal(1, AttentionList.NeedsYouRowCount(reasons, records, daemonNote: false));
+    }
+
+    [Fact]
     public void AStaleSessionWithoutItsAlertWaitsForNobody()
     {
         // A stale working session, or a stale one whose alert was cleared, is not waiting for anyone.

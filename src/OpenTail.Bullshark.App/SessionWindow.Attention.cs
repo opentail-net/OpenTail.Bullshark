@@ -45,8 +45,9 @@ public partial class SessionWindow
     /// </summary>
     private TreeViewItem NeedsYouSection(IReadOnlyDictionary<string, SessionRecord> records)
     {
-        var waiting = _attention.Select(item => item.Name).Distinct(StringComparer.Ordinal).Count();
-        var section = NewItem(Label($"Needs you ({waiting})", bold: true),
+        // The header counts the rows listed under it, the daemon note included, so it never says 0 with a row under it (round 8 item 5).
+        var rowCount = AttentionList.NeedsYouRowCount(_attention, records, _daemonNotice is not null);
+        var section = NewItem(Label($"Needs you ({rowCount})", bold: true),
             new RailTag(RailKind.Heading, NeedsYouKey),
             "Sessions that wait for you: blocked on a permission or a question, stopped and not brought back, a start that failed, " +
             "or a file that another session of the run also wrote.");

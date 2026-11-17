@@ -181,6 +181,13 @@ public static class AttentionList
         string.Join('\u001f', item.Name, item.Reason, item.FilePath ?? string.Empty,
             string.Join('\u001e', (item.Files ?? []).OrderBy(file => file, StringComparer.Ordinal)));
 
+    /// <summary>
+    /// How many rows the Needs-you group lists (round 8 item 5): one per waiting session that has a state record, and one for the daemon note when
+    /// there is one. The group header shows this number, so it never says 0 with a row under it, and never counts a session that has no row.
+    /// </summary>
+    public static int NeedsYouRowCount(IEnumerable<AttentionItem> items, IReadOnlyDictionary<string, SessionRecord> records, bool daemonNote) =>
+        items.DistinctBy(item => item.Name, StringComparer.Ordinal).Count(item => records.ContainsKey(item.Name)) + (daemonNote ? 1 : 0);
+
     /// <summary>A notice tells the owner about something that happened, and the session keeps running. It is not a wait.</summary>
     private static bool IsNotice(AttentionItem item) =>
         item.Reason is AttentionReason.Overlap or AttentionReason.Conflict;
