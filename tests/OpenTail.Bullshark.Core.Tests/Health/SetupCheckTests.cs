@@ -266,4 +266,85 @@ public sealed class SetupCheckTests : IDisposable
         Assert.Equal(SetupState.Problem, hook.State);
         Assert.Contains("program not found", hook.Detail);
     }
+
+    [Fact]
+    public void AHookThatSetsVariablesBeforeTheProgramIsCheckedByTheProgram()
+    {
+        Tool("mytool.exe", "bin");
+        WriteSettings("""{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"FOO=1 BAR=\"x y\" mytool"}]}]}}""");
+
+        var hook = Assert.Single(Run(Path.Combine(_dir, "bin")), i => i.Area == "Hook Stop");
+
+        Assert.Equal(SetupState.Ok, hook.State);
+        Assert.Contains("found: mytool", hook.Detail);
+    }
+
+    [Fact]
+    public void AMissingProgramAfterVariablesIsReportedByItsOwnName()
+    {
+        WriteSettings("""{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"FOO=1 no-such-tool"}]}]}}""");
+
+        var hook = Assert.Single(Run(), i => i.Area == "Hook Stop");
+
+        Assert.Equal(SetupState.Problem, hook.State);
+        Assert.Contains("not found on PATH: no-such-tool", hook.Detail);
+        Assert.DoesNotContain("FOO=1", hook.Detail);
+    }
+
+    [Fact]
+    public void AHookThatOnlySetsVariablesNamesNoProgram()
+    {
+        WriteSettings("""{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"FOO=1 BAR=2"}]}]}}""");
+
+        var hook = Assert.Single(Run(), i => i.Area == "Hook Stop");
+
+        Assert.Equal(SetupState.Problem, hook.State);
+        Assert.Contains("names no program", hook.Detail);
+    }
+
+    [Fact]
+    public void AWordWithAnEqualsSignThatIsNotANameIsStillAProgram()
+    {
+        // "1x=2" cannot be a variable name, so it is the program, and it is not on the path.
+        WriteSettings("""{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"1x=2 arg"}]}]}}""");
+
+        var hook = Assert.Single(Run(), i => i.Area == "Hook Stop");
+
+        Assert.Equal(SetupState.Problem, hook.State);
+        Assert.Contains("not found on PATH: 1x=2", hook.Detail);
+    }
+
+    [Theory]
+    [InlineData("cd sub")]
+    [InlineData("echo hello")]
+    [InlineData("ECHO hello")]
+    [InlineData("exit 0")]
+    [InlineData("true")]
+    [InlineData("false")]
+    [InlineData("test -f x")]
+    [InlineData("[ -f x ]")]
+    [InlineData("set -e")]
+    [InlineData("export A=1")]
+    [InlineData("source env.sh")]
+    [InlineData(". env.sh")]
+    public void AShellBuiltInIsNotCheckedAsAProgram(string command)
+    {
+        WriteSettings($"{{\"hooks\":{{\"Stop\":[{{\"hooks\":[{{\"type\":\"command\",\"command\":\"{command}\"}}]}}]}}}}");
+
+        var hook = Assert.Single(Run(), i => i.Area == "Hook Stop");
+
+        Assert.Equal(SetupState.Ok, hook.State);
+        Assert.Contains("shell built-in; not checked", hook.Detail);
+    }
+
+    [Fact]
+    public void AShellBuiltInAfterVariablesIsNotCheckedEither()
+    {
+        WriteSettings("""{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"FOO=1 echo done"}]}]}}""");
+
+        var hook = Assert.Single(Run(), i => i.Area == "Hook Stop");
+
+        Assert.Equal(SetupState.Ok, hook.State);
+        Assert.Contains("shell built-in; not checked: echo", hook.Detail);
+    }
 }

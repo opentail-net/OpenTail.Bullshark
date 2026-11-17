@@ -169,16 +169,51 @@ public static class SetupCheck
             : new SetupItem("Instructions", "CLAUDE.md", SetupState.Warning, "not found: Claude has no standing instructions from you"));
     }
 
+    /// <summary>
+    /// The commands a shell runs itself, so they are not programs on PATH. A hook is run by a shell, so these are not checked.
+    /// </summary>
+    private static readonly HashSet<string> ShellBuiltIns = new(
+        ["cd", "echo", "exit", "true", "false", "test", "[", "set", "export", "source", "."], StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// A hook's command. Words of the form <c>NAME=value</c> before the program set variables for it: the program is the first word after
+    /// them. A shell built-in is "not checked", and anything else is checked as a program with its scripts (<see cref="CheckProgram"/>).
+    /// </summary>
     private static void CheckHook(string eventName, string command, string path, List<SetupItem> items)
     {
         var area = $"Hook {eventName}";
-        var parts = SplitCommand(command);
-        if (parts.Count == 0)
+        var words = SplitCommand(command);
+        if (words.Count == 0)
         {
             items.Add(new SetupItem(area, "empty command", SetupState.Problem, "the hook names no program"));
             return;
         }
-        CheckProgram(area, Clip(command, 80), parts[0], parts.Skip(1), path, items);
+
+        var parts = words.SkipWhile(IsAssignment).ToList();
+        var name = Clip(command, 80);
+        if (parts.Count == 0)
+        {
+            items.Add(new SetupItem(area, name, SetupState.Problem, "the hook sets variables and names no program"));
+            return;
+        }
+        if (ShellBuiltIns.Contains(parts[0]))
+        {
+            items.Add(new SetupItem(area, name, SetupState.Ok, Clip($"shell built-in; not checked: {parts[0]}")));
+            return;
+        }
+        CheckProgram(area, name, parts[0], parts.Skip(1), path, items);
+    }
+
+    /// <summary>True for a word of the form <c>NAME=value</c>: a name of letters, digits and underscores, not starting with a digit, then <c>=</c>.</summary>
+    private static bool IsAssignment(string word)
+    {
+        var equals = word.IndexOf('=');
+        if (equals <= 0 || !(char.IsAsciiLetter(word[0]) || word[0] == '_')) return false;
+        for (var i = 1; i < equals; i++)
+        {
+            if (!(char.IsAsciiLetterOrDigit(word[i]) || word[i] == '_')) return false;
+        }
+        return true;
     }
 
     /// <summary>Checks that the program exists (a path, or a name on PATH), and that each script among the arguments exists.</summary>
