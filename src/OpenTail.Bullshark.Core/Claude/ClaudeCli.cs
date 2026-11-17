@@ -53,6 +53,12 @@ public sealed class ClaudeCli
         }
     }
 
+    /// <summary>
+    /// The most characters the joined launch arguments may take. Windows caps a command line at 32,767 characters. The margin is
+    /// for the executable's path and for the quotes the runtime adds around arguments with spaces (the length is counted before that).
+    /// </summary>
+    public const int MaxLaunchCharacters = 30_000;
+
     /// <summary>Starts a background session and returns its 8-character id.</summary>
     public async Task<string> StartBackgroundAsync(BackgroundLaunch launch, CancellationToken cancellationToken = default)
     {
@@ -61,9 +67,29 @@ public sealed class ClaudeCli
         if (launch.ResumeSessionId is not null) args.AddRange(["--resume", launch.ResumeSessionId]);
         if (launch.Prompt is not null) args.Add(launch.Prompt);
 
+        RequireCarriable(launch, args);
         var result = await RunAsync(args, launch.WorkingDirectory, cancellationToken);
         return ParseBackgroundId(result.StdOut)
             ?? throw new ClaudeCliException($"`claude --bg` did not print an id: {result.StdOut.Trim()}");
+    }
+
+    /// <summary>
+    /// Refuses a launch the command line cannot carry, before `claude` runs. A brief that starts with '-' would be read as an
+    /// option, and a command line over the limit is cut short or refused by Windows. The message says which and how long, so the
+    /// owner can shorten the brief. The runner records the refusal as a failed start.
+    /// </summary>
+    private static void RequireCarriable(BackgroundLaunch launch, IReadOnlyList<string> args)
+    {
+        if (launch.Prompt is { Length: > 0 } prompt && prompt[0] == '-')
+            throw new ClaudeCliException(
+                $"The brief for '{launch.Name}' starts with '-', so `claude` would read it as an option. " +
+                $"It was not started ({prompt.Length:N0} characters). Begin the brief with a word.");
+
+        var joined = string.Join(' ', args).Length;
+        if (joined > MaxLaunchCharacters)
+            throw new ClaudeCliException(
+                $"The launch for '{launch.Name}' is {joined:N0} characters ({launch.Prompt?.Length ?? 0:N0} of them the brief); " +
+                $"the command line takes at most {MaxLaunchCharacters:N0} here, so it was not started. Shorten the brief.");
     }
 
     /// <summary>
