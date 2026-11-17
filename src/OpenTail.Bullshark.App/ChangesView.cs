@@ -42,11 +42,24 @@ public sealed class ChangesView : UserControl
     private string? _writtenNote;
     private IReadOnlyList<string>? _sharedLines;
 
+    /// <summary>The copy button for a resolve prompt. It shows only when the session's merge check found conflicts (gems item 2).</summary>
+    private readonly Button _copyPrompt = new()
+    {
+        Content = "Copy resolve prompt",
+        Padding = new Thickness(10, 2, 10, 2),
+        Margin = new Thickness(8, 0, 0, 0),
+        Visibility = Visibility.Collapsed,
+    };
+
+    private string? _resolvePrompt;
+
     public ChangesView()
     {
         var header = new DockPanel { LastChildFill = true };
         DockPanel.SetDock(_refresh, Dock.Right);
         header.Children.Add(_refresh);
+        DockPanel.SetDock(_copyPrompt, Dock.Right);
+        header.Children.Add(_copyPrompt);
         header.Children.Add(_title);
 
         var lists = new Grid();
@@ -74,6 +87,7 @@ public sealed class ChangesView : UserControl
         root.Children.Add(_diff);
 
         _refresh.Click += (_, _) => RefreshRequested?.Invoke();
+        _copyPrompt.Click += (_, _) => CopyPrompt();
         Content = root;
         _changedCaption.Text = "Changed";
         _writtenCaption.Text = "Files written by the session";
@@ -98,12 +112,42 @@ public sealed class ChangesView : UserControl
         if (_report is not null) Draw();
     }
 
+    /// <summary>
+    /// The resolve prompt for this session's conflicts, or null. The button is shown only with a prompt. Pressing it copies the text
+    /// to the clipboard: the prompt is never sent to the session.
+    /// </summary>
+    public string? ResolvePrompt
+    {
+        get => _resolvePrompt;
+        set
+        {
+            _resolvePrompt = value;
+            _copyPrompt.Visibility = value is null ? Visibility.Collapsed : Visibility.Visible;
+        }
+    }
+
+    private void CopyPrompt()
+    {
+        if (_resolvePrompt is not { } text) return;
+        try
+        {
+            Clipboard.SetText(text);
+            _note.Text = "The resolve prompt is on the clipboard. Nothing was sent to the session.";
+        }
+        catch (System.Runtime.InteropServices.ExternalException ex)
+        {
+            // The clipboard is held by another program at this moment: the owner presses the button again.
+            _note.Text = $"The clipboard is busy, so the prompt was not copied ({ex.Message}). Press the button again.";
+        }
+    }
+
     /// <summary>A read has started for this folder. The old lists stay out of sight until it finishes.</summary>
     public void ShowLoading(string folder)
     {
         _title.Text = "Changes in " + folder;
         _note.Text = "Reading the changes…";
         _refresh.IsEnabled = false;
+        ResolvePrompt = null;
         _changed.Children.Clear();
         _written.Children.Clear();
         _sharedList.Children.Clear();
@@ -134,6 +178,7 @@ public sealed class ChangesView : UserControl
         _title.Text = title;
         _note.Text = message;
         _refresh.IsEnabled = true;
+        ResolvePrompt = null;
         _changed.Children.Clear();
         _written.Children.Clear();
         _sharedList.Children.Clear();

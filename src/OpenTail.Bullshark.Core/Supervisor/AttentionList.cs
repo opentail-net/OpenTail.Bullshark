@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using OpenTail.Bullshark.Core.Claude;
+using OpenTail.Bullshark.Core.Git;
 
 namespace OpenTail.Bullshark.Core.Supervisor;
 
@@ -26,7 +27,16 @@ public enum AttentionReason
     /// owner is told about each file once. It is a notice: nothing is sent to the sessions.
     /// </summary>
     Overlap,
+
+    /// <summary>
+    /// The coder's committed work conflicts with the default branch (gems item 2). Its detail lists the files. It is a notice like
+    /// <see cref="Overlap"/>: the owner copies a resolve prompt, and nothing is sent to the session.
+    /// </summary>
+    Conflict,
 }
+
+/// <summary>A coder's merge check result that found conflicts: the session's name, the conflicting files and the branch they conflict with.</summary>
+public sealed record SessionConflict(string Name, IReadOnlyList<string> Files, string Target);
 
 /// <summary>
 /// One session that waits for the owner. <see cref="SessionId"/> is null for a start that never got a session.
@@ -68,6 +78,7 @@ public static class AttentionList
     /// that reason. A listed session that is working, done or unknown is not waiting for anyone because of an old alert, so the
     /// alert is ignored while it is listed.</item>
     /// <item>Each clash in <paramref name="clashes"/> gives <see cref="AttentionReason.Overlap"/> to every session that wrote the file.</item>
+    /// <item>Each conflict in <paramref name="conflicts"/> gives <see cref="AttentionReason.Conflict"/> to its session.</item>
     /// </list>
     /// The time a session entered its state is not recorded, so "oldest" means the session's own start time.
     /// <paramref name="clashes"/> (gems item 1) adds one <see cref="AttentionReason.Overlap"/> item per session per shared file.
@@ -75,7 +86,8 @@ public static class AttentionList
     public static IReadOnlyList<AttentionItem> From(
         IEnumerable<SessionRecord> records,
         IReadOnlyList<AgentInfo> agents,
-        IEnumerable<FileClash>? clashes = null)
+        IEnumerable<FileClash>? clashes = null,
+        IEnumerable<SessionConflict>? conflicts = null)
     {
         var recordList = records.ToList();
         var items = new List<AttentionItem>();
@@ -84,6 +96,7 @@ public static class AttentionList
             if (ReasonFor(record, agents) is { } item) items.Add(item);
         }
         if (clashes is not null) items.AddRange(OverlapItems(recordList, clashes));
+        if (conflicts is not null) items.AddRange(ConflictItems(recordList, conflicts));
         return items
             .OrderBy(item => item.StartedAt)
             .ThenBy(item => item.Name, StringComparer.Ordinal)
@@ -93,22 +106,27 @@ public static class AttentionList
 
     /// <summary>
     /// The items in <paramref name="current"/> that are new since <paramref name="previous"/>. A session that is waiting for any reason
-    /// is not new when it changes its reason, so the rule compares names. An overlap is the exception: it is new unless the same
-    /// session already had an overlap on the same file, so a second shared file of a session that waits is announced.
+    /// is not new when it changes its reason, so the rule compares names. The notices (<see cref="AttentionReason.Overlap"/> and
+    /// <see cref="AttentionReason.Conflict"/>) are the exception: a notice is new unless the same session already had that notice
+    /// (for an overlap, the same file), so a second shared file or a conflict of a session that waits is announced.
     /// A session that stopped waiting and waits again is new.
     /// </summary>
     public static IReadOnlyList<AttentionItem> Gained(IReadOnlyList<AttentionItem> previous, IReadOnlyList<AttentionItem> current)
     {
         var waiting = previous.Select(item => item.Name).ToHashSet(StringComparer.Ordinal);
-        var sharedFiles = previous
-            .Where(item => item.Reason == AttentionReason.Overlap)
-            .Select(item => (item.Name, item.FilePath))
+        var notices = previous
+            .Where(IsNotice)
+            .Select(item => (item.Name, item.Reason, item.FilePath))
             .ToHashSet();
-        return current.Where(item => item.Reason == AttentionReason.Overlap
-                ? !sharedFiles.Contains((item.Name, item.FilePath))
+        return current.Where(item => IsNotice(item)
+                ? !notices.Contains((item.Name, item.Reason, item.FilePath))
                 : !waiting.Contains(item.Name))
             .ToList();
     }
+
+    /// <summary>A notice tells the owner about something that happened, and the session keeps running. It is not a wait.</summary>
+    private static bool IsNotice(AttentionItem item) =>
+        item.Reason is AttentionReason.Overlap or AttentionReason.Conflict;
 
     /// <summary>
     /// Whether the owner's <c>notify</c> setting in ui.json turns notices on. A missing value, or one that is not a boolean, means on.
@@ -150,6 +168,27 @@ public static class AttentionList
 
     private static AttentionItem Item(SessionRecord record, AttentionReason reason, string detail) =>
         new(record.Name, string.IsNullOrEmpty(record.SessionId) ? null : record.SessionId, reason, detail, record.StartedAt);
+
+    /// <summary>One conflict item per conflicting session. A session with no record is left out, since its start time is unknown.</summary>
+    private static IEnumerable<AttentionItem> ConflictItems(IReadOnlyList<SessionRecord> records, IEnumerable<SessionConflict> conflicts)
+    {
+        var byName = records.GroupBy(r => r.Name, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+        foreach (var conflict in conflicts)
+        {
+            if (!byName.TryGetValue(conflict.Name, out var record) || string.IsNullOrEmpty(record.SessionId)) continue;
+            yield return new AttentionItem(conflict.Name, record.SessionId, AttentionReason.Conflict,
+                ConflictDetail(conflict), record.StartedAt);
+        }
+    }
+
+    /// <summary>The first five files are named; the rest are counted. The branch is shown without its refs prefix.</summary>
+    private static string ConflictDetail(SessionConflict conflict)
+    {
+        var shown = string.Join(", ", conflict.Files.Take(5));
+        var more = conflict.Files.Count > 5 ? $" and {conflict.Files.Count - 5} more" : string.Empty;
+        var count = conflict.Files.Count == 1 ? "1 file" : $"{conflict.Files.Count} files";
+        return $"{count} conflict with {MergeCheck.DisplayName(conflict.Target)}: {shown}{more}";
+    }
 
     /// <summary>One overlap item per session per shared file. A session with no record is left out, since its start time is unknown.</summary>
     private static IEnumerable<AttentionItem> OverlapItems(IReadOnlyList<SessionRecord> records, IEnumerable<FileClash> clashes)

@@ -57,6 +57,7 @@ public partial class SessionWindow
         });
         if (_changesSession != sessionId) return;
         _changes.Show(report, written, writtenNote, SharedLinesFor(record));
+        _changes.ResolvePrompt = ResolvePromptFor(record);
     }
 
     /// <summary>

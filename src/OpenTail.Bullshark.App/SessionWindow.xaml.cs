@@ -240,6 +240,8 @@ public partial class SessionWindow : Window
             // The files two sessions of a run both wrote are read off the UI thread, from the transcripts this pass has seen (gems item 1).
             var paths = new Dictionary<string, string>(_transcriptPaths, StringComparer.Ordinal);
             _clashes = await Task.Run(() => ReadClashes(records, paths));
+            // A coder that has just entered done gets its merge check, on a pool thread; its result shows on a later pass (gems item 2).
+            UpdateMergeChecks(records);
             RefreshRail(records);
             AnnounceAttention();
 
