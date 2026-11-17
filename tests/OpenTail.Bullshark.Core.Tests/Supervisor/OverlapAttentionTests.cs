@@ -115,13 +115,15 @@ public sealed class OverlapAttentionTests
     }
 
     [Fact]
-    public void AWaitingSessionThatChangesFromOverlapToBlockedIsNotNew()
+    public void AWaitThatFollowsAnOverlapNoticeIsNewBecauseTheNoticeIsNotAWait()
     {
-        // Changing the reason while it waits is not new, as it was before overlaps existed.
+        // The session had only the overlap notice, which is not a wait, so its block is announced (round 5 item 6). A change of
+        // reason between two waits is still not new: see AttentionTests.AChangeOfReasonForASessionAlreadyWaitingIsNotANewArrival.
         var previous = new[] { Overlap(CoderA, FileX, Start) };
         var current = new[] { Blocked(CoderA, Start) };
 
-        Assert.Empty(AttentionList.Gained(previous, current));
+        var gained = Assert.Single(AttentionList.Gained(previous, current));
+        Assert.Equal(AttentionReason.Blocked, gained.Reason);
     }
 
     [Fact]

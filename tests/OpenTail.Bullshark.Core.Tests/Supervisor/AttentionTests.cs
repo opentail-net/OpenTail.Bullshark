@@ -199,6 +199,22 @@ public sealed class AttentionTests : IDisposable
         Assert.Empty(AttentionList.Gained(before, after));
     }
 
+    [Theory]
+    [InlineData(AttentionReason.Blocked)]
+    [InlineData(AttentionReason.Stopped)]
+    [InlineData(AttentionReason.Failed)]
+    [InlineData(AttentionReason.StartFailed)]
+    public void AWaitThatComesAfterAnOverlapNoticeIsAnnounced(AttentionReason reason)
+    {
+        // The session already had an overlap notice; its first wait is news, so it sounds once (round 5 item 6).
+        var overlap = new AttentionItem("coder", "s-coder", AttentionReason.Overlap, "clash", Now, @"C:\work\a.cs");
+        var wait = Item("coder", reason, Now);
+
+        var gained = Assert.Single(AttentionList.Gained([overlap], [overlap, wait]));
+
+        Assert.Equal(reason, gained.Reason);
+    }
+
     [Fact]
     public void ASessionThatWaitsAgainAfterAnAnswerIsNewAgain()
     {

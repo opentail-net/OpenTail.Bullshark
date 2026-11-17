@@ -81,11 +81,24 @@ public sealed class ConflictAttentionTests
     }
 
     [Fact]
-    public void AWaitingSessionThatChangesFromConflictToBlockedIsNotNew()
+    public void ASessionThatOnlyHadAConflictAndThenBlocksIsNewForTheWait()
     {
+        // A notice is not a wait: the block is the event the owner needs to hear about (round 5 item 6).
         var previous = new[] { Conflict(Coder, Id) };
-        var current = new[] { Blocked(Coder, Id) };
+        var current = new[] { Blocked(Coder, Id), Conflict(Coder, Id) };
 
-        Assert.Empty(AttentionList.Gained(previous, current));
+        var gained = Assert.Single(AttentionList.Gained(previous, current));
+        Assert.Equal(AttentionReason.Blocked, gained.Reason);
+    }
+
+    [Fact]
+    public void AWaitingSessionThatChangesFromBlockedToConflictIsNotNewAsAWait()
+    {
+        // The session already waits for a reason, so a later notice is announced as a notice, and the wait is not.
+        var previous = new[] { Blocked(Coder, Id) };
+        var current = new[] { Conflict(Coder, Id) };
+
+        var gained = Assert.Single(AttentionList.Gained(previous, current));
+        Assert.Equal(AttentionReason.Conflict, gained.Reason);
     }
 }

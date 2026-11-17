@@ -113,7 +113,9 @@ public static class AttentionList
     /// </summary>
     public static IReadOnlyList<AttentionItem> Gained(IReadOnlyList<AttentionItem> previous, IReadOnlyList<AttentionItem> current)
     {
-        var waiting = previous.Select(item => item.Name).ToHashSet(StringComparer.Ordinal);
+        // Only a wait makes a session "already waiting". A notice the session had (an overlap, a conflict) does not, so the first
+        // blocked, stopped, failed or start-failed reason of that session is announced (round 5 item 6).
+        var waiting = previous.Where(item => !IsNotice(item)).Select(item => item.Name).ToHashSet(StringComparer.Ordinal);
         var notices = previous
             .Where(IsNotice)
             .Select(item => (item.Name, item.Reason, item.FilePath))
