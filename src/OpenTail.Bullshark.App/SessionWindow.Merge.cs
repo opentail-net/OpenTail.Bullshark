@@ -50,8 +50,11 @@ public partial class SessionWindow
         {
             var listed = _allAgents.FirstOrDefault(a => string.Equals(a.SessionId, record.SessionId, StringComparison.OrdinalIgnoreCase))?.Cwd;
             var spec = Specs.FirstOrDefault(s => string.Equals(s.Name, record.Name, StringComparison.Ordinal))?.WorkingDirectory;
-            // The folder the coder edits now, from its transcript, is checked ahead of the listing's (round 7 item 4).
-            var transcriptFolder = await Task.Run(() => TranscriptWrites.Facts(_options.ProjectsRoot, record.SessionId).Folder);
+            // The folder the coder edits now, from its transcript, is checked ahead of the listing's (round 7 item 4). The writes come from the
+            // cache, off the UI thread (round 12 B3): the path is copied here, since the window's dictionary is read on the UI thread only.
+            var known = _transcriptPaths.TryGetValue(record.SessionId, out var knownPath) ? knownPath : null;
+            var projectsRoot = _options.ProjectsRoot;
+            var transcriptFolder = await Task.Run(() => TranscriptFactsOf(record.SessionId, known, projectsRoot).Folder);
             var folder = GitChanges.FolderOf(transcriptFolder, listed, spec);
             if (folder is null)
             {

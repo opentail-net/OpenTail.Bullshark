@@ -16,10 +16,39 @@ public partial class SessionWindow
     private IReadOnlyList<FileClash> _clashes = [];
 
     /// <summary>
-    /// The writes of each transcript, kept between passes. Used only by the pass, which runs one at a time (the _passRunning guard),
-    /// so it needs no lock.
+    /// The writes of each transcript, kept between passes. It is not thread-safe, and since round 12 three callers read it on pool threads
+    /// (the pass, a merge check and the Changes tab), so every read goes through <see cref="ReadWrites"/>, under <see cref="_writesLock"/>.
     /// </summary>
     private readonly SessionWritesCache _writesCache = new();
+
+    /// <summary>Guards <see cref="_writesCache"/>. Taken on pool threads only; the UI thread never reads the cache.</summary>
+    private readonly object _writesLock = new();
+
+    /// <summary>The writes of one transcript through the cache, under <see cref="_writesLock"/> (round 12 B3). Throws what the read throws.</summary>
+    private SessionWrites ReadWrites(string sessionId, string path)
+    {
+        lock (_writesLock) return _writesCache.Read(sessionId, path);
+    }
+
+    /// <summary>
+    /// The files and folder a session's transcript says it wrote, for the Changes tab and the merge check (round 12 B3). The path is the one
+    /// the pass found, else the transcript is looked for. The notes are <see cref="TranscriptWrites.Facts"/>'s: a missing transcript and one
+    /// that cannot be read. Runs on a pool thread and touches no window object.
+    /// </summary>
+    private TranscriptWrites.TranscriptFacts TranscriptFactsOf(string sessionId, string? knownPath, string projectsRoot)
+    {
+        try
+        {
+            var path = knownPath ?? TranscriptReader.FindTranscript(projectsRoot, sessionId);
+            if (path is null) return new TranscriptWrites.TranscriptFacts(null, "No transcript for this session yet.", null);
+            var writes = ReadWrites(sessionId, path);
+            return new TranscriptWrites.TranscriptFacts(writes.Files, null, writes.Folder);
+        }
+        catch (Exception ex) when (StoreErrors.IsExpected(ex))
+        {
+            return new TranscriptWrites.TranscriptFacts(null, $"The transcript cannot be read: {ex.Message}", null);
+        }
+    }
 
     /// <summary>
     /// The writes of each run's sessions, for the runs that read their transcripts. A run that can have neither a clash nor a limit does
@@ -42,7 +71,7 @@ public partial class SessionWindow
                 if (!paths.TryGetValue(record.SessionId, out var path)) continue;
                 try
                 {
-                    writes.Add(_writesCache.Read(record.SessionId, path));
+                    writes.Add(ReadWrites(record.SessionId, path));
                 }
                 // Any failure is this session's alone (round 12 B1): the other sessions of the run are still read.
                 catch (Exception ex) when (ex is not OperationCanceledException)

@@ -350,7 +350,7 @@ public partial class SessionWindow : Window
         var (facts, newPaths) = ReadRunningFacts(ids, known, _options.ProjectsRoot);
 
         // The run limits are read here, before the pass, from the records and transcripts above (round 6 item 1). The transcript paths are
-        // the known ones and the new ones; the cache is used by one pass at a time, so it needs no lock.
+        // the known ones and the new ones. The cache is read under its lock (round 12 B3).
         var paths = new Dictionary<string, string>(known, StringComparer.Ordinal);
         foreach (var pair in newPaths) paths[pair.Key] = pair.Value;
         var budgets = BudgetsOf(runs, records, paths);
