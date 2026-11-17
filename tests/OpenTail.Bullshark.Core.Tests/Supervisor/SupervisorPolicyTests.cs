@@ -249,4 +249,96 @@ public sealed class SupervisorPolicyTests
         Assert.Contains("Do not stop to wait for the answer", coder);
         Assert.Contains("build X", planner);
     }
+
+    /// <summary>A row listed as `state` while the daemon is not running: the real <see cref="DaemonStatus.IdleListing"/> makes it stale.</summary>
+    private static AgentInfo IdleAgent(string state, string name = "planner") =>
+        DaemonStatus.Parse("not running\n").IdleListing([NamedAgent(name, state, SessionId)]).Single();
+
+    private static SessionRecord WithAlert(string? lastAlert, string? lastState = "working") =>
+        new(SessionRole.Planner, SessionId, "test-planner", Now.AddHours(-5), 0, [], lastState, lastAlert);
+
+    [Fact]
+    public void AStaleWorkingSessionIsLostAndResumedUnderTheSameId()
+    {
+        // Round 8 item 1: a working row the dead daemon left behind is treated as lost, as a session the roster dropped is.
+        var actions = SupervisorPolicy.Decide(Planner, Record(lastState: "working"), [IdleAgent("working")], Now, SupervisorRules.Default);
+
+        var resume = Assert.IsType<SupervisorAction.Resume>(Assert.Single(actions));
+        Assert.Equal(SessionId, resume.SessionId);
+    }
+
+    [Fact]
+    public void AStaleWorkingSessionIsAlertedOnceAtTheRestartLimitAndNotResumed()
+    {
+        var recent = Enumerable.Range(1, 3).Select(i => Now.AddMinutes(-i)).ToArray();
+
+        var first = SupervisorPolicy.Decide(Planner, RecordWithAlert(null, recent), [IdleAgent("working")], Now, SupervisorRules.Default);
+        Assert.Equal(AlertKind.RestartLoop, Assert.IsType<SupervisorAction.Alert>(Assert.Single(first)).Kind);
+
+        var again = SupervisorPolicy.Decide(Planner, RecordWithAlert("RestartLoop: 3 restarts in the last hour.", recent), [IdleAgent("working")],
+            Now, SupervisorRules.Default);
+        Assert.Empty(again);
+    }
+
+    [Fact]
+    public void AStaleWorkingSessionWithAStopAlertIsNotResumed()
+    {
+        // The stop guard holds for a stale session too: an old stop alert says the owner stopped it (round 5 item 1).
+        var stopped = new SessionRecord(SessionRole.Planner, SessionId, "test-planner", Now.AddHours(-5), 0, [], null,
+            "Stopped: the session was stopped, so it is not restarted. Start the run again to continue.");
+
+        var actions = SupervisorPolicy.Decide(Planner, stopped, [IdleAgent("working")], Now, SupervisorRules.Default);
+
+        Assert.Empty(actions);
+    }
+
+    [Fact]
+    public void AStaleWorkingSessionAtTheRunsLimitIsNotResumed()
+    {
+        var actions = SupervisorPolicy.Decide(Planner, Record(lastState: "working"), [IdleAgent("working")], Now, SupervisorRules.Default,
+            new RunBudget(1.2));
+
+        Assert.DoesNotContain(actions, a => a is SupervisorAction.Resume);
+    }
+
+    [Fact]
+    public void AStaleBlockedSessionIsAlertedOnceWithTheStaleDetailAndNeverResumed()
+    {
+        var first = SupervisorPolicy.Decide(Planner, Record(lastState: "working"), [IdleAgent("blocked")], Now, SupervisorRules.Default);
+        var alert = Assert.IsType<SupervisorAction.Alert>(Assert.Single(first));
+        Assert.Equal(AlertKind.Blocked, alert.Kind);
+        Assert.Equal(AttentionList.StaleBlockedDetail, alert.Detail);
+
+        // Still stale on the next pass, with its alert on record: nothing more.
+        var second = SupervisorPolicy.Decide(Planner, WithAlert(AttentionList.StaleBlockedAlertPrefix), [IdleAgent("blocked")], Now, SupervisorRules.Default);
+        Assert.Empty(second);
+    }
+
+    [Fact]
+    public void AStaleBlockedSessionIsNotResumedWhenTheRosterDropsItsRow()
+    {
+        // Its prompt is lost, so a "gone" session with the stale alert on record is not brought back either.
+        var actions = SupervisorPolicy.Decide(Planner, WithAlert(AttentionList.StaleBlockedAlertPrefix), [], Now, SupervisorRules.Default);
+
+        Assert.Empty(actions);
+    }
+
+    [Fact]
+    public void AStaleRowIsNotAdoptedSoTheRoleStartsAgain()
+    {
+        // A row the dead daemon left is not alive: adopting it would leave the role with a dead session and nothing running.
+        var actions = SupervisorPolicy.Decide(Planner, null, [IdleAgent("working", name: "test-planner")], Now, SupervisorRules.Default);
+
+        Assert.IsType<SupervisorAction.Start>(Assert.Single(actions));
+    }
+
+    [Fact]
+    public void ALiveRowIsStillAdopted()
+    {
+        // The control for the stale case: the same row, listed as working with the daemon up, is adopted.
+        var actions = SupervisorPolicy.Decide(Planner, null, [NamedAgent("test-planner", "working", SessionId)], Now, SupervisorRules.Default);
+
+        var adopt = Assert.IsType<SupervisorAction.Adopt>(Assert.Single(actions));
+        Assert.Equal(SessionId, adopt.SessionId);
+    }
 }

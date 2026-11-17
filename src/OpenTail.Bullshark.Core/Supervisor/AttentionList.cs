@@ -77,6 +77,21 @@ public static class AttentionList
     public const string FailedAlertPrefix = nameof(AlertKind.Failed) + ": ";
 
     /// <summary>
+    /// The detail of the alert for a session that was waiting for input when the background daemon stopped (round 8 item 1). The owner
+    /// opens its tab: the session is not resumed by the supervisor, because its pending prompt is lost with the daemon.
+    /// </summary>
+    public const string StaleBlockedDetail = "was waiting for input when the background daemon stopped; open its tab to resume it";
+
+    /// <summary>
+    /// The start of <see cref="SessionRecord.LastAlert"/> for that alert: `{AlertKind}: ` and the detail. It is cleared when the session is listed
+    /// live again, so a later stale spell alerts again.
+    /// </summary>
+    public const string StaleBlockedAlertPrefix = nameof(AlertKind.Blocked) + ": " + StaleBlockedDetail;
+
+    /// <summary>True when the last alert is the one for a session that was waiting for input when the daemon stopped.</summary>
+    public static bool IsStaleBlockedAlert(string? alert) => alert?.StartsWith(StaleBlockedAlertPrefix, StringComparison.Ordinal) == true;
+
+    /// <summary>
     /// The sessions that need the owner, oldest session first (by when it started, then by name). The rules:
     /// <list type="bullet">
     /// <item>A record with no session id is a start that failed: <see cref="AttentionReason.StartFailed"/>.</item>
@@ -84,7 +99,8 @@ public static class AttentionList
     /// <see cref="AttentionReason.Stopped"/> or <see cref="AttentionReason.Failed"/>, since such a session is not brought back.</item>
     /// <item>A session that is not listed and whose last alert is a restart loop, a failed resume, a stopped or a failed session:
     /// that reason. A listed session that is working, done or unknown is not waiting for anyone because of an old alert, so the
-    /// alert is ignored while it is listed.</item>
+    /// alert is ignored while it is listed. A session that was waiting for input when the daemon stopped (round 8 item 1) is
+    /// <see cref="AttentionReason.Blocked"/> while its alert stands, whether it is listed as stale or not listed at all.</item>
     /// <item>Each clash in <paramref name="clashes"/> gives <see cref="AttentionReason.Overlap"/> to every session that wrote the file.</item>
     /// <item>Each conflict in <paramref name="conflicts"/> gives <see cref="AttentionReason.Conflict"/> to its session.</item>
     /// <item>A session whose run reached its limit (its <see cref="SessionRecord.LimitLevel"/> is reached) gives
@@ -190,12 +206,17 @@ public static class AttentionList
                 return Item(record, AttentionReason.Stopped, record.LastAlert ?? "stopped");
             if (string.Equals(state, "failed", StringComparison.OrdinalIgnoreCase))
                 return Item(record, AttentionReason.Failed, record.LastAlert ?? "failed");
+            // A stale session that was waiting for input keeps its alert until the owner acts (round 8 item 1). A stale session without it waits for nobody.
+            if (string.Equals(state, DaemonStatus.StaleState, StringComparison.OrdinalIgnoreCase) && IsStaleBlockedAlert(record.LastAlert))
+                return Item(record, AttentionReason.Blocked, StaleBlockedDetail);
             return null;
         }
 
         // Not listed: the supervisor has lost it. Only the last alert says why it was not brought back.
         var alert = record.LastAlert;
         if (alert is null) return null;
+        if (IsStaleBlockedAlert(alert))
+            return Item(record, AttentionReason.Blocked, StaleBlockedDetail);
         if (alert.StartsWith(RestartLoopPrefix, StringComparison.Ordinal))
             return Item(record, AttentionReason.RestartLoop, alert);
         if (alert.StartsWith(ResumeFailedPrefix, StringComparison.Ordinal))

@@ -148,10 +148,12 @@ public static class SupervisorPolicy
         // Starting it again would be a second paid session. An idle `done` session is adopted too: the listing cannot tell idle
         // from completed, and new names avoid every listed name, completed ones included, so it is this run's own. A finished
         // session is then left alone, as `done` always is. Stopped and failed sessions are not adopted: the role starts again.
+        // A stale row is not adopted either: the daemon is not running, so the row is not alive (round 8 item 1).
         if (record is null || string.IsNullOrEmpty(record.SessionId))
         {
             var listed = agents.FirstOrDefault(a =>
-                string.Equals(a.Name, spec.Name, StringComparison.Ordinal) && !Is(a.EffectiveState, "stopped") && !Is(a.EffectiveState, "failed"));
+                string.Equals(a.Name, spec.Name, StringComparison.Ordinal) && !Is(a.EffectiveState, "stopped") && !Is(a.EffectiveState, "failed")
+                && !Is(a.EffectiveState, DaemonStatus.StaleState));
             if (listed?.SessionId is { Length: > 0 } adoptId)
                 return [new SupervisorAction.Adopt(spec.Role, spec, adoptId, listed.EffectiveState)];
         }
@@ -167,28 +169,21 @@ public static class SupervisorPolicy
         var agent = agents.FirstOrDefault(a => string.Equals(a.SessionId, record.SessionId, StringComparison.OrdinalIgnoreCase));
 
         // Gone: the daemon lost it or it was removed. Resume under the same id, unless it keeps happening.
-        if (agent is null)
-        {
-            // A session the owner stopped, or that failed, is not brought back even when the listing no longer shows it (`claude rm`,
-            // or a listing that dropped it). Its last listed state, or its last alert, says so (round 5 item 1).
-            if (WasStoppedOrFailed(record)) return [];
-
-            // At the run's limit a lost session is not brought back (additions item 4).
-            if (reached) return [];
-            var recentRestarts = record.RestartTimes.Count(t => now - t < TimeSpan.FromHours(1));
-            if (recentRestarts >= rules.MaxRestartsPerHour)
-            {
-                // Alerted once: while the restart-loop alert stands, nothing more is done on each pass. When the restarts age out
-                // below the limit, the resume above runs instead, and the runner clears the alert with it.
-                if (record.LastAlert?.StartsWith(AttentionList.RestartLoopPrefix, StringComparison.Ordinal) == true)
-                    return [];
-                return [new SupervisorAction.Alert(spec.Role, AlertKind.RestartLoop,
-                    $"{recentRestarts} restarts in the last hour; not restarting until someone looks.")];
-            }
-            return [new SupervisorAction.Resume(spec.Role, spec, record.SessionId)];
-        }
+        if (agent is null) return DecideLost(spec, record, now, rules, reached);
 
         var state = agent.EffectiveState;
+
+        // Stale (round 8 item 1): the daemon is not running, so a listed working or blocked session is not alive. One that was waiting for
+        // input gets one alert and is never resumed here, since its prompt is lost. One that was working is lost, and is resumed under the
+        // rules for a lost session. Stale rows come only from DaemonStatus.IdleListing, which keeps the listed state in ListedState.
+        if (string.Equals(state, DaemonStatus.StaleState, StringComparison.OrdinalIgnoreCase))
+        {
+            if (string.Equals(agent.ListedState, "blocked", StringComparison.OrdinalIgnoreCase))
+                return AttentionList.IsStaleBlockedAlert(record.LastAlert)
+                    ? []
+                    : [new SupervisorAction.Alert(spec.Role, AlertKind.Blocked, AttentionList.StaleBlockedDetail)];
+            return DecideLost(spec, record, now, rules, reached);
+        }
 
         // Waiting on a permission prompt does nothing until someone answers. Alert once per entry into the state.
         if (string.Equals(state, "blocked", StringComparison.OrdinalIgnoreCase))
@@ -215,5 +210,38 @@ public static class SupervisorPolicy
 
         // working, done (idle) and busy (interactive) are all fine. Unknown states are left alone.
         return [];
+    }
+
+    /// <summary>
+    /// A session that is lost: not in the listing, or stale and working (round 8 item 1). It is resumed under the same id, under the rules for a
+    /// lost session: a session the owner stopped or that failed is not brought back, a session that was waiting for input when the daemon stopped
+    /// is not (its prompt is lost; the owner opens its tab), nothing is resumed at the run's limit, and a restart loop stops until someone looks.
+    /// </summary>
+    private static IReadOnlyList<SupervisorAction> DecideLost(
+        SessionSpec spec,
+        SessionRecord record,
+        DateTimeOffset now,
+        SupervisorRules rules,
+        bool reached)
+    {
+        // A session the owner stopped, or that failed, is not brought back even when the listing no longer shows it (`claude rm`,
+        // or a listing that dropped it). Its last listed state, or its last alert, says so (round 5 item 1).
+        if (WasStoppedOrFailed(record)) return [];
+
+        if (AttentionList.IsStaleBlockedAlert(record.LastAlert)) return [];
+
+        // At the run's limit a lost session is not brought back (additions item 4).
+        if (reached) return [];
+        var recentRestarts = record.RestartTimes.Count(t => now - t < TimeSpan.FromHours(1));
+        if (recentRestarts >= rules.MaxRestartsPerHour)
+        {
+            // Alerted once: while the restart-loop alert stands, nothing more is done on each pass. When the restarts age out
+            // below the limit, the resume runs instead, and the runner clears the alert with it.
+            if (record.LastAlert?.StartsWith(AttentionList.RestartLoopPrefix, StringComparison.Ordinal) == true)
+                return [];
+            return [new SupervisorAction.Alert(spec.Role, AlertKind.RestartLoop,
+                $"{recentRestarts} restarts in the last hour; not restarting until someone looks.")];
+        }
+        return [new SupervisorAction.Resume(spec.Role, spec, record.SessionId)];
     }
 }

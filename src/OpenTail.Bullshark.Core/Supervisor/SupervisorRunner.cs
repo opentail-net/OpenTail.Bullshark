@@ -35,8 +35,9 @@ public sealed class SupervisorRunner
     /// <summary>
     /// The background daemon as the window read it before the pass (round 7 item 1, revised by the planner). A daemon that is not running is
     /// the normal idle state, so it never stops a pass: starts and resumes go ahead, and `claude --bg` brings the daemon up. While it is not
-    /// running, a listed session that claims working or blocked is decided on as stale (<see cref="DaemonStatus.IdleListing"/>): no
-    /// "blocked" alert and no resume on that basis alone. Null, the default, changes nothing.
+    /// running, a listed session that claims working or blocked is decided on as stale (<see cref="DaemonStatus.IdleListing"/>). A stale working
+    /// session is lost and is resumed under the rules for a lost one; a stale blocked one gets one alert and is not resumed (round 8 item 1).
+    /// Null, the default, changes nothing.
     /// </summary>
     public DaemonStatus? Daemon { get; set; }
 
@@ -136,8 +137,11 @@ public sealed class SupervisorRunner
                     // A session the owner brought back (listed in a state other than stopped or failed) no longer owes its stop or failure
                     // alert. The alert is cleared here, so a later loss is not read as a stop (round 6 item 2).
                     var revived = observed is not null && !SupervisorPolicy.IsStoppedOrFailed(observed);
-                    var alert = revived && IsStopOrFailureAlert(current.LastAlert) ? null : current.LastAlert;
-                    records[spec.Name] = current with { LastState = kept, LastAlert = alert };
+                    // The stale-blocked alert stands while the session is stale or not listed. A listing that shows it live again clears it, so the
+                    // next time it goes stale it is alerted again (round 8 item 1).
+                    var listedLive = seen is not null && !string.Equals(seen.EffectiveState, DaemonStatus.StaleState, StringComparison.OrdinalIgnoreCase);
+                    var clear = (revived && IsStopOrFailureAlert(current.LastAlert)) || (listedLive && AttentionList.IsStaleBlockedAlert(current.LastAlert));
+                    records[spec.Name] = current with { LastState = kept, LastAlert = clear ? null : current.LastAlert };
                 }
             }
         }

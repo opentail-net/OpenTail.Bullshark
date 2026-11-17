@@ -66,13 +66,14 @@ public sealed record DaemonStatus(
     /// <summary>
     /// The listing as the supervisor and the window read it. While the daemon is not running, a listed session that claims working or blocked
     /// is shown as <see cref="StaleState"/>, with no waiting reason. It is not alive, so it is not "blocked" and nothing waits for the owner on
-    /// it. Nothing else changes: a stale session is still listed, so the policy does not resume it on this basis. Any other listing, and any
+    /// it. The state it was listed with is kept in <see cref="AgentInfo.ListedState"/>, so the policy can tell a stale working session (lost:
+    /// resumed under the rules for a lost one) from a stale blocked one (alerted once, never resumed; round 8 item 1). Any other listing, and any
     /// listing while the daemon is running or its state is unknown, comes back as it is.
     /// </summary>
     public IReadOnlyList<AgentInfo> IdleListing(IReadOnlyList<AgentInfo> agents)
     {
         if (!IsNotRunning || !agents.Any(a => ClaimsLive(a.State))) return agents;
-        return agents.Select(a => ClaimsLive(a.State) ? a with { State = StaleState, WaitingFor = null } : a).ToList();
+        return agents.Select(a => ClaimsLive(a.State) ? a with { State = StaleState, WaitingFor = null, ListedState = a.State } : a).ToList();
     }
 
     /// <summary>

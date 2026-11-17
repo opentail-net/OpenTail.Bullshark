@@ -170,6 +170,18 @@ public sealed class DaemonStatusTests
     }
 
     [Fact]
+    public void AStaleRowKeepsTheStateItWasListedWithAndTheOtherRowsHaveNone()
+    {
+        // Round 8 item 1: the policy tells a stale working session from a stale blocked one by the state the listing printed.
+        var seen = DaemonStatus.Parse(NotRunningOutput).IdleListing(AgentInfo.ParseList(Listing));
+
+        Assert.Equal("working", seen[0].ListedState);
+        Assert.Equal("blocked", seen[1].ListedState);
+        Assert.Null(seen[2].ListedState);
+        Assert.Null(seen[3].ListedState);
+    }
+
+    [Fact]
     public void WhileTheDaemonRunsTheListingIsUnchanged()
     {
         var agents = AgentInfo.ParseList(Listing);

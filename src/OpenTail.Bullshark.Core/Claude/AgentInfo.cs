@@ -21,7 +21,12 @@ public sealed record AgentInfo(
     string? Cwd,
     int? Pid,
     DateTimeOffset? StartedAt,
-    string? WaitingFor = null)
+    string? WaitingFor = null,
+    /// <summary>
+    /// The state the listing printed, when <see cref="DaemonStatus.IdleListing"/> has made the row stale (round 8 item 1): "working" or "blocked".
+    /// Null for every other row. The policy needs it, since a stale working session is lost and a stale blocked one is held.
+    /// </summary>
+    string? ListedState = null)
 {
     /// <summary>The state to act on: background <c>state</c>, or interactive <c>status</c>.</summary>
     public string EffectiveState => State ?? Status ?? "unknown";

@@ -289,6 +289,38 @@ public sealed class AttentionTests : IDisposable
         Assert.Empty(AttentionList.From(store.Load().Values, []));
     }
 
+    [Fact]
+    public void AStaleBlockedSessionWaitsForTheOwnerWhileItsAlertStands()
+    {
+        // Round 8 item 1: the daemon stopped while the session waited for input. It is stale, and its alert keeps it in Needs you.
+        var stale = DaemonStatus.Parse("not running\n").IdleListing([Agent(SessionA, "blocked")]);
+        var record = Record("coder", SessionA, Now.AddHours(-1), lastAlert: AttentionList.StaleBlockedAlertPrefix);
+
+        var item = Assert.Single(AttentionList.From([record], stale));
+
+        Assert.Equal(AttentionReason.Blocked, item.Reason);
+        Assert.Equal(AttentionList.StaleBlockedDetail, item.Detail);
+    }
+
+    [Fact]
+    public void AStaleBlockedSessionStaysInNeedsYouWhenTheRosterDropsItsRow()
+    {
+        var record = Record("coder", SessionA, Now.AddHours(-1), lastAlert: AttentionList.StaleBlockedAlertPrefix);
+
+        var item = Assert.Single(AttentionList.From([record], []));
+
+        Assert.Equal(AttentionReason.Blocked, item.Reason);
+    }
+
+    [Fact]
+    public void AStaleSessionWithoutItsAlertWaitsForNobody()
+    {
+        // A stale working session, or a stale one whose alert was cleared, is not waiting for anyone.
+        var stale = DaemonStatus.Parse("not running\n").IdleListing([Agent(SessionA, "working")]);
+
+        Assert.Empty(AttentionList.From([Record("coder", SessionA, Now.AddHours(-1))], stale));
+    }
+
     private sealed class FixedClock(DateTimeOffset now) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => now;

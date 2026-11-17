@@ -111,18 +111,85 @@ public sealed class DaemonGateTests : IDisposable
     }
 
     [Fact]
-    public async Task ADeadDaemonRaisesNoBlockedAlertForAStaleBlockedSessionAndResumesNothing()
+    public async Task ADeadDaemonAlertsOnceForAStaleBlockedSessionAndResumesNothing()
     {
-        // The listing says blocked, which a daemon that is not running cannot make true: it is stale. No alert, no resume, no start.
+        // The listing says blocked, which a daemon that is not running cannot make true: it is stale. Its prompt is lost, so the owner
+        // is told once (round 8 item 1), and nothing is resumed or started.
         var claude = new FakeClaude(listedState: "blocked");
+        var store = StoreWith(RecordOfPlanner("working"));
+        var spec = TestSpecs.Planner(@"C:\W", "t");
+
+        var first = await RunnerFor(claude, store, NotRunning).CheckOnceAsync([spec]);
+        var second = await RunnerFor(claude, store, NotRunning).CheckOnceAsync([spec]);
+
+        var alert = Assert.IsType<SupervisorAction.Alert>(Assert.Single(first));
+        Assert.Equal(AlertKind.Blocked, alert.Kind);
+        Assert.Equal(AttentionList.StaleBlockedDetail, alert.Detail);
+        Assert.Empty(second);
+        Assert.Empty(LaunchArgs(claude.Runner));
+    }
+
+    [Fact]
+    public async Task ADeadDaemonDoesNotResumeAStaleBlockedSessionWhenItsRowIsDropped()
+    {
+        // The roster later drops the row. The session is then "gone", but its alert says it was waiting for input: it is still not resumed.
+        var claude = new FakeClaude(listedState: "blocked");
+        var store = StoreWith(RecordOfPlanner("working"));
+        var spec = TestSpecs.Planner(@"C:\W", "t");
+        await RunnerFor(claude, store, NotRunning).CheckOnceAsync([spec]);
+
+        claude.Listed = Listing(null);
+        var performed = await RunnerFor(claude, store, NotRunning).CheckOnceAsync([spec]);
+
+        Assert.Empty(performed);
+        Assert.DoesNotContain("--resume", LaunchArgs(claude.Runner));
+    }
+
+    [Fact]
+    public async Task ADeadDaemonResumesAStaleWorkingSessionAsALostOne()
+    {
+        // A working row that the dead daemon left behind is lost: it is resumed under its id, as a session the roster dropped would be.
+        var claude = new FakeClaude(listedState: "working");
         var store = StoreWith(RecordOfPlanner("working"));
 
         var performed = await RunnerFor(claude, store, NotRunning).CheckOnceAsync([TestSpecs.Planner(@"C:\W", "t")]);
 
-        Assert.Empty(performed);
-        Assert.Empty(LaunchArgs(claude.Runner));
-        // The state the pass saw is recorded as stale, so the owner is told when the session is blocked again with the daemon up.
-        Assert.Equal(DaemonStatus.StaleState, store.Load().Values.Single().LastState);
+        Assert.IsType<SupervisorAction.Resume>(Assert.Single(performed));
+        Assert.Contains("--resume", LaunchArgs(claude.Runner));
+    }
+
+    [Fact]
+    public async Task ASessionListedLiveAgainClearsItsStaleAlertSoALaterStaleSpellAlertsAgain()
+    {
+        var claude = new FakeClaude(listedState: "blocked");
+        var store = StoreWith(RecordOfPlanner("working"));
+        var spec = TestSpecs.Planner(@"C:\W", "t");
+        await RunnerFor(claude, store, NotRunning).CheckOnceAsync([spec]);
+
+        claude.Listed = Listing("working");
+        var back = await RunnerFor(claude, store, Healthy).CheckOnceAsync([spec]);
+        Assert.Empty(back);
+        Assert.Null(store.Load().Values.Single().LastAlert);
+
+        claude.Listed = Listing("blocked");
+        var again = await RunnerFor(claude, store, NotRunning).CheckOnceAsync([spec]);
+        Assert.Equal(AttentionList.StaleBlockedDetail, Assert.IsType<SupervisorAction.Alert>(Assert.Single(again)).Detail);
+    }
+
+    [Fact]
+    public async Task AnUnreachableDaemonChangesNothing()
+    {
+        // "unreachable" without a "not running" line is Unknown: the listing is decided on as it is, so a blocked session gets the normal alert.
+        var unreachable = DaemonStatus.Parse("daemon: unreachable (connect ENOENT)\n  control.sock: unreachable (connect ENOENT)\n");
+        Assert.Equal(DaemonState.Unknown, unreachable.State);
+
+        var withoutCheck = await BlockedPass(daemon: null);
+        var pass = await BlockedPass(daemon: unreachable);
+
+        Assert.Equal(withoutCheck.Performed.Select(a => a.GetType()), pass.Performed.Select(a => a.GetType()));
+        Assert.Equal(AlertKind.Blocked, Assert.IsType<SupervisorAction.Alert>(Assert.Single(pass.Performed)).Kind);
+        Assert.NotEqual(AttentionList.StaleBlockedDetail, Assert.IsType<SupervisorAction.Alert>(Assert.Single(pass.Performed)).Detail);
+        Assert.Empty(pass.Args);
     }
 
     [Fact]
@@ -147,7 +214,7 @@ public sealed class DaemonGateTests : IDisposable
         var idle = await RunnerFor(claude, store, NotRunning).CheckOnceAsync([TestSpecs.Planner(@"C:\W", "t")]);
         var back = await RunnerFor(claude, store, Healthy).CheckOnceAsync([TestSpecs.Planner(@"C:\W", "t")]);
 
-        Assert.Empty(idle);
+        Assert.Equal(AttentionList.StaleBlockedDetail, Assert.IsType<SupervisorAction.Alert>(Assert.Single(idle)).Detail);
         var alert = Assert.IsType<SupervisorAction.Alert>(Assert.Single(back));
         Assert.Equal(AlertKind.Blocked, alert.Kind);
     }
