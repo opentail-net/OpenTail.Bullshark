@@ -92,6 +92,65 @@ public sealed class SupervisorPolicyTests
         Assert.IsType<SupervisorAction.Resume>(Assert.Single(actions));
     }
 
+    private static AgentInfo NamedAgent(string name, string state, string sessionId) =>
+        new(Id: sessionId[..8], SessionId: sessionId, Name: name, Kind: "background", State: state, Status: null,
+            Cwd: null, Pid: null, StartedAt: null);
+
+    [Fact]
+    public void AStoppedSessionIsAlertedOnceAndNeverResumed()
+    {
+        var first = SupervisorPolicy.Decide(Planner, Record(lastState: "working"), [Agent("stopped")], Now, SupervisorRules.Default);
+        var alert = Assert.IsType<SupervisorAction.Alert>(Assert.Single(first));
+        Assert.Equal(AlertKind.Stopped, alert.Kind);
+
+        // Still stopped on the next pass: no repeat alert, and no resume.
+        var second = SupervisorPolicy.Decide(Planner, Record(lastState: "stopped"), [Agent("stopped")], Now, SupervisorRules.Default);
+        Assert.Empty(second);
+    }
+
+    [Fact]
+    public void AFailedSessionIsAlertedOnceAndNeverResumed()
+    {
+        var first = SupervisorPolicy.Decide(Planner, Record(lastState: "working"), [Agent("failed")], Now, SupervisorRules.Default);
+        var alert = Assert.IsType<SupervisorAction.Alert>(Assert.Single(first));
+        Assert.Equal(AlertKind.Failed, alert.Kind);
+
+        var second = SupervisorPolicy.Decide(Planner, Record(lastState: "failed"), [Agent("failed")], Now, SupervisorRules.Default);
+        Assert.Empty(second);
+    }
+
+    [Fact]
+    public void ADoneSessionIsNeitherResumedNorAlerted()
+    {
+        // A completed session is listed with the completed ones. It is not "gone", so nothing resumes it.
+        var actions = SupervisorPolicy.Decide(Planner, Record(lastState: "working"), [Agent("done")], Now, SupervisorRules.Default);
+        Assert.Empty(actions);
+    }
+
+    [Fact]
+    public void AFinishedSessionOfTheSameNameIsNotAdopted()
+    {
+        // An earlier run's session of this name has ended. It is not running, so the role is started again.
+        foreach (var state in new[] { "done", "stopped", "failed" })
+        {
+            var actions = SupervisorPolicy.Decide(Planner, null,
+                [NamedAgent(TestSpecs.PlannerName, state, "99999999-aaaa-bbbb-cccc-dddddddddddd")], Now, SupervisorRules.Default);
+            Assert.IsType<SupervisorAction.Start>(Assert.Single(actions));
+        }
+    }
+
+    [Fact]
+    public void ARunningSessionOfTheSameNameIsAdoptedRatherThanAFinishedOne()
+    {
+        var finished = NamedAgent(TestSpecs.PlannerName, "done", "99999999-aaaa-bbbb-cccc-dddddddddddd");
+        var running = NamedAgent(TestSpecs.PlannerName, "working", SessionId);
+
+        var actions = SupervisorPolicy.Decide(Planner, null, [finished, running], Now, SupervisorRules.Default);
+
+        var adopt = Assert.IsType<SupervisorAction.Adopt>(Assert.Single(actions));
+        Assert.Equal(SessionId, adopt.SessionId);
+    }
+
     [Fact]
     public void DefaultRolesMatchTheReadmeDecisions()
     {

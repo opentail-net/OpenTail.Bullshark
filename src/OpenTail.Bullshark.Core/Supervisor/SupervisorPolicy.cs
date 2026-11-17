@@ -18,6 +18,18 @@ public enum AlertKind
 
     /// <summary>A start or a resume failed. The message says why. A failed start is not retried until the owner asks.</summary>
     StartFailed,
+
+    /// <summary>
+    /// The session is listed as `stopped`. It is not brought back: the owner starts the run again. Raised once per entry into
+    /// the state (via <see cref="SessionRecord.LastState"/>).
+    /// </summary>
+    Stopped,
+
+    /// <summary>
+    /// The session is listed as `failed`. It is not brought back: the owner looks at its tab, then starts the run again. Raised once
+    /// per entry into the state.
+    /// </summary>
+    Failed,
 }
 
 /// <summary>One thing the supervisor decided to do on this check.</summary>
@@ -48,6 +60,15 @@ public sealed record SupervisorRules(int MaxRestartsPerHour = 3)
 /// </summary>
 public static class SupervisorPolicy
 {
+    /// <summary>
+    /// The states that mean a session has ended. The agent listing now carries completed sessions, so these are listed too.
+    /// `done` is also the state of an idle session that is still running, and the listing does not tell the two apart, so a
+    /// `done` session is never adopted as the role's session (a finished one would then never be replaced).
+    /// </summary>
+    private static bool HasEnded(string? state) => Is(state, "done") || Is(state, "stopped") || Is(state, "failed");
+
+    private static bool Is(string? state, string expected) => string.Equals(state, expected, StringComparison.OrdinalIgnoreCase);
+
     public static IReadOnlyList<SupervisorAction> Decide(
         SessionSpec spec,
         SessionRecord? record,
@@ -55,11 +76,13 @@ public static class SupervisorPolicy
         DateTimeOffset now,
         SupervisorRules rules)
     {
-        // Adoption first: a session of this name is already listed, because the record was lost or the start was not read back.
-        // Starting it again would be a second paid session.
+        // Adoption first: a session of this name is already running, because the record was lost or the start was not read back.
+        // Starting it again would be a second paid session. A session of this name that has ended is not running, so it is not
+        // adopted: the role is started again.
         if (record is null || string.IsNullOrEmpty(record.SessionId))
         {
-            var listed = agents.FirstOrDefault(a => string.Equals(a.Name, spec.Name, StringComparison.Ordinal));
+            var listed = agents.FirstOrDefault(a =>
+                string.Equals(a.Name, spec.Name, StringComparison.Ordinal) && !HasEnded(a.EffectiveState));
             if (listed?.SessionId is { Length: > 0 } adoptId)
                 return [new SupervisorAction.Adopt(spec.Role, spec, adoptId, listed.EffectiveState)];
         }
@@ -94,6 +117,20 @@ public static class SupervisorPolicy
                 : [new SupervisorAction.Alert(spec.Role, AlertKind.Blocked,
                     "Waiting for input: a permission answer, an answer to a question, or an idle session. Open its tab to see which.")];
         }
+
+        // Stopped or failed: the session is listed, so it is not "gone", and it is never brought back by the supervisor. The owner
+        // is told once per entry into the state, as for a blocked session.
+        if (Is(state, "stopped"))
+            return Is(record.LastState, "stopped")
+                ? []
+                : [new SupervisorAction.Alert(spec.Role, AlertKind.Stopped,
+                    "the session was stopped, so it is not restarted. Start the run again to continue.")];
+
+        if (Is(state, "failed"))
+            return Is(record.LastState, "failed")
+                ? []
+                : [new SupervisorAction.Alert(spec.Role, AlertKind.Failed,
+                    "the session failed, so it is not restarted. Look at its tab, then start the run again.")];
 
         // working, done (idle) and busy (interactive) are all fine. Unknown states are left alone.
         return [];

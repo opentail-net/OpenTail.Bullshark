@@ -128,6 +128,58 @@ public sealed class SupervisorRunnerTests : IDisposable
     }
 
     [Fact]
+    public async Task ASessionThatFinishedIsNotResumedBecauseThePassSeesItInTheCompletedListing()
+    {
+        var store = new StateStore(Path.Combine(_dir, "state.json"));
+        store.Save(new Dictionary<string, SessionRecord>
+        {
+            [TestSpecs.PlannerName] = new(SessionRole.Planner, PlannerSession, TestSpecs.PlannerName, DateTimeOffset.UnixEpoch, 0, [], null, null),
+        });
+        var clock = new FakeClock(new DateTimeOffset(2026, 11, 17, 12, 0, 0, TimeSpan.Zero));
+        // The active listing is empty, because the session has finished. Only the completed listing shows it, as done.
+        var cli = new FakeCliRunner(args => args[0] switch
+        {
+            "agents" => FakeCliRunner.Ok(args.Contains("--all") ? Listing(PlannerSession, "done") : "[]"),
+            _ => FakeCliRunner.Ok(),
+        });
+
+        var performed = await Runner(new ClaudeCli(cli), store, clock).CheckOnceAsync([TestSpecs.Planner(@"C:\W", "brief")]);
+
+        Assert.Empty(performed);
+        Assert.DoesNotContain(cli.Calls, c => c.Args[0] == "--bg");
+        Assert.Contains("--all", cli.Calls.Single(c => c.Args[0] == "agents").Args);
+    }
+
+    [Fact]
+    public async Task AStoppedSessionIsReportedOnceAndNotBroughtBack()
+    {
+        var store = new StateStore(Path.Combine(_dir, "state.json"));
+        store.Save(new Dictionary<string, SessionRecord>
+        {
+            [TestSpecs.PlannerName] = new(SessionRole.Planner, PlannerSession, TestSpecs.PlannerName, DateTimeOffset.UnixEpoch, 0, [], null, null),
+        });
+        var clock = new FakeClock(new DateTimeOffset(2026, 11, 17, 12, 0, 0, TimeSpan.Zero));
+        var logged = new List<string>();
+        var cli = new FakeCliRunner(args => args[0] switch
+        {
+            "agents" => FakeCliRunner.Ok(Listing(PlannerSession, "stopped")),
+            _ => FakeCliRunner.Ok(),
+        });
+        var runner = Runner(new ClaudeCli(cli), store, clock, logged.Add);
+
+        var firstPass = await runner.CheckOnceAsync([TestSpecs.Planner(@"C:\W", "brief")]);
+        var secondPass = await runner.CheckOnceAsync([TestSpecs.Planner(@"C:\W", "brief")]);
+
+        Assert.Equal(AlertKind.Stopped, Assert.IsType<SupervisorAction.Alert>(Assert.Single(firstPass)).Kind);
+        Assert.Empty(secondPass);
+        Assert.DoesNotContain(cli.Calls, c => c.Args[0] == "--bg");
+        Assert.Single(logged, l => l.Contains("ALERT Stopped"));
+        var saved = store.Load()[TestSpecs.PlannerName];
+        Assert.StartsWith("Stopped: ", saved.LastAlert);
+        Assert.Equal("stopped", saved.LastState);
+    }
+
+    [Fact]
     public async Task TheStateFileSurvivesARestartOfTheSupervisor()
     {
         var path = Path.Combine(_dir, "state.json");

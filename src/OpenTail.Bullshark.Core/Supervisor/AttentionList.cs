@@ -14,6 +14,12 @@ public enum AttentionReason
 
     /// <summary>A start or a resume failed. The owner asks for a retry (or looks at the reason).</summary>
     StartFailed,
+
+    /// <summary>The session was stopped and is not brought back (the stopped alert, or listed as `stopped`). The owner starts the run again.</summary>
+    Stopped,
+
+    /// <summary>The session failed and is not brought back (the failed alert, or listed as `failed`). The owner looks at its tab.</summary>
+    Failed,
 }
 
 /// <summary>One session that waits for the owner. <see cref="SessionId"/> is null for a start that never got a session.</summary>
@@ -36,13 +42,21 @@ public static class AttentionList
     /// <summary>The start of <see cref="SessionRecord.LastAlert"/> for a restart loop. Written as `{AlertKind}: {detail}`.</summary>
     public const string RestartLoopPrefix = "RestartLoop: ";
 
+    /// <summary>The start of <see cref="SessionRecord.LastAlert"/> for a stopped session. Written as `{AlertKind}: {detail}`.</summary>
+    public const string StoppedAlertPrefix = nameof(AlertKind.Stopped) + ": ";
+
+    /// <summary>The start of <see cref="SessionRecord.LastAlert"/> for a failed session. Written as `{AlertKind}: {detail}`.</summary>
+    public const string FailedAlertPrefix = nameof(AlertKind.Failed) + ": ";
+
     /// <summary>
     /// The sessions that need the owner, oldest session first (by when it started, then by name). The rules:
     /// <list type="bullet">
     /// <item>A record with no session id is a start that failed: <see cref="AttentionReason.StartFailed"/>.</item>
-    /// <item>A session that is listed as `blocked`: <see cref="AttentionReason.Blocked"/>.</item>
-    /// <item>A session that is not listed and whose last alert is a restart loop or a failed resume: that reason. A listed session
-    /// is not waiting for anyone because of an old alert, so the alert is ignored while it is listed.</item>
+    /// <item>A session that is listed as `blocked`: <see cref="AttentionReason.Blocked"/>. Listed as `stopped` or `failed`:
+    /// <see cref="AttentionReason.Stopped"/> or <see cref="AttentionReason.Failed"/>, since such a session is not brought back.</item>
+    /// <item>A session that is not listed and whose last alert is a restart loop, a failed resume, a stopped or a failed session:
+    /// that reason. A listed session that is working, done or unknown is not waiting for anyone because of an old alert, so the
+    /// alert is ignored while it is listed.</item>
     /// </list>
     /// The time a session entered its state is not recorded, so "oldest" means the session's own start time.
     /// </summary>
@@ -83,9 +97,14 @@ public static class AttentionList
         var listed = agents.FirstOrDefault(a => string.Equals(a.SessionId, record.SessionId, StringComparison.OrdinalIgnoreCase));
         if (listed is not null)
         {
-            return string.Equals(listed.EffectiveState, "blocked", StringComparison.OrdinalIgnoreCase)
-                ? Item(record, AttentionReason.Blocked, "waiting for input")
-                : null;
+            var state = listed.EffectiveState;
+            if (string.Equals(state, "blocked", StringComparison.OrdinalIgnoreCase))
+                return Item(record, AttentionReason.Blocked, "waiting for input");
+            if (string.Equals(state, "stopped", StringComparison.OrdinalIgnoreCase))
+                return Item(record, AttentionReason.Stopped, record.LastAlert ?? "stopped");
+            if (string.Equals(state, "failed", StringComparison.OrdinalIgnoreCase))
+                return Item(record, AttentionReason.Failed, record.LastAlert ?? "failed");
+            return null;
         }
 
         // Not listed: the supervisor has lost it. Only the last alert says why it was not brought back.
@@ -95,6 +114,10 @@ public static class AttentionList
             return Item(record, AttentionReason.RestartLoop, alert);
         if (alert.StartsWith(ResumeFailedPrefix, StringComparison.Ordinal))
             return Item(record, AttentionReason.StartFailed, alert);
+        if (alert.StartsWith(StoppedAlertPrefix, StringComparison.Ordinal))
+            return Item(record, AttentionReason.Stopped, alert);
+        if (alert.StartsWith(FailedAlertPrefix, StringComparison.Ordinal))
+            return Item(record, AttentionReason.Failed, alert);
         return null;
     }
 

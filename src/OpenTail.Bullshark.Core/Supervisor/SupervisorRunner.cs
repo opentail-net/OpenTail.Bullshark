@@ -36,12 +36,15 @@ public sealed class SupervisorRunner
         _log = log ?? (_ => { });
     }
 
-    /// <summary>Runs one pass for every desired session and returns what was done, including the failures.</summary>
+    /// <summary>
+    /// Runs one pass for every desired session and returns what was done, including the failures. It lists the agents with the
+    /// completed ones, so a session that finished or was stopped is seen as such and is not taken for a lost one.
+    /// </summary>
     public async Task<IReadOnlyList<SupervisorAction>> CheckOnceAsync(
         IReadOnlyList<SessionSpec> specs,
         CancellationToken cancellationToken = default)
     {
-        var agents = await _cli.ListAgentsAsync(cancellationToken);
+        var agents = await _cli.ListAgentsAsync(includeCompleted: true, cancellationToken: cancellationToken);
         return await CheckOnceAsync(specs, agents, cancellationToken);
     }
 

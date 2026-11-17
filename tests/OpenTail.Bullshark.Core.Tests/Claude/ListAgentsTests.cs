@@ -20,4 +20,19 @@ public sealed class ListAgentsTests
 
         Assert.Empty(agents);
     }
+
+    [Fact]
+    public async Task TheDefaultListingTakesNoAllFlagAndTheCompletedOneDoes()
+    {
+        var runner = new FakeCliRunner(_ => FakeCliRunner.Ok("[]"));
+        var cli = new ClaudeCli(runner);
+
+        await cli.ListAgentsAsync();
+        await cli.ListAgentsAsync(includeCompleted: false);
+        await cli.ListAgentsAsync(includeCompleted: true);
+
+        Assert.Equal(["agents", "--json"], runner.Calls[0].Args);
+        Assert.Equal(["agents", "--json"], runner.Calls[1].Args);
+        Assert.Equal(["agents", "--json", "--all"], runner.Calls[2].Args);
+    }
 }

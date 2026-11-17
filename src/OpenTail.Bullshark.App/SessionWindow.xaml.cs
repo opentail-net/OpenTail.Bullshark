@@ -185,6 +185,7 @@ public partial class SessionWindow : Window
     /// </summary>
     private sealed record PassReads(
         IReadOnlyList<AgentInfo> Agents,
+        IReadOnlyList<AgentInfo> PassAgents,
         IReadOnlyDictionary<string, SessionRecord> Records,
         TrustPlan Trust,
         Dictionary<string, TailFacts> Facts,
@@ -251,12 +252,14 @@ public partial class SessionWindow : Window
     }
 
     /// <summary>
-    /// The reads a pass needs, on a pool thread. The agent listing comes first: if it fails, nothing else is read and no pass runs.
-    /// Touches no window object.
+    /// The reads a pass needs, on a pool thread. The agent listings come first: if one fails, nothing else is read and no pass runs.
+    /// The active listing is for the rail; the pass gets its own listing with the completed sessions, so that a session that
+    /// finished or was stopped is not taken for a lost one. Touches no window object.
     /// </summary>
     private async Task<PassReads> ReadForPassAsync(Dictionary<string, string> known)
     {
         var agents = await _cli.ListAgentsAsync();
+        var passAgents = await _cli.ListAgentsAsync(includeCompleted: true);
         var (records, recordsProblem) = LoadRecords(_store);
         var (runs, runsProblem) = LoadRuns(_runStore);
         var plan = PassSnapshot.Trust(RunStore.SpecsOf(runs), ClaudeTrust.Read(TrustCheck.DefaultClaudeJsonPath));
@@ -265,7 +268,7 @@ public partial class SessionWindow : Window
         // labels are recomputed each time.
         var ids = records.Values.Select(r => r.SessionId).Where(id => id.Length > 0).ToList();
         var (facts, paths) = ReadRunningFacts(ids, known);
-        return new PassReads(agents, records, plan, facts, paths, recordsProblem ?? runsProblem);
+        return new PassReads(agents, passAgents, records, plan, facts, paths, recordsProblem ?? runsProblem);
     }
 
     /// <summary>
@@ -274,7 +277,7 @@ public partial class SessionWindow : Window
     /// </summary>
     private async Task<(int Actions, IReadOnlyDictionary<string, SessionRecord> Records, string? Problem)> RunPassAndReadAsync(PassReads read)
     {
-        var actions = await _loop.RunPassAsync(read.Trust.Runnable, read.Agents);
+        var actions = await _loop.RunPassAsync(read.Trust.Runnable, read.PassAgents);
         var (records, problem) = LoadRecords(_store);
         return (actions, records, problem);
     }

@@ -45,9 +45,19 @@ public sealed class ClaudeCli
         _clock = clock ?? TimeProvider.System;
     }
 
-    public async Task<IReadOnlyList<AgentInfo>> ListAgentsAsync(CancellationToken cancellationToken = default)
+    /// <summary>The sessions `claude agents --json` lists now: the active ones, interactive and background.</summary>
+    public Task<IReadOnlyList<AgentInfo>> ListAgentsAsync(CancellationToken cancellationToken = default) =>
+        ListAgentsAsync(includeCompleted: false, cancellationToken);
+
+    /// <summary>
+    /// The sessions `claude agents --json` lists. With <paramref name="includeCompleted"/>, `--all` adds the completed background
+    /// sessions, so one that finished or was stopped is still listed, with its state (done, stopped, failed). The supervisor's
+    /// passes use it; the rail and the name checks use the active list.
+    /// </summary>
+    public async Task<IReadOnlyList<AgentInfo>> ListAgentsAsync(bool includeCompleted, CancellationToken cancellationToken = default)
     {
-        var result = await RunAsync(["agents", "--json"], null, cancellationToken);
+        IReadOnlyList<string> args = includeCompleted ? ["agents", "--json", "--all"] : ["agents", "--json"];
+        var result = await RunAsync(args, null, cancellationToken);
         try
         {
             return AgentInfo.ParseList(result.StdOut);

@@ -22,10 +22,13 @@ public sealed class SupervisorLoop
         _log = log;
     }
 
-    /// <summary>Runs one pass and returns the number of actions taken (starts, resumes and alerts). It lists the agents itself.</summary>
+    /// <summary>
+    /// Runs one pass and returns the number of actions taken (starts, resumes and alerts). It lists the agents itself, with the
+    /// completed ones (see <see cref="SupervisorRunner.CheckOnceAsync(IReadOnlyList{SessionSpec}, CancellationToken)"/>).
+    /// </summary>
     public async Task<int> RunPassAsync(IReadOnlyList<SessionSpec> specs, CancellationToken cancellationToken = default)
     {
-        var agents = await _cli.ListAgentsAsync(cancellationToken);
+        var agents = await _cli.ListAgentsAsync(includeCompleted: true, cancellationToken: cancellationToken);
         return await RunPassAsync(specs, agents, cancellationToken);
     }
 

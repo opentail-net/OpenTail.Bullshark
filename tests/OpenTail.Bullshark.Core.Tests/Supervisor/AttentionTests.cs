@@ -104,6 +104,42 @@ public sealed class AttentionTests : IDisposable
     }
 
     [Fact]
+    public void AStoppedSessionThatIsNotBroughtBackNeedsTheOwner()
+    {
+        var stopped = Record("coder", SessionA, Now, lastAlert: AttentionList.StoppedAlertPrefix + "the session was stopped.");
+
+        var item = Assert.Single(AttentionList.From([stopped], []));
+
+        Assert.Equal(AttentionReason.Stopped, item.Reason);
+        Assert.Equal(SessionA, item.SessionId);
+    }
+
+    [Fact]
+    public void AFailedSessionThatIsNotBroughtBackNeedsTheOwner()
+    {
+        var failed = Record("coder", SessionA, Now, lastAlert: AttentionList.FailedAlertPrefix + "the session failed.");
+
+        var item = Assert.Single(AttentionList.From([failed], []));
+
+        Assert.Equal(AttentionReason.Failed, item.Reason);
+    }
+
+    [Fact]
+    public void ASessionListedAsStoppedOrFailedNeedsTheOwner()
+    {
+        Assert.Equal(AttentionReason.Stopped, Assert.Single(AttentionList.From([Record("coder", SessionA, Now)], [Agent(SessionA, "stopped")])).Reason);
+        Assert.Equal(AttentionReason.Failed, Assert.Single(AttentionList.From([Record("coder", SessionA, Now)], [Agent(SessionA, "failed")])).Reason);
+    }
+
+    [Fact]
+    public void AStaleStoppedAlertIsIgnoredOnceTheSessionIsWorkingAgain()
+    {
+        var back = Record("coder", SessionA, Now, lastAlert: AttentionList.StoppedAlertPrefix + "old");
+
+        Assert.Empty(AttentionList.From([back], [Agent(SessionA, "working")]));
+    }
+
+    [Fact]
     public void AGoneSessionWithNoAlertIsNotWaitingForAnyone()
     {
         // Lost, but the supervisor is resuming it on the next pass: nothing for the owner to do yet.

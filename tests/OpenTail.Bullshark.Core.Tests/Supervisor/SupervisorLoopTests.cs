@@ -79,6 +79,17 @@ public sealed class SupervisorLoopTests : IDisposable
     }
 
     [Fact]
+    public async Task ThePassListsWithTheCompletedSessions()
+    {
+        var runner = Cli(string.Empty);
+        var (loop, _, _) = Build(runner);
+
+        await loop.RunPassAsync([TestSpecs.Planner(@"C:\W", "t")]);
+
+        Assert.Contains("--all", runner.Calls.Single(c => c.Args[0] == "agents").Args);
+    }
+
+    [Fact]
     public void TheShortIdIsTheFirstEightCharacters()
     {
         Assert.Equal("4431d697", ClaudeCli.ShortIdOf("4431d697-aa2c-4f96-8982-159d6cf42f74"));
