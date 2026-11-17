@@ -13,6 +13,18 @@ public partial class SessionWindow
 {
     private readonly StorageView _storage = new() { Visibility = Visibility.Hidden };
 
+    /// <summary>
+    /// True once a pass has read claude's session list (with the completed ones), and the last pass did not fail. Until then the
+    /// archive refuses every file: a session that claude lists must never be moved (round 5 item 4). Written on the UI thread only.
+    /// </summary>
+    private bool _listingKnown;
+
+    /// <summary>
+    /// Archiving needs both protections: the session list has been read, and the state file that records the sessions can be read.
+    /// The Archive button and the archive itself follow this.
+    /// </summary>
+    private bool ArchiveAllowed => _listingKnown && _storeProblem is null;
+
     private void InitStorage()
     {
         Pane.Children.Add(_storage);
@@ -55,6 +67,14 @@ public partial class SessionWindow
             return;
         }
 
+        // The protected sessions come from the listing and the state file. Without either, the archive waits (round 5 item 4).
+        var (records, recordsProblem) = LoadRecords(_store);
+        if (!_listingKnown || recordsProblem is not null || _storeProblem is not null)
+        {
+            _storage.SetResult("Nothing is archived yet: claude's session list and the state file must both be read first.");
+            return;
+        }
+
         var answer = MessageBox.Show(this,
             $"Move {paths.Count} transcript(s) to the archive? They leave History and search. Restore brings them back.\n\n" +
             string.Join("\n", paths.Select(p => Path.GetFileName(p))),
@@ -64,7 +84,7 @@ public partial class SessionWindow
         var protectedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var agent in _allAgents)
             if (agent.SessionId is { Length: > 0 } listed) protectedIds.Add(listed);
-        foreach (var record in ReadRecords().Values)
+        foreach (var record in records.Values)
             if (record.SessionId.Length > 0) protectedIds.Add(record.SessionId);
 
         var outcomes = await Task.Run(() => TranscriptArchive.Archive(

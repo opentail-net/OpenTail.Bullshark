@@ -15,18 +15,27 @@ public static class TranscriptArchive
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude", "bullshark-archive");
 
     /// <summary>
+    /// A transcript written this recently may belong to a session that is still running, so it is not archived (round 5 item 4).
+    /// </summary>
+    public static readonly TimeSpan RecentWindow = TimeSpan.FromHours(24);
+
+    /// <summary>
     /// Moves each file into <paramref name="archiveRoot"/>, under the same relative path it has below <paramref name="projectsRoot"/>.
-    /// A file is refused, and stays where it is, when: it is not under the projects folder; it is gone; its session is one of
-    /// <paramref name="protectedSessionIds"/> (listed by `claude agents --all`, or recorded in the state file); or its target already exists
-    /// (nothing is overwritten). Empty folders left behind are not removed.
+    /// A file is refused, and stays where it is, when: it is not under the projects folder; it is gone; the session list has not been
+    /// read yet (<paramref name="protectedSessionIds"/> is null, so every file waits); its session is one of
+    /// <paramref name="protectedSessionIds"/> (listed by `claude agents --all`, or recorded in the state file); it was written within
+    /// <see cref="RecentWindow"/> of <paramref name="now"/> (the clock, when null); or its target already exists (nothing is
+    /// overwritten). Empty folders left behind are not removed.
     /// </summary>
     public static IReadOnlyList<ArchiveOutcome> Archive(
         IEnumerable<string> paths,
         string projectsRoot,
         string archiveRoot,
-        IReadOnlySet<string> protectedSessionIds)
+        IReadOnlySet<string>? protectedSessionIds,
+        DateTimeOffset? now = null)
     {
         var outcomes = new List<ArchiveOutcome>();
+        var clock = now ?? DateTimeOffset.UtcNow;
         foreach (var path in paths)
         {
             var relative = RelativeInside(projectsRoot, path);
@@ -40,9 +49,21 @@ public static class TranscriptArchive
                 outcomes.Add(new ArchiveOutcome(path, false, "The file is gone."));
                 continue;
             }
+            if (protectedSessionIds is null)
+            {
+                outcomes.Add(new ArchiveOutcome(path, false,
+                    "claude's session list has not been read yet, so nothing is archived. Try again after the next check."));
+                continue;
+            }
             if (protectedSessionIds.Contains(Path.GetFileNameWithoutExtension(path)))
             {
                 outcomes.Add(new ArchiveOutcome(path, false, "This session is listed by claude or recorded by Bullshark, so it is not archived."));
+                continue;
+            }
+            if (clock - new DateTimeOffset(File.GetLastWriteTimeUtc(path), TimeSpan.Zero) < RecentWindow)
+            {
+                outcomes.Add(new ArchiveOutcome(path, false,
+                    "Written in the last 24 hours, so it may be a session that is still running. It is not archived."));
                 continue;
             }
 

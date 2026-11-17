@@ -16,14 +16,22 @@ public sealed class StorageView : UserControl
     private readonly StackPanel _archived = new();
     private readonly TextBlock _transcriptsCaption = new() { FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 4) };
     private readonly TextBlock _archivedCaption = new() { FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 12, 0, 4) };
+    private readonly Button _archive;
+    private readonly TextBlock _archiveWait = new()
+    {
+        Text = "Archive waits until claude's session list has been read, so that no running session is moved.",
+        TextWrapping = TextWrapping.Wrap,
+        Margin = new Thickness(0, 4, 0, 0),
+        Visibility = Visibility.Collapsed,
+    };
 
     public StorageView()
     {
         var refresh = new Button { Content = "Refresh", Padding = new Thickness(10, 2, 10, 2), HorizontalAlignment = HorizontalAlignment.Left };
         refresh.Click += (_, _) => RefreshRequested?.Invoke();
 
-        var archive = new Button { Content = "Archive checked…", Padding = new Thickness(10, 2, 10, 2), Margin = new Thickness(8, 0, 0, 0) };
-        archive.Click += (_, _) => ArchiveRequested?.Invoke(Checked(_transcripts));
+        _archive = new Button { Content = "Archive checked…", Padding = new Thickness(10, 2, 10, 2), Margin = new Thickness(8, 0, 0, 0) };
+        _archive.Click += (_, _) => ArchiveRequested?.Invoke(Checked(_transcripts));
         var restore = new Button { Content = "Restore checked", Padding = new Thickness(10, 2, 10, 2), Margin = new Thickness(8, 0, 0, 0) };
         restore.Click += (_, _) => RestoreRequested?.Invoke(Checked(_archived));
 
@@ -38,7 +46,8 @@ public sealed class StorageView : UserControl
         right.Children.Add(_transcriptsCaption);
         right.Children.Add(new ScrollViewer { Content = _transcripts, MaxHeight = 320, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
         var rightButtons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };
-        rightButtons.Children.Add(archive);
+        rightButtons.Children.Add(_archive);
+        right.Children.Add(_archiveWait);
         right.Children.Add(rightButtons);
 
         var columns = new Grid();
@@ -124,6 +133,15 @@ public sealed class StorageView : UserControl
 
     /// <summary>Shows a line under the note: the outcome of the last archive or restore.</summary>
     public void SetResult(string text) => _note.Text = text;
+
+    /// <summary>
+    /// Enables the Archive button only once the session list has been read (round 5 item 4). While it is off, a note says why.
+    /// </summary>
+    public void SetArchiveAvailable(bool available)
+    {
+        _archive.IsEnabled = available;
+        _archiveWait.Visibility = available ? Visibility.Collapsed : Visibility.Visible;
+    }
 
     private static CheckBox FileRow(TranscriptFileInfo file) => new()
     {

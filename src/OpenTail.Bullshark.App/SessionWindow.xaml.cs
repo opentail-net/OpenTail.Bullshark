@@ -225,6 +225,7 @@ public partial class SessionWindow : Window
 
             _agents = read.Agents;
             _allAgents = read.PassAgents;
+            _listingKnown = true;
             _runningFacts = read.Facts;
             foreach (var pair in read.NewPaths) _transcriptPaths[pair.Key] = pair.Value;
             _storeProblem = read.StoreProblem;
@@ -266,12 +267,15 @@ public partial class SessionWindow : Window
         }
         catch (Exception ex)
         {
+            // A pass that failed may not have read the session list, so the archive waits for the next pass that does (round 5 item 4).
+            _listingKnown = false;
             AppLog.Write($"pass failed: {ex.Message}");
             SetStatus($"not running: {ex.Message}");
         }
         finally
         {
             _passRunning = false;
+            _storage.SetArchiveAvailable(ArchiveAllowed);
         }
     }
 

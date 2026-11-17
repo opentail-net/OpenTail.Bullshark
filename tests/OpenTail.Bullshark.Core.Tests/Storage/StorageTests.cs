@@ -23,7 +23,8 @@ public sealed class StorageTests : IDisposable
         var path = Path.Combine(Projects, relative);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, new string('x', bytes));
-        if (written is { } at) File.SetLastWriteTimeUtc(path, DateTime.SpecifyKind(at, DateTimeKind.Utc));
+        // A file written now is "recent" (round 5 item 4), so a file without a date is written on an earlier day.
+        File.SetLastWriteTimeUtc(path, DateTime.SpecifyKind(written ?? Day(1), DateTimeKind.Utc));
         return path;
     }
 
@@ -151,5 +152,45 @@ public sealed class StorageTests : IDisposable
         var listed = TranscriptArchive.List(Archive);
 
         Assert.Equal(["s3", "s1"], listed.Select(f => f.SessionId));
+    }
+
+    [Fact]
+    public void NothingIsArchivedBeforeClaudesSessionListHasBeenRead()
+    {
+        // The listing is unknown (null), so no file may move, not even an old one that nothing lists.
+        var old = Write(@"projA\s1.jsonl", 10, Day(1));
+
+        var outcome = Assert.Single(TranscriptArchive.Archive([old], Projects, Archive, null));
+
+        Assert.False(outcome.Moved);
+        Assert.Contains("not been read yet", outcome.Message);
+        Assert.True(File.Exists(old));
+    }
+
+    [Fact]
+    public void ATranscriptWrittenInTheLastDayIsNotArchivedAndAnOlderOneIs()
+    {
+        var now = new DateTimeOffset(Day(10), TimeSpan.Zero);
+        var fresh = Write(@"projA\fresh.jsonl", 10, Day(10).AddHours(-2));    // two hours before now
+        var justOld = Write(@"projA\older.jsonl", 10, Day(9).AddHours(-1));    // 25 hours before now (Day(9) is 09:00)
+
+        var outcomes = TranscriptArchive.Archive([fresh, justOld], Projects, Archive, new HashSet<string>(), now);
+
+        Assert.False(outcomes[0].Moved);
+        Assert.Contains("last 24 hours", outcomes[0].Message);
+        Assert.True(File.Exists(fresh));
+        Assert.True(outcomes[1].Moved);
+        Assert.False(File.Exists(justOld));
+    }
+
+    [Fact]
+    public void AFileWrittenExactlyADayAgoMayBeArchived()
+    {
+        var now = new DateTimeOffset(Day(10), TimeSpan.Zero);
+        var edge = Write(@"projA\edge.jsonl", 10, Day(9));
+
+        var outcome = Assert.Single(TranscriptArchive.Archive([edge], Projects, Archive, new HashSet<string>(), now));
+
+        Assert.True(outcome.Moved);
     }
 }
