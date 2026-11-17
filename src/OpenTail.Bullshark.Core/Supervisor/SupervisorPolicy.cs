@@ -60,11 +60,7 @@ public sealed record SupervisorRules(int MaxRestartsPerHour = 3)
 /// </summary>
 public static class SupervisorPolicy
 {
-    /// <summary>
-    /// The states that mean a session has ended. The agent listing now carries completed sessions, so these are listed too.
-    /// `done` is also the state of an idle session that is still running, and the listing does not tell the two apart, so a
-    /// `done` session is never adopted as the role's session (a finished one would then never be replaced).
-    /// </summary>
+    /// <summary>A case-insensitive state comparison. The listing carries completed sessions too (`--all`, F61).</summary>
     private static bool Is(string? state, string expected) => string.Equals(state, expected, StringComparison.OrdinalIgnoreCase);
 
     public static IReadOnlyList<SupervisorAction> Decide(
