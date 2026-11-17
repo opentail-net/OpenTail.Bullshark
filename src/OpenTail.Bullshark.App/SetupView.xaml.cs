@@ -61,13 +61,31 @@ public partial class SetupView : UserControl
         TaskBox.Text = defaultTask;
         FolderBox.AddHandler(TextBoxBase.TextChangedEvent, new TextChangedEventHandler(OnTextChanged));
 
-        // The folder list: trusted repositories, most recently used first (D-S2). Read only: no run file is written.
-        var runs = new RunStore(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(stateFile))!, "runs.json")).Load();
-        FolderBox.ItemsSource = FolderSuggestions.Build(runs, _claudeJson);
+        FolderBox.ItemsSource = SuggestedFolders(stateFile);
 
         PatternBox.SelectedIndex = 0;
         _loading = false;
         LoadPattern();
+    }
+
+    /// <summary>
+    /// The folders the page offers first: trusted repositories, most recently used first (D-S2). Read only: no run file is written.
+    /// A runs.json that cannot be read, a lock held too long, or a folder that cannot be checked gives an empty list and a log line:
+    /// the window must open, and the folder can still be typed.
+    /// </summary>
+    private IReadOnlyList<string> SuggestedFolders(string stateFile)
+    {
+        try
+        {
+            var runs = new RunStore(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(stateFile))!, "runs.json")).Load();
+            return FolderSuggestions.Build(runs, _claudeJson);
+        }
+        catch (Exception ex) when (ex is StoreUnreadableException or TimeoutException or IOException or UnauthorizedAccessException
+                                       or ArgumentException or NotSupportedException)
+        {
+            AppLog.Write($"folder suggestions not read: {ex.Message}");
+            return [];
+        }
     }
 
     /// <summary>

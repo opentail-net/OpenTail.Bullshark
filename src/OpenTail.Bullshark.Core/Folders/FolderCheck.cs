@@ -84,10 +84,12 @@ public static class FolderSuggestions
     public static IReadOnlyList<string> Build(IEnumerable<RunRecord> runs, string claudeJsonPath)
     {
         // Position of each folder in the run history, newest run first. The first use counts.
+        // A run whose folder is not a valid path (a hand-edited runs.json) has no position; it is left out, not fatal.
         var recency = runs
             .OrderByDescending(r => r.CreatedAt)
-            .Select((run, index) => (Key: FolderKey.From(run.WorkingDirectory), Index: index))
-            .GroupBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
+            .Select((run, index) => (Key: SafeKey(run.WorkingDirectory), Index: index))
+            .Where(x => x.Key is not null)
+            .GroupBy(x => x.Key!, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.Min(x => x.Index), StringComparer.OrdinalIgnoreCase);
 
         return TrustCheck.TrustedRepositories(claudeJsonPath)
@@ -105,6 +107,18 @@ public static class FolderSuggestions
         try
         {
             return FolderKey.Normalise(path);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or IOException)
+        {
+            return null;
+        }
+    }
+
+    private static string? SafeKey(string path)
+    {
+        try
+        {
+            return FolderKey.From(path);
         }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or IOException)
         {

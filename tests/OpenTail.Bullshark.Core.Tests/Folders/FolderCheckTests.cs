@@ -155,4 +155,18 @@ public sealed class FolderCheckTests : IDisposable
     {
         Assert.Empty(FolderSuggestions.Build([], _claudeJson));
     }
+
+    [Fact]
+    public void ARunWithAFolderThatIsNotAPathIsSkippedNotFatal()
+    {
+        // A hand-edited runs.json can hold a folder that is not a path. The suggestions are still built from the other runs.
+        var good = Repository("good", trusted: true);
+        var runs = new[]
+        {
+            Run("bad\0path", new DateTimeOffset(2026, 11, 16, 9, 0, 0, TimeSpan.Zero)),
+            Run(good, new DateTimeOffset(2026, 11, 15, 9, 0, 0, TimeSpan.Zero)),
+        };
+
+        Assert.Equal([FolderKey.Normalise(good)], FolderSuggestions.Build(runs, _claudeJson));
+    }
 }

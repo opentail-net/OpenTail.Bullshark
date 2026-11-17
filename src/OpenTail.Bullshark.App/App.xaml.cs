@@ -47,6 +47,15 @@ public partial class App : Application
             Shutdown(2);
             return;
         }
+        catch (Exception ex)
+        {
+            // Any other failure while the window is built must not end the start silently. The log has the details; the owner sees the message.
+            AppLog.Write($"startup failed: {ex}");
+            MessageBox.Show($"OpenTail.Bullshark could not open its window: {ex.Message}\n\nThe details are in the log.",
+                "OpenTail.Bullshark", MessageBoxButton.OK, MessageBoxImage.Error);
+            Shutdown(1);
+            return;
+        }
         MainWindow = window;
         window.Show();
     }
