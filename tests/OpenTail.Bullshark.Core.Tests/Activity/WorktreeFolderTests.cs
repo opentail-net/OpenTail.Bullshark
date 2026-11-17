@@ -79,16 +79,62 @@ public sealed class WorktreeFolderTests : IDisposable
         Assert.Equal("No transcript for this session yet.", facts.Note);
     }
 
+    /// <summary>A folder under the test root, created: the folders below must exist to be chosen (round 8 item 6).</summary>
+    private string MakeFolder(params string[] parts)
+    {
+        var path = Path.Combine(parts.Prepend(_root).ToArray());
+        Directory.CreateDirectory(path);
+        return path;
+    }
+
     [Fact]
     public void TheTranscriptsFolderIsPreferredToTheListingsAndTheSpecs()
     {
+        var repo = MakeFolder("repo");
+        var worktree = MakeFolder("repo", ".claude", "worktrees", "x");
+        var other = MakeFolder("other");
+
         // The worktree the transcript names is the folder read; the spelling of it does not matter (a trailing separator).
-        Assert.Equal(Worktree, GitChanges.FolderOf(Worktree + @"\", Repo, Repo));
+        Assert.Equal(worktree, GitChanges.FolderOf(worktree + Path.DirectorySeparatorChar, repo, repo));
 
         // Without one, the listing's folder, then the spec's, as before the round.
-        Assert.Equal(Repo, GitChanges.FolderOf(null, Repo, @"C:\Other"));
-        Assert.Equal(@"C:\Other", GitChanges.FolderOf("  ", null, @"C:\Other"));
+        Assert.Equal(repo, GitChanges.FolderOf(null, repo, other));
+        Assert.Equal(other, GitChanges.FolderOf("  ", null, other));
         Assert.Null(GitChanges.FolderOf(null, null, null));
+    }
+
+    [Fact]
+    public void AMissingTranscriptFolderFallsBackToTheListingsThenTheSpec()
+    {
+        // A worktree that was removed (claude rm, or merged away) is not read: the listing's folder, then the spec's, is used.
+        var listed = MakeFolder("listed");
+        var spec = MakeFolder("spec");
+        var gone = Path.Combine(_root, "worktree-removed");
+
+        Assert.Equal(listed, GitChanges.FolderOf(gone, listed, spec));
+        Assert.Equal(spec, GitChanges.FolderOf(gone, Path.Combine(_root, "listing-gone"), spec));
+        Assert.Null(GitChanges.FolderOf(gone, Path.Combine(_root, "listing-gone"), Path.Combine(_root, "spec-gone")));
+    }
+
+    [Fact]
+    public void AFolderThatTheNormaliserRejectsIsSkippedAndNothingThrows()
+    {
+        // A NUL is not allowed in a path: the normaliser throws on it, and that candidate is skipped (round 8 item 6).
+        var listed = MakeFolder("listed");
+
+        Assert.Equal(listed, GitChanges.FolderOf("bad\0folder", listed, null));
+        Assert.Null(GitChanges.FolderOf("bad\0folder", null, null));
+    }
+
+    [Fact]
+    public void TheListingAndTheSpecFolderMustExistToo()
+    {
+        var spec = MakeFolder("spec");
+        var gone = Path.Combine(_root, "gone");
+
+        Assert.Equal(spec, GitChanges.FolderOf(gone, spec));
+        Assert.Null(GitChanges.FolderOf(gone, null));
+        Assert.Null(GitChanges.FolderOf(null, gone));
     }
 
     [Fact]

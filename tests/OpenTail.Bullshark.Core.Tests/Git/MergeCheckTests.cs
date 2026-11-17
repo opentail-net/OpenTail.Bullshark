@@ -197,4 +197,18 @@ public sealed class MergeCheckTests : IDisposable
         Assert.NotNull(none);
         Assert.Empty(none);
     }
+
+    [Theory]
+    [InlineData(MergeCheckKind.Problem, true)]
+    [InlineData(MergeCheckKind.Clean, false)]
+    [InlineData(MergeCheckKind.Conflicts, false)]
+    [InlineData(MergeCheckKind.NotARepository, false)]
+    [InlineData(MergeCheckKind.NoDefaultBranch, false)]
+    public void AProblemIsCheckedAgainOnALaterPassAndAVerdictIsNot(MergeCheckKind kind, bool recheck)
+    {
+        // Round 8 item 6: a problem leaves the coder unchecked, so the next pass checks it again while it stays done.
+        var report = new MergeCheckReport(kind, @"C:\W", string.Empty, [], "message");
+
+        Assert.Equal(recheck, MergeCheck.ShouldRecheck(report));
+    }
 }

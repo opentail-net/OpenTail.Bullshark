@@ -62,6 +62,8 @@ public partial class SessionWindow
             var report = await Task.Run(() => MergeCheck.RunAsync(folder, new ProcessGitRunner()));
             if (!_mergeStarted.Contains(record.SessionId)) return;
             _merges[record.SessionId] = report;
+            // A problem is not a verdict: the coder leaves the started set, so the next pass checks it again while it stays done (round 8 item 6).
+            if (MergeCheck.ShouldRecheck(report)) _mergeStarted.Remove(record.SessionId);
             AppLog.Write($"merge check {record.Name}: {report.Kind} {report.Message}");
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

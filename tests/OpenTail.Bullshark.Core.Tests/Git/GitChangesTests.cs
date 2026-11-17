@@ -211,13 +211,19 @@ public sealed class GitChangesTests : IDisposable
         Assert.Empty(git.Calls);
     }
 
-    [Theory]
-    [InlineData("C:\\listed", "C:\\spec", "C:\\listed")]
-    [InlineData(null, "C:\\spec", "C:\\spec")]
-    [InlineData("  ", "C:\\spec", "C:\\spec")]
-    [InlineData(null, null, null)]
-    public void TheListedFolderWinsAndTheSpecFolderIsTheFallback(string? listed, string? spec, string? expected)
+    [Fact]
+    public void TheListedFolderWinsAndTheSpecFolderIsTheFallbackWhenItExists()
     {
-        Assert.Equal(expected, GitChanges.FolderOf(listed, spec));
+        // Round 8 item 6: a folder is chosen only when it exists, so the listed and spec folders are real here.
+        var listed = Path.Combine(_folder, "listed");
+        var spec = Path.Combine(_folder, "spec");
+        Directory.CreateDirectory(listed);
+        Directory.CreateDirectory(spec);
+
+        Assert.Equal(listed, GitChanges.FolderOf(listed, spec));
+        Assert.Equal(spec, GitChanges.FolderOf(null, spec));
+        Assert.Equal(spec, GitChanges.FolderOf("  ", spec));
+        Assert.Equal(spec, GitChanges.FolderOf(Path.Combine(_folder, "listed-gone"), spec));
+        Assert.Null(GitChanges.FolderOf(null, null));
     }
 }

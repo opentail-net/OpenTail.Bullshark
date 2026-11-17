@@ -64,22 +64,39 @@ public static class GitChanges
     /// <summary>The line added to the end of a diff that was cut at the limit.</summary>
     public const string DiffTruncatedNote = "[truncated: the diff is longer than 2 MB, so the rest is not shown]";
 
-    /// <summary>The folder for a session: the working folder from its listing, else the folder of its spec. Null when neither is known.</summary>
-    public static string? FolderOf(string? listedFolder, string? specFolder)
-    {
-        if (!string.IsNullOrWhiteSpace(listedFolder)) return listedFolder;
-        return string.IsNullOrWhiteSpace(specFolder) ? null : specFolder;
-    }
+    /// <summary>
+    /// The folder for a session: the working folder from its listing, else the folder of its spec, each only when it exists. Null when neither
+    /// does. It never throws (round 8 item 6): a folder that is gone must not be read by the Changes tab or the merge check.
+    /// </summary>
+    public static string? FolderOf(string? listedFolder, string? specFolder) =>
+        ExistingFolder(listedFolder) ?? ExistingFolder(specFolder);
 
     /// <summary>
-    /// The folder a session's changes are read from (round 7 item 4): the folder its transcript names last, which is the one it edits now
-    /// and can be a worktree under `.claude/worktrees`; else the listing's folder; else the spec's. The transcript's folder is given in its full,
-    /// normalised form, so the same folder spelled two ways is the same folder.
+    /// The folder a session's changes are read from (round 7 item 4, round 8 item 6): the folder its transcript names last, which is the one it edits
+    /// now and can be a worktree under `.claude/worktrees`, in its full normalised form, when that folder exists; else the listing's folder; else the
+    /// spec's. A folder that is gone is skipped, and so is one the path normaliser rejects: the same folder spelled two ways is the same folder.
     /// </summary>
     public static string? FolderOf(string? transcriptFolder, string? listedFolder, string? specFolder) =>
-        string.IsNullOrWhiteSpace(transcriptFolder)
-            ? FolderOf(listedFolder, specFolder)
-            : Folders.FolderKey.Normalise(transcriptFolder);
+        NormalisedExistingFolder(transcriptFolder) ?? FolderOf(listedFolder, specFolder);
+
+    private static string? ExistingFolder(string? folder) =>
+        !string.IsNullOrWhiteSpace(folder) && Directory.Exists(folder) ? folder : null;
+
+    /// <summary>The folder in its full form when the normaliser accepts it and it exists; null otherwise, and never a throw.</summary>
+    private static string? NormalisedExistingFolder(string? folder)
+    {
+        if (string.IsNullOrWhiteSpace(folder)) return null;
+        try
+        {
+            var full = Folders.FolderKey.Normalise(folder);
+            return Directory.Exists(full) ? full : null;
+        }
+        catch (Exception)
+        {
+            // An invalid path (the normaliser throws on it) is not a folder: the candidate is skipped, and the listing's folder is tried.
+            return null;
+        }
+    }
 
     /// <summary>Reads the changes of a folder. Nothing is written, and no git command can start a prompt or take the index lock.</summary>
     public static async Task<GitChangesReport> ReadAsync(string folder, IGitRunner git, CancellationToken cancellationToken = default)

@@ -87,6 +87,12 @@ public static class MergeCheck
         return Problem(folder, Describe("merge-tree", merge));
     }
 
+    /// <summary>
+    /// True when a coder's check should be made again on a later pass while it stays `done` (round 8 item 6). A problem is not a verdict: the
+    /// folder may come back, or git may stop timing out. A clean, conflicting or not-a-repository result is kept until the coder leaves `done`.
+    /// </summary>
+    public static bool ShouldRecheck(MergeCheckReport report) => report.Kind == MergeCheckKind.Problem;
+
     /// <summary>A branch name for a person to read: the refs prefix is dropped, so "refs/remotes/origin/main" shows as "origin/main".</summary>
     public static string DisplayName(string target) =>
         target.StartsWith("refs/remotes/", StringComparison.Ordinal) ? target["refs/remotes/".Length..]
