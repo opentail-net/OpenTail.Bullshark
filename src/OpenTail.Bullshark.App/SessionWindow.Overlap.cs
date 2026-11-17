@@ -1,5 +1,6 @@
 using System.IO;
 using OpenTail.Bullshark.Core.Activity;
+using OpenTail.Bullshark.Core.Claude;
 using OpenTail.Bullshark.Core.Supervisor;
 
 namespace OpenTail.Bullshark.App;
@@ -26,12 +27,15 @@ public partial class SessionWindow
     /// </summary>
     private (IReadOnlyList<FileClash> Clashes, IReadOnlyDictionary<string, RunBudget> Budgets) ReadClashes(
         IReadOnlyDictionary<string, SessionRecord> records,
-        IReadOnlyDictionary<string, string> paths)
+        IReadOnlyDictionary<string, string> paths,
+        IReadOnlyList<AgentInfo> agents)
     {
         var (runs, _) = LoadRuns(_runStore);
         var clashes = new List<FileClash>();
         var budgets = new Dictionary<string, RunBudget>(StringComparer.Ordinal);
         var now = DateTimeOffset.UtcNow;
+        // Only the live sessions can clash: a finished session's shared file no longer needs the owner (round 5 item 7).
+        var live = FileOverlap.LiveRecords(records, agents);
         foreach (var run in runs)
         {
             var writes = new List<SessionWrites>();
@@ -48,7 +52,7 @@ public partial class SessionWindow
                     AppLog.Write($"overlap: transcript of {spec.Name} not read: {ex.Message}");
                 }
             }
-            clashes.AddRange(FileOverlap.Find(run, records, writes));
+            clashes.AddRange(FileOverlap.Find(run, live, writes));
 
             // The run's limits, from the same transcripts (additions item 4). The runner applies a budget from the next pass.
             if (RunBudget.For(run.Limits, RunSpend.Of(run, records, writes, now)) is { } budget)

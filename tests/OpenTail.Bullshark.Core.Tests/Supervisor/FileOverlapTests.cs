@@ -1,4 +1,5 @@
 using System.Text.Json;
+using OpenTail.Bullshark.Core.Claude;
 using OpenTail.Bullshark.Core.Supervisor;
 using Xunit;
 
@@ -41,6 +42,36 @@ public sealed class FileOverlapTests : IDisposable
 
     private static SessionWrites Writes(string sessionId, IReadOnlyList<string> files, params (string Path, int Minute)[] times) =>
         new(sessionId, files, times.ToDictionary(t => t.Path, t => Start.AddMinutes(t.Minute), StringComparer.Ordinal));
+
+    private const string IdC = "11111111-0000-0000-0000-000000000004";
+    private const string IdD = "11111111-0000-0000-0000-000000000005";
+    private const string IdE = "11111111-0000-0000-0000-000000000006";
+    private const string IdF = "11111111-0000-0000-0000-000000000007";
+
+    private static AgentInfo Listed(string sessionId, string state) =>
+        new(Id: sessionId[..8], SessionId: sessionId, Name: "x", Kind: "background", State: state, Status: null,
+            Cwd: null, Pid: null, StartedAt: null);
+
+    [Fact]
+    public void OnlyLiveSessionsTakePartInAClash()
+    {
+        // Six sessions of one run. Only the working and the blocked ones are live: a done, stopped or failed session, and one the
+        // listing does not show, are not (round 5 item 7). So a file shared with a finished session is not a clash any more.
+        var run = Run(_root, "run-a", "run-b", "run-c", "run-d", "run-e", "run-f");
+        var records = Records(("run-a", CoderId), ("run-b", OtherCoderId), ("run-c", IdC), ("run-d", IdD), ("run-e", IdE), ("run-f", IdF));
+        var agents = new[] { Listed(CoderId, "working"), Listed(OtherCoderId, "blocked"), Listed(IdC, "done"), Listed(IdD, "stopped"), Listed(IdE, "failed") };
+
+        var live = FileOverlap.LiveRecords(records, agents);
+
+        Assert.Equal(["run-a", "run-b"], live.Keys.Order());
+
+        var file = Path.Combine(_root, "src", "Shared.cs");
+        var withFinished = FileOverlap.Find(run, live, [Writes(CoderId, [file], (file, 3)), Writes(IdC, [file], (file, 4))]);
+        Assert.Empty(withFinished);
+
+        var bothLive = FileOverlap.Find(run, live, [Writes(CoderId, [file], (file, 3)), Writes(OtherCoderId, [file], (file, 4))]);
+        Assert.Equal(["run-a", "run-b"], Assert.Single(bothLive).Sessions.Select(s => s.Name));
+    }
 
     [Fact]
     public void TwoCodersWritingOneFileIsOneClashWithBothSessionsAndTheirLastWrites()

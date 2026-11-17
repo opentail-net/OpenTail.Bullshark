@@ -1,4 +1,5 @@
 using OpenTail.Bullshark.Core.Activity;
+using OpenTail.Bullshark.Core.Claude;
 
 namespace OpenTail.Bullshark.Core.Supervisor;
 
@@ -86,6 +87,29 @@ public static class FileOverlap
         {
             return null;
         }
+    }
+
+    /// <summary>
+    /// The records of the sessions that are live now: listed in <paramref name="agents"/>, and not `done`, `stopped` or `failed`. The
+    /// clashes are found among these only (round 5 item 7). A finished session's shared file is no longer something the owner must act
+    /// on, and kept in the list it would stay under "Needs you" for as long as its run is kept. A session that is not listed (lost, and
+    /// about to be resumed) is not live either.
+    /// </summary>
+    public static IReadOnlyDictionary<string, SessionRecord> LiveRecords(
+        IReadOnlyDictionary<string, SessionRecord> records,
+        IReadOnlyList<AgentInfo> agents)
+    {
+        var live = new Dictionary<string, SessionRecord>(StringComparer.Ordinal);
+        foreach (var (name, record) in records)
+        {
+            if (record.SessionId.Length == 0) continue;
+            var listed = agents.FirstOrDefault(a => string.Equals(a.SessionId, record.SessionId, StringComparison.OrdinalIgnoreCase));
+            if (listed is null) continue;
+            var state = listed.EffectiveState;
+            if (SupervisorPolicy.IsStoppedOrFailed(state) || string.Equals(state, "done", StringComparison.OrdinalIgnoreCase)) continue;
+            live[name] = record;
+        }
+        return live;
     }
 
     /// <summary>

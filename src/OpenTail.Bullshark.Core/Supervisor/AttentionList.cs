@@ -41,6 +41,7 @@ public sealed record SessionConflict(string Name, IReadOnlyList<string> Files, s
 /// <summary>
 /// One session that waits for the owner. <see cref="SessionId"/> is null for a start that never got a session.
 /// <see cref="FilePath"/> is set only for <see cref="AttentionReason.Overlap"/>: the file the notice is about.
+/// <see cref="Files"/> is set only for <see cref="AttentionReason.Conflict"/>: the conflicting files, which identify the notice.
 /// </summary>
 public sealed record AttentionItem(
     string Name,
@@ -48,7 +49,8 @@ public sealed record AttentionItem(
     AttentionReason Reason,
     string Detail,
     DateTimeOffset StartedAt,
-    string? FilePath = null);
+    string? FilePath = null,
+    IReadOnlyList<string>? Files = null);
 
 /// <summary>
 /// The sessions that need the owner, as a pure function of the state records and the agent listing. The window shows them
@@ -108,23 +110,43 @@ public static class AttentionList
     /// The items in <paramref name="current"/> that are new since <paramref name="previous"/>. A session that is waiting for any reason
     /// is not new when it changes its reason, so the rule compares names. The notices (<see cref="AttentionReason.Overlap"/> and
     /// <see cref="AttentionReason.Conflict"/>) are the exception: a notice is new unless the same session already had that notice
-    /// (for an overlap, the same file), so a second shared file or a conflict of a session that waits is announced.
-    /// A session that stopped waiting and waits again is new.
+    /// (for an overlap, the same file; for a conflict, the same files), so a second shared file or a conflict of a session that waits is
+    /// announced. A session that stopped waiting and waits again is new. Only a wait makes a session "already waiting" (round 5 item 6).
     /// </summary>
-    public static IReadOnlyList<AttentionItem> Gained(IReadOnlyList<AttentionItem> previous, IReadOnlyList<AttentionItem> current)
+    public static IReadOnlyList<AttentionItem> Gained(IReadOnlyList<AttentionItem> previous, IReadOnlyList<AttentionItem> current) =>
+        Gained(previous, current, announced: null);
+
+    /// <summary>
+    /// The same rule, and a conflict is also not new when <paramref name="announced"/> has its key: a conflict that was announced once
+    /// does not sound again when its session leaves `done` and comes back with the same files (round 5 item 7). The keys are those of
+    /// <see cref="ConflictKeys"/>, which the caller keeps for the life of the window.
+    /// </summary>
+    public static IReadOnlyList<AttentionItem> Gained(
+        IReadOnlyList<AttentionItem> previous,
+        IReadOnlyList<AttentionItem> current,
+        IReadOnlySet<string>? announced)
     {
         // Only a wait makes a session "already waiting". A notice the session had (an overlap, a conflict) does not, so the first
         // blocked, stopped, failed or start-failed reason of that session is announced (round 5 item 6).
         var waiting = previous.Where(item => !IsNotice(item)).Select(item => item.Name).ToHashSet(StringComparer.Ordinal);
-        var notices = previous
-            .Where(IsNotice)
-            .Select(item => (item.Name, item.Reason, item.FilePath))
-            .ToHashSet();
+        var notices = previous.Where(IsNotice).Select(NoticeKey).ToHashSet(StringComparer.Ordinal);
         return current.Where(item => IsNotice(item)
-                ? !notices.Contains((item.Name, item.Reason, item.FilePath))
+                ? !notices.Contains(NoticeKey(item)) && !(item.Reason == AttentionReason.Conflict && announced?.Contains(NoticeKey(item)) == true)
                 : !waiting.Contains(item.Name))
             .ToList();
     }
+
+    /// <summary>The keys of the conflicts in <paramref name="items"/>, for the caller to remember once they have been announced.</summary>
+    public static IReadOnlySet<string> ConflictKeys(IEnumerable<AttentionItem> items) =>
+        items.Where(item => item.Reason == AttentionReason.Conflict).Select(NoticeKey).ToHashSet(StringComparer.Ordinal);
+
+    /// <summary>
+    /// What makes a notice the same notice: the session, the reason, and the file (an overlap) or the set of files (a conflict). The
+    /// detail is left out, since an overlap's detail shows the other sessions' last writes, which change.
+    /// </summary>
+    private static string NoticeKey(AttentionItem item) =>
+        string.Join('\u001f', item.Name, item.Reason, item.FilePath ?? string.Empty,
+            string.Join('\u001e', (item.Files ?? []).OrderBy(file => file, StringComparer.Ordinal)));
 
     /// <summary>A notice tells the owner about something that happened, and the session keeps running. It is not a wait.</summary>
     private static bool IsNotice(AttentionItem item) =>
@@ -179,7 +201,7 @@ public static class AttentionList
         {
             if (!byName.TryGetValue(conflict.Name, out var record) || string.IsNullOrEmpty(record.SessionId)) continue;
             yield return new AttentionItem(conflict.Name, record.SessionId, AttentionReason.Conflict,
-                ConflictDetail(conflict), record.StartedAt);
+                ConflictDetail(conflict), record.StartedAt, FilePath: null, Files: conflict.Files);
         }
     }
 

@@ -23,6 +23,12 @@ public partial class SessionWindow
     /// </summary>
     private IReadOnlyList<AttentionItem>? _announced;
 
+    /// <summary>
+    /// The conflicts the window has shown, by <see cref="AttentionList.ConflictKeys"/> (session and files). Kept for the life of the window,
+    /// so a conflict that comes back after its session left done is not announced again (round 5 item 7). Written on the UI thread only.
+    /// </summary>
+    private readonly HashSet<string> _announcedConflicts = new(StringComparer.Ordinal);
+
     private void UpdateNeedsYouCount()
     {
         // A session can be waiting for more than one reason (gems item 1: a blocked session can also share a file), and it is one session.
@@ -70,9 +76,16 @@ public partial class SessionWindow
     {
         var previous = _announced;
         _announced = _attention;
-        if (previous is null) return;
+        if (previous is null)
+        {
+            // The first pass sets the baseline: the conflicts in view are remembered, so they are not announced later on.
+            _announcedConflicts.UnionWith(AttentionList.ConflictKeys(_attention));
+            return;
+        }
 
-        var gained = AttentionList.Gained(previous, _attention);
+        var gained = AttentionList.Gained(previous, _attention, _announcedConflicts);
+        // A conflict is remembered once it has been in view, so a session that leaves done and returns with the same files does not sound again.
+        _announcedConflicts.UnionWith(AttentionList.ConflictKeys(_attention));
         if (gained.Count == 0) return;
         if (!AttentionList.NotificationsOn(UiFile.Read(_options.StatePath, "notify"))) return;
 

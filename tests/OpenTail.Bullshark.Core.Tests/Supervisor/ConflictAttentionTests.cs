@@ -81,6 +81,38 @@ public sealed class ConflictAttentionTests
     }
 
     [Fact]
+    public void AConflictWithTheSameFilesIsNotAnnouncedAgainWhenTheSessionReturnsToDone()
+    {
+        // The conflict was announced. The coder left done (no conflict in the list), then came back with the same files, in another order.
+        var first = AttentionList.From([Record(Coder, Id)], [], conflicts: [new SessionConflict(Coder, ["a.cs", "b.cs"], Target)]);
+        var announced = AttentionList.ConflictKeys(first);
+        var left = AttentionList.From([Record(Coder, Id)], [], conflicts: []);
+        var back = AttentionList.From([Record(Coder, Id)], [], conflicts: [new SessionConflict(Coder, ["b.cs", "a.cs"], Target)]);
+
+        Assert.Empty(AttentionList.Gained(left, back, announced));
+    }
+
+    [Fact]
+    public void AConflictWithANewFileIsAnnouncedEvenAfterAnEarlierOne()
+    {
+        var first = AttentionList.From([Record(Coder, Id)], [], conflicts: [new SessionConflict(Coder, ["a.cs", "b.cs"], Target)]);
+        var announced = AttentionList.ConflictKeys(first);
+        var left = AttentionList.From([Record(Coder, Id)], [], conflicts: []);
+        var grown = AttentionList.From([Record(Coder, Id)], [], conflicts: [new SessionConflict(Coder, ["a.cs", "b.cs", "c.cs"], Target)]);
+
+        Assert.Single(AttentionList.Gained(left, grown, announced));
+    }
+
+    [Fact]
+    public void AConflictNotAnnouncedBeforeIsAnnouncedOnItsFirstArrival()
+    {
+        var left = AttentionList.From([Record(Coder, Id)], [], conflicts: []);
+        var back = AttentionList.From([Record(Coder, Id)], [], conflicts: [new SessionConflict(Coder, ["a.cs"], Target)]);
+
+        Assert.Single(AttentionList.Gained(left, back, new HashSet<string>(StringComparer.Ordinal)));
+    }
+
+    [Fact]
     public void ASessionThatOnlyHadAConflictAndThenBlocksIsNewForTheWait()
     {
         // A notice is not a wait: the block is the event the owner needs to hear about (round 5 item 6).
