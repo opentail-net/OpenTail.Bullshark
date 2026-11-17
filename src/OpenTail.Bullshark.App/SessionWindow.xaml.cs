@@ -93,6 +93,9 @@ public partial class SessionWindow : Window
         var runner = new SupervisorRunner(_cli, _store, TimeProvider.System, log: AppLog.Write);
         _loop = new SupervisorLoop(runner, _cli, _store, AppLog.Write);
         _runner = runner;
+        // The timeline's log sits beside the state file, and the supervisor writes every action to it (additions item 5).
+        _events = new EventLog(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(options.StatePath))!, "events.jsonl"));
+        runner.Events = _events;
 
         _setup = new SetupView(options.StatePath, options.Task) { Visibility = Visibility.Hidden };
         _setup.ShowFolder(options.WorkDir);
@@ -107,6 +110,7 @@ public partial class SessionWindow : Window
         InitSearch();
         InitChanges();
         InitStorage();
+        InitTimeline();
         InitTabDrag();
         InitZoom();
 
@@ -344,6 +348,7 @@ public partial class SessionWindow : Window
         _search.Visibility = ReferenceEquals(_search, element) ? Visibility.Visible : Visibility.Hidden;
         _changes.Visibility = ReferenceEquals(_changes, element) ? Visibility.Visible : Visibility.Hidden;
         _storage.Visibility = ReferenceEquals(_storage, element) ? Visibility.Visible : Visibility.Hidden;
+        _timeline.Visibility = ReferenceEquals(_timeline, element) ? Visibility.Visible : Visibility.Hidden;
 
         _shown = element as ExtendedTerminalControl;
         if (_shown is not null)

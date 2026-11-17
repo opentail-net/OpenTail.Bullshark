@@ -29,6 +29,9 @@ public partial class SessionWindow
 
         /// <summary>The storage page (gems item 6). One tab, with the key "storage".</summary>
         Storage,
+
+        /// <summary>The run timeline (additions item 5). One tab, with the key "timeline".</summary>
+        Timeline,
     }
 
     private sealed class OpenTab(TabKind kind, string key, string title)
@@ -133,6 +136,11 @@ public partial class SessionWindow
             case TabKind.Storage:
                 ShowOnly(_storage);
                 _ = RefreshStorageAsync();
+                break;
+
+            case TabKind.Timeline:
+                ShowOnly(_timeline);
+                _ = RefreshTimelineAsync();
                 break;
         }
     }

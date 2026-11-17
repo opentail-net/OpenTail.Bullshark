@@ -26,6 +26,12 @@ public sealed class SupervisorRunner
     /// </summary>
     public IReadOnlyDictionary<string, RunBudget> Budgets { get; set; } = new Dictionary<string, RunBudget>(StringComparer.Ordinal);
 
+    /// <summary>
+    /// Where the timeline's events go (additions item 5). Null, the default, records nothing. A write that fails is logged, and the
+    /// pass goes on: the log must never stop the supervision.
+    /// </summary>
+    public IEventSink? Events { get; set; }
+
     public SupervisorRunner(
         ClaudeCli cli,
         StateStore store,
@@ -87,11 +93,14 @@ public sealed class SupervisorRunner
                     {
                         await Carry(action, spec, records, now, cancellationToken);
                         performed.Add(action);
+                        Emit(spec.Name, action, now);
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException && action is SupervisorAction.Start or SupervisorAction.Resume)
                     {
                         // Any failure to start or resume is a failed start for this session only: the pass goes on (F48).
-                        performed.Add(Failed(action, spec, records, now, ex.Message));
+                        var failure = Failed(action, spec, records, now, ex.Message);
+                        performed.Add(failure);
+                        Emit(spec.Name, failure, now);
                     }
                 }
 
@@ -99,6 +108,8 @@ public sealed class SupervisorRunner
                 if (records.TryGetValue(spec.Name, out var current))
                 {
                     var seen = agents.FirstOrDefault(a => string.Equals(a.SessionId, current.SessionId, StringComparison.OrdinalIgnoreCase));
+                    if (!string.Equals(current.LastState, seen?.EffectiveState, StringComparison.Ordinal))
+                        EmitState(spec.Name, current.LastState, seen?.EffectiveState ?? "not listed", now);
                     records[spec.Name] = current with { LastState = seen?.EffectiveState };
                 }
             }
@@ -109,6 +120,36 @@ public sealed class SupervisorRunner
         }
 
         return performed;
+    }
+
+    /// <summary>Writes one performed action to the event sink, if there is one.</summary>
+    private void Emit(string session, SupervisorAction action, DateTimeOffset now)
+    {
+        var (kind, detail) = action switch
+        {
+            SupervisorAction.Start => ("start", string.Empty),
+            SupervisorAction.Adopt adopt => ("adopt", adopt.SessionId),
+            SupervisorAction.Resume resume => ("resume", resume.SessionId),
+            SupervisorAction.Alert alert => ($"alert:{alert.Kind}", alert.Detail),
+            _ => ("other", string.Empty),
+        };
+        Write(new SupervisorEvent(now, session, kind, detail));
+    }
+
+    private void EmitState(string session, string? from, string to, DateTimeOffset now) =>
+        Write(new SupervisorEvent(now, session, "state", $"{from ?? "-"} -> {to}"));
+
+    private void Write(SupervisorEvent evt)
+    {
+        if (Events is null) return;
+        try
+        {
+            Events.Write(evt);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _log($"events: not written: {ex.Message}");
+        }
     }
 
     /// <summary>

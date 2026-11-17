@@ -70,9 +70,9 @@ Now: a `blocked` session raises `AlertKind.Blocked`, which goes to the log and t
 - [x] Tests: old runs.json without `Limits` loads; thresholds fire once per entry.
 
 ### 5. Run timeline
-- [ ] Core: `EventLog` appends one JSON line per supervisor action and state change to `events.jsonl` beside state.json (under `FileLock`, append only; rotate at 5 MB to `events.1.jsonl`). `SupervisorRunner` writes through an optional `IEventSink`, so existing constructors and tests do not change.
-- [ ] Window: a "Timeline" tab per run: time, session, event, detail; filter by session.
-- [ ] Tests: append under lock, rotation, reading a partly written last line.
+- [x] Core: `EventLog` appends one JSON line per supervisor action and state change to `events.jsonl` beside state.json (under `FileLock`, append only; rotate at 5 MB to `events.1.jsonl`). `SupervisorRunner` writes through an optional `IEventSink`, so existing constructors and tests do not change.
+- [x] Window: a "Timeline" tab per run: time, session, event, detail; filter by session. (Built as one tab with a run chooser, see D5.1.)
+- [x] Tests: append under lock, rotation, reading a partly written last line.
 
 ### 6. Narrow listings with `--cwd`
 - [ ] `ClaudeCli.ListAgentsAsync(string? cwd = null)` adds `--cwd <path>` when given. Keep the no-argument call for the full list (the window needs all sessions for the rail and name checks).
@@ -137,3 +137,13 @@ Now: a `blocked` session raises `AlertKind.Blocked`, which goes to the log and t
 - D4.5 At the limit, a session that is not listed is not resumed, and a run with no record yet is not started. A listed session that is running is not stopped.
 - D4.6 The setup page has two text boxes, output tokens and minutes. Blank is no limit. A value that is not a positive whole number stops Start, with the reason in the status line, before anything is written.
 - D4.7 Verified: 9 new Core tests (`RunLimitTests`), 555 passing in all, and the solution builds with App. Not seen in a running window: the fields, and the notices in the log.
+
+### Item 5 (run timeline)
+
+- D5.1 One Timeline tab with a run chooser (newest run first) and a session chooser, instead of one tab per run. Tabs for every run would crowd the tab bar, and the chooser gives the same view for any run.
+- D5.2 The events are "start", "adopt", "resume", "state", and "alert:" followed by the alert kind. An action is written when it is performed; a failed start is written as its `StartFailed` alert. A state change is written on the pass after it, because the state is compared with the last pass (the change is seen up to 15 seconds late).
+- D5.3 A write that fails (the disk, or the lock) is logged, and the pass goes on. The log must never stop supervision.
+- D5.4 Rotation keeps one older file: at 5 MB, `events.jsonl` moves to `events.1.jsonl`, replacing the one there. The plan names one rotated file but not how many, so the log holds at most about 10 MB, and the events of older rotations are dropped. Owner decision if more history is wanted.
+- D5.5 A line cut off at the end of a file that is still being written is skipped when reading, and the complete lines before it are kept.
+- D5.6 Only supervisor actions and state changes are events. The window's own actions (Start now, archive, restore) are not written here.
+- D5.7 Not verified in a window: the tab and its chooser. The sink's behaviour is tested on the file, and the runner's write to the sink with a fake CLI (5 new Core tests, `EventLogTests`; 560 passing in all; the solution builds with App).

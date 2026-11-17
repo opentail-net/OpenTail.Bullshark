@@ -1,0 +1,124 @@
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
+using OpenTail.Bullshark.Core.Supervisor;
+
+namespace OpenTail.Bullshark.App;
+
+/// <summary>
+/// The run timeline (additions item 5): a run chosen from a list, its sessions as a filter, and the events of the run in time order,
+/// one line each. It only draws what the window gives it; the events were read on a pool thread.
+/// </summary>
+public sealed class TimelineView : UserControl
+{
+    private const string AllSessions = "All sessions";
+
+    /// <summary>A run in the run list. The label is what the owner reads.</summary>
+    private sealed record RunChoice(RunRecord Run, string Label);
+
+    private readonly ComboBox _runs = new() { MinWidth = 320, DisplayMemberPath = nameof(RunChoice.Label) };
+    private readonly ComboBox _sessions = new() { MinWidth = 240, Margin = new Thickness(8, 0, 0, 0) };
+    private readonly ListBox _lines = new()
+    {
+        FontFamily = new FontFamily("Consolas"),
+        FontSize = 12,
+        BorderThickness = new Thickness(0),
+        Background = Brushes.Transparent,
+    };
+    private readonly TextBlock _caption = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 6) };
+
+    private IReadOnlyList<SupervisorEvent> _events = [];
+    private bool _loading;
+
+    public TimelineView()
+    {
+        var refresh = new Button { Content = "Refresh", Padding = new Thickness(10, 2, 10, 2) };
+        refresh.Click += (_, _) => RefreshRequested?.Invoke();
+
+        var choosers = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 6) };
+        choosers.Children.Add(new TextBlock { Text = "Run", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) });
+        choosers.Children.Add(_runs);
+        choosers.Children.Add(new TextBlock { Text = "Session", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 6, 0) });
+        choosers.Children.Add(_sessions);
+        choosers.Children.Add(refresh);
+
+        var root = new StackPanel { Margin = new Thickness(12, 8, 12, 8) };
+        root.Children.Add(new TextBlock { Text = "Timeline", FontSize = 17, FontWeight = FontWeights.SemiBold });
+        root.Children.Add(_caption);
+        root.Children.Add(choosers);
+        root.Children.Add(new ScrollViewer { Content = _lines, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, MaxHeight = 600 });
+        Content = root;
+
+        _runs.SelectionChanged += (_, _) =>
+        {
+            if (_loading) return;
+            FillSessions();
+            Draw();
+        };
+        _sessions.SelectionChanged += (_, _) =>
+        {
+            if (!_loading) Draw();
+        };
+    }
+
+    /// <summary>The Refresh button was pressed. The window reads the log again.</summary>
+    public event Action? RefreshRequested;
+
+    /// <summary>Shows the runs (newest first), and the events of the log. The run chosen before stays chosen when it is still listed.</summary>
+    public void Show(IReadOnlyList<RunRecord> runs, IReadOnlyList<SupervisorEvent> events)
+    {
+        var previous = (_runs.SelectedItem as RunChoice)?.Run.RunId;
+        _loading = true;
+        _runs.Items.Clear();
+        foreach (var run in runs.OrderByDescending(r => r.CreatedAt))
+            _runs.Items.Add(new RunChoice(run, $"{run.CreatedAt.ToLocalTime():yyyy-MM-dd HH:mm} · {run.PatternKey} · run {run.RunId}"));
+        _runs.SelectedIndex = Math.Max(0, _runs.Items.Cast<RunChoice>().ToList().FindIndex(c => c.Run.RunId == previous));
+        _events = events;
+        _loading = false;
+
+        _caption.Text = runs.Count == 0 ? "No run has been started yet." : $"{events.Count:N0} events are recorded in all.";
+        FillSessions();
+        Draw();
+    }
+
+    /// <summary>Shows a line under the caption, for a log that could not be read.</summary>
+    public void ShowProblem(string text)
+    {
+        _caption.Text = text;
+        _lines.Items.Clear();
+    }
+
+    private void FillSessions()
+    {
+        _sessions.Items.Clear();
+        _sessions.Items.Add(AllSessions);
+        if (_runs.SelectedItem is RunChoice choice)
+            foreach (var name in choice.Run.Specs.Select(s => s.Name).Distinct())
+                _sessions.Items.Add(name);
+        _sessions.SelectedIndex = 0;
+    }
+
+    /// <summary>The events of the chosen run, in the order they were written, filtered by the chosen session.</summary>
+    private void Draw()
+    {
+        _lines.Items.Clear();
+        if (_runs.SelectedItem is not RunChoice choice)
+        {
+            _lines.Items.Add("Nothing to show yet.");
+            return;
+        }
+
+        var names = choice.Run.Specs.Select(s => s.Name).ToHashSet(StringComparer.Ordinal);
+        var session = _sessions.SelectedItem as string;
+        var shown = _events
+            .Where(e => names.Contains(e.Session) && (session is null || session == AllSessions || e.Session == session))
+            .ToList();
+        if (shown.Count == 0)
+        {
+            _lines.Items.Add("No events for this run yet.");
+            return;
+        }
+        foreach (var e in shown)
+            _lines.Items.Add($"{e.At.ToLocalTime():HH:mm:ss}  {e.Session,-28} {e.Event,-24} {e.Detail}");
+    }
+}
