@@ -59,7 +59,20 @@ public sealed class EventLog : IEventSink
         var current = new FileInfo(FilePath);
         if (current.Exists && current.Length >= _rotateBytes)
             File.Move(FilePath, RotatedFilePath, overwrite: true);
-        File.AppendAllText(FilePath, line);
+        // A write that was cut off leaves a last line with no newline. The new event would be glued onto it and lost with it, so the
+        // cut-off line is ended first; the reader then skips that line alone (round 5 item 5).
+        var prefix = EndsWithoutNewline(FilePath) ? "\n" : string.Empty;
+        File.AppendAllText(FilePath, prefix + line);
+    }
+
+    /// <summary>True when the file has bytes and its last byte is not a newline. A missing or empty file is not.</summary>
+    private static bool EndsWithoutNewline(string path)
+    {
+        var info = new FileInfo(path);
+        if (!info.Exists || info.Length == 0) return false;
+        using var stream = info.OpenRead();
+        stream.Seek(-1, SeekOrigin.End);
+        return stream.ReadByte() != '\n';
     }
 
     /// <summary>

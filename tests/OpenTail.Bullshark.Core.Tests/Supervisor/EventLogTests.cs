@@ -68,6 +68,19 @@ public sealed class EventLogTests : IDisposable
     }
 
     [Fact]
+    public void AnEventWrittenAfterACutOffLineIsReadBack()
+    {
+        var log = new EventLog(Path_());
+        log.Write(Event(1));
+        File.AppendAllText(Path_(), "{\"At\":\"2026-11-17T09:0");   // a write that did not finish, with no newline after it
+
+        log.Write(Event(2));
+
+        // The cut-off line is ended before the new event, so only that line is skipped and the new event is kept.
+        Assert.Equal([Event(1), Event(2)], log.Read());
+    }
+
+    [Fact]
     public async Task TwoWritersAtOnceLoseNoLines()
     {
         var path = Path_();
