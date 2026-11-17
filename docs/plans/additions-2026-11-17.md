@@ -64,10 +64,10 @@ Now: a `blocked` session raises `AlertKind.Blocked`, which goes to the log and t
 ## Phase B: control and hindsight
 
 ### 4. Limits per run
-- [ ] `RunRecord` gets optional `RunLimits? Limits` (`long? MaxOutputTokens`, `TimeSpan? MaxDuration`); setup page fields, empty = no limit.
-- [ ] Core: `RunSpend.Of(run, digests)` sums `TokenUsage` of the run's sessions (by session id) and time since `CreatedAt`. Unit tests.
-- [ ] Policy: at 80 % → alert `LimitNear` once; at 100 % → alert `LimitReached` and no more resumes or starts for that run (a running session is not stopped; the owner stops it). New `AlertKind` values; existing alerts unchanged.
-- [ ] Tests: old runs.json without `Limits` loads; thresholds fire once per entry.
+- [x] `RunRecord` gets optional `RunLimits? Limits` (`long? MaxOutputTokens`, `TimeSpan? MaxDuration`); setup page fields, empty = no limit.
+- [x] Core: `RunSpend.Of(run, digests)` sums `TokenUsage` of the run's sessions (by session id) and time since `CreatedAt`. Unit tests. (Built as `Of(run, records, writes, now)`, see D4.1.)
+- [x] Policy: at 80 % → alert `LimitNear` once; at 100 % → alert `LimitReached` and no more resumes or starts for that run (a running session is not stopped; the owner stops it). New `AlertKind` values; existing alerts unchanged. (The notices reach the log and the record, see D4.4.)
+- [x] Tests: old runs.json without `Limits` loads; thresholds fire once per entry.
 
 ### 5. Run timeline
 - [ ] Core: `EventLog` appends one JSON line per supervisor action and state change to `events.jsonl` beside state.json (under `FileLock`, append only; rotate at 5 MB to `events.1.jsonl`). `SupervisorRunner` writes through an optional `IEventSink`, so existing constructors and tests do not change.
@@ -127,3 +127,13 @@ Now: a `blocked` session raises `AlertKind.Blocked`, which goes to the log and t
 - D3.3 No session was stopped, removed or started by this run, so there was nothing to clean up with `claude stop` or `claude rm`. The scratch repo was deleted.
 - To finish item 3: the owner accepts trust once for a throwaway folder (or names one that is already trusted), then the gate is run again. The same trust gate stops any run in an untrusted repository (finding F24), so the setup page's trust step matters to item 3 as well.
 - Item 2 does not depend on item 3. Its folder is the listed `cwd`, else the spec's folder (D2.8), so it works for a session in the main folder and will show a worktree's changes once one exists and is listed with its `cwd`.
+
+### Item 4 (limits per run)
+
+- D4.1 `RunSpend.Of(run, records, writes, now)`, not `(run, digests)`. A run record holds no session ids, so the state records map each spec name to its session, as the gems overlap check does. The writes come from the same transcript read as the overlap check, and the usage rides on `SessionWrites.Usage`, so no transcript is read twice.
+- D4.2 The token limit is output tokens (`MaxOutputTokens`, as the plan names it). A run's budget is the larger of its token fraction and its time fraction. A field left blank is no limit.
+- D4.3 The budgets are worked out after each pass and given to the runner (`SupervisorRunner.Budgets`), so a limit takes effect on the next pass, up to 15 seconds later. A session resumed in the pass that crosses a limit runs until the next pass.
+- D4.4 The notices (`LimitNear`, `LimitReached`) are written to the log and to the session record's last alert, once per level while the last alert still says so. They are not shown under "Needs you", because the attention list reads only the restart, resume, stopped and failed alerts. Owner decision: whether limit notices should join "Needs you".
+- D4.5 At the limit, a session that is not listed is not resumed, and a run with no record yet is not started. A listed session that is running is not stopped.
+- D4.6 The setup page has two text boxes, output tokens and minutes. Blank is no limit. A value that is not a positive whole number stops Start, with the reason in the status line, before anything is written.
+- D4.7 Verified: 9 new Core tests (`RunLimitTests`), 555 passing in all, and the solution builds with App. Not seen in a running window: the fields, and the notices in the log.

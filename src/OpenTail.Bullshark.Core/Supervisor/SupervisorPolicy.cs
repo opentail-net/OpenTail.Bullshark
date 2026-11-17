@@ -30,6 +30,14 @@ public enum AlertKind
     /// per entry into the state.
     /// </summary>
     Failed,
+
+    /// <summary>The run is near its limit (80 %). Raised once per entry into the level (additions item 4).</summary>
+    LimitNear,
+
+    /// <summary>
+    /// The run reached its limit. Nothing new is started or resumed for it; a running session is not stopped. Raised once (additions item 4).
+    /// </summary>
+    LimitReached,
 }
 
 /// <summary>One thing the supervisor decided to do on this check.</summary>
@@ -63,12 +71,44 @@ public static class SupervisorPolicy
     /// <summary>A case-insensitive state comparison. The listing carries completed sessions too (`--all`, F61).</summary>
     private static bool Is(string? state, string expected) => string.Equals(state, expected, StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// The actions for one session, with its run's limit state when the run has one (additions item 4). A run at its limit gets no new
+    /// starts or resumes. The limit notices are added here, once per level: a session already told about the level is not told again
+    /// while its last alert still says so.
+    /// </summary>
     public static IReadOnlyList<SupervisorAction> Decide(
         SessionSpec spec,
         SessionRecord? record,
         IReadOnlyList<AgentInfo> agents,
         DateTimeOffset now,
-        SupervisorRules rules)
+        SupervisorRules rules,
+        RunBudget? budget = null)
+    {
+        var reached = budget is { Reached: true };
+        var actions = DecideSession(spec, record, agents, now, rules, reached).ToList();
+
+        if (budget is not null && record is { } known && !string.IsNullOrEmpty(known.SessionId))
+        {
+            if (reached && !HasAlert(known, AlertKind.LimitReached))
+                actions.Add(new SupervisorAction.Alert(spec.Role, AlertKind.LimitReached,
+                    "the run reached its limit. Nothing new is started or resumed; a running session is not stopped. Stop it, or raise the limit."));
+            else if (!reached && budget.Near && !HasAlert(known, AlertKind.LimitNear))
+                actions.Add(new SupervisorAction.Alert(spec.Role, AlertKind.LimitNear,
+                    $"the run has used {budget.Fraction:P0} of its limit."));
+        }
+        return actions;
+    }
+
+    private static bool HasAlert(SessionRecord record, AlertKind kind) =>
+        record.LastAlert?.StartsWith($"{kind}: ", StringComparison.Ordinal) == true;
+
+    private static IReadOnlyList<SupervisorAction> DecideSession(
+        SessionSpec spec,
+        SessionRecord? record,
+        IReadOnlyList<AgentInfo> agents,
+        DateTimeOffset now,
+        SupervisorRules rules,
+        bool reached)
     {
         // Adoption first: a session of this name is already running, because the record was lost or the start was not read back.
         // Starting it again would be a second paid session. An idle `done` session is adopted too: the listing cannot tell idle
@@ -84,7 +124,7 @@ public static class SupervisorPolicy
 
         // First start: nothing is remembered for this role.
         if (record is null)
-            return [new SupervisorAction.Start(spec.Role, spec)];
+            return reached ? [] : [new SupervisorAction.Start(spec.Role, spec)];
 
         // A start that failed is kept with no session id. It is not retried on every pass; the owner asks for a retry.
         if (string.IsNullOrEmpty(record.SessionId))
@@ -95,6 +135,8 @@ public static class SupervisorPolicy
         // Gone: the daemon lost it or it was removed. Resume under the same id, unless it keeps happening.
         if (agent is null)
         {
+            // At the run's limit a lost session is not brought back (additions item 4).
+            if (reached) return [];
             var recentRestarts = record.RestartTimes.Count(t => now - t < TimeSpan.FromHours(1));
             if (recentRestarts >= rules.MaxRestartsPerHour)
             {

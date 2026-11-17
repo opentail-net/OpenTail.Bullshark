@@ -24,10 +24,14 @@ public partial class SessionWindow
     /// The clashes of every run, for the sessions in <paramref name="records"/>. Runs on a pool thread: it reads runs.json and the
     /// transcripts through the cache, and touches no window object. A transcript that cannot be read is skipped, and the rest are read.
     /// </summary>
-    private IReadOnlyList<FileClash> ReadClashes(IReadOnlyDictionary<string, SessionRecord> records, IReadOnlyDictionary<string, string> paths)
+    private (IReadOnlyList<FileClash> Clashes, IReadOnlyDictionary<string, RunBudget> Budgets) ReadClashes(
+        IReadOnlyDictionary<string, SessionRecord> records,
+        IReadOnlyDictionary<string, string> paths)
     {
         var (runs, _) = LoadRuns(_runStore);
         var clashes = new List<FileClash>();
+        var budgets = new Dictionary<string, RunBudget>(StringComparer.Ordinal);
+        var now = DateTimeOffset.UtcNow;
         foreach (var run in runs)
         {
             var writes = new List<SessionWrites>();
@@ -45,9 +49,16 @@ public partial class SessionWindow
                 }
             }
             clashes.AddRange(FileOverlap.Find(run, records, writes));
+
+            // The run's limits, from the same transcripts (additions item 4). The runner applies a budget from the next pass.
+            if (RunBudget.For(run.Limits, RunSpend.Of(run, records, writes, now)) is { } budget)
+                foreach (var spec in run.Specs) budgets[spec.Name] = budget;
         }
-        return clashes;
+        return (clashes, budgets);
     }
+
+    /// <summary>The supervisor runner, which the limits are given to after each pass (additions item 4).</summary>
+    private SupervisorRunner _runner = null!;
 
     /// <summary>The session ids that are in a clash, for the rail mark.</summary>
     private bool IsShared(string sessionId) =>

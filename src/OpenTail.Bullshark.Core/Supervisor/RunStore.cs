@@ -17,7 +17,8 @@ public sealed record RunRecord(
     string PermissionMode,
     DateTimeOffset CreatedAt,
     IReadOnlyList<SessionSpec> Specs,
-    DateTimeOffset? StartAt = null);
+    DateTimeOffset? StartAt = null,
+    RunLimits? Limits = null);
 
 /// <summary>Reads and writes runs.json. Writes go to a temporary file first, like the state file.</summary>
 public sealed class RunStore

@@ -256,6 +256,16 @@
                         Click="Start_Click" />
                 <StackPanel DockPanel.Dock="Right" VerticalAlignment="Center" Margin="14,0,0,0">
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <TextBlock Text="Limit: tokens" VerticalAlignment="Center" Foreground="{DynamicResource SetupMuted}" Margin="0,0,6,0" />
+                        <TextBox x:Name="LimitTokensBox" Width="84" ToolTip="Optional. The most output tokens this run may write. Blank is no limit." />
+                        <TextBlock Text="minutes" VerticalAlignment="Center" Foreground="{DynamicResource SetupMuted}" Margin="8,0,6,0" />
+                        <TextBox x:Name="LimitMinutesBox" Width="64" ToolTip="Optional. The most minutes this run may run. Blank is no limit." />
+                    </StackPanel>
+                    <TextBlock Text="At 80 % you are told; at the limit nothing new starts." FontSize="11" HorizontalAlignment="Right"
+                               Foreground="{DynamicResource SetupMuted}" />
+                </StackPanel>
+                <StackPanel DockPanel.Dock="Right" VerticalAlignment="Center" Margin="14,0,0,0">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                         <TextBlock Text="Start at" VerticalAlignment="Center" Foreground="{DynamicResource SetupMuted}" Margin="0,0,6,0" />
                         <TextBox x:Name="StartAtBox" Width="64" MaxLength="5"
                                  ToolTip="Optional. A 24-hour time, HH:mm, on this computer's clock. The run waits until then. Blank starts it at once." />

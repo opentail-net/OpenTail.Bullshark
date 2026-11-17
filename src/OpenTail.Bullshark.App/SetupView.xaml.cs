@@ -230,7 +230,8 @@ public partial class SetupView : UserControl
         AssistantEffort: AssistantEffortBox.SelectedItem as string ?? RunPlan.AssistantEffort,
         PlannerBrief: _plannerBrief,
         CoderBrief: _coderBrief,
-        StartAt: StartTime.Parse(StartAtBox.Text, DateTimeOffset.Now).At);
+        StartAt: StartTime.Parse(StartAtBox.Text, DateTimeOffset.Now).At,
+        Limits: RunLimits.Parse(LimitTokensBox.Text, LimitMinutesBox.Text).Limits);
 
     /// <summary>Checks the folder as the owner types, and shows editable briefs when the run would be valid.</summary>
     private void Refresh()
@@ -335,6 +336,12 @@ public partial class SetupView : UserControl
         if (StartTime.Parse(StartAtBox.Text, DateTimeOffset.Now).Error is { } startError)
         {
             SetStartStatus("Not started: " + startError);
+            return;
+        }
+        // The same for the limits: a value that is not a positive whole number stops the run before anything is written (additions item 4).
+        if (RunLimits.Parse(LimitTokensBox.Text, LimitMinutesBox.Text).Error is { } limitError)
+        {
+            SetStartStatus("Not started: " + limitError);
             return;
         }
         var request = CurrentRequest();

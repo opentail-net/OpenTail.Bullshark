@@ -9,7 +9,8 @@ namespace OpenTail.Bullshark.Core.Supervisor;
 public sealed record SessionWrites(
     string SessionId,
     IReadOnlyList<string> Files,
-    IReadOnlyDictionary<string, DateTimeOffset> LastWrites);
+    IReadOnlyDictionary<string, DateTimeOffset> LastWrites,
+    TokenUsage? Usage = null);
 
 /// <summary>One session in a clash: the spec's name, its session id, and when it last wrote the file (null when the transcript has no time for it).</summary>
 public sealed record ClashSession(string Name, string SessionId, DateTimeOffset? LastWrite);
@@ -125,10 +126,12 @@ public sealed class SessionWritesCache
             return known.Writes;
 
         var summary = TranscriptReader.ReadFile(transcriptPath);
+        // The usage rides along, so a run's token limit is checked from the same read as the overlap (additions item 4).
         var writes = new SessionWrites(
             sessionId,
             summary.FilesWritten ?? [],
-            summary.FileLastWrites ?? new Dictionary<string, DateTimeOffset>(StringComparer.Ordinal));
+            summary.FileLastWrites ?? new Dictionary<string, DateTimeOffset>(StringComparer.Ordinal),
+            summary.TotalUsage);
         _entries[transcriptPath] = new Entry(length, stamp, writes);
         return writes;
     }

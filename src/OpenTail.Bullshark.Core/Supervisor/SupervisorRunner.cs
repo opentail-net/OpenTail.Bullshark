@@ -20,6 +20,12 @@ public sealed class SupervisorRunner
     private readonly TimeSpan _resolveTimeout;
     private readonly Action<string> _log;
 
+    /// <summary>
+    /// How far each session's run is through its limits, by session name (additions item 4). The window sets it after a pass, so a
+    /// limit applies from the next pass. Empty, the default, means no run has a limit, which is how the runner worked before.
+    /// </summary>
+    public IReadOnlyDictionary<string, RunBudget> Budgets { get; set; } = new Dictionary<string, RunBudget>(StringComparer.Ordinal);
+
     public SupervisorRunner(
         ClaudeCli cli,
         StateStore store,
@@ -72,7 +78,8 @@ public sealed class SupervisorRunner
             {
                 processed.Add(spec.Name);
                 records.TryGetValue(spec.Name, out var record);
-                var actions = SupervisorPolicy.Decide(spec, record, agents, now, _rules);
+                var actions = SupervisorPolicy.Decide(spec, record, agents, now, _rules,
+                    Budgets.TryGetValue(spec.Name, out var budget) ? budget : null);
 
                 foreach (var action in actions)
                 {

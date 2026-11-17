@@ -92,6 +92,7 @@ public partial class SessionWindow : Window
         InitLibrary(options.StatePath);
         var runner = new SupervisorRunner(_cli, _store, TimeProvider.System, log: AppLog.Write);
         _loop = new SupervisorLoop(runner, _cli, _store, AppLog.Write);
+        _runner = runner;
 
         _setup = new SetupView(options.StatePath, options.Task) { Visibility = Visibility.Hidden };
         _setup.ShowFolder(options.WorkDir);
@@ -240,7 +241,9 @@ public partial class SessionWindow : Window
             }
             // The files two sessions of a run both wrote are read off the UI thread, from the transcripts this pass has seen (gems item 1).
             var paths = new Dictionary<string, string>(_transcriptPaths, StringComparer.Ordinal);
-            _clashes = await Task.Run(() => ReadClashes(records, paths));
+            var (clashes, budgets) = await Task.Run(() => ReadClashes(records, paths));
+            _clashes = clashes;
+            _runner.Budgets = budgets;
             // A coder that has just entered done gets its merge check, on a pool thread; its result shows on a later pass (gems item 2).
             UpdateMergeChecks(records);
             RefreshRail(records);
