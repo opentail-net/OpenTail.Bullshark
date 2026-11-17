@@ -2,7 +2,7 @@
 
 Bullshark - saves your bytes.
 
-> **Status (2026-11-17): built, not yet proven end to end.** The window and the supervisor are built, and the spike (P1) passed. The review fixes of 2026-11-17 are on `main`, and so are the "Needs you" alerts and the Changes tab (additions Phase A). The bug fixes of 2026-11-17 are on `main` too: the supervisor no longer resumes sessions that finished or were stopped (F61). The end-to-end run with the real `claude` CLI (review of 2026-11-15, Phase 3) has not been done. The orchestrator (P8) is a later, optional phase. See [Plans](#plans).
+> **Status (2026-11-17, end of an autonomous session): built, not yet proven end to end with live sessions.** Everything planned on 2026-11-17 is on `main` (937 tests). What was built, the owner's open decisions and the gated checks are in [docs/plans/session-summary-2026-11-17.md](docs/plans/session-summary-2026-11-17.md). The end-to-end run with the real `claude` CLI (review of 2026-11-15, Phase 3) has not been done. See [Plans](#plans).
 
 ## What it is
 

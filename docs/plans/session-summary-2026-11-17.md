@@ -1,0 +1,48 @@
+# Session summary, 2026-11-17 (autonomous run while the owner was away)
+
+How the day ran: the planner (Opus) reviewed and researched, wrote a checkbox plan per round with the contracts it had to keep, and
+handed each plan to a Haiku builder in its own worktree. Each branch was checked (build, tests, `git ls-remote`, key diffs,
+screenshots) before it was merged to `main` and pushed. Independent read-only Sonnet reviews looked at each round's code. The owner's
+uncommitted pop-out work (`DetachedSessionWindow.cs`, `SessionWindow.PopOut.cs` and edits in five `SessionWindow.*` partials) was set
+aside and put back for every merge; it is still uncommitted and unchanged, except one line in `SessionWindow.Rail.cs` where both
+sides changed it (both kept). Tests: 357 at the start, 937 at the end.
+
+## What was built (plans in this folder, decisions inside each)
+
+| Plan | In short |
+|---|---|
+| `review-2026-11-17.md` | Trust file read once; pass off the UI thread; one listing per pass; launch length guard; testable clock; file lock fixes. |
+| `additions-2026-11-17.md` | Needs you (rail group, flash, sound); Changes tab; run limits; run timeline; Markdown export; `--cwd` argument. Worktree per coder skipped (gate). |
+| `bugs-2026-11-17.md` | Finished/stopped sessions no longer resumed (F61); restart-loop alert once; one bad transcript skipped; one way to open transcripts. |
+| `gems-2026-11-17.md` | File-overlap alert; merge-conflict check with a copy-able resolve prompt; effort panel; scheduled runs; storage page with archive/restore (no delete). OpenTelemetry gated. |
+| `bugs-round3-2026-11-17.md` | 16 fixes: search with `\`/`"`, startup with bad runs.json, locked pattern/ui/library stores, resume orphans and length, and more. |
+| `round4-2026-11-17.md` | Unreadable stores never read as empty; one error filter; setup check for `VAR=1 cmd` and built-ins; first screenshots (`scripts/Test-NewScreens.ps1`). |
+| `round5-2026-11-17.md` .. `round9-2026-11-17.md` | Reviews of the day's code: stop guard, event-log failures, limits from real start, archive safety, attention keys, incremental transcript reads, timeline paging, DST-safe start times, daemon health (F63) with stale rows, Respawn all with a hold, limits kept when a session is closed. |
+
+Findings added: F61 (`agents --json` hides finished/stopped sessions without `--all`), F62 (`--bg` refuses an untrusted folder),
+F63 (daemon not running while the listing still shows sessions; the daemon runs on demand).
+
+## Waiting for the owner
+
+Decisions:
+- Windows toast notifications need a package (CommunityToolkit or Windows App SDK). Today: flash + sound in the window only.
+- Start a run "when my usage limit resets"? Not built.
+- Should old transcripts ever be deleted (today: archive only)?
+- Should a `done` coder in a live run ever be woken? Today: no.
+- A sound when a session that is already waiting goes stale (daemon stopped)? Today: no new sound (round 8 B2.2).
+- Respawn click waiting for a pass that is already running (round 9 item 2, optional part, needs a UI-thread change).
+- Light theme tab labels look pale (#5A6270, about 5.6:1); left as is (round 4).
+
+Gates (need one real, owner-run step; nothing was started on the owner's behalf):
+- Worktree per coder (additions item 3) and using `--cwd` for listings: trust one throwaway git folder (`claude` there once, accept), then rerun the gate in the plan.
+- `--bg --session-id <uuid>`: does the session keep that id now (F18 said no on 2026-11-14)?
+- Live OpenTelemetry data (gems item 3): one session with telemetry to the console, to see the attribute names.
+- Does `claude --bg` accept a name that a dead listing row still holds (round 8 B1.4)?
+- Does `claude respawn --all` restart stopped sessions, and does a blocked session lose its prompt (round 8 B3.2)?
+- Where `.claude.json` lives when `CLAUDE_CONFIG_DIR` is set (round 3).
+
+Not verified on screen with real sessions: every screen was checked with `--no-pass`, a scratch state and a stand-in `claude`; none
+with live sessions. The end-to-end run of the review of 2026-11-15 (Phase 3) is still open.
+
+Housekeeping: the remote branch `review-fixes-2026-11-17` (pushed by a builder early in the day, already merged) can be deleted.
+P4 (log-on supervisor) stays not wanted, as decided on 2026-11-15.
