@@ -31,6 +31,12 @@ public sealed record AgentInfo(
     /// <summary>The state to act on: background <c>state</c>, or interactive <c>status</c>.</summary>
     public string EffectiveState => State ?? Status ?? "unknown";
 
+    /// <summary>
+    /// The state the supervisor records: the listed state of a stale row, otherwise <see cref="EffectiveState"/> (round 8 item 2). "stale" is for
+    /// display and decisions only, so a session that goes stale and comes back blocked is not a new entry into blocked.
+    /// </summary>
+    public string ObservedState => ListedState ?? EffectiveState;
+
     /// <summary>What the session waits for, trimmed, or null when the listing says nothing about it (or says only blanks).</summary>
     public string? Waiting => string.IsNullOrWhiteSpace(WaitingFor) ? null : WaitingFor.Trim();
 

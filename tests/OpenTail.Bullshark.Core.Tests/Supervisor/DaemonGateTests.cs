@@ -127,6 +127,7 @@ public sealed class DaemonGateTests : IDisposable
         Assert.Equal(AttentionList.StaleBlockedDetail, alert.Detail);
         Assert.Empty(second);
         Assert.Empty(LaunchArgs(claude.Runner));
+        Assert.Equal("blocked", store.Load().Values.Single().LastState);
     }
 
     [Fact]
@@ -205,18 +206,58 @@ public sealed class DaemonGateTests : IDisposable
     }
 
     [Fact]
-    public async Task ASessionThatWasStaleIsAlertedWhenTheDaemonReturnsAndItIsStillBlocked()
+    public async Task ASessionThatWasStaleIsNotAlertedAgainWhenTheDaemonReturnsAndItIsStillBlocked()
     {
-        // Pass 1 with the daemon idle records the session as stale; pass 2 with the daemon up sees it blocked, which is a new state for the record.
+        // Pass 1 with the daemon idle: the stale alert, and the state recorded is the listed one (blocked), not "stale" (round 8 item 2).
+        // Pass 2 with the daemon up sees it blocked again: that is not a new entry into blocked, so nothing is alerted.
         var claude = new FakeClaude(listedState: "blocked");
         var store = StoreWith(RecordOfPlanner("working"));
 
         var idle = await RunnerFor(claude, store, NotRunning).CheckOnceAsync([TestSpecs.Planner(@"C:\W", "t")]);
+        Assert.Equal("blocked", store.Load().Values.Single().LastState);
         var back = await RunnerFor(claude, store, Healthy).CheckOnceAsync([TestSpecs.Planner(@"C:\W", "t")]);
 
         Assert.Equal(AttentionList.StaleBlockedDetail, Assert.IsType<SupervisorAction.Alert>(Assert.Single(idle)).Detail);
-        var alert = Assert.IsType<SupervisorAction.Alert>(Assert.Single(back));
-        Assert.Equal(AlertKind.Blocked, alert.Kind);
+        Assert.Empty(back);
+    }
+
+    [Fact]
+    public async Task ABlockedSessionThatGoesStaleAndBackBlockedIsAnnouncedOnce()
+    {
+        // The owner's sound and flash come from a session joining Needs you by name. Blocked, then stale, then blocked again: the
+        // Needs-you item is the same session all the way, so it is announced once (round 8 item 2).
+        var claude = new FakeClaude(listedState: "blocked");
+        var store = StoreWith(RecordOfPlanner("working"));
+        var spec = TestSpecs.Planner(@"C:\W", "t");
+
+        var first = await RunnerFor(claude, store, Healthy).CheckOnceAsync([spec]);
+        var itemsFirst = NeedsYou(store, Healthy, Listing("blocked"));
+        var idle = await RunnerFor(claude, store, NotRunning).CheckOnceAsync([spec]);
+        var itemsIdle = NeedsYou(store, NotRunning, Listing("blocked"));
+        var back = await RunnerFor(claude, store, Healthy).CheckOnceAsync([spec]);
+        var itemsBack = NeedsYou(store, Healthy, Listing("blocked"));
+
+        Assert.Equal(AlertKind.Blocked, Assert.IsType<SupervisorAction.Alert>(Assert.Single(first)).Kind);
+        Assert.Equal(AttentionList.StaleBlockedDetail, Assert.IsType<SupervisorAction.Alert>(Assert.Single(idle)).Detail);
+        Assert.Empty(back);
+        Assert.Single(AttentionList.Gained([], itemsFirst));
+        Assert.Empty(AttentionList.Gained(itemsFirst, itemsIdle));
+        Assert.Empty(AttentionList.Gained(itemsIdle, itemsBack));
+    }
+
+    [Fact]
+    public async Task AStaleWorkingSessionIsRecordedAsWorkingNotAsStale()
+    {
+        var claude = new FakeClaude(listedState: "working");
+        var store = new StateStore(StatePath);
+        store.Save(new Dictionary<string, SessionRecord>
+        {
+            [TestSpecs.PlannerName] = new(SessionRole.Planner, SessionId, TestSpecs.PlannerName, DateTimeOffset.UnixEpoch, 0, [], null, null),
+        });
+
+        await RunnerFor(claude, store, NotRunning).CheckOnceAsync([TestSpecs.Planner(@"C:\W", "t")]);
+
+        Assert.Equal("working", store.Load().Values.Single().LastState);
     }
 
     [Fact]
@@ -273,6 +314,10 @@ public sealed class DaemonGateTests : IDisposable
         var performed = await RunnerFor(claude, StoreWith(RecordOfPlanner("working")), daemon).CheckOnceAsync([TestSpecs.Planner(@"C:\W", "t")]);
         return (performed, LaunchArgs(claude.Runner));
     }
+
+    /// <summary>The Needs-you items for the store, read as the window reads them: the listing as the daemon status shows it.</summary>
+    private static IReadOnlyList<AttentionItem> NeedsYou(StateStore store, DaemonStatus daemon, string listing) =>
+        AttentionList.From(store.Load().Values, daemon.IdleListing(AgentInfo.ParseList(listing)));
 
     /// <summary>A pass for a planner listed as blocked, under the given daemon status.</summary>
     private async Task<(IReadOnlyList<SupervisorAction> Performed, List<string> Args)> BlockedPass(DaemonStatus? daemon)
