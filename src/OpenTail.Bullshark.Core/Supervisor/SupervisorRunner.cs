@@ -96,9 +96,6 @@ public sealed class SupervisorRunner
         var processed = new List<string>();
         var now = _clock.GetUtcNow();
 
-        // Read once for the whole pass: the hold is taken as it stood when the pass began (round 8 item 3).
-        var held = Hold?.IsHeld == true;
-
         // Saved in a finally: a session started earlier in this pass keeps its record even if a later step throws.
         try
         {
@@ -112,8 +109,9 @@ public sealed class SupervisorRunner
                 foreach (var action in actions)
                 {
                     // A respawn is restarting the workers: no start or resume is carried out until the hold ends. The session is decided on again
-                    // by the next pass that is not held (round 8 item 3).
-                    if (held && action is SupervisorAction.Start or SupervisorAction.Resume) continue;
+                    // by the next pass that is not held (round 8 item 3). The hold is read for each action, just before it is carried out, so a
+                    // respawn that began during this pass holds the rest of it too (round 9 item 2).
+                    if (Hold?.IsHeld == true && action is (SupervisorAction.Start or SupervisorAction.Resume)) continue;
 
                     try
                     {

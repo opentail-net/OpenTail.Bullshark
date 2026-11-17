@@ -196,6 +196,71 @@ public sealed class RespawnHoldTests : IDisposable
         Assert.IsType<SupervisorAction.Resume>(Assert.Single(performed));
     }
 
+    /// <summary>
+    /// A stand-in for `claude` in a pass whose first launch begins the respawn, as the window's click does while a pass runs. The listing shows
+    /// the planner once it has been launched, so its id reads back.
+    /// </summary>
+    private static FakeCliRunner RespawnBeginsAtFirstLaunch(RespawnHold hold, string listingBefore, string listingAfter)
+    {
+        var launched = false;
+        return new FakeCliRunner(args =>
+        {
+            switch (args[0])
+            {
+                case "agents":
+                    return FakeCliRunner.Ok(launched ? listingAfter : listingBefore);
+                case "--bg":
+                    launched = true;
+                    hold.Begin();
+                    return FakeCliRunner.Ok("backgrounded · abcdef12 · test-planner\n");
+                default:
+                    return FakeCliRunner.Ok();
+            }
+        });
+    }
+
+    [Fact]
+    public async Task ARespawnThatBeginsMidPassHoldsTheStartsThatFollow()
+    {
+        // The planner is decided on first and launched; the launch begins the respawn. The coder was decided before the respawn, so its start is
+        // dropped: the hold is read again just before each action is carried out (round 9 item 2).
+        var clock = new SettableClock(Start);
+        var hold = new RespawnHold(clock);
+        var cli = RespawnBeginsAtFirstLaunch(hold, "[]", Listing("working"));
+        var store = new StateStore(Path.Combine(_dir, "state.json"));
+
+        var performed = await RunnerFor(cli, store, clock, hold)
+            .CheckOnceAsync([TestSpecs.Planner(@"C:\W", "t"), TestSpecs.Coder(@"C:\W")]);
+
+        Assert.IsType<SupervisorAction.Start>(Assert.Single(performed));
+        Assert.Equal(1, cli.Calls.Count(c => c.Args[0] == "--bg"));
+        var saved = store.Load();
+        Assert.True(saved.ContainsKey(TestSpecs.PlannerName));
+        Assert.False(saved.ContainsKey(TestSpecs.CoderName));
+    }
+
+    [Fact]
+    public async Task ARespawnThatBeginsMidPassHoldsAResumeThatFollows()
+    {
+        // The planner is started first and begins the respawn. The coder's record says it was lost, so its resume was decided before the respawn:
+        // it is dropped, and its record is not changed (round 9 item 2).
+        var clock = new SettableClock(Start);
+        var hold = new RespawnHold(clock);
+        var cli = RespawnBeginsAtFirstLaunch(hold, "[]", Listing("working"));
+        var store = new StateStore(Path.Combine(_dir, "state.json"));
+        var coder = new SessionRecord(SessionRole.Coder, "22222222-0000-0000-0000-000000000002", TestSpecs.CoderName, Start.AddHours(-1),
+            0, [], "working", null);
+        store.Save(new Dictionary<string, SessionRecord> { [coder.Name] = coder });
+
+        var performed = await RunnerFor(cli, store, clock, hold)
+            .CheckOnceAsync([TestSpecs.Planner(@"C:\W", "t"), TestSpecs.Coder(@"C:\W")]);
+
+        Assert.IsType<SupervisorAction.Start>(Assert.Single(performed));
+        Assert.Equal(1, cli.Calls.Count(c => c.Args[0] == "--bg"));
+        Assert.DoesNotContain(cli.Calls, c => c.Args.Contains("--resume"));
+        Assert.Equal(0, store.Load()[TestSpecs.CoderName].Restarts);
+    }
+
     [Fact]
     public void TheConfirmationSaysWhatHappensToBlockedAndStoppedSessions()
     {
