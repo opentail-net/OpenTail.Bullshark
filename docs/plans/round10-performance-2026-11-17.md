@@ -52,6 +52,16 @@ pass (running facts, overlap, budgets, effort) and on demand (search, storage, t
   newest-first order, so the matches, the unreadable count and the stop at 100 are the ones the one-by-one loop gives. Tests cover a
   cap inside a batch and every unreadable session counted when all are read. Common word 0.95 s to 0.51 s warm (0.88 s cold); rare
   word 0.90 s to 0.34 s; Windows path 0.89 s to 0.35 s (same bench step, snapshot grown slightly between runs).
+- Item 2, index cache (the plan's "caching by path+length+write time"): `TranscriptIndex.Build(root, cachePath)` keeps each transcript's
+  summary and counted messages. An entry is used when the file's length and write time match and the cache names this build of the
+  reader (its module id). Decisions inside it: (a) the cache lives beside the state file, so for the owner in
+  `%LOCALAPPDATA%\OpenTail.Bullshark\cache`, not under `~/.claude`; it holds the last reply and the first prompt of each transcript
+  (the same text the transcripts hold, now also on this disk, about 5 MB); (b) a file changed only in its contents, with the same
+  length and write time, is not seen, which is the rule the plan names and a test pins; (c) an unchanged transcript that is now
+  locked is served from the cache, where the reader would list it as skipped: the app only logs the skipped list, so the rail keeps
+  the session; a changed locked transcript is left out as before; (d) the module id changes with the code, so a rebuild starts with a
+  cold read once. Warm: index 1.6 s to 0.18 s, history path 1.8 s to 0.26 s on the same folder; `verify` gives identical hashes.
+- Item 2, still over 1 s: the cold read with no cache (about 1.6 s). The next step is a byte-level reader, not done here.
 - Item 3, window: the window cannot be run for timing. Its startup pass calls the `claude` CLI (`agents`, `daemon status`) even with
   `--no-pass`, and the brief allows no CLI calls. Item 3 times the history work the window waits for (index and tails) in the bench
   instead, and records that WPF start and the rail drawing are not measured.

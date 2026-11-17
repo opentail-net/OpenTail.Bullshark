@@ -84,7 +84,71 @@ public sealed class TranscriptIndex
         var files = ListFiles(projectsRoot);
         var reads = new FileRead[files.Count];
         Parallel.For(0, files.Count, i => reads[i] = ReadOne(files[i]));
+        return Combine(reads);
+    }
 
+    /// <summary>
+    /// The default build, with what each transcript was read as kept in a cache file between builds (round 10 item 2). A transcript with the
+    /// same length and write time as its entry in the cache is not read: its entry is taken as it was read. The others are read, and the cache
+    /// is written again when any was read or one has gone. The result is the same as <see cref="Build(string)"/>. A cache that cannot be read
+    /// or written is left out, and every transcript is read.
+    /// </summary>
+    public static TranscriptIndex Build(string projectsRoot, string cachePath)
+    {
+        if (!Directory.Exists(projectsRoot)) return Empty();
+
+        var files = ListFiles(projectsRoot);
+        var cached = IndexCache.Load(cachePath);
+        var reads = new FileRead[files.Count];
+        var readNow = new bool[files.Count];
+        Parallel.For(0, files.Count, i =>
+        {
+            var file = files[i];
+            var read = cached is not null && cached.TryGetValue(file.FullName, out var entry) ? FromCache(file, entry) : null;
+            if (read is null)
+            {
+                reads[i] = ReadOne(file);
+                readNow[i] = true;
+            }
+            else
+            {
+                reads[i] = read;
+            }
+        });
+
+        var index = Combine(reads);
+        var entries = new List<IndexCache.Entry>();
+        foreach (var read in reads)
+        {
+            if (read.Error is null && read.Summary is { } summary)
+                entries.Add(IndexCache.EntryOf(read.Info.FullName, read.Info.Length, read.Info.LastWriteTimeUtc, summary, read.Ledger.Pairs));
+        }
+        if (cached is null || cached.Count != entries.Count || readNow.Any(read => read)) IndexCache.Save(cachePath, entries);
+        return index;
+    }
+
+    /// <summary>The read of a transcript from its cache entry, or null when the entry is not for the file as it is now.</summary>
+    private static FileRead? FromCache(FileInfo file, IndexCache.Entry entry)
+    {
+        if (entry.Length != file.Length || entry.Written != file.LastWriteTimeUtc.Ticks) return null;
+        try
+        {
+            var (summary, ledger) = IndexCache.Restore(entry);
+            return new FileRead(file, ledger, summary, null);
+        }
+        catch (Exception)
+        {
+            // A damaged entry is no entry: the file is read instead.
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Combines the reads, in the order of the listing, into the index. Each read's messages are counted only where no earlier file counted
+    /// them, as the one-after-another build does.
+    /// </summary>
+    private static TranscriptIndex Combine(FileRead[] reads)
+    {
         var ledger = new UsageLedger();
         var digests = new List<SessionDigest>();
         var skipped = new List<SkippedTranscript>();

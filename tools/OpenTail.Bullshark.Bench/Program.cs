@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using OpenTail.Bullshark.Core.Activity;
+using OpenTail.Bullshark.Core.Cache;
 using OpenTail.Bullshark.Core.Search;
 using OpenTail.Bullshark.Core.Storage;
 using OpenTail.Bullshark.Core.Supervisor;
@@ -8,8 +9,9 @@ using OpenTail.Bullshark.Core.Supervisor;
 // file, folder or session name, so its output can be written into the repository. A failure prints the exception type only, because a
 // message can hold a path.
 //
-// Usage: OpenTail.Bullshark.Bench [--projects <folder>] [--only index,search,storage,effort,pager,overlap] [--repeat <n>]
+// Usage: OpenTail.Bullshark.Bench [--projects <folder>] [--only index,search,storage,effort,pager,overlap,history,verify] [--repeat <n>] [--cache <file>]
 // The default folder is the owner's, read only. Run each step in its own process with --only, so the peak working set belongs to that step.
+// --cache gives the index build a cache file of its own (a scratch file, never the owner's): the first build writes it, the next ones read it.
 
 internal static class Program
 {
@@ -47,16 +49,64 @@ internal static class Program
 
         TranscriptIndex? index = null;
 
+        var cachePath = Arg(args, "--cache");
         if (steps.Contains("index"))
         {
             for (var run = 1; run <= repeat; run++)
             {
                 var sw = Stopwatch.StartNew();
-                index = TranscriptIndex.Build(projects);
+                index = cachePath is null ? TranscriptIndex.Build(projects) : TranscriptIndex.Build(projects, cachePath);
                 sw.Stop();
-                Report($"index build, run {run}", sw.Elapsed,
+                Report($"index build{(cachePath is null ? string.Empty : " with cache")}, run {run}", sw.Elapsed,
                     $"sessions {index.Sessions.Count}, messages counted {index.Totals.CountedMessages}, skipped {index.Skipped.Count}");
             }
+        }
+
+        if (steps.Contains("history"))
+        {
+            // The work the window waits for before the history rail is filled: the index, then the end of each transcript, as the window
+            // reads it. The window itself is not started here: its startup pass calls the claude CLI, which the round's rules do not allow.
+            for (var run = 1; run <= repeat; run++)
+            {
+                var sw = Stopwatch.StartNew();
+                var built = cachePath is null ? TranscriptIndex.Build(projects) : TranscriptIndex.Build(projects, cachePath);
+                var tails = 0;
+                foreach (var session in built.Sessions)
+                {
+                    try
+                    {
+                        if (TranscriptTail.Read(session.FilePath) is not null) tails++;
+                    }
+                    catch (IOException)
+                    {
+                        // Left out, as the window leaves it out.
+                    }
+                }
+                sw.Stop();
+                Report($"history path, index and tails{(cachePath is null ? string.Empty : " with cache")}, run {run}", sw.Elapsed,
+                    $"sessions {built.Sessions.Count}, tails read {tails}");
+            }
+        }
+
+        if (steps.Contains("verify"))
+        {
+            // The three ways of building the index must give the same index: one transcript after another, in parallel, and with the cache
+            // (first written, then read). Only counts and hashes are printed.
+            if (cachePath is null)
+            {
+                Console.WriteLine("verify needs --cache <file>, a scratch file that is written and then read");
+                return;
+            }
+            if (File.Exists(cachePath)) File.Delete(cachePath);
+            var reference = TranscriptIndex.Build(projects, TranscriptReader.ReadFile);
+            var referenceText = Canonical(reference);
+            var parallelText = Canonical(TranscriptIndex.Build(projects));
+            var writtenText = Canonical(TranscriptIndex.Build(projects, cachePath));
+            var readText = Canonical(TranscriptIndex.Build(projects, cachePath));
+            var identical = referenceText == parallelText && referenceText == writtenText && referenceText == readText;
+            Console.WriteLine($"verify: sessions {reference.Sessions.Count}, messages counted {reference.Totals.CountedMessages}, " +
+                              $"skipped {reference.Skipped.Count}; hashes reader {Hash(referenceText)}, parallel {Hash(parallelText)}, " +
+                              $"cache written {Hash(writtenText)}, cache read {Hash(readText)}; identical: {identical}");
         }
 
         if (steps.Contains("search"))
@@ -167,6 +217,28 @@ internal static class Program
             }
         }
     }
+
+    /// <summary>Every field of an index as text, in order. Only its hash is printed, so no name in it reaches the output.</summary>
+    private static string Canonical(TranscriptIndex index)
+    {
+        var lines = new List<string> { $"total {index.Totals.Total} counted {index.Totals.CountedMessages}" };
+        lines.AddRange(index.Totals.ByModel.Select(pair => $"model {pair.Key} {pair.Value}"));
+        foreach (var s in index.Sessions)
+        {
+            lines.Add(string.Join("|",
+                s.FilePath, s.SessionId, s.ProjectFolder, s.IsSubagent, s.FirstActivity, s.LastActivity,
+                s.Turns, s.UserMessages, s.AssistantMessages, s.ToolCalls,
+                string.Join(",", s.ToolNames.Select(pair => $"{pair.Key}={pair.Value}")),
+                string.Join(",", s.FilesWritten), s.LastAssistantText, s.LastModel, s.ContextTokensAtLastTurn,
+                s.Usage, s.FirstUserText, s.AiTitle, s.CustomTitle, s.LastRecap, s.LastRecapAt, s.Compactions,
+                s.ContinuesSessionId, s.FailedToolCalls));
+        }
+        lines.Add($"skipped {index.Skipped.Count}");
+        return string.Join("\n", lines);
+    }
+
+    private static string Hash(string text) =>
+        Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(text)))[..16];
 
     private static string? Arg(string[] args, string name)
     {

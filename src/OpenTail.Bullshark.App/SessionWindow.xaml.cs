@@ -664,6 +664,12 @@ public sealed record LaunchOptions(
     /// <summary>The folder of the archive: the owner's, unless a test home is given (--claude-home).</summary>
     public string ArchiveRoot => ClaudeHome is null ? TranscriptArchive.DefaultRoot : TestHome.ArchiveRootUnder(ClaudeHome);
 
+    /// <summary>
+    /// What the history index read from each transcript, kept between starts (round 10 item 2). It sits in a cache folder beside the state file,
+    /// so the owner's state keeps the owner's cache and a run with its own state keeps its own.
+    /// </summary>
+    public string IndexCachePath => Path.Combine(Path.GetDirectoryName(Path.GetFullPath(StatePath))!, "cache", "transcript-index.json");
+
     public static LaunchOptions Parse(string[] args)
     {
         string? workdir = null, task = null, state = null, shot = null, selfTest = null, filterName = null, selfTestMode = null, setupDetail = null, openSession = null, claudeHome = null, openTab = null;

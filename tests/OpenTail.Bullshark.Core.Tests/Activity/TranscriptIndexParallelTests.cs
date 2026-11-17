@@ -18,39 +18,11 @@ public sealed class TranscriptIndexParallelTests : IDisposable
         try { Directory.Delete(_root, recursive: true); } catch (IOException) { }
     }
 
-    private static string Assistant(string messageId, string? requestId, long output, string timestamp, string model)
-    {
-        var request = requestId is null ? string.Empty : "\"requestId\":\"" + requestId + "\",";
-        return "{\"type\":\"assistant\",\"timestamp\":\"" + timestamp + "\"," + request +
-               "\"message\":{\"id\":\"" + messageId + "\",\"model\":\"" + model + "\",\"role\":\"assistant\",\"content\":[" +
-               "{\"type\":\"text\",\"text\":\"answer " + messageId + "\"}],\"usage\":{\"input_tokens\":4,\"output_tokens\":" + output +
-               ",\"cache_creation_input_tokens\":2,\"cache_read_input_tokens\":" + output * 10 + "}}}";
-    }
-
     private string Project(string name)
     {
         var dir = Path.Combine(_root, name);
         Directory.CreateDirectory(dir);
         return dir;
-    }
-
-    /// <summary>Every field of an index, in order, so two indexes can be compared as text.</summary>
-    private static string Describe(TranscriptIndex index)
-    {
-        var lines = new List<string> { $"total {index.Totals.Total} counted {index.Totals.CountedMessages}" };
-        lines.AddRange(index.Totals.ByModel.Select(pair => $"model {pair.Key} {pair.Value}"));
-        foreach (var s in index.Sessions)
-        {
-            lines.Add(string.Join("|",
-                Path.GetFileName(s.FilePath), s.SessionId, s.ProjectFolder, s.IsSubagent, s.FirstActivity, s.LastActivity,
-                s.Turns, s.UserMessages, s.AssistantMessages, s.ToolCalls,
-                string.Join(",", s.ToolNames.Select(pair => $"{pair.Key}={pair.Value}")),
-                string.Join(",", s.FilesWritten), s.LastAssistantText, s.LastModel, s.ContextTokensAtLastTurn,
-                s.Usage, s.FirstUserText, s.AiTitle, s.CustomTitle, s.LastRecap, s.LastRecapAt, s.Compactions,
-                s.ContinuesSessionId, s.FailedToolCalls));
-        }
-        lines.AddRange(index.Skipped.Select(skip => $"skipped {Path.GetFileName(skip.FilePath)}: {skip.Reason}"));
-        return string.Join("\n", lines);
     }
 
     [Fact]
@@ -69,11 +41,11 @@ public sealed class TranscriptIndexParallelTests : IDisposable
             for (var k = 0; k < 6; k++)
             {
                 if ((i + k) % 2 == 1) continue;
-                lines.Add(Assistant("pool" + k, "req" + k, 10 + (i * 7 + k * 3) % 50, stamp, models[(i + k) % 2]));
+                lines.Add(IndexFixture.Assistant("pool" + k, "req" + k, 10 + (i * 7 + k * 3) % 50, stamp, models[(i + k) % 2]));
             }
             // A message written twice in one file, the second with the larger count (the placeholder rule).
-            lines.Add(Assistant("dup" + i, "rdup" + i, 4, stamp, models[0]));
-            lines.Add(Assistant("dup" + i, "rdup" + i, 300 + i, stamp, models[0]));
+            lines.Add(IndexFixture.Assistant("dup" + i, "rdup" + i, 4, stamp, models[0]));
+            lines.Add(IndexFixture.Assistant("dup" + i, "rdup" + i, 300 + i, stamp, models[0]));
             // A message with no key, counted where it stands.
             lines.Add("{\"type\":\"assistant\",\"timestamp\":\"" + stamp + "\",\"message\":{\"id\":\"nokey" + i + "\",\"model\":\"" +
                       models[1] + "\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"no key\"}],\"usage\":{" +
@@ -89,19 +61,19 @@ public sealed class TranscriptIndexParallelTests : IDisposable
         var subagents = Path.Combine(folders[0], "subagents");
         Directory.CreateDirectory(subagents);
         var agent = Path.Combine(subagents, "agent-1.jsonl");
-        File.WriteAllLines(agent, [Assistant("pool1", "req1", 77, "2026-11-02T10:00:00.000Z", models[0])]);
+        File.WriteAllLines(agent, [IndexFixture.Assistant("pool1", "req1", 77, "2026-11-02T10:00:00.000Z", models[0])]);
         File.SetCreationTimeUtc(agent, created.AddDays(20));
 
         // A transcript that is held open with no sharing, so it cannot be read by either build.
         var locked = Path.Combine(Project("C--Git-locked"), "bbbbbbbb-0000-0000-0000-000000000099.jsonl");
-        File.WriteAllLines(locked, [Assistant("pool0", "req0", 1000, "2026-11-03T10:00:00.000Z", models[0])]);
+        File.WriteAllLines(locked, [IndexFixture.Assistant("pool0", "req0", 1000, "2026-11-03T10:00:00.000Z", models[0])]);
         File.SetCreationTimeUtc(locked, created.AddDays(15));
         using var held = new FileStream(locked, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
 
         var oneAfterAnother = TranscriptIndex.Build(_root, TranscriptReader.ReadFile);
         var parallel = TranscriptIndex.Build(_root);
 
-        Assert.Equal(Describe(oneAfterAnother), Describe(parallel));
+        Assert.Equal(IndexFixture.Describe(oneAfterAnother), IndexFixture.Describe(parallel));
         Assert.Equal(13, parallel.Sessions.Count);
         Assert.Single(parallel.Skipped);
         // Six pool messages, twelve messages written twice (once each), and twelve messages with no key.
@@ -117,7 +89,7 @@ public sealed class TranscriptIndexParallelTests : IDisposable
         {
             var oneAfterAnother = TranscriptIndex.Build(root, TranscriptReader.ReadFile);
             var parallel = TranscriptIndex.Build(root);
-            Assert.Equal(Describe(oneAfterAnother), Describe(parallel));
+            Assert.Equal(IndexFixture.Describe(oneAfterAnother), IndexFixture.Describe(parallel));
             Assert.Empty(parallel.Sessions);
             Assert.Equal(0, parallel.Totals.CountedMessages);
         }
