@@ -62,7 +62,25 @@ public sealed record RailPalette(string Panel, string Background, string Text, s
         return null;
     }
 
-    public static SolidColorBrush Brush(string hex) => (SolidColorBrush)new BrushConverter().ConvertFromString(hex)!;
+    /// <summary>
+    /// The frozen brushes made so far, by hex (round 12 B5). A diff asks for one brush per line, so an unfrozen brush per call was an allocation
+    /// per line. The keys are the palette's colours and the terminal's, a small fixed set, so the cache does not grow. Frozen: no caller changes a
+    /// brush it got (checked in round 12), and a frozen brush throws if one tries.
+    /// </summary>
+    private static readonly Dictionary<string, SolidColorBrush> FrozenByHex = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>A frozen brush of the colour. The same hex gives the same brush; a bad hex throws, as the converter does.</summary>
+    public static SolidColorBrush Brush(string hex)
+    {
+        lock (FrozenByHex)
+        {
+            if (FrozenByHex.TryGetValue(hex, out var brush)) return brush;
+            brush = (SolidColorBrush)new BrushConverter().ConvertFromString(hex)!;
+            brush.Freeze();
+            FrozenByHex[hex] = brush;
+            return brush;
+        }
+    }
 }
 
 /// <summary>
