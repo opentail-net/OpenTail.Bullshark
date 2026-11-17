@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using OpenTail.Bullshark.Core.Activity;
 
 namespace OpenTail.Bullshark.Core.Cache;
 
@@ -137,7 +138,7 @@ public static class CacheReport
         var requests = new List<Request>();
         try
         {
-            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var stream = TranscriptFile.Open(path);
             using var reader = new StreamReader(stream, Encoding.UTF8);
             string? line;
             while ((line = reader.ReadLine()) is not null)

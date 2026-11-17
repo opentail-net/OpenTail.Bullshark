@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using OpenTail.Bullshark.Core.Activity;
 
 namespace OpenTail.Bullshark.Core.Cache;
 
@@ -32,7 +33,7 @@ public static class TranscriptTail
     /// <summary>Reads the cache facts of a transcript. Returns no request when the file holds no usage record.</summary>
     public static TailFacts? Read(string path)
     {
-        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var stream = TranscriptFile.Open(path);
         long size = stream.Length;
         int window = StartWindow;
 

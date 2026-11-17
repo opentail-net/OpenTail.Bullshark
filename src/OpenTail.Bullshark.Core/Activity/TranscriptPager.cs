@@ -196,7 +196,7 @@ public sealed class TranscriptPager
         var starts = new List<long> { 0 };
         long position = 0;
         var buffer = new byte[1 << 20];
-        using (var stream = File.OpenRead(path))
+        using (var stream = TranscriptFile.Open(path))
         {
             int read;
             while ((read = stream.Read(buffer, 0, buffer.Length)) > 0)
@@ -220,7 +220,7 @@ public sealed class TranscriptPager
         if (start < 0 || start >= LineCount || count <= 0) return result;
 
         int end = Math.Min(LineCount, start + count);
-        using var stream = File.OpenRead(_path);
+        using var stream = TranscriptFile.Open(_path);
         stream.Seek(_lineStarts[start], SeekOrigin.Begin);
         using var reader = new StreamReader(stream, new UTF8Encoding(false), detectEncodingFromByteOrderMarks: false, bufferSize: 1 << 16, leaveOpen: true);
 

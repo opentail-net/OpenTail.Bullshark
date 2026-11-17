@@ -31,7 +31,7 @@ public static class TurnFacts
 {
     private const int PromptLength = 120;
 
-    public static IReadOnlyList<TurnFact> ReadFile(string path) => Read(File.ReadLines(path));
+    public static IReadOnlyList<TurnFact> ReadFile(string path) => Read(TranscriptFile.ReadLines(path));
 
     public static IReadOnlyList<TurnFact> Read(IEnumerable<string> lines)
     {

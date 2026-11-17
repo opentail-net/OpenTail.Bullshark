@@ -63,7 +63,7 @@ public static class TranscriptReader
 
     /// <summary>Summarises one file. Pass a shared <paramref name="ledger"/> to count each message once across files.</summary>
     public static TranscriptSummary ReadFile(string path, UsageLedger? ledger = null) =>
-        Summarize(File.ReadLines(path), ledger, path);
+        Summarize(TranscriptFile.ReadLines(path), ledger, path);
 
     /// <summary>
     /// Summarises transcript lines. Lines that are not valid JSON are skipped, not fatal.

@@ -107,7 +107,7 @@ public static class HistorySearch
 
         try
         {
-            foreach (var raw in File.ReadLines(digest.FilePath))
+            foreach (var raw in TranscriptFile.ReadLines(digest.FilePath))
             {
                 number++;
                 cancellationToken.ThrowIfCancellationRequested();
