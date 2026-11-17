@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Claude;
 
@@ -242,6 +243,23 @@ public sealed class SessionWritesCache
         return entry.Writes;
     }
 
+    /// <summary>
+    /// True when the text is one complete JSON object. A record is an object, and a prefix of one is never valid JSON, so a line still being
+    /// written does not pass.
+    /// </summary>
+    private static bool IsWholeObject(string text)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(text);
+            return document.RootElement.ValueKind == JsonValueKind.Object;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>The first bytes of a transcript, up to <see cref="HeadBytes"/>. The stream is left after them; the caller seeks.</summary>
     private static byte[] ReadHead(Stream stream)
     {
@@ -267,7 +285,9 @@ public sealed class SessionWritesCache
     /// <summary>
     /// The complete lines from the stream's position, decoded as UTF-8 without their line break. A line is complete only when its newline
     /// has been read, so a line still being written is not returned and <paramref name="progress"/> does not move past it. The byte order
-    /// mark at the start of the file is not part of the first line's text.
+    /// mark at the start of the file is not part of the first line's text. A last line with no newline is returned when it is a whole JSON
+    /// object (round 6 item 8): <paramref name="progress"/> does not move past it, so when its newline is written it is read again in the same
+    /// place, and the usage ledger counts it once.
     /// </summary>
     private static IEnumerable<string> CompleteLines(Stream stream, Progress progress)
     {
@@ -276,7 +296,16 @@ public sealed class SessionWritesCache
         while (true)
         {
             var read = stream.Read(buffer, 0, buffer.Length);
-            if (read == 0) yield break;
+            if (read == 0)
+            {
+                if (line.Length > 0)
+                {
+                    var pending = Encoding.UTF8.GetString(line.GetBuffer(), 0, (int)line.Length);
+                    if (progress.Offset == 0) pending = pending.TrimStart('﻿');
+                    if (IsWholeObject(pending)) yield return pending.EndsWith('\r') ? pending[..^1] : pending;
+                }
+                yield break;
+            }
 
             var position = 0;
             while (position < read)

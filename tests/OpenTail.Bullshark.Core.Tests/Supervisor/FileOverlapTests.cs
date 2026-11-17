@@ -369,6 +369,31 @@ public sealed class FileOverlapTests : IDisposable
     }
 
     [Fact]
+    public void ALastRecordWithNoNewlineThatIsWholeIsTakenAndCountedOnce()
+    {
+        // The last record of a finished session has no newline yet. It is a whole JSON object, so it counts now (round 6 item 8), with its usage once.
+        var transcript = Path.Combine(_root, CoderId + ".jsonl");
+        var first = Path.Combine(_root, "a.cs");
+        var second = Path.Combine(_root, "b.cs");
+        var lastRecord = Usage("u2", "2026-11-17T09:20:00Z", second, 40);
+        File.WriteAllText(transcript, Usage("u1", "2026-11-17T09:05:00Z", first, 100) + "\n" + lastRecord);
+        var cache = new SessionWritesCache();
+
+        var before = cache.Read(CoderId, transcript);
+        Assert.Equal([first, second], before.Files);
+        Assert.Equal(TranscriptReader.ReadFile(transcript).TotalUsage, before.Usage);
+
+        // Its newline is written: the record is read again where it stood, and the answer is the same as a full read.
+        File.AppendAllText(transcript, "\n");
+        var after = cache.Read(CoderId, transcript);
+        Assert.Equal([first, second], after.Files);
+        var whole = TranscriptReader.ReadFile(transcript);
+        Assert.Equal(whole.TotalUsage, after.Usage);
+        Assert.Equal(whole.FileLastWrites!.Count, after.LastWrites.Count);
+        foreach (var (file, when) in whole.FileLastWrites!) Assert.Equal(when, after.LastWrites[file]);
+    }
+
+    [Fact]
     public void TheByteOrderMarkOfATranscriptDoesNotHideItsFirstRecord()
     {
         var transcript = Path.Combine(_root, CoderId + ".jsonl");
