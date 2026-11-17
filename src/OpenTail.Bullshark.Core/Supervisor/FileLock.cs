@@ -16,17 +16,27 @@ public static class FileLock
 {
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(10);
 
-    /// <summary>Takes the lock for a file. Dispose the result to release it.</summary>
-    public static IDisposable Hold(string path)
+    /// <summary>Takes the lock for a file, waiting up to ten seconds. Dispose the result to release it.</summary>
+    public static IDisposable Hold(string path) => Hold(path, Wait);
+
+    /// <summary>
+    /// Takes the lock for a file, waiting up to <paramref name="wait"/>. The key is the full path, so two spellings of one file
+    /// share one lock. On Windows file names do not depend on case, so the key ignores case there: without that, a path typed
+    /// in another case would take a second lock on the same file. The key names the mutex, so the window and the supervisor
+    /// (which ship together) always agree on it.
+    /// </summary>
+    public static IDisposable Hold(string path, TimeSpan wait)
     {
-        var key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(System.IO.Path.GetFullPath(path))))[..32];
+        var full = System.IO.Path.GetFullPath(path);
+        if (OperatingSystem.IsWindows()) full = full.ToUpperInvariant();
+        var key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(full)))[..32];
         var mutex = new Mutex(false, "Local\\OpenTail.Bullshark.file." + key);
         try
         {
-            if (!mutex.WaitOne(Wait))
+            if (!mutex.WaitOne(wait))
             {
                 mutex.Dispose();
-                throw new TimeoutException($"{path} is held by another process for more than {Wait.TotalSeconds:0} seconds.");
+                throw new TimeoutException($"{path} is held by another process for more than {wait.TotalSeconds:0.#} seconds.");
             }
         }
         catch (AbandonedMutexException)
@@ -36,14 +46,26 @@ public static class FileLock
         return new Release(mutex);
     }
 
-    /// <summary>Writes the text to a unique temporary file beside the path, then moves it over the path.</summary>
+    /// <summary>
+    /// Writes the text to a unique temporary file beside the path, then moves it over the path. If the write or the move fails,
+    /// the temporary file is deleted and the error is rethrown: a failed write must not leave a file that looks like a half save.
+    /// </summary>
     public static void WriteAtomic(string path, string text)
     {
         var directory = System.IO.Path.GetDirectoryName(System.IO.Path.GetFullPath(path));
         if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
         var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
-        File.WriteAllText(temporary, text);
-        File.Move(temporary, path, overwrite: true);
+        try
+        {
+            File.WriteAllText(temporary, text);
+            File.Move(temporary, path, overwrite: true);
+        }
+        catch
+        {
+            // The clean-up is best effort: the error that stopped the save is the one the owner needs, so a failed delete is ignored.
+            try { File.Delete(temporary); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            throw;
+        }
     }
 
     private sealed class Release(Mutex mutex) : IDisposable
