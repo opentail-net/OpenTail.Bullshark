@@ -1,6 +1,6 @@
 # Round 7, 2026-11-17: use what the CLI now offers
 
-Status: not started.
+Status: built on branch `round7-2026-11-17`, one commit per item, not pushed or merged. Items 1-5 are built and tested (857 tests passed); items 6 and 7 are recorded, not built (item 6 is an owner gate). Item 2 and item 3 were built after item 4 (see the decisions). Screens: 15 of 15 passed on 2026-11-17, into the scratch folder (not committed).
 
 Source: research of 2026-11-17 into recent Claude Code CLI features (notes: `research-cli-features-2026-11-17.md`, items C1..C12),
 checked by the planner against the installed CLI (2.1.326) on the owner's machine, read-only.
