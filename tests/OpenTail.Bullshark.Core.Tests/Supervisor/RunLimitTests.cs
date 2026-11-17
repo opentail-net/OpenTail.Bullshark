@@ -122,6 +122,55 @@ public sealed class RunLimitTests
         Assert.Empty(actions);
     }
 
+    private static RunRecord WaitingRun(DateTimeOffset? startAt, RunLimits? limits) =>
+        new("abcd", "solo", @"C:\work", "auto", Created, [Spec()], startAt, limits);
+
+    [Fact]
+    public void AScheduledRunWithAShortDurationLimitStartsWhenItIsDue()
+    {
+        // Created at 09:00, due at 13:00, with a 60-minute limit. The four hours before it is due do not count against the limit.
+        var due = Created.AddHours(4);
+        var run = WaitingRun(due, new RunLimits(null, TimeSpan.FromMinutes(60)));
+        var none = new Dictionary<string, SessionRecord>(StringComparer.Ordinal);
+
+        var atDue = RunBudget.For(run.Limits, RunSpend.Of(run, none, [], due));
+        Assert.Equal(0, atDue!.Fraction, 6);
+        Assert.IsType<SupervisorAction.Start>(Assert.Single(SupervisorPolicy.Decide(Spec(), null, [], due, SupervisorRules.Default, atDue)));
+
+        // Half an hour into the run is half the limit, and the run still starts.
+        var halfway = RunBudget.For(run.Limits, RunSpend.Of(run, none, [], due.AddMinutes(30)));
+        Assert.Equal(0.5, halfway!.Fraction, 6);
+        Assert.IsType<SupervisorAction.Start>(Assert.Single(SupervisorPolicy.Decide(Spec(), null, [], due.AddMinutes(30), SupervisorRules.Default, halfway)));
+
+        // Past the limit from the start time, nothing new starts.
+        var over = RunBudget.For(run.Limits, RunSpend.Of(run, none, [], due.AddMinutes(61)));
+        Assert.True(over!.Reached);
+        Assert.Empty(SupervisorPolicy.Decide(Spec(), null, [], due.AddMinutes(61), SupervisorRules.Default, over));
+    }
+
+    [Fact]
+    public void ARunThatHasNotStartedNeverCountsAsReached()
+    {
+        var run = WaitingRun(Created.AddHours(4), new RunLimits(null, TimeSpan.FromMinutes(60)));
+
+        // Three and a half hours after creation, and half an hour before the start: the run has run for nothing.
+        var elapsed = RunSpend.ElapsedOf(run, Created.AddHours(3).AddMinutes(30));
+
+        Assert.Equal(TimeSpan.Zero, elapsed);
+    }
+
+    [Fact]
+    public void StartingARunNowCountsItsLimitFromNow()
+    {
+        // The run waits until 13:00. Started at 12:00, its 60-minute limit runs from 12:00, not from its creation at 09:00.
+        var now = Created.AddHours(3);
+        var started = RunStore.StartingNow([WaitingRun(Created.AddHours(4), null)], "abcd", now);
+
+        var run = Assert.Single(started);
+        Assert.Equal(now, run.StartAt);
+        Assert.Equal(TimeSpan.FromMinutes(30), RunSpend.ElapsedOf(run, now.AddMinutes(30)));
+    }
+
     [Fact]
     public void ARunWithoutLimitsKeepsItsOldBehaviour()
     {

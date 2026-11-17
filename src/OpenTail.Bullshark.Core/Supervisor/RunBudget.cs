@@ -62,8 +62,20 @@ public sealed record RunSpend(long OutputTokens, TimeSpan Elapsed)
             var found = list.FirstOrDefault(w => string.Equals(w.SessionId, record.SessionId, StringComparison.OrdinalIgnoreCase));
             output += found?.Usage?.Output ?? 0;
         }
-        var elapsed = now - run.CreatedAt;
-        return new RunSpend(output, elapsed < TimeSpan.Zero ? TimeSpan.Zero : elapsed);
+        return new RunSpend(output, ElapsedOf(run, now));
+    }
+
+    /// <summary>
+    /// The time a run has run for at <paramref name="now"/>. It counts from the run's start time once that time has come, and from its
+    /// creation when it has none. A run that waits for its start time has run for nothing yet, so it never reaches a limit before it
+    /// starts (round 5 item 3). A clock that runs backwards gives no time, not a negative one.
+    /// </summary>
+    public static TimeSpan ElapsedOf(RunRecord run, DateTimeOffset now)
+    {
+        if (run.StartAt is { } startAt && startAt > now) return TimeSpan.Zero;
+        var origin = run.StartAt is { } start && start > run.CreatedAt ? start : run.CreatedAt;
+        var elapsed = now - origin;
+        return elapsed < TimeSpan.Zero ? TimeSpan.Zero : elapsed;
     }
 }
 

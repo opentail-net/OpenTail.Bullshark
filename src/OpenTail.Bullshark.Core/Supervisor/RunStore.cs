@@ -124,7 +124,20 @@ public sealed class RunStore
     /// <summary>Whether a run is held back: it has a start time, and that time is still ahead. The time itself starts the run.</summary>
     public static bool IsWaiting(RunRecord run, DateTimeOffset now) => run.StartAt is { } at && at > now;
 
-    /// <summary>The runs with the start time of one run cleared, so that it may start at once. The other runs are kept as they are.</summary>
+    /// <summary>
+    /// The runs with the start time of one run moved to now (see <see cref="StartingNow(IEnumerable{RunRecord}, string, DateTimeOffset)"/>).
+    /// The other runs are kept as they are.
+    /// </summary>
     public static IReadOnlyList<RunRecord> StartingNow(IEnumerable<RunRecord> runs, string runId) =>
-        runs.Select(run => string.Equals(run.RunId, runId, StringComparison.Ordinal) ? run with { StartAt = null } : run).ToList();
+        StartingNow(runs, runId, DateTimeOffset.UtcNow);
+
+    /// <summary>
+    /// The runs with one run's start time moved to <paramref name="now"/>, so that it starts at once. Only a run that is still waiting
+    /// changes. Its start time is moved rather than cleared: a cleared time would count the run's duration limit from its creation, and
+    /// the time it waited would then use up the limit (round 5 item 3). The other runs are kept as they are.
+    /// </summary>
+    public static IReadOnlyList<RunRecord> StartingNow(IEnumerable<RunRecord> runs, string runId, DateTimeOffset now) =>
+        runs.Select(run => string.Equals(run.RunId, runId, StringComparison.Ordinal) && IsWaiting(run, now)
+            ? run with { StartAt = now }
+            : run).ToList();
 }

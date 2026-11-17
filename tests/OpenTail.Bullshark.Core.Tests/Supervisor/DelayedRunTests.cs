@@ -83,13 +83,14 @@ public sealed class DelayedRunTests : IDisposable
     }
 
     [Fact]
-    public void StartingNowClearsOnlyTheChosenRunsTime()
+    public void StartingNowMovesOnlyTheChosenRunsTimeToNow()
     {
         var runs = new[] { Run("aaaa", startAt: Now.AddHours(2)), Run("bbbb", startAt: Now.AddHours(3)) };
 
-        var after = RunStore.StartingNow(runs, "aaaa");
+        var after = RunStore.StartingNow(runs, "aaaa", Now);
 
-        Assert.Null(after.Single(r => r.RunId == "aaaa").StartAt);
+        // The start time is moved to now, not cleared, so the run's duration limit counts from when it really started (round 5 item 3).
+        Assert.Equal(Now, after.Single(r => r.RunId == "aaaa").StartAt);
         Assert.Equal(Now.AddHours(3), after.Single(r => r.RunId == "bbbb").StartAt);
         // Only the started run is due; the other still waits three hours.
         Assert.Equal(["bullshark-coder-aaaa"], RunStore.DueSpecsOf(after, Now).Select(s => s.Name));
