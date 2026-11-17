@@ -29,6 +29,9 @@ public partial class SessionWindow
     private void InitStorage()
     {
         Pane.Children.Add(_storage);
+        // The Archive button starts disabled, with its note, until the first listing has been read: the button is enabled by default, and the
+        // first pass only sets it at its end (round 6 item 9). The click guard in ArchiveAsync stays as well.
+        _storage.SetArchiveAvailable(ArchiveAllowed);
         _storage.RefreshRequested += () => _ = RefreshStorageAsync();
         _storage.ProjectChosen += folder => _ = ShowProjectAsync(folder);
         _storage.ArchiveRequested += paths => _ = ArchiveAsync(paths);
