@@ -92,13 +92,38 @@ public sealed class ListingFieldsTests
         var agents = AgentInfo.ParseList(listing);
 
         Assert.Equal("answer the question", agents[0].Waiting);
-        Assert.Equal("Trust this folder?", agents[1].Waiting);
+        // "title" is not a known key (round 9 item 8): an object with only that has no text to show.
+        Assert.Null(agents[1].Waiting);
         Assert.Null(agents[2].Waiting);
         Assert.Equal("permission prompt", agents[3].Waiting);
         Assert.Null(agents[4].Waiting);
         Assert.Equal("busy", agents[5].EffectiveState);
         Assert.Equal("unknown", agents[6].EffectiveState);
         Assert.All(agents, agent => Assert.False(agent.Waiting?.StartsWith('{') == true || agent.Waiting?.StartsWith('[') == true));
+    }
+
+    [Fact]
+    public void AnObjectWithNoKnownKeyHasNoTextAndANonTextKeyIsSkipped()
+    {
+        // Round 9 item 8 (R7): the first string of an object is not shown. Only the known keys (kind, text, message, reason, type) give text.
+        const string listing = """
+            [
+              { "kind": "background", "sessionId": "s1", "name": "a", "state": "blocked", "waitingFor": { "id": "w-77", "url": "https://example.test/w" } },
+              { "kind": "interactive", "pid": 2, "name": "b", "status": { "id": "x-1" } },
+              { "kind": "background", "sessionId": "s3", "name": "c", "state": "blocked", "waitingFor": { "reason": "input needed" } },
+              { "kind": "background", "sessionId": "s4", "name": "d", "state": "blocked", "waitingFor": { "type": "dialog" } },
+              { "kind": "background", "sessionId": "s5", "name": "e", "state": "blocked", "waitingFor": { "kind": 3, "message": "m" } }
+            ]
+            """;
+
+        var agents = AgentInfo.ParseList(listing);
+
+        Assert.Null(agents[0].Waiting);
+        Assert.Equal("unknown", agents[1].EffectiveState);
+        Assert.Null(agents[1].Status);
+        Assert.Equal("input needed", agents[2].Waiting);
+        Assert.Equal("dialog", agents[3].Waiting);
+        Assert.Equal("m", agents[4].Waiting);
     }
 
     [Fact]

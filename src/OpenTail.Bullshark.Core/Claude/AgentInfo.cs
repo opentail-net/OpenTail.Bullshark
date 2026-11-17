@@ -88,9 +88,9 @@ public sealed record AgentInfo(
             : null;
 
     /// <summary>
-    /// A field that is text, or a newer shape read as text (round 7 item 3, round 8 item 9). A string is its value. An object shows its "kind",
-    /// "text" or "message" string when it has one, else its first string value; an array shows its first string. A number, a boolean, null, or a
-    /// shape with no string in it gives null. The raw JSON is never the value: it would be shown as the reason or as the state.
+    /// A field that is text, or a newer shape read as text (round 7 item 3, round 8 item 9). A string is its value. An object shows the string
+    /// under its first known key (<see cref="TextKeys"/>), and an array shows its first text item; anything else, and an object with no known
+    /// key, gives null. The raw JSON is never the value: it would be shown as the reason or as the state.
     /// </summary>
     private static string? ReadText(JsonElement element, string property) =>
         element.TryGetProperty(property, out var value) ? TextOf(value) : null;
@@ -103,13 +103,17 @@ public sealed record AgentInfo(
         _ => null,
     };
 
-    /// <summary>The text an object stands for: its "kind", "text" or "message" string, else the first string it holds.</summary>
+    /// <summary>The keys an object's text is read from, in order (round 9 item 8).</summary>
+    private static readonly string[] TextKeys = ["kind", "text", "message", "reason", "type"];
+
+    /// <summary>
+    /// The text an object stands for: the string under its first known key. An object with none of the <see cref="TextKeys"/> has no text, so
+    /// its first string (an id, a url) is never shown as a reason or a state (round 9 item 8).
+    /// </summary>
     private static string? ObjectText(JsonElement value)
     {
-        foreach (var name in new[] { "kind", "text", "message" })
+        foreach (var name in TextKeys)
             if (value.TryGetProperty(name, out var named) && named.ValueKind == JsonValueKind.String) return named.GetString();
-        foreach (var property in value.EnumerateObject())
-            if (property.Value.ValueKind == JsonValueKind.String) return property.Value.GetString();
         return null;
     }
 
