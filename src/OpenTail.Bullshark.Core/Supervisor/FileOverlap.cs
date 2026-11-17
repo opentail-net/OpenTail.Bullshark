@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text;
 using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Claude;
@@ -156,9 +157,13 @@ public sealed class SessionWritesCache
         _open = open ?? TranscriptFile.Open;
     }
 
+    /// <summary>The number of leading bytes of a transcript that are hashed to tell whether it is still the file that was read (round 6 item 7).</summary>
+    private const int HeadBytes = 4 * 1024;
+
     /// <summary>
     /// What is kept for one transcript: the file's size and write time when it was last read, how far into the file the complete lines
-    /// reach, and the writes so far. The ledger keeps each message's usage, so a message split across two reads is still counted once.
+    /// reach, the hash of its first bytes at that read, and the writes so far. The ledger keeps each message's usage, so a message split across
+    /// two reads is still counted once.
     /// </summary>
     private sealed class Entry
     {
@@ -166,6 +171,10 @@ public sealed class SessionWritesCache
         public DateTime Stamp;
         public long Offset;
         public int Lines;
+        /// <summary>How many leading bytes were hashed at the last read (less than <see cref="HeadBytes"/> for a shorter file).</summary>
+        public int HeadLength;
+        /// <summary>The SHA-256 of the first <see cref="HeadLength"/> bytes at the last read.</summary>
+        public byte[]? HeadHash;
         public readonly UsageLedger Ledger = new();
         public readonly List<string> Files = [];
         public readonly HashSet<string> FileSet = new(StringComparer.Ordinal);
@@ -196,8 +205,18 @@ public sealed class SessionWritesCache
         var entry = replaced ? new Entry() : known!;
 
         var progress = new Progress { Offset = entry.Offset, Lines = entry.Lines };
+        byte[] head;
         using (var stream = _open(transcriptPath))
         {
+            head = ReadHead(stream);
+            // A file rewritten in place can be longer than what was read, so its length does not show the change: its first bytes do. A
+            // different head means a new file, read from its start (round 6 item 7).
+            if (!replaced && !HeadMatches(entry, head))
+            {
+                entry = new Entry();
+                progress = new Progress();
+            }
+
             stream.Seek(progress.Offset, SeekOrigin.Begin);
             var summary = TranscriptReader.Summarize(CompleteLines(stream, progress), entry.Ledger, transcriptPath, firstLine: entry.Lines);
             foreach (var file in summary.FilesWritten ?? [])
@@ -212,6 +231,8 @@ public sealed class SessionWritesCache
         entry.Lines = progress.Lines;
         entry.Length = length;
         entry.Stamp = stamp;
+        entry.HeadLength = head.Length;
+        entry.HeadHash = SHA256.HashData(head);
         entry.Writes = new SessionWrites(
             sessionId,
             entry.Files.ToList(),
@@ -220,6 +241,28 @@ public sealed class SessionWritesCache
         _entries[transcriptPath] = entry;
         return entry.Writes;
     }
+
+    /// <summary>The first bytes of a transcript, up to <see cref="HeadBytes"/>. The stream is left after them; the caller seeks.</summary>
+    private static byte[] ReadHead(Stream stream)
+    {
+        var buffer = new byte[HeadBytes];
+        var total = 0;
+        while (total < buffer.Length)
+        {
+            var read = stream.Read(buffer, total, buffer.Length - total);
+            if (read == 0) break;
+            total += read;
+        }
+        return buffer[..total];
+    }
+
+    /// <summary>
+    /// True when the first bytes of the file are the ones kept at the last read. A file now shorter than the head that was kept does not match.
+    /// </summary>
+    private static bool HeadMatches(Entry entry, byte[] head) =>
+        entry.HeadHash is { } kept
+        && head.Length >= entry.HeadLength
+        && SHA256.HashData(head.AsSpan(0, entry.HeadLength)).AsSpan().SequenceEqual(kept);
 
     /// <summary>
     /// The complete lines from the stream's position, decoded as UTF-8 without their line break. A line is complete only when its newline

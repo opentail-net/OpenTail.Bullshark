@@ -268,7 +268,7 @@ public sealed class FileOverlapTests : IDisposable
     }
 
     [Fact]
-    public void AGrownTranscriptReadsOnlyTheAppendedBytesAndGivesTheSameAnswerAsAFullRead()
+    public void AGrownTranscriptReadsItsFirstBytesAndOnlyTheAppendedBytesAndGivesTheSameAnswerAsAFullRead()
     {
         var transcript = Path.Combine(_root, CoderId + ".jsonl");
         var first = Path.Combine(_root, "a.cs");
@@ -281,15 +281,18 @@ public sealed class FileOverlapTests : IDisposable
             opened.Add(stream);
             return stream;
         });
+        // The first read takes the file's first bytes (to keep their hash), then the whole file.
         cache.Read(CoderId, transcript);
-        Assert.Equal(new FileInfo(transcript).Length, opened[0].BytesRead);
+        var firstLength = new FileInfo(transcript).Length;
+        Assert.Equal(firstLength + Math.Min(4 * 1024, firstLength), opened[0].BytesRead);
 
         var appended = Usage("u2", "2026-11-17T09:20:00Z", second, 40);
         File.AppendAllText(transcript, appended + "\n");
         var grown = cache.Read(CoderId, transcript);
 
-        // Only the appended line was read, and the answer is what a full read of the file gives.
-        Assert.Equal(Encoding.UTF8.GetByteCount(appended) + 1, opened[1].BytesRead);
+        // The head is read again to check the file (round 6 item 7), then only the appended line; the answer is what a full read gives.
+        var grownLength = new FileInfo(transcript).Length;
+        Assert.Equal(Math.Min(4 * 1024, grownLength) + Encoding.UTF8.GetByteCount(appended) + 1, opened[1].BytesRead);
         var whole = TranscriptReader.ReadFile(transcript);
         Assert.Equal(whole.FilesWritten, grown.Files);
         Assert.Equal(whole.TotalUsage, grown.Usage);
@@ -343,6 +346,26 @@ public sealed class FileOverlapTests : IDisposable
         // Nothing of the old file is kept: the new one is read from its first byte.
         File.WriteAllLines(transcript, [Assistant("t3", "2026-11-17T09:30:00Z", replacement)]);
         Assert.Equal([replacement], cache.Read(CoderId, transcript).Files);
+    }
+
+    [Fact]
+    public void ATranscriptRewrittenInPlaceAndLongerIsReadFromItsStart()
+    {
+        // Rewritten by another tool: the new file is longer than what was read, so its length does not show the change, and an append
+        // from the old offset would read the middle of a record. Its first bytes differ, so it is read whole (round 6 item 7).
+        var transcript = Path.Combine(_root, CoderId + ".jsonl");
+        var first = Path.Combine(_root, "a.cs");
+        var replacement = Path.Combine(_root, "c.cs");
+        var second = Path.Combine(_root, "b.cs");
+        File.WriteAllLines(transcript, [Assistant("t1", "2026-11-17T09:05:00Z", first)]);
+        var cache = new SessionWritesCache();
+        Assert.Equal([first], cache.Read(CoderId, transcript).Files);
+
+        File.WriteAllLines(transcript, [Assistant("t3", "2026-11-17T09:30:00Z", replacement), Assistant("t4", "2026-11-17T09:31:00Z", second)]);
+        var read = cache.Read(CoderId, transcript);
+
+        Assert.Equal([replacement, second], read.Files);
+        Assert.Equal(TranscriptReader.ReadFile(transcript).FilesWritten, read.Files);
     }
 
     [Fact]
