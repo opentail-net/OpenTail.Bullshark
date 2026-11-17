@@ -40,7 +40,7 @@ public partial class SessionWindow
             });
             _timeline.Show(runs, events);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
             AppLog.Write($"timeline not read: {ex.Message}");
             _timeline.ShowProblem($"The timeline cannot be read: {ex.Message}");

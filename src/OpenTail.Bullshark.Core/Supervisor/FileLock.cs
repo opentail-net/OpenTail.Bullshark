@@ -8,6 +8,17 @@ public sealed class StoreUnreadableException(string path, string reason)
     : Exception($"{path} cannot be read ({reason}); nothing was changed.");
 
 /// <summary>
+/// The failures a user action expects from the files behind the window: a store that cannot be read or written, a lock that is not
+/// free in time, or a file or folder the user cannot open (denied, or missing). Each catch in the App that reports one of these in the
+/// status line uses this filter, so the list lives in one place. Anything else is a bug, and is left to the catch-all.
+/// </summary>
+public static class StoreErrors
+{
+    public static bool IsExpected(Exception ex) =>
+        ex is StoreUnreadableException or TimeoutException or IOException or UnauthorizedAccessException;
+}
+
+/// <summary>
 /// The lock and the atomic write behind runs.json, state.json, library.json, patterns.json and ui.json. The window is the process
 /// that writes them; the headless host (OpenTail.Bullshark.Supervisor) only reads them, for its reports. Every change is still read,
 /// changed and written under one named lock, so a second writer (another window) is safe. A write goes to a temporary file with its

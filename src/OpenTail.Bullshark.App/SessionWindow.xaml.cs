@@ -168,7 +168,7 @@ public partial class SessionWindow : Window
         {
             return (store.Load(), null);
         }
-        catch (StoreUnreadableException ex)
+        catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
             AppLog.Write(ex.Message);
             return (new Dictionary<string, SessionRecord>(StringComparer.Ordinal), ex.Message);
@@ -182,7 +182,7 @@ public partial class SessionWindow : Window
         {
             return (runStore.Load(), null);
         }
-        catch (StoreUnreadableException ex)
+        catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
             AppLog.Write(ex.Message);
             return (Array.Empty<RunRecord>(), ex.Message);
@@ -497,7 +497,7 @@ public partial class SessionWindow : Window
         {
             _runStore.Update(runs => runs.Append(run).ToList());
         }
-        catch (Exception ex) when (ex is StoreUnreadableException or TimeoutException or IOException)
+        catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
             AppLog.Write($"run not written: {ex.Message}");
             _setup.ShowStarted($"Not started: {ex.Message}");
@@ -527,7 +527,7 @@ public partial class SessionWindow : Window
                     records.Remove(name);
             });
         }
-        catch (Exception ex) when (ex is StoreUnreadableException or TimeoutException or IOException)
+        catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
             AppLog.Write($"failed starts not forgotten: {ex.Message}");
             SetStatus($"Not changed: {ex.Message}");

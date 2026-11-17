@@ -272,7 +272,7 @@ public partial class SessionWindow
             if (recordBefore is not null)
                 _store.Update(records => records[name] = recordBefore);
         }
-        catch (Exception ex) when (ex is StoreUnreadableException or TimeoutException or IOException)
+        catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
             AppLog.Write($"restore after the failed close not written: {ex.Message}");
             SetStatus($"{name} may be missing from the rail: see the log. {ex.Message}");

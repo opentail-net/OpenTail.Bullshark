@@ -27,7 +27,7 @@ public partial class SessionWindow
         {
             return PatternStore.Beside(_options.StatePath).For("solo");
         }
-        catch (Exception ex) when (ex is StoreUnreadableException or TimeoutException or IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
             AppLog.Write($"patterns not read for a resume: {ex.Message}");
             return PatternStore.Defaults("solo");
@@ -169,7 +169,7 @@ public partial class SessionWindow
             _store.Update(records => records[name] = RunPlan.ResumedRecord(name, sessionId, DateTimeOffset.UtcNow));
             _runStore.Update(runs => runs.Append(RunPlan.ResumedRun(name, folder, choice.Model, choice.Effort, DateTimeOffset.UtcNow)).ToList());
         }
-        catch (Exception ex) when (ex is StoreUnreadableException or TimeoutException or IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
             AppLog.Write($"resumed {sessionId ?? shortId} as {name} but it is not kept alive: {ex.Message}");
             SetStatus($"Resumed as {name} but not recorded: {ex.Message}. Check the log.");

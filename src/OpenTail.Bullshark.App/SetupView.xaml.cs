@@ -97,8 +97,7 @@ public partial class SetupView : UserControl
             var runs = new RunStore(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(stateFile))!, "runs.json")).Load();
             return FolderSuggestions.Build(runs, _claudeJson);
         }
-        catch (Exception ex) when (ex is StoreUnreadableException or TimeoutException or IOException or UnauthorizedAccessException
-                                       or ArgumentException or NotSupportedException)
+        catch (Exception ex) when (StoreErrors.IsExpected(ex) || ex is ArgumentException or NotSupportedException)
         {
             AppLog.Write($"folder suggestions not read: {ex.Message}");
             return [];
@@ -219,7 +218,7 @@ public partial class SetupView : UserControl
         {
             saved = _patterns.For(Pattern.Key);
         }
-        catch (Exception ex) when (ex is StoreUnreadableException or TimeoutException or IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
             // The saved settings are not read: the defaults are shown, and the page says why. Saving is refused until the file is fixed.
             AppLog.Write($"patterns not read: {ex.Message}");
@@ -356,7 +355,7 @@ public partial class SetupView : UserControl
             });
             SetStartStatus(successMessage);
         }
-        catch (Exception ex) when (ex is StoreUnreadableException or TimeoutException or IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
             AppLog.Write($"briefs not saved: {ex.Message}");
             SetStartStatus($"Briefs not saved: {ex.Message}");
@@ -423,7 +422,7 @@ public partial class SetupView : UserControl
                 request.CoderModel, request.CoderEffort, request.Coders, request.PlannerExtra, request.CoderExtra, request.Reviewer,
                 request.Assistant, request.AssistantEffort, request.PlannerBrief, request.CoderBrief));
         }
-        catch (Exception ex) when (ex is StoreUnreadableException or TimeoutException or IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
             AppLog.Write($"settings not saved: {ex.Message}");
             SetStartStatus($"Not saved: {ex.Message}");

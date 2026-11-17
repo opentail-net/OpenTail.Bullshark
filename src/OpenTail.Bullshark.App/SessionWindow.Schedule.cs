@@ -33,7 +33,7 @@ public partial class SessionWindow
         {
             await Task.Run(() => _runStore.Update(runs => RunStore.StartingNow(runs, runId)));
         }
-        catch (StoreUnreadableException ex)
+        catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
             AppLog.Write($"start now: {ex.Message}");
             SetStatus($"Not started: {ex.Message}");
