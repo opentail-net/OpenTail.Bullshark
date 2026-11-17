@@ -32,6 +32,15 @@ public sealed class UsageLedger
     public IReadOnlyDictionary<string, TokenUsage> ByFile(string file) =>
         Group(_entries.Values.Where(e => e.FirstFile == file));
 
+    /// <summary>Whether a message with this key has been counted.</summary>
+    internal bool Contains(string key) => _entries.ContainsKey(key);
+
+    /// <summary>The counted messages, in the order they were first counted.</summary>
+    internal IEnumerable<KeyValuePair<string, Entry>> Pairs => _entries;
+
+    /// <summary>Totals per model for the given messages: the grouping <see cref="ByFile"/> applies.</summary>
+    internal static IReadOnlyDictionary<string, TokenUsage> ByModelOf(IEnumerable<Entry> entries) => Group(entries);
+
     private static IReadOnlyDictionary<string, TokenUsage> Group(IEnumerable<Entry> entries)
     {
         var byModel = new Dictionary<string, TokenUsage>(StringComparer.Ordinal);

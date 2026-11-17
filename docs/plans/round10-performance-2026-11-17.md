@@ -39,3 +39,12 @@ pass (running facts, overlap, budgets, effort) and on demand (search, storage, t
   changed during the day). The bench runs each step in its own process, twice, in Release, and the findings keep sizes and times only.
 - Item 1: the bench prints no file, folder or session name, and a failure prints the exception type only (a message can hold a path).
   Its Windows-path query is a generic path that does not occur in the transcripts, so it is the worst case (every line parsed).
+- Item 2, index: the default `TranscriptIndex.Build` reads the files in parallel, each into its own ledger, and combines them in the
+  one-after-another order. The one-after-another overload stays as the reference and for injected readers. Output is identical by
+  test (every field, the model order, the skipped files), and a mutation of the usage rule fails it. Fresh-process median 3.88 s to
+  1.57 s on the same snapshot. Peak rises from about 95 MB to 167-207 MB: under 300 MB, accepted.
+- Item 2, index: the parse itself is now the cost (the probe: decoding lines 0.3 s, summarising 0.7-0.9 s on 16 threads). The
+  GC mode, tiered JIT settings and skipping the text decode made no measurable difference, so they are not changed.
+- Item 3, window: the window cannot be run for timing. Its startup pass calls the `claude` CLI (`agents`, `daemon status`) even with
+  `--no-pass`, and the brief allows no CLI calls. Item 3 times the history work the window waits for (index and tails) in the bench
+  instead, and records that WPF start and the rail drawing are not measured.
