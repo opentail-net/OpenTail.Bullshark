@@ -69,7 +69,7 @@ public sealed record TranscriptLine(int Number, string Kind, DateTimeOffset? Tim
             {
                 if (Str(block, "type") != "tool_result") continue;
                 var preview = ResultText(block);
-                var shown = preview.Length > PreviewLength ? preview[..PreviewLength] + "…" : preview;
+                var shown = preview.Length > PreviewLength ? preview[..CutBefore(preview, PreviewLength)] + "…" : preview;
                 return new TranscriptLine(number, "result", time, $"result: {shown}", Collapsed: true, Failed: IsFailedResult(block));
             }
             foreach (var block in content.EnumerateArray())
@@ -152,7 +152,14 @@ public sealed record TranscriptLine(int Number, string Kind, DateTimeOffset? Tim
             ? n
             : null;
 
-    private static string Short(string value) => value.Length > 100 ? "…" + value[^99..] : value;
+    private static string Short(string value) => value.Length > 100 ? "…" + value[CutAfter(value, value.Length - 99)..] : value;
+
+    /// <summary>A cut at <paramref name="index"/> that does not split a surrogate pair (an emoji would show as a broken glyph).</summary>
+    private static int CutBefore(string value, int index) =>
+        index > 0 && index < value.Length && char.IsLowSurrogate(value[index]) ? index - 1 : index;
+
+    private static int CutAfter(string value, int index) =>
+        index > 0 && index < value.Length && char.IsLowSurrogate(value[index]) ? index + 1 : index;
 
     private static string? Str(JsonElement element, string property) =>
         element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var v) && v.ValueKind == JsonValueKind.String

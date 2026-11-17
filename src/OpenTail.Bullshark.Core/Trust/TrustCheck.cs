@@ -90,11 +90,14 @@ public static class TrustCheck
         if (!File.Exists(claudeJsonPath)) return [];
 
         using var document = ReadClaudeJson(claudeJsonPath);
-        if (!document.RootElement.TryGetProperty("projects", out var projects) || projects.ValueKind != JsonValueKind.Object)
+        // A root or entry that is not an object reads as nothing trusted, as in ClaudeTrust: TryGetProperty would throw on it.
+        if (document.RootElement.ValueKind != JsonValueKind.Object
+            || !document.RootElement.TryGetProperty("projects", out var projects) || projects.ValueKind != JsonValueKind.Object)
             return [];
 
         return projects.EnumerateObject()
-            .Where(p => p.Value.TryGetProperty("hasTrustDialogAccepted", out var trusted) && trusted.ValueKind == JsonValueKind.True)
+            .Where(p => p.Value.ValueKind == JsonValueKind.Object
+                        && p.Value.TryGetProperty("hasTrustDialogAccepted", out var trusted) && trusted.ValueKind == JsonValueKind.True)
             .Select(p => p.Name)
             .ToList();
     }
