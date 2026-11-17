@@ -25,7 +25,8 @@ public partial class SessionWindow
 
     private void UpdateNeedsYouCount()
     {
-        var count = _attention.Count;
+        // A session can be waiting for more than one reason (gems item 1: a blocked session can also share a file), and it is one session.
+        var count = _attention.Select(item => item.Name).Distinct(StringComparer.Ordinal).Count();
         NeedsYouText.Text = count == 1 ? "1 session needs you" : $"{count} sessions need you";
         NeedsYouText.Visibility = count > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
@@ -36,12 +37,15 @@ public partial class SessionWindow
     /// </summary>
     private TreeViewItem NeedsYouSection(IReadOnlyDictionary<string, SessionRecord> records)
     {
-        var section = NewItem(Label($"Needs you ({_attention.Count})", bold: true),
+        var waiting = _attention.Select(item => item.Name).Distinct(StringComparer.Ordinal).Count();
+        var section = NewItem(Label($"Needs you ({waiting})", bold: true),
             new RailTag(RailKind.Heading, NeedsYouKey),
-            "Sessions that wait for you: blocked on a permission or a question, stopped and not brought back, or a start that failed.");
+            "Sessions that wait for you: blocked on a permission or a question, stopped and not brought back, a start that failed, " +
+            "or a file that another session of the run also wrote.");
         section.IsExpanded = _expanded.GetValueOrDefault(NeedsYouKey, true);
 
-        foreach (var item in _attention)
+        // One row per session: its first reason is the one the row is shown for. The other reasons are in the Changes tab and the announcement.
+        foreach (var item in _attention.DistinctBy(i => i.Name, StringComparer.Ordinal))
         {
             if (!records.TryGetValue(item.Name, out var record)) continue;
             if (string.IsNullOrEmpty(record.SessionId))

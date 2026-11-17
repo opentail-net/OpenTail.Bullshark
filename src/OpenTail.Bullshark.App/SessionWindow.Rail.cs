@@ -248,7 +248,7 @@ public partial class SessionWindow
         var records = stored.Values.OrderBy(r => r.Name, StringComparer.Ordinal).ToList();
         // A start that failed has no session, so it gets no terminal (it is listed as a failure below).
         foreach (var record in records.Where(r => !string.IsNullOrEmpty(r.SessionId))) EnsureTerminal(record);
-        _attention = AttentionList.From(records, _agents);
+        _attention = AttentionList.From(records, _agents, _clashes);
         UpdateNeedsYouCount();
 
         var groups = new Dictionary<string, RailGroup>(StringComparer.OrdinalIgnoreCase);
@@ -777,7 +777,8 @@ public partial class SessionWindow
     private TreeViewItem LiveRow(SessionRecord record, string state)
     {
         var cache = CacheTextFor(record.SessionId);
-        var title = LiveTitle(record);
+        // A session that shares a file with another of its run is marked (gems item 1); the Changes tab names the file.
+        var title = (IsShared(record.SessionId) ? "⚠ " : string.Empty) + LiveTitle(record);
         var item = NewItem(
             ColourEdge(TwoLine(title, ActivityLine(record.SessionId, state, record.StartedAt, state == "working"), string.Empty,
                 badge: MatchBadge(MatchOf(record.SessionId))), MarkOf(record.SessionId)?.Colour),

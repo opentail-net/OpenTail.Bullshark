@@ -33,7 +33,8 @@ public sealed record TranscriptSummary(
     DateTimeOffset? LastRecapAt = null,
     int Compactions = 0,
     string? ContinuesSessionId = null,
-    int FailedToolCalls = 0)
+    int FailedToolCalls = 0,
+    IReadOnlyDictionary<string, DateTimeOffset>? FileLastWrites = null)
 {
     public TokenUsage TotalUsage => UsageByModel.Values.Aggregate(TokenUsage.Zero, (sum, next) => sum.Add(next));
 }
@@ -90,6 +91,8 @@ public static class TranscriptReader
         var toolNames = new Dictionary<string, int>(StringComparer.Ordinal);
         var filesWritten = new List<string>();
         var fileSet = new HashSet<string>(StringComparer.Ordinal);
+        // The time of the last write to each file, so an overlap between sessions can say when each one wrote it (FileOverlap).
+        var fileLastWrites = new Dictionary<string, DateTimeOffset>(StringComparer.Ordinal);
 
         foreach (var line in lines)
         {
@@ -191,9 +194,10 @@ public static class TranscriptReader
                                 var name = TryGetString(block, "name", out var toolName) ? toolName! : "unknown";
                                 toolNames[name] = toolNames.TryGetValue(name, out var n) ? n + 1 : 1;
                                 if (FileWritingTools.Contains(name) && block.TryGetProperty("input", out var input) &&
-                                    TryGetString(input, "file_path", out var filePath) && fileSet.Add(filePath!))
+                                    TryGetString(input, "file_path", out var filePath))
                                 {
-                                    filesWritten.Add(filePath!);
+                                    if (recordTime is { } writeTime) fileLastWrites[filePath!] = writeTime;
+                                    if (fileSet.Add(filePath!)) filesWritten.Add(filePath!);
                                 }
                             }
                         }
@@ -218,7 +222,7 @@ public static class TranscriptReader
 
         return new TranscriptSummary(records, users, assistants, tools, turns, lastText, lastTimestamp, lastModel,
             usageLedger.ByFile(file), firstTimestamp, toolNames, filesWritten, contextAtLastTurn, firstUserText,
-            aiTitle, customTitle, lastRecap, lastRecapAt, compactions, continuesSessionId, failedCalls);
+            aiTitle, customTitle, lastRecap, lastRecapAt, compactions, continuesSessionId, failedCalls, fileLastWrites);
     }
 
     private static bool TryGetString(JsonElement element, string property, out string? value)

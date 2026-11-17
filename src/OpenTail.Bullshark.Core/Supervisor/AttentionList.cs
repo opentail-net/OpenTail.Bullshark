@@ -20,15 +20,25 @@ public enum AttentionReason
 
     /// <summary>The session failed and is not brought back (the failed alert, or listed as `failed`). The owner looks at its tab.</summary>
     Failed,
+
+    /// <summary>
+    /// Another session of the same run wrote the same file (gems item 1). One item per file for each session that wrote it, so the
+    /// owner is told about each file once. It is a notice: nothing is sent to the sessions.
+    /// </summary>
+    Overlap,
 }
 
-/// <summary>One session that waits for the owner. <see cref="SessionId"/> is null for a start that never got a session.</summary>
+/// <summary>
+/// One session that waits for the owner. <see cref="SessionId"/> is null for a start that never got a session.
+/// <see cref="FilePath"/> is set only for <see cref="AttentionReason.Overlap"/>: the file the notice is about.
+/// </summary>
 public sealed record AttentionItem(
     string Name,
     string? SessionId,
     AttentionReason Reason,
     string Detail,
-    DateTimeOffset StartedAt);
+    DateTimeOffset StartedAt,
+    string? FilePath = null);
 
 /// <summary>
 /// The sessions that need the owner, as a pure function of the state records and the agent listing. The window shows them
@@ -57,30 +67,47 @@ public static class AttentionList
     /// <item>A session that is not listed and whose last alert is a restart loop, a failed resume, a stopped or a failed session:
     /// that reason. A listed session that is working, done or unknown is not waiting for anyone because of an old alert, so the
     /// alert is ignored while it is listed.</item>
+    /// <item>Each clash in <paramref name="clashes"/> gives <see cref="AttentionReason.Overlap"/> to every session that wrote the file.</item>
     /// </list>
     /// The time a session entered its state is not recorded, so "oldest" means the session's own start time.
+    /// <paramref name="clashes"/> (gems item 1) adds one <see cref="AttentionReason.Overlap"/> item per session per shared file.
     /// </summary>
-    public static IReadOnlyList<AttentionItem> From(IEnumerable<SessionRecord> records, IReadOnlyList<AgentInfo> agents)
+    public static IReadOnlyList<AttentionItem> From(
+        IEnumerable<SessionRecord> records,
+        IReadOnlyList<AgentInfo> agents,
+        IEnumerable<FileClash>? clashes = null)
     {
+        var recordList = records.ToList();
         var items = new List<AttentionItem>();
-        foreach (var record in records)
+        foreach (var record in recordList)
         {
             if (ReasonFor(record, agents) is { } item) items.Add(item);
         }
+        if (clashes is not null) items.AddRange(OverlapItems(recordList, clashes));
         return items
             .OrderBy(item => item.StartedAt)
             .ThenBy(item => item.Name, StringComparer.Ordinal)
+            .ThenBy(item => item.FilePath, StringComparer.Ordinal)
             .ToList();
     }
 
     /// <summary>
-    /// The items in <paramref name="current"/> whose session was not waiting in <paramref name="previous"/>. Sessions are compared
-    /// by name, so a session that changes its reason while it waits is not new. A session that stopped waiting and waits again is new.
+    /// The items in <paramref name="current"/> that are new since <paramref name="previous"/>. A session that is waiting for any reason
+    /// is not new when it changes its reason, so the rule compares names. An overlap is the exception: it is new unless the same
+    /// session already had an overlap on the same file, so a second shared file of a session that waits is announced.
+    /// A session that stopped waiting and waits again is new.
     /// </summary>
     public static IReadOnlyList<AttentionItem> Gained(IReadOnlyList<AttentionItem> previous, IReadOnlyList<AttentionItem> current)
     {
         var waiting = previous.Select(item => item.Name).ToHashSet(StringComparer.Ordinal);
-        return current.Where(item => !waiting.Contains(item.Name)).ToList();
+        var sharedFiles = previous
+            .Where(item => item.Reason == AttentionReason.Overlap)
+            .Select(item => (item.Name, item.FilePath))
+            .ToHashSet();
+        return current.Where(item => item.Reason == AttentionReason.Overlap
+                ? !sharedFiles.Contains((item.Name, item.FilePath))
+                : !waiting.Contains(item.Name))
+            .ToList();
     }
 
     /// <summary>
@@ -123,4 +150,19 @@ public static class AttentionList
 
     private static AttentionItem Item(SessionRecord record, AttentionReason reason, string detail) =>
         new(record.Name, string.IsNullOrEmpty(record.SessionId) ? null : record.SessionId, reason, detail, record.StartedAt);
+
+    /// <summary>One overlap item per session per shared file. A session with no record is left out, since its start time is unknown.</summary>
+    private static IEnumerable<AttentionItem> OverlapItems(IReadOnlyList<SessionRecord> records, IEnumerable<FileClash> clashes)
+    {
+        var byName = records.GroupBy(r => r.Name, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+        foreach (var clash in clashes)
+        {
+            foreach (var session in clash.Sessions)
+            {
+                if (!byName.TryGetValue(session.Name, out var record)) continue;
+                yield return new AttentionItem(session.Name, session.SessionId, AttentionReason.Overlap,
+                    FileOverlap.Detail(clash, session.Name), record.StartedAt, clash.Path);
+            }
+        }
+    }
 }

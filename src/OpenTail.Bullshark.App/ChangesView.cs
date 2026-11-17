@@ -15,6 +15,9 @@ public sealed class ChangesView : UserControl
 {
     private readonly TextBlock _title = new() { FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
     private readonly TextBlock _note = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 4) };
+
+    /// <summary>The files another session of the same run also wrote (gems item 1). Shown above the lists, and hidden when there are none.</summary>
+    private readonly StackPanel _sharedList = new() { Visibility = Visibility.Collapsed };
     private readonly Button _refresh = new() { Content = "Refresh", Padding = new Thickness(10, 2, 10, 2), Margin = new Thickness(8, 0, 0, 0) };
     private readonly TextBlock _changedCaption = new() { FontSize = 11, Margin = new Thickness(0, 6, 0, 2) };
     private readonly StackPanel _changed = new();
@@ -37,6 +40,7 @@ public sealed class ChangesView : UserControl
     private GitChangesReport? _report;
     private IReadOnlyList<string>? _writtenFiles;
     private string? _writtenNote;
+    private IReadOnlyList<string>? _sharedLines;
 
     public ChangesView()
     {
@@ -63,6 +67,7 @@ public sealed class ChangesView : UserControl
         root.Children.Add(header);
         var top = new StackPanel();
         top.Children.Add(_note);
+        top.Children.Add(_sharedList);
         top.Children.Add(lists);
         DockPanel.SetDock(top, Dock.Top);
         root.Children.Add(top);
@@ -101,17 +106,23 @@ public sealed class ChangesView : UserControl
         _refresh.IsEnabled = false;
         _changed.Children.Clear();
         _written.Children.Clear();
+        _sharedList.Children.Clear();
+        _sharedList.Visibility = Visibility.Collapsed;
         _changedCaption.Text = "Changed";
         _writtenCaption.Text = "Files written by the session";
         _diff.Document = new FlowDocument();
     }
 
-    /// <summary>Shows a read that finished. <paramref name="writtenFiles"/> is null when the transcript is not there (see <paramref name="writtenNote"/>).</summary>
-    public void Show(GitChangesReport report, IReadOnlyList<string>? writtenFiles, string? writtenNote)
+    /// <summary>
+    /// Shows a read that finished. <paramref name="writtenFiles"/> is null when the transcript is not there (see <paramref name="writtenNote"/>).
+    /// <paramref name="shared"/> lists the files another session of the run also wrote (one line each); none when null or empty.
+    /// </summary>
+    public void Show(GitChangesReport report, IReadOnlyList<string>? writtenFiles, string? writtenNote, IReadOnlyList<string>? shared = null)
     {
         _report = report;
         _writtenFiles = writtenFiles;
         _writtenNote = writtenNote;
+        _sharedLines = shared;
         _refresh.IsEnabled = true;
         Draw();
     }
@@ -125,6 +136,8 @@ public sealed class ChangesView : UserControl
         _refresh.IsEnabled = true;
         _changed.Children.Clear();
         _written.Children.Clear();
+        _sharedList.Children.Clear();
+        _sharedList.Visibility = Visibility.Collapsed;
         _changedCaption.Text = string.Empty;
         _writtenCaption.Text = string.Empty;
         _diff.Document = new FlowDocument();
@@ -138,6 +151,28 @@ public sealed class ChangesView : UserControl
 
         _title.Text = "Changes in " + report.Folder;
         _note.Text = report.Message;
+
+        _sharedList.Children.Clear();
+        var shared = _sharedLines ?? [];
+        if (shared.Count > 0)
+        {
+            _sharedList.Children.Add(new TextBlock
+            {
+                Text = "Also written by another session of this run:",
+                FontWeight = FontWeights.SemiBold,
+                Foreground = RailPalette.Brush(palette.Text),
+                Margin = new Thickness(0, 4, 0, 2),
+            });
+            foreach (var line in shared)
+                _sharedList.Children.Add(new TextBlock
+                {
+                    Text = line,
+                    TextWrapping = TextWrapping.Wrap,
+                    Foreground = RailPalette.Brush(palette.Muted),
+                    Margin = new Thickness(8, 0, 0, 2),
+                });
+        }
+        _sharedList.Visibility = shared.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
         _changedCaption.Text = report.Files.Count == 0 ? "Changed: none" : $"Changed: {report.Files.Count}";
         _changed.Children.Clear();

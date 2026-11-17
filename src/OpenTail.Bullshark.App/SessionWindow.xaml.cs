@@ -237,6 +237,9 @@ public partial class SessionWindow : Window
                 (actions, records, var afterProblem) = await Task.Run(() => RunPassAndReadAsync(read));
                 _storeProblem = afterProblem ?? _storeProblem;
             }
+            // The files two sessions of a run both wrote are read off the UI thread, from the transcripts this pass has seen (gems item 1).
+            var paths = new Dictionary<string, string>(_transcriptPaths, StringComparer.Ordinal);
+            _clashes = await Task.Run(() => ReadClashes(records, paths));
             RefreshRail(records);
             AnnounceAttention();
 

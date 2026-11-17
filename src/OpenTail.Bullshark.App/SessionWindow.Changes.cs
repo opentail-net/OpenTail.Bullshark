@@ -56,7 +56,7 @@ public partial class SessionWindow
             return (changes, files, note);
         });
         if (_changesSession != sessionId) return;
-        _changes.Show(report, written, writtenNote);
+        _changes.Show(report, written, writtenNote, SharedLinesFor(record));
     }
 
     /// <summary>
