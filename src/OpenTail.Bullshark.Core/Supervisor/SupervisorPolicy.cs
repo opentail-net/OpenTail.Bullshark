@@ -102,8 +102,14 @@ public static class SupervisorPolicy
         {
             var recentRestarts = record.RestartTimes.Count(t => now - t < TimeSpan.FromHours(1));
             if (recentRestarts >= rules.MaxRestartsPerHour)
+            {
+                // Alerted once: while the restart-loop alert stands, nothing more is done on each pass. When the restarts age out
+                // below the limit, the resume above runs instead, and the runner clears the alert with it.
+                if (record.LastAlert?.StartsWith(AttentionList.RestartLoopPrefix, StringComparison.Ordinal) == true)
+                    return [];
                 return [new SupervisorAction.Alert(spec.Role, AlertKind.RestartLoop,
                     $"{recentRestarts} restarts in the last hour; not restarting until someone looks.")];
+            }
             return [new SupervisorAction.Resume(spec.Role, spec, record.SessionId)];
         }
 

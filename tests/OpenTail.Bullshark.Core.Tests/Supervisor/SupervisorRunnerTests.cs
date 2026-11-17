@@ -180,6 +180,49 @@ public sealed class SupervisorRunnerTests : IDisposable
     }
 
     [Fact]
+    public async Task ARestartLoopIsAlertedOncePerLoopAndAgainAfterAResume()
+    {
+        var store = new StateStore(Path.Combine(_dir, "state.json"));
+        var t0 = new DateTimeOffset(2026, 11, 17, 12, 0, 0, TimeSpan.Zero);
+        store.Save(new Dictionary<string, SessionRecord>
+        {
+            // Three restarts in the last hour is the limit. The session is lost, so every pass sees it over the limit.
+            [TestSpecs.PlannerName] = new(SessionRole.Planner, PlannerSession, TestSpecs.PlannerName, t0.AddDays(-1), 3,
+                [t0.AddMinutes(-30), t0.AddMinutes(-20), t0.AddMinutes(-10)], null, null),
+        });
+        var clock = new FakeClock(t0);
+        var logged = new List<string>();
+        var lost = new FakeCliRunner(args => args[0] switch
+        {
+            "agents" => FakeCliRunner.Ok("[]"),
+            "--bg" => FakeCliRunner.Ok($"backgrounded · {ShortId} · planner\n"),
+            _ => FakeCliRunner.Ok(),
+        });
+        var runner = Runner(new ClaudeCli(lost), store, clock, logged.Add);
+        var spec = TestSpecs.Planner(@"C:\W", "brief");
+
+        // The first pass over the limit alerts. The next pass, a minute later, does not repeat the alert.
+        Assert.Equal(AlertKind.RestartLoop, Assert.IsType<SupervisorAction.Alert>(Assert.Single(await runner.CheckOnceAsync([spec]))).Kind);
+        clock.Now = t0.AddMinutes(1);
+        Assert.Empty(await runner.CheckOnceAsync([spec]));
+
+        // An hour on, the three restarts have aged out: the session is resumed, and the resume clears the alert.
+        clock.Now = t0.AddMinutes(61);
+        Assert.IsType<SupervisorAction.Resume>(Assert.Single(await runner.CheckOnceAsync([spec])));
+        Assert.Null(store.Load()[TestSpecs.PlannerName].LastAlert);
+
+        // It is lost again. Two more restarts in the hour are under the limit, and the third reaches it: the alert comes back, once.
+        clock.Now = t0.AddMinutes(62);
+        Assert.IsType<SupervisorAction.Resume>(Assert.Single(await runner.CheckOnceAsync([spec])));
+        clock.Now = t0.AddMinutes(63);
+        Assert.IsType<SupervisorAction.Resume>(Assert.Single(await runner.CheckOnceAsync([spec])));
+        clock.Now = t0.AddMinutes(64);
+        Assert.Equal(AlertKind.RestartLoop, Assert.IsType<SupervisorAction.Alert>(Assert.Single(await runner.CheckOnceAsync([spec]))).Kind);
+
+        Assert.Equal(2, logged.Count(l => l.Contains("ALERT RestartLoop")));
+    }
+
+    [Fact]
     public async Task TheStateFileSurvivesARestartOfTheSupervisor()
     {
         var path = Path.Combine(_dir, "state.json");

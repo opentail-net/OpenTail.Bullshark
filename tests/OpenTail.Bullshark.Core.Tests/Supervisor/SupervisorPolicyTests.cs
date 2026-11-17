@@ -84,6 +84,34 @@ public sealed class SupervisorPolicyTests
         Assert.IsType<SupervisorAction.Resume>(Assert.Single(actions));
     }
 
+    private static SessionRecord RecordWithAlert(string? lastAlert, params DateTimeOffset[] restartTimes) =>
+        new(SessionRole.Planner, SessionId, "test-planner", Now.AddHours(-5), restartTimes.Length, restartTimes, null, lastAlert);
+
+    [Fact]
+    public void ARestartLoopIsAlertedOnceWhileTheLimitHolds()
+    {
+        var recent = Enumerable.Range(1, 3).Select(i => Now.AddMinutes(-10 * i)).ToArray();
+
+        var first = SupervisorPolicy.Decide(Planner, RecordWithAlert(null, recent), [], Now, SupervisorRules.Default);
+        Assert.Equal(AlertKind.RestartLoop, Assert.IsType<SupervisorAction.Alert>(Assert.Single(first)).Kind);
+
+        // The alert stands on the next pass: nothing is added, and the session is not resumed.
+        var again = SupervisorPolicy.Decide(Planner,
+            RecordWithAlert("RestartLoop: 3 restarts in the last hour; not restarting until someone looks.", recent), [], Now, SupervisorRules.Default);
+        Assert.Empty(again);
+    }
+
+    [Fact]
+    public void ARestartLoopAlertDoesNotBlockTheResumeOnceTheRestartsAgeOut()
+    {
+        // All three restarts are older than an hour, so the session is under the limit again and is resumed.
+        var old = Enumerable.Range(1, 3).Select(i => Now.AddHours(-1 - i)).ToArray();
+
+        var actions = SupervisorPolicy.Decide(Planner, RecordWithAlert("RestartLoop: old", old), [], Now, SupervisorRules.Default);
+
+        Assert.IsType<SupervisorAction.Resume>(Assert.Single(actions));
+    }
+
     [Fact]
     public void AgentsAreMatchedBySessionIdNotByName()
     {
