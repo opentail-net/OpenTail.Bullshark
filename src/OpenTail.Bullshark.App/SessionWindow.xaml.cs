@@ -71,8 +71,14 @@ public partial class SessionWindow : Window
     private bool _passRunning;
     private IReadOnlyList<AgentInfo> _agents = [];
 
-    /// <summary>The background daemon as the last pass read it (round 7 item 1). Its problem, if any, is shown under Needs you.</summary>
+    /// <summary>The background daemon as the last pass read it (round 7 item 1). Used to show a listed session as stale while it is not running.</summary>
     private DaemonStatus _daemon = DaemonStatus.Unknown();
+
+    /// <summary>
+    /// The Needs-you note about the daemon: set while it is not running and listed sessions still claim working or blocked (round 7 item 1,
+    /// revised). Null otherwise. It shows, and blocks nothing.
+    /// </summary>
+    private string? _daemonNotice;
 
     /// <summary>The daemon's version against the installed one, when they differ (round 7 item 2). Null when they match or either is unknown.</summary>
     private VersionDrift? _drift;
@@ -216,7 +222,9 @@ public partial class SessionWindow : Window
         IReadOnlyDictionary<string, RunBudget> Budgets,
         string? StoreProblem,
         DaemonStatus Daemon,
-        VersionDrift? Drift);
+        VersionDrift? Drift,
+        string? DaemonNotice,
+        string? DaemonStatusNotice);
 
     /// <summary>
     /// Runs one supervisor pass, then refreshes the rail. The reads and the pass itself run on a pool thread, so the window does
@@ -244,6 +252,7 @@ public partial class SessionWindow : Window
             _runner.Budgets = read.Budgets;
             // The daemon as this pass read it (round 7 item 1): a dead daemon makes the pass decide nothing, and shows in the Needs you group.
             _daemon = read.Daemon;
+            _daemonNotice = read.DaemonNotice;
             _runner.Daemon = read.Daemon;
             // A daemon that runs another claude version gets the Respawn all button, and only the owner's confirmed click runs anything (round 7 item 2).
             _drift = read.Drift;
@@ -281,7 +290,7 @@ public partial class SessionWindow : Window
 
             var failed = PassSnapshot.FailedStarts(records.Values);
             RetryButton.Visibility = failed > 0 ? Visibility.Visible : Visibility.Collapsed;
-            var parts = PassSnapshot.StatusParts(DateTime.Now, actions, plan.Waiting, failed, _storeProblem, plan.Problem, _daemon.StatusProblem, _drift?.StatusText);
+            var parts = PassSnapshot.StatusParts(DateTime.Now, actions, plan.Waiting, failed, _storeProblem, plan.Problem, read.DaemonStatusNotice, _drift?.StatusText);
 
             // A search owns the status line while it runs or while its results are shown: the pass's summary waits for it to end.
             if (_searchMatches is null && SearchBusy.Visibility != Visibility.Visible) SetStatus(string.Join("  ·  ", parts));
@@ -307,10 +316,16 @@ public partial class SessionWindow : Window
     /// </summary>
     private async Task<PassReads> ReadForPassAsync(Dictionary<string, string> known)
     {
-        var agents = await _cli.ListAgentsAsync();
-        var passAgents = await _cli.ListAgentsAsync(includeCompleted: true);
+        var rawAgents = await _cli.ListAgentsAsync();
+        var rawPassAgents = await _cli.ListAgentsAsync(includeCompleted: true);
         // The daemon is read with the listings, and never throws: an unknown status lets the pass go on as before (round 7 item 1).
         var daemon = await _cli.DaemonStatusAsync();
+        // While the daemon is not running (its normal idle state), a listed working or blocked session is shown and decided on as stale. The
+        // Needs-you note and the status note count those sessions, and never block anything (round 7 item 1, revised by the planner).
+        var agents = daemon.IdleListing(rawAgents);
+        var passAgents = daemon.IdleListing(rawPassAgents);
+        var daemonNotice = daemon.NeedsYouNotice(rawAgents);
+        var daemonStatusNotice = daemon.StatusNotice(rawAgents);
         // The installed version is read only when the daemon reports one: there is no drift to show without both (round 7 item 2).
         var cliVersion = daemon.Version is null ? null : await _cli.VersionAsync();
         var drift = VersionDrift.Of(daemon.Version, cliVersion);
@@ -329,7 +344,8 @@ public partial class SessionWindow : Window
         var paths = new Dictionary<string, string>(known, StringComparer.Ordinal);
         foreach (var pair in newPaths) paths[pair.Key] = pair.Value;
         var budgets = BudgetsOf(runs, records, paths);
-        return new PassReads(agents, passAgents, records, plan, facts, newPaths, budgets, recordsProblem ?? runsProblem, daemon, drift);
+        return new PassReads(agents, passAgents, records, plan, facts, newPaths, budgets, recordsProblem ?? runsProblem, daemon, drift,
+            daemonNotice, daemonStatusNotice);
     }
 
     /// <summary>

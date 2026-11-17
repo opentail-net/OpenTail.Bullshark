@@ -51,7 +51,10 @@ public partial class SessionWindow
     }
 
     /// <summary>The tab's tooltip: its title, and what the session waits for when the listing says so (round 7 item 3).</summary>
-    private static string TabTooltip(OpenTab tab) => tab.Waiting is { } waiting ? $"{tab.Title}\nwaiting for {waiting}" : tab.Title;
+    private static string TabTooltip(OpenTab tab) =>
+        tab.State == DaemonStatus.StaleState ? $"{tab.Title}\n{DaemonStatus.DisplayState(tab.State)}"
+        : tab.Waiting is { } waiting ? $"{tab.Title}\nwaiting for {waiting}"
+        : tab.Title;
 
     private readonly List<OpenTab> _tabs = new();
 
@@ -220,7 +223,7 @@ public partial class SessionWindow
         // the session may be running, and only a listing says so.
         try
         {
-            _agents = await _cli.ListAgentsAsync();
+            _agents = _daemon.IdleListing(await _cli.ListAgentsAsync());
         }
         catch (Exception ex)
         {

@@ -6,8 +6,10 @@ using Xunit;
 namespace OpenTail.Bullshark.Core.Tests.Supervisor;
 
 /// <summary>
-/// Round 7 item 1: when the background daemon is not running, or its control socket is unreachable, a pass makes no start, no resume and
-/// no adoption, and records nothing from the listing. A healthy daemon, or one whose status is unknown, changes nothing.
+/// Round 7 item 1, revised by the planner: "not running" is the daemon's normal idle state (`claude daemon --help`: "the daemon runs on demand
+/// and exits once no client is connected and no background session is running"). So it never stops a pass. Starts and resumes go ahead, and
+/// `claude --bg` brings the daemon up. What changes: while it is not running, a listed session that claims working or blocked is stale, so it
+/// raises no "blocked" alert and is not resumed on that basis alone. A healthy daemon, or one whose status is unknown, changes nothing.
 /// </summary>
 public sealed class DaemonGateTests : IDisposable
 {
@@ -23,7 +25,6 @@ public sealed class DaemonGateTests : IDisposable
 
     private static readonly DaemonStatus NotRunning = DaemonStatus.Parse("not running\n  control.sock: unreachable (connect ENOENT)\n");
     private static readonly DaemonStatus Healthy = DaemonStatus.Parse("running (pid 4312, version 2.1.326, uptime 2h 5m)\n  control.sock: listening\n");
-    private static readonly DaemonStatus ControlDown = DaemonStatus.Parse("running (pid 4312)\n  control.sock: unreachable (connect ENOENT)\n");
     private static readonly DaemonStatus Garbage = DaemonStatus.Parse("something new");
 
     private sealed class FixedClock : TimeProvider
@@ -82,68 +83,73 @@ public sealed class DaemonGateTests : IDisposable
     private static List<string> LaunchArgs(FakeCliRunner runner) =>
         runner.Calls.Where(c => c.Args[0] == "--bg").SelectMany(c => c.Args).ToList();
 
-    private static SupervisorRunner RunnerFor(FakeClaude claude, StateStore store, DaemonStatus? daemon)
+    private static SupervisorRunner RunnerFor(FakeClaude claude, StateStore store, DaemonStatus? daemon) =>
+        new(new ClaudeCli(claude.Runner), store, new FixedClock(), resolveTimeout: TimeSpan.FromSeconds(1)) { Daemon = daemon };
+
+    [Fact]
+    public async Task ADeadDaemonStillStartsANewSession()
     {
-        var runner = new SupervisorRunner(new ClaudeCli(claude.Runner), store, new FixedClock(), resolveTimeout: TimeSpan.FromSeconds(1))
-        {
-            Daemon = daemon,
-        };
-        return runner;
+        // `claude --bg` brings the daemon up on demand, so a start is not held back by the daemon being idle.
+        var claude = new FakeClaude(listedState: null);
+
+        var performed = await RunnerFor(claude, StoreWith(null), NotRunning).CheckOnceAsync([TestSpecs.Planner(@"C:\W", "t")]);
+
+        Assert.IsType<SupervisorAction.Start>(Assert.Single(performed));
+        Assert.Contains("--bg", LaunchArgs(claude.Runner));
     }
 
     [Fact]
-    public async Task ADeadDaemonStartsNothingForAFirstStart()
+    public async Task ADeadDaemonStillResumesAGoneSession()
     {
         var claude = new FakeClaude(listedState: null);
-        var store = StoreWith(null);
 
-        var performed = await RunnerFor(claude, store, NotRunning).CheckOnceAsync([TestSpecs.Planner(@"C:\W", "t")]);
+        var performed = await RunnerFor(claude, StoreWith(RecordOfPlanner("working")), NotRunning)
+            .CheckOnceAsync([TestSpecs.Planner(@"C:\W", "t")]);
 
-        Assert.Empty(performed);
-        Assert.Empty(LaunchArgs(claude.Runner));
-        Assert.Empty(store.Load());
+        Assert.IsType<SupervisorAction.Resume>(Assert.Single(performed));
+        Assert.Contains("--resume", LaunchArgs(claude.Runner));
     }
 
     [Fact]
-    public async Task ADeadDaemonResumesNothingAGoneSession()
+    public async Task ADeadDaemonRaisesNoBlockedAlertForAStaleBlockedSessionAndResumesNothing()
     {
-        var claude = new FakeClaude(listedState: null);
-        var store = StoreWith(RecordOfPlanner("working"));
-        var before = StateText();
-
-        var performed = await RunnerFor(claude, store, NotRunning).CheckOnceAsync([TestSpecs.Planner(@"C:\W", "t")]);
-
-        Assert.Empty(performed);
-        Assert.DoesNotContain("--resume", LaunchArgs(claude.Runner));
-        Assert.Empty(LaunchArgs(claude.Runner));
-        Assert.Equal(before, StateText());
-    }
-
-    [Fact]
-    public async Task ADeadDaemonRecordsNothingFromItsListing()
-    {
-        // The listing says blocked, which a dead daemon cannot be: no alert, and the remembered state is not changed.
+        // The listing says blocked, which a daemon that is not running cannot make true: it is stale. No alert, no resume, no start.
         var claude = new FakeClaude(listedState: "blocked");
         var store = StoreWith(RecordOfPlanner("working"));
-        var before = StateText();
 
         var performed = await RunnerFor(claude, store, NotRunning).CheckOnceAsync([TestSpecs.Planner(@"C:\W", "t")]);
 
         Assert.Empty(performed);
-        Assert.Equal(before, StateText());
-        Assert.DoesNotContain(claude.Runner.Calls, c => c.Args[0] == "logs");
+        Assert.Empty(LaunchArgs(claude.Runner));
+        // The state the pass saw is recorded as stale, so the owner is told when the session is blocked again with the daemon up.
+        Assert.Equal(DaemonStatus.StaleState, store.Load().Values.Single().LastState);
     }
 
     [Fact]
-    public async Task AnUnreachableControlSocketMeansTheSameAsADeadDaemon()
+    public async Task AHealthyDaemonRaisesTheBlockedAlertAsItDid()
     {
-        var claude = new FakeClaude(listedState: null);
+        var claude = new FakeClaude(listedState: "blocked");
+
+        var performed = await RunnerFor(claude, StoreWith(RecordOfPlanner("working")), Healthy)
+            .CheckOnceAsync([TestSpecs.Planner(@"C:\W", "t")]);
+
+        var alert = Assert.IsType<SupervisorAction.Alert>(Assert.Single(performed));
+        Assert.Equal(AlertKind.Blocked, alert.Kind);
+    }
+
+    [Fact]
+    public async Task ASessionThatWasStaleIsAlertedWhenTheDaemonReturnsAndItIsStillBlocked()
+    {
+        // Pass 1 with the daemon idle records the session as stale; pass 2 with the daemon up sees it blocked, which is a new state for the record.
+        var claude = new FakeClaude(listedState: "blocked");
         var store = StoreWith(RecordOfPlanner("working"));
 
-        var performed = await RunnerFor(claude, store, ControlDown).CheckOnceAsync([TestSpecs.Planner(@"C:\W", "t")]);
+        var idle = await RunnerFor(claude, store, NotRunning).CheckOnceAsync([TestSpecs.Planner(@"C:\W", "t")]);
+        var back = await RunnerFor(claude, store, Healthy).CheckOnceAsync([TestSpecs.Planner(@"C:\W", "t")]);
 
-        Assert.Empty(performed);
-        Assert.Empty(LaunchArgs(claude.Runner));
+        Assert.Empty(idle);
+        var alert = Assert.IsType<SupervisorAction.Alert>(Assert.Single(back));
+        Assert.Equal(AlertKind.Blocked, alert.Kind);
     }
 
     [Fact]
@@ -154,70 +160,58 @@ public sealed class DaemonGateTests : IDisposable
 
         Assert.IsType<SupervisorAction.Resume>(Assert.Single(withoutCheck.Performed));
         Assert.Equal(withoutCheck.Performed.Select(a => a.GetType()), healthy.Performed.Select(a => a.GetType()));
-        Assert.Contains("--resume", withoutCheck.Args);
         Assert.Equal(withoutCheck.Args, healthy.Args);
-    }
-
-    [Fact]
-    public async Task AHealthyDaemonStartsAFirstSessionAsItDidBefore()
-    {
-        var claude = new FakeClaude(listedState: null);
-        var performed = await RunnerFor(claude, StoreWith(null), Healthy).CheckOnceAsync([TestSpecs.Planner(@"C:\W", "t")]);
-
-        Assert.IsType<SupervisorAction.Start>(Assert.Single(performed));
-        Assert.Contains("--bg", LaunchArgs(claude.Runner));
     }
 
     [Fact]
     public async Task AnUnknownDaemonStatusChangesNothing()
     {
-        var withoutCheck = await GoneSessionPass(daemon: null);
-        var unknown = await GoneSessionPass(daemon: Garbage);
+        var withoutCheck = await BlockedPass(daemon: null);
+        var unknown = await BlockedPass(daemon: Garbage);
 
-        Assert.Equal(withoutCheck.Args, unknown.Args);
         Assert.Equal(withoutCheck.Performed.Select(a => a.GetType()), unknown.Performed.Select(a => a.GetType()));
+        Assert.Equal(withoutCheck.Args, unknown.Args);
     }
 
     [Fact]
-    public async Task TheLoopReadsNoSessionOutputWhileTheDaemonIsDown()
+    public async Task TheLoopStillReadsSessionOutputWhileTheDaemonIsNotRunning()
     {
+        // A listed working session is not stale, so the pass goes on to read its output as it does with the daemon up.
         var claude = new FakeClaude(listedState: "working");
         var store = StoreWith(RecordOfPlanner("working"));
-        var runner = RunnerFor(claude, store, NotRunning);
-        var loop = new SupervisorLoop(runner, new ClaudeCli(claude.Runner), store, _ => { });
+        var loop = new SupervisorLoop(RunnerFor(claude, store, NotRunning), new ClaudeCli(claude.Runner), store, _ => { });
+
+        await loop.RunPassAsync([TestSpecs.Planner(@"C:\W", "t")]);
+
+        Assert.Single(claude.Runner.Calls, c => c.Args[0] == "logs");
+    }
+
+    [Fact]
+    public async Task TheLoopStartsANewSessionWhileTheDaemonIsNotRunning()
+    {
+        var claude = new FakeClaude(listedState: null);
+        var store = StoreWith(null);
+        var loop = new SupervisorLoop(RunnerFor(claude, store, NotRunning), new ClaudeCli(claude.Runner), store, _ => { });
 
         var count = await loop.RunPassAsync([TestSpecs.Planner(@"C:\W", "t")]);
 
-        Assert.Equal(0, count);
-        Assert.DoesNotContain(claude.Runner.Calls, c => c.Args[0] == "logs");
-    }
-
-    [Fact]
-    public async Task ADeadDaemonMakesThePassOnTheWindowsListingDecideNothing()
-    {
-        // The window passes the listing it already has; the same rule applies on that path.
-        var claude = new FakeClaude(listedState: "blocked");
-        var store = StoreWith(RecordOfPlanner("working"));
-        var before = StateText();
-        var runner = RunnerFor(claude, store, NotRunning);
-        var loop = new SupervisorLoop(runner, new ClaudeCli(claude.Runner), store, _ => { });
-
-        var count = await loop.RunPassAsync([TestSpecs.Planner(@"C:\W", "t")], AgentInfo.ParseList(Listing("blocked")));
-
-        // Checked on the runner's own pass too: it decides nothing, so no alert is raised and the state is not written.
-        var performed = await runner.CheckOnceAsync([TestSpecs.Planner(@"C:\W", "t")], AgentInfo.ParseList(Listing("blocked")));
-        Assert.Empty(performed);
-        Assert.Equal(0, count);
-        Assert.Empty(LaunchArgs(claude.Runner));
-        Assert.Equal(before, StateText());
+        Assert.Equal(1, count);
+        Assert.Contains("--bg", LaunchArgs(claude.Runner));
     }
 
     /// <summary>A pass for a planner whose session is gone from the listing, under the given daemon status.</summary>
     private async Task<(IReadOnlyList<SupervisorAction> Performed, List<string> Args)> GoneSessionPass(DaemonStatus? daemon)
     {
         var claude = new FakeClaude(listedState: null);
-        var store = StoreWith(RecordOfPlanner("working"));
-        var performed = await RunnerFor(claude, store, daemon).CheckOnceAsync([TestSpecs.Planner(@"C:\W", "t")]);
-        return (performed, LaunchArgs(claude.Runner).ToList());
+        var performed = await RunnerFor(claude, StoreWith(RecordOfPlanner("working")), daemon).CheckOnceAsync([TestSpecs.Planner(@"C:\W", "t")]);
+        return (performed, LaunchArgs(claude.Runner));
+    }
+
+    /// <summary>A pass for a planner listed as blocked, under the given daemon status.</summary>
+    private async Task<(IReadOnlyList<SupervisorAction> Performed, List<string> Args)> BlockedPass(DaemonStatus? daemon)
+    {
+        var claude = new FakeClaude(listedState: "blocked");
+        var performed = await RunnerFor(claude, StoreWith(RecordOfPlanner("working")), daemon).CheckOnceAsync([TestSpecs.Planner(@"C:\W", "t")]);
+        return (performed, LaunchArgs(claude.Runner));
     }
 }

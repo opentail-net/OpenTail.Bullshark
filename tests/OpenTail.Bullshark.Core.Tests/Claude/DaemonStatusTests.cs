@@ -6,9 +6,10 @@ using Xunit;
 namespace OpenTail.Bullshark.Core.Tests.Claude;
 
 /// <summary>
-/// `claude daemon status` (round 7 item 1). The not-running text is the real output of claude 2.1.326 on 2026-11-17, with the user's
-/// folder name replaced. The running text is hand-built from the keys in `claude daemon --help`: no daemon was running on the machine,
-/// and this round did not start one (the brief forbids it).
+/// `claude daemon status` (round 7 item 1, revised by the planner). The not-running text is the real output of claude 2.1.326 on 2026-11-17,
+/// with the user's folder name replaced. The running text is hand-built from the keys in `claude daemon --help`: no daemon was running on the
+/// machine, and this round did not start one (the brief forbids it). "Not running" is the normal idle state, so it never stops a pass; it only
+/// changes how a listed session that claims working or blocked is read.
 /// </summary>
 public sealed class DaemonStatusTests
 {
@@ -43,48 +44,60 @@ public sealed class DaemonStatusTests
           bg workers:   0 in roster.json (control unreachable)
         """;
 
+    /// <summary>
+    /// A listing with sessions that claim working and blocked (one with a waiting reason), a done and a stopped one, and an interactive one with
+    /// a status. Shape as `claude agents --json` prints it; the ids and names are synthetic.
+    /// </summary>
+    private const string Listing = """
+        [
+          {"id":"aaaaaaa1","kind":"background","sessionId":"s-working","name":"a","state":"working","cwd":"C:\\W"},
+          {"id":"bbbbbbb2","kind":"background","sessionId":"s-blocked","name":"b","state":"blocked","waitingFor":"permission prompt"},
+          {"id":"ccccccc3","kind":"background","sessionId":"s-done","name":"c","state":"done"},
+          {"id":"ddddddd4","kind":"background","sessionId":"s-stopped","name":"d","state":"stopped"},
+          {"pid":15732,"kind":"interactive","sessionId":"s-busy","name":"e","status":"busy"}
+        ]
+        """;
+
     [Fact]
-    public void TheCapturedNotRunningOutputBlocksDecisions()
+    public void TheCapturedNotRunningOutputIsNotRunning()
     {
         var status = DaemonStatus.Parse(NotRunningOutput);
 
         Assert.Equal(DaemonState.NotRunning, status.State);
+        Assert.True(status.IsNotRunning);
         Assert.Null(status.Pid);
         Assert.Equal(false, status.ControlReachable);
         Assert.Equal(0, status.BackgroundWorkers);
         Assert.Equal(6604, status.RosterAgeSeconds);
         Assert.Equal(@"C:\Users\example\.claude\daemon.log", status.LogPath);
-        Assert.True(status.BlocksDecisions);
-        Assert.Contains("not running", status.Problem);
-        Assert.Contains("daemon not running", status.StatusProblem);
     }
 
     [Fact]
-    public void ARunningDaemonWithItsControlSocketDoesNotBlock()
+    public void ARunningDaemonWithItsControlSocketIsParsed()
     {
         var status = DaemonStatus.Parse(RunningOutput);
 
         Assert.Equal(DaemonState.Running, status.State);
+        Assert.False(status.IsNotRunning);
         Assert.Equal(4312, status.Pid);
         Assert.Equal("2.1.326", status.Version);
         Assert.Equal("2h 5m", status.Uptime);
         Assert.Equal(true, status.ControlReachable);
         Assert.Equal(2, status.BackgroundWorkers);
         Assert.Equal(3, status.RosterAgeSeconds);
-        Assert.False(status.BlocksDecisions);
-        Assert.Null(status.Problem);
-        Assert.Null(status.StatusProblem);
     }
 
     [Fact]
-    public void A_RunningDaemonWhoseControlIsUnreachableBlocksDecisions()
+    public void ARunningDaemonWhoseControlIsUnreachableChangesNoListingAndNoticesNothing()
     {
+        // Control unreachable no longer stops anything or adds a notice: the owner sees the value, and the listing is used as it is.
         var status = DaemonStatus.Parse(RunningButControlUnreachable);
+        var agents = AgentInfo.ParseList(Listing);
 
         Assert.Equal(DaemonState.Running, status.State);
         Assert.Equal(false, status.ControlReachable);
-        Assert.True(status.BlocksDecisions);
-        Assert.Contains("control is unreachable", status.Problem);
+        Assert.Same(agents, status.IdleListing(agents));
+        Assert.Null(status.NeedsYouNotice(agents));
     }
 
     [Theory]
@@ -92,27 +105,17 @@ public sealed class DaemonStatusTests
     [InlineData("   \n")]
     [InlineData("the daemon is starting")]
     [InlineData("Unexpected output from a newer claude: 3 things changed")]
-    public void UnreadableOutputIsUnknownAndNeverBlocks(string output)
+    public void UnreadableOutputIsUnknownAndChangesNothing(string output)
     {
         var status = DaemonStatus.Parse(output);
+        var agents = AgentInfo.ParseList(Listing);
 
         Assert.Equal(DaemonState.Unknown, status.State);
         Assert.Null(status.Pid);
         Assert.Null(status.Version);
         Assert.Null(status.ControlReachable);
-        Assert.False(status.BlocksDecisions);
-        Assert.Null(status.Problem);
-        Assert.Null(status.StatusProblem);
-    }
-
-    [Fact]
-    public void AnUnknownStatusWithAnUnreachableControlLineStillBlocks()
-    {
-        // The state line is not recognised, but the control socket says it cannot be reached: that is a fact the supervisor acts on.
-        var status = DaemonStatus.Parse("state changed\n  control.sock: unreachable (connect ENOENT)\n");
-
-        Assert.Equal(DaemonState.Unknown, status.State);
-        Assert.True(status.BlocksDecisions);
+        Assert.Same(agents, status.IdleListing(agents));
+        Assert.Null(status.NeedsYouNotice(agents));
     }
 
     [Fact]
@@ -136,7 +139,6 @@ public sealed class DaemonStatusTests
         var status = await cli.DaemonStatusAsync();
 
         Assert.Equal(DaemonState.Unknown, status.State);
-        Assert.False(status.BlocksDecisions);
         Assert.Contains("could not start", status.Raw);
     }
 
@@ -148,16 +150,66 @@ public sealed class DaemonStatusTests
         var status = await new ClaudeCli(runner).DaemonStatusAsync();
 
         Assert.Equal(DaemonState.Unknown, status.State);
-        Assert.False(status.BlocksDecisions);
     }
 
     [Fact]
-    public void TheStatusLineSaysTheDaemonProblemWhenThereIsOne()
+    public void WhileNotRunningAListedWorkingOrBlockedSessionIsStaleAndTheOthersAreNot()
     {
+        var agents = AgentInfo.ParseList(Listing);
+
+        var seen = DaemonStatus.Parse(NotRunningOutput).IdleListing(agents);
+
+        Assert.Equal(DaemonStatus.StaleState, seen[0].EffectiveState);
+        Assert.Equal(DaemonStatus.StaleState, seen[1].EffectiveState);
+        Assert.Null(seen[1].Waiting);
+        Assert.Equal("done", seen[2].EffectiveState);
+        Assert.Equal("stopped", seen[3].EffectiveState);
+        Assert.Equal("busy", seen[4].EffectiveState);
+        // Still listed under the same session id, so the policy does not resume it on this basis.
+        Assert.Equal("s-blocked", seen[1].SessionId);
+    }
+
+    [Fact]
+    public void WhileTheDaemonRunsTheListingIsUnchanged()
+    {
+        var agents = AgentInfo.ParseList(Listing);
+
+        Assert.Same(agents, DaemonStatus.Parse(RunningOutput).IdleListing(agents));
+    }
+
+    [Fact]
+    public void AStaleSessionIsShownAsDaemonIdle()
+    {
+        Assert.Equal("not running (daemon idle)", DaemonStatus.DisplayState(DaemonStatus.StaleState));
+        Assert.Equal("blocked", DaemonStatus.DisplayState("blocked"));
+    }
+
+    [Fact]
+    public void TheNeedsYouNoticeAppearsOnlyWhenNotRunningAndAClaimingSessionIsStillListed()
+    {
+        var agents = AgentInfo.ParseList(Listing);
+
+        Assert.Equal(
+            "Background daemon is not running: 2 session(s) listed as working/blocked are not alive.",
+            DaemonStatus.Parse(NotRunningOutput).NeedsYouNotice(agents));
+        Assert.Equal("background daemon not running: 2 listed session(s) not alive", DaemonStatus.Parse(NotRunningOutput).StatusNotice(agents));
+
+        // Nothing claims working or blocked: no notice, however the daemon is.
+        var idle = AgentInfo.ParseList("""[{"id":"ccccccc3","kind":"background","sessionId":"s-done","name":"c","state":"done"}]""");
+        Assert.Null(DaemonStatus.Parse(NotRunningOutput).NeedsYouNotice(idle));
+
+        // A running daemon with a claiming session is consistent: no notice.
+        Assert.Null(DaemonStatus.Parse(RunningOutput).NeedsYouNotice(agents));
+    }
+
+    [Fact]
+    public void TheStatusLineSaysTheDaemonNoticeWhenThereIsOne()
+    {
+        var agents = AgentInfo.ParseList(Listing);
         var down = PassSnapshot.StatusParts(new DateTime(2026, 11, 17, 12, 0, 0), 0, 0, 0, null, null,
-            DaemonStatus.Parse(NotRunningOutput).StatusProblem);
+            DaemonStatus.Parse(NotRunningOutput).StatusNotice(agents));
         var healthy = PassSnapshot.StatusParts(new DateTime(2026, 11, 17, 12, 0, 0), 0, 0, 0, null, null,
-            DaemonStatus.Parse(RunningOutput).StatusProblem);
+            DaemonStatus.Parse(RunningOutput).StatusNotice(agents));
 
         Assert.Contains(down, part => part.Contains("daemon not running"));
         Assert.DoesNotContain(healthy, part => part.Contains("daemon"));

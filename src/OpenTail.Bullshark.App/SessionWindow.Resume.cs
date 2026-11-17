@@ -106,7 +106,7 @@ public partial class SessionWindow
         // A fresh listing decides: a session that is listed is already running, and a second start would be a second session.
         try
         {
-            _agents = await _cli.ListAgentsAsync();
+            _agents = _daemon.IdleListing(await _cli.ListAgentsAsync());
         }
         catch (Exception ex)
         {

@@ -166,7 +166,9 @@ bg sessions:
   roster.json:  updated 6604s ago
   daemon.log:   31.7KB at C:\Users\example\.claude\daemon.log
 ";
-if (args.Length > 0 && args[0] == "agents") Console.Out.Write("[]");
+// `agents --json` prints FAKECLAUDE_AGENTS when it is set (a JSON array), else no sessions (round 7 item 1, revised: a listing with sessions
+// that claim working or blocked while the daemon is down).
+if (args.Length > 0 && args[0] == "agents") Console.Out.Write(Environment.GetEnvironmentVariable("FAKECLAUDE_AGENTS") ?? "[]");
 else if (args.Length >= 2 && args[0] == "daemon" && args[1] == "status")
 {
     if (daemonDown) { Console.Out.Write(NotRunning); return 1; }
@@ -198,6 +200,11 @@ Set-Content -LiteralPath "$repo\README.md" -Value "# Scratch repo`nNothing here 
 & dotnet "$tools\gen\out\gen.dll" $state $repo $claudeHome
 if ($LASTEXITCODE -ne 0) { throw "The fixture generator failed" }
 
+# The listing for the daemon-down screens: the planner is listed as blocked and one coder as working, while the daemon is not running. Both
+# claim working or blocked, so the Needs-you note says two sessions are not alive (round 7 item 1, revised). Ids are the fixture's.
+$daemonDownListing = '[{"id":"a0a0a0a0","kind":"background","sessionId":"5e4f3a21-0000-4000-8000-00000000a0a0","name":"bullshark-planner-r4a1","state":"blocked"},' +
+    '{"id":"c0d1c0d1","kind":"background","sessionId":"5e4f3a21-0000-4000-8000-00000000c0d1","name":"bullshark-coder-r4a1-1","state":"working"}]'
+
 # Each screen: a theme for the rail (ui.json beside the state file), the options that open the screen, and a name for its PNG.
 $screens = @(
     @{ Name = 'rail-dark'; Theme = 'Dark'; Options = @() },
@@ -213,8 +220,10 @@ $screens = @(
     @{ Name = 'effort-light'; Theme = 'Light'; Options = @('--open-transcript', '5e4f3a21-0000-4000-8000-00000000c0d1', '--effort-open') },
     @{ Name = 'changes-dark'; Theme = 'Dark'; Options = @('--open-tab', 'changes:bullshark-coder-r4a1-1') },
     # Round 7 item 1: the daemon is not running, so the Needs you group says so and the pass starts nothing.
-    @{ Name = 'daemon-down-dark'; Theme = 'Dark'; Options = @(); Env = @{ FAKECLAUDE_DAEMON = 'down' } },
-    @{ Name = 'daemon-down-light'; Theme = 'Light'; Options = @(); Env = @{ FAKECLAUDE_DAEMON = 'down' } },
+    # The listing has two sessions that claim working or blocked, while the daemon is not running: the Needs-you note counts them, and the
+    # rail and the tab show them as "not running (daemon idle)".
+    @{ Name = 'daemon-down-dark'; Theme = 'Dark'; Options = @(); Env = @{ FAKECLAUDE_DAEMON = 'down'; FAKECLAUDE_AGENTS = $daemonDownListing } },
+    @{ Name = 'daemon-down-light'; Theme = 'Light'; Options = @(); Env = @{ FAKECLAUDE_DAEMON = 'down'; FAKECLAUDE_AGENTS = $daemonDownListing } },
     # Round 7 item 2: the running daemon reports 2.1.300 and claude is 2.1.326, so the Respawn all button shows in the bar.
     @{ Name = 'daemon-drift-dark'; Theme = 'Dark'; Options = @(); Env = @{ FAKECLAUDE_DAEMON = 'running'; FAKECLAUDE_DAEMON_VERSION = '2.1.300' } },
     # Round 7 item 5: the Storage page says how long Claude keeps transcripts. This screen has a settings.json that sets 45 days; the
@@ -229,7 +238,7 @@ $failed = 0
 foreach ($screen in $screens) {
     $name = $screen.Name
     # Each screen sets its own stand-in answers and clears the others, so one screen's daemon does not leak into the next.
-    foreach ($key in 'FAKECLAUDE_DAEMON', 'FAKECLAUDE_DAEMON_VERSION') { Remove-Item "Env:$key" -ErrorAction SilentlyContinue }
+    foreach ($key in 'FAKECLAUDE_DAEMON', 'FAKECLAUDE_DAEMON_VERSION', 'FAKECLAUDE_AGENTS') { Remove-Item "Env:$key" -ErrorAction SilentlyContinue }
     if ($screen.Env) { foreach ($key in $screen.Env.Keys) { Set-Item -Path "Env:$key" -Value $screen.Env[$key] } }
     # The settings file of the test home is there only for the screens that set it (round 7 item 5).
     $settingsPath = Join-Path $claudeHome 'settings.json'

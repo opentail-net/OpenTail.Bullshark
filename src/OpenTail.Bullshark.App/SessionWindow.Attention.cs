@@ -52,8 +52,9 @@ public partial class SessionWindow
             "or a file that another session of the run also wrote.");
         section.IsExpanded = _expanded.GetValueOrDefault(NeedsYouKey, true);
 
-        // A dead daemon comes first: while it holds, the sessions listed as working or blocked are not alive, and nothing is started (round 7 item 1).
-        if (_daemon.Problem is { } daemonProblem)
+        // The daemon note comes first: the daemon is not running, and listed sessions still claim working or blocked (round 7 item 1, revised).
+        // It says so, and blocks nothing.
+        if (_daemonNotice is { } daemonProblem)
             section.Items.Add(NewItem(Label(daemonProblem, bold: true, wrap: true),
                 new RailTag(RailKind.Heading, NeedsYouKey + ":daemon"), daemonProblem));
 

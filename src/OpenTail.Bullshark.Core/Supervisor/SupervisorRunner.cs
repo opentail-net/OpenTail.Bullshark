@@ -33,10 +33,10 @@ public sealed class SupervisorRunner
     public IEventSink? Events { get; set; }
 
     /// <summary>
-    /// The background daemon as the window read it before the pass (round 7 item 1). When it is not running, or its control socket is
-    /// unreachable, the pass makes no decision at all: nothing is started, resumed or adopted, and nothing is recorded, because the
-    /// listing from a dead daemon is not trusted, as an unreadable listing is not. Null, the default, and an unknown status do not stop
-    /// the pass, which is how the runner worked before the check.
+    /// The background daemon as the window read it before the pass (round 7 item 1, revised by the planner). A daemon that is not running is
+    /// the normal idle state, so it never stops a pass: starts and resumes go ahead, and `claude --bg` brings the daemon up. While it is not
+    /// running, a listed session that claims working or blocked is decided on as stale (<see cref="DaemonStatus.IdleListing"/>): no
+    /// "blocked" alert and no resume on that basis alone. Null, the default, changes nothing.
     /// </summary>
     public DaemonStatus? Daemon { get; set; }
 
@@ -78,8 +78,8 @@ public sealed class SupervisorRunner
         IReadOnlyList<AgentInfo> agents,
         CancellationToken cancellationToken = default)
     {
-        // A dead daemon's listing is not trusted (round 7 item 1): the pass decides nothing and writes nothing.
-        if (Daemon?.BlocksDecisions == true) return [];
+        // While the daemon is not running, a listed session that claims working or blocked is stale: it is decided on, and recorded, as stale.
+        agents = Daemon?.IdleListing(agents) ?? agents;
 
         // Read first: an unreadable state file stops the pass before anything is started or written.
         var before = _store.Load().ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
