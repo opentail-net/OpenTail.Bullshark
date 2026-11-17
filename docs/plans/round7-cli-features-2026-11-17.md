@@ -32,8 +32,20 @@ checked by the planner against the installed CLI (2.1.326) on the owner's machin
 - [x] **3. Forward-compatible listing fields.** Parse optional `status` and `waitingFor` (string or object; keep the raw text). When present, the Needs-you row and the tab tooltip say what it waits for (permission, input, dialog…). Tests with samples that have and lack the fields.
 - [x] **4. Work on the folder the session really edits.** Read the latest `cwd` from the session's transcript records (if the transcript lines carry one; check a real transcript read-only, and a test fixture); prefer it over the listing's `cwd` for the Changes tab, file overlap and the merge check. Paths compared normalised. Tests: a transcript whose `cwd` is under `.claude/worktrees/x` makes those features use it.
 - [x] **5. Transcript clean-up warning.** Read `cleanupPeriodDays` from `~/.claude/settings.json` (read-only; absent → say "Claude's default", without a number unless the docs page states one — check code.claude.com/docs settings page and record the URL). The Storage page shows "Claude deletes transcripts older than N days; archive to keep them" and marks sessions within 3 days of that age. Tests on the age rule.
-- [ ] **6. `--session-id` with `--bg` (gated).** Do not build. Record the gate for the owner: one throwaway start with `--bg --session-id <uuid>` in a trusted folder; if the session id matches, Bullshark can name the transcript before launch and drop the read-back poll.
+- [x] **6. `--session-id` with `--bg` (gated).** Do not build. Record the gate for the owner: one throwaway start with `--bg --session-id <uuid>` in a trusted folder; if the session id matches, Bullshark can name the transcript before launch and drop the read-back poll.
 - [ ] **7. Ideas recorded, not built** (write them under "Later" in this file with the research references): HTTP hooks per run for live overlap and limits (C3), `/goal` as a run's stop condition (C9), OpenTelemetry cross-check (C11).
+
+## Gated for the owner (not built)
+
+- **Gate 1: `--session-id` with `--bg` (item 6).** Owner runs one throwaway start, in a folder the owner trusts, and nothing else:
+  `claude --bg --session-id <a fresh uuid> --name gate-probe "Reply with the word ok and stop."`, then `claude agents --json --all` and
+  the session's transcript file. Question: does the session id match the uuid? F18 (2026-11-14) said `--bg` ignored it; the 2.1.326 help lists
+  `--session-id <uuid>`; the facts table above says the research found it working with `--bg`, but research section 8 only lists the flag and is not a test. If it matches, Bullshark can name the transcript before
+  launch and drop the read-back poll (`ResolveSessionIdAsync`). Stop and remove the probe afterwards, with the owner's own `claude stop`/`rm`.
+- **Gate 1 also answers D1.6.** Run `claude daemon status` before the start and after it. If the daemon was down and is up after `--bg`,
+  the supervisor's "dead daemon: no start" rule (item 1) would hold every new run until something else starts the daemon, so the owner would
+  need to relax it to "control unreachable" only. If it stays down, the rule stays as written.
+- Nothing in this round runs that start. The builder did not start any session (the brief forbids it).
 
 ## Decisions made while building
 
