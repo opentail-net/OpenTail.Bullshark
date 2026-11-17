@@ -38,6 +38,8 @@ public partial class SessionWindow
         var live = FileOverlap.LiveRecords(records, agents);
         foreach (var run in runs)
         {
+            // A run that can have neither a clash nor a limit does not need its transcripts read (round 5 item 9).
+            if (!FileOverlap.NeedsTranscripts(run)) continue;
             var writes = new List<SessionWrites>();
             foreach (var spec in run.Specs)
             {

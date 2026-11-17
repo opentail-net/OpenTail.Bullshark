@@ -70,12 +70,14 @@ public static class TranscriptReader
     /// Summarises transcript lines. Lines that are not valid JSON are skipped, not fatal.
     /// Usage goes into a <see cref="UsageLedger"/>, once per message (F34, F35, F36). Records and tool calls are counted
     /// for this file. Tool calls are counted once per tool-use id, and assistant messages once per message key.
+    /// <paramref name="firstLine"/> is the number of lines before <paramref name="lines"/> in the file, for a summary of the part of a
+    /// file that was appended (round 5 item 9): the lines that have no message id are keyed by their line number, so it must go on.
     /// </summary>
-    public static TranscriptSummary Summarize(IEnumerable<string> lines, UsageLedger? ledger = null, string? fileName = null)
+    public static TranscriptSummary Summarize(IEnumerable<string> lines, UsageLedger? ledger = null, string? fileName = null, int firstLine = 0)
     {
         var usageLedger = ledger ?? new UsageLedger();
         var file = fileName ?? string.Empty;
-        int records = 0, users = 0, assistants = 0, tools = 0, turns = 0, lineNumber = 0;
+        int records = 0, users = 0, assistants = 0, tools = 0, turns = 0, lineNumber = firstLine;
         string? lastText = null, lastModel = null;
         DateTimeOffset? lastTimestamp = null, firstTimestamp = null;
         string? firstUserText = null;

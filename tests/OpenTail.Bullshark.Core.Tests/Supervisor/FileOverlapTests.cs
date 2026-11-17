@@ -1,4 +1,6 @@
+using System.Text;
 using System.Text.Json;
+using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Claude;
 using OpenTail.Bullshark.Core.Supervisor;
 using Xunit;
@@ -220,6 +222,147 @@ public sealed class FileOverlapTests : IDisposable
         var second = cache.Read(CoderId, transcript);
         Assert.Single(second.Files);
         Assert.Equal(Start.AddMinutes(20), second.LastWrites[Path.Combine(_root, "a.cs")]);
+    }
+
+    /// <summary>A Write record that also carries the message's usage, so the token totals can be compared.</summary>
+    private static string Usage(string id, string timestamp, string path, long output) =>
+        JsonSerializer.Serialize(new
+        {
+            type = "assistant",
+            timestamp,
+            requestId = "r-" + id,
+            message = new
+            {
+                id = "m-" + id,
+                model = "claude-opus-5-5",
+                content = new object[] { new { type = "tool_use", id, name = "Write", input = new { file_path = path, content = "x" } } },
+                usage = new { input_tokens = 3L, output_tokens = output, cache_creation_input_tokens = 0L, cache_read_input_tokens = 0L },
+            },
+        });
+
+    /// <summary>A stream that counts the bytes read from it, so a test can see how much of a transcript was read.</summary>
+    private sealed class CountingStream(Stream inner) : Stream
+    {
+        public long BytesRead { get; private set; }
+
+        public override bool CanRead => inner.CanRead;
+        public override bool CanSeek => inner.CanSeek;
+        public override bool CanWrite => false;
+        public override long Length => inner.Length;
+        public override long Position { get => inner.Position; set => inner.Position = value; }
+        public override void Flush() { }
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            var read = inner.Read(buffer, offset, count);
+            BytesRead += read;
+            return read;
+        }
+        public override long Seek(long offset, SeekOrigin origin) => inner.Seek(offset, origin);
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) inner.Dispose();
+            base.Dispose(disposing);
+        }
+    }
+
+    [Fact]
+    public void AGrownTranscriptReadsOnlyTheAppendedBytesAndGivesTheSameAnswerAsAFullRead()
+    {
+        var transcript = Path.Combine(_root, CoderId + ".jsonl");
+        var first = Path.Combine(_root, "a.cs");
+        var second = Path.Combine(_root, "b.cs");
+        File.WriteAllText(transcript, Usage("u1", "2026-11-17T09:05:00Z", first, 100) + "\n");
+        var opened = new List<CountingStream>();
+        var cache = new SessionWritesCache(path =>
+        {
+            var stream = new CountingStream(TranscriptFile.Open(path));
+            opened.Add(stream);
+            return stream;
+        });
+        cache.Read(CoderId, transcript);
+        Assert.Equal(new FileInfo(transcript).Length, opened[0].BytesRead);
+
+        var appended = Usage("u2", "2026-11-17T09:20:00Z", second, 40);
+        File.AppendAllText(transcript, appended + "\n");
+        var grown = cache.Read(CoderId, transcript);
+
+        // Only the appended line was read, and the answer is what a full read of the file gives.
+        Assert.Equal(Encoding.UTF8.GetByteCount(appended) + 1, opened[1].BytesRead);
+        var whole = TranscriptReader.ReadFile(transcript);
+        Assert.Equal(whole.FilesWritten, grown.Files);
+        Assert.Equal(whole.TotalUsage, grown.Usage);
+        Assert.Equal(whole.FileLastWrites!.Count, grown.LastWrites.Count);
+        foreach (var (file, when) in whole.FileLastWrites!) Assert.Equal(when, grown.LastWrites[file]);
+    }
+
+    [Fact]
+    public void AnUnchangedTranscriptIsNotOpenedAgain()
+    {
+        var transcript = Path.Combine(_root, CoderId + ".jsonl");
+        File.WriteAllText(transcript, Usage("u1", "2026-11-17T09:05:00Z", Path.Combine(_root, "a.cs"), 100) + "\n");
+        var opens = 0;
+        var cache = new SessionWritesCache(path => { opens++; return TranscriptFile.Open(path); });
+
+        cache.Read(CoderId, transcript);
+        cache.Read(CoderId, transcript);
+        cache.Read(CoderId, transcript);
+
+        Assert.Equal(1, opens);
+    }
+
+    [Fact]
+    public void ALineStillBeingWrittenCountsOnlyWhenItsNewlineIsThere()
+    {
+        var transcript = Path.Combine(_root, CoderId + ".jsonl");
+        var first = Path.Combine(_root, "a.cs");
+        var second = Path.Combine(_root, "b.cs");
+        var secondLine = Assistant("t2", "2026-11-17T09:20:00Z", second);
+        File.WriteAllText(transcript, Assistant("t1", "2026-11-17T09:05:00Z", first) + "\n" + secondLine[..40]);
+        var cache = new SessionWritesCache();
+
+        // The second record is cut off: it is not read yet.
+        Assert.Equal([first], cache.Read(CoderId, transcript).Files);
+
+        File.AppendAllText(transcript, secondLine[40..] + "\n");
+        Assert.Equal([first, second], cache.Read(CoderId, transcript).Files);
+    }
+
+    [Fact]
+    public void ATranscriptRewrittenShorterIsReadFromItsStart()
+    {
+        var transcript = Path.Combine(_root, CoderId + ".jsonl");
+        var first = Path.Combine(_root, "a.cs");
+        var second = Path.Combine(_root, "b.cs");
+        var replacement = Path.Combine(_root, "c.cs");
+        File.WriteAllLines(transcript, [Assistant("t1", "2026-11-17T09:05:00Z", first), Assistant("t2", "2026-11-17T09:06:00Z", second)]);
+        var cache = new SessionWritesCache();
+        Assert.Equal([first, second], cache.Read(CoderId, transcript).Files);
+
+        // Nothing of the old file is kept: the new one is read from its first byte.
+        File.WriteAllLines(transcript, [Assistant("t3", "2026-11-17T09:30:00Z", replacement)]);
+        Assert.Equal([replacement], cache.Read(CoderId, transcript).Files);
+    }
+
+    [Fact]
+    public void TheByteOrderMarkOfATranscriptDoesNotHideItsFirstRecord()
+    {
+        var transcript = Path.Combine(_root, CoderId + ".jsonl");
+        var first = Path.Combine(_root, "a.cs");
+        File.WriteAllText(transcript, Assistant("t1", "2026-11-17T09:05:00Z", first) + "\n", new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+
+        Assert.Equal([first], new SessionWritesCache().Read(CoderId, transcript).Files);
+    }
+
+    [Fact]
+    public void ARunWithOneSessionAndNoLimitHasNoTranscriptToRead()
+    {
+        var single = Run(_root, CoderName);
+
+        Assert.False(FileOverlap.NeedsTranscripts(single));
+        Assert.True(FileOverlap.NeedsTranscripts(Run(_root, CoderName, OtherCoderName)));
+        Assert.True(FileOverlap.NeedsTranscripts(single with { Limits = new RunLimits(1000, null) }));
     }
 
     /// <summary>One assistant record with a Write tool call, written as JSON so the path is escaped properly.</summary>

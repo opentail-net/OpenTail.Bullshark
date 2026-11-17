@@ -1,3 +1,4 @@
+using System.Text;
 using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Claude;
 
@@ -73,6 +74,13 @@ public static class FileOverlap
     }
 
     /// <summary>
+    /// Whether a run's transcripts are read at all. A file clash needs two different sessions of the run, and a token limit needs the
+    /// run's spend. A run with one session and no limit reads none (round 5 item 9).
+    /// </summary>
+    public static bool NeedsTranscripts(RunRecord run) =>
+        run.Limits is not null || run.Specs.DistinctBy(spec => spec.Name, StringComparer.Ordinal).Count() > 1;
+
+    /// <summary>
     /// The full path of a file as written in a transcript. A relative path is joined to <paramref name="workingDirectory"/> first,
     /// and "/" and "\" are made the same. Null when the path is not a valid path.
     /// </summary>
@@ -131,14 +139,47 @@ public static class FileOverlap
 }
 
 /// <summary>
-/// Reads each live transcript's writes, and reads a transcript again only when its length or its last write time changed. A
-/// pass runs every 15 seconds, so an idle session costs one file lookup, not a full read. Not thread-safe: one pass uses it at a time.
+/// Reads each live transcript's writes. A transcript is read at all only when its length or its last write time changed. When it grew
+/// (the normal case for a working session), only the bytes appended since the last read are read and added to what is kept (round 5
+/// item 9), so a pass does not parse a whole transcript every 15 seconds. A line counts once its newline is written: a line still being
+/// written waits for the next read. A transcript that shrank or was rewritten in place is read from the start. Not thread-safe: one pass
+/// uses it at a time.
 /// </summary>
 public sealed class SessionWritesCache
 {
     private readonly Dictionary<string, Entry> _entries = new(FileOverlap.PathComparer);
+    private readonly Func<string, Stream> _open;
 
-    private sealed record Entry(long Length, DateTime Stamp, SessionWrites Writes);
+    /// <param name="open">Opens a transcript for reading. The default is the shared rule for transcripts; a test counts the bytes it reads.</param>
+    public SessionWritesCache(Func<string, Stream>? open = null)
+    {
+        _open = open ?? TranscriptFile.Open;
+    }
+
+    /// <summary>
+    /// What is kept for one transcript: the file's size and write time when it was last read, how far into the file the complete lines
+    /// reach, and the writes so far. The ledger keeps each message's usage, so a message split across two reads is still counted once.
+    /// </summary>
+    private sealed class Entry
+    {
+        public long Length;
+        public DateTime Stamp;
+        public long Offset;
+        public int Lines;
+        public readonly UsageLedger Ledger = new();
+        public readonly List<string> Files = [];
+        public readonly HashSet<string> FileSet = new(StringComparer.Ordinal);
+        public readonly Dictionary<string, DateTimeOffset> LastWrites = new(StringComparer.Ordinal);
+        public TokenUsage Usage = TokenUsage.Zero;
+        public SessionWrites? Writes;
+    }
+
+    /// <summary>How far a read has got: the bytes of the complete lines before it, and how many lines those are.</summary>
+    private sealed class Progress
+    {
+        public long Offset;
+        public int Lines;
+    }
 
     /// <summary>The writes of one transcript. Throws the same IO exceptions as the file read does; the caller handles them per session.</summary>
     public SessionWrites Read(string sessionId, string transcriptPath)
@@ -146,17 +187,74 @@ public sealed class SessionWritesCache
         var info = new FileInfo(transcriptPath);
         var stamp = info.LastWriteTimeUtc;
         var length = info.Length;
-        if (_entries.TryGetValue(transcriptPath, out var known) && known.Length == length && known.Stamp == stamp)
-            return known.Writes;
+        if (_entries.TryGetValue(transcriptPath, out var known) && known.Writes is { } cached
+            && known.Length == length && known.Stamp == stamp && string.Equals(cached.SessionId, sessionId, StringComparison.Ordinal))
+            return cached;
 
-        var summary = TranscriptReader.ReadFile(transcriptPath);
-        // The usage rides along, so a run's token limit is checked from the same read as the overlap (additions item 4).
-        var writes = new SessionWrites(
+        // Kept only while the file is the one that was read: shorter than what was consumed, or the same size but written again, means a new file.
+        var replaced = known is null || length < known.Offset || (length == known.Length && stamp != known.Stamp);
+        var entry = replaced ? new Entry() : known!;
+
+        var progress = new Progress { Offset = entry.Offset, Lines = entry.Lines };
+        using (var stream = _open(transcriptPath))
+        {
+            stream.Seek(progress.Offset, SeekOrigin.Begin);
+            var summary = TranscriptReader.Summarize(CompleteLines(stream, progress), entry.Ledger, transcriptPath, firstLine: entry.Lines);
+            foreach (var file in summary.FilesWritten ?? [])
+                if (entry.FileSet.Add(file)) entry.Files.Add(file);
+            foreach (var (file, when) in summary.FileLastWrites ?? new Dictionary<string, DateTimeOffset>(StringComparer.Ordinal))
+                entry.LastWrites[file] = entry.LastWrites.TryGetValue(file, out var earlier) && earlier > when ? earlier : when;
+            // The usage of the whole file, from the shared ledger: the usage rides along, so a run's token limit is checked from the same read
+            // as the overlap (additions item 4).
+            entry.Usage = summary.TotalUsage;
+        }
+        entry.Offset = progress.Offset;
+        entry.Lines = progress.Lines;
+        entry.Length = length;
+        entry.Stamp = stamp;
+        entry.Writes = new SessionWrites(
             sessionId,
-            summary.FilesWritten ?? [],
-            summary.FileLastWrites ?? new Dictionary<string, DateTimeOffset>(StringComparer.Ordinal),
-            summary.TotalUsage);
-        _entries[transcriptPath] = new Entry(length, stamp, writes);
-        return writes;
+            entry.Files.ToList(),
+            new Dictionary<string, DateTimeOffset>(entry.LastWrites, StringComparer.Ordinal),
+            entry.Usage);
+        _entries[transcriptPath] = entry;
+        return entry.Writes;
+    }
+
+    /// <summary>
+    /// The complete lines from the stream's position, decoded as UTF-8 without their line break. A line is complete only when its newline
+    /// has been read, so a line still being written is not returned and <paramref name="progress"/> does not move past it. The byte order
+    /// mark at the start of the file is not part of the first line's text.
+    /// </summary>
+    private static IEnumerable<string> CompleteLines(Stream stream, Progress progress)
+    {
+        var buffer = new byte[64 * 1024];
+        using var line = new MemoryStream();
+        while (true)
+        {
+            var read = stream.Read(buffer, 0, buffer.Length);
+            if (read == 0) yield break;
+
+            var position = 0;
+            while (position < read)
+            {
+                var newline = Array.IndexOf(buffer, (byte)'\n', position, read - position);
+                if (newline < 0)
+                {
+                    line.Write(buffer, position, read - position);
+                    break;
+                }
+
+                line.Write(buffer, position, newline - position);
+                var first = progress.Offset == 0;
+                var text = Encoding.UTF8.GetString(line.GetBuffer(), 0, (int)line.Length);
+                progress.Offset += line.Length + 1;
+                progress.Lines++;
+                line.SetLength(0);
+                if (first) text = text.TrimStart('﻿');
+                yield return text.EndsWith('\r') ? text[..^1] : text;
+                position = newline + 1;
+            }
+        }
     }
 }
