@@ -6,6 +6,9 @@ namespace OpenTail.Bullshark.Core.Library;
 
 /// <summary>
 /// What the owner set on one past session (session library, D-L2). Every field is optional. An entry with nothing set is not kept.
+/// <see cref="MagicAt"/> and <see cref="MagicNamedAt"/> are set only when <see cref="Name"/> was given by the magic rename (D2, D6):
+/// <see cref="MagicAt"/> is the session's last message when it was named (the snowflake rule), and <see cref="MagicNamedAt"/> is when it
+/// was named (the date shown, and the automatic limit per hour). A file written before them loads with both null.
 /// </summary>
 public sealed record LibraryEntry(
     string? Name = null,
@@ -13,7 +16,9 @@ public sealed record LibraryEntry(
     bool Archived = false,
     IReadOnlyList<string>? Tags = null,
     string? Note = null,
-    string? Colour = null)
+    string? Colour = null,
+    DateTimeOffset? MagicAt = null,
+    DateTimeOffset? MagicNamedAt = null)
 {
     public bool IsEmpty =>
         string.IsNullOrWhiteSpace(Name) && !Pinned && !Archived && (Tags is null || Tags.Count == 0)
