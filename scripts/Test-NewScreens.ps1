@@ -47,6 +47,7 @@ New-Item -ItemType Directory -Force -Path $state, $repo, $shots, "$tools\gen", "
 
 @'
 using System.Text.Json;
+using OpenTail.Bullshark.Core.Library;
 using OpenTail.Bullshark.Core.Supervisor;
 
 // Scratch fixtures for the screenshots. Usage: gen <stateFolder> <repoFolder> <claudeHomeFolder>. Session ids are made up.
@@ -129,6 +130,9 @@ var projectFolder = Path.Combine(claudeHome, "projects", "scratch-repo");
 Directory.CreateDirectory(projectFolder);
 File.WriteAllText(Path.Combine(projectFolder, coder1Id + ".jsonl"), string.Join("\n", lines.Select(line => JsonSerializer.Serialize(line))) + "\n");
 
+// One tag on the coder's session, for the tag-filter screen (--rail-tag screenshot): only its rows stay in the rail under that filter.
+new SessionLibrary(Path.Combine(stateFolder, "library.json")).Update(entries => entries[coder1Id] = new LibraryEntry(Tags: ["screenshot"]));
+
 Console.WriteLine($"coder1Id={coder1Id}");
 Console.WriteLine($"coder1={coders[0].Name}");
 '@ | Set-Content -LiteralPath "$tools\gen\Program.cs" -Encoding UTF8
@@ -209,6 +213,8 @@ $daemonDownListing = '[{"id":"a0a0a0a0","kind":"background","sessionId":"5e4f3a2
 $screens = @(
     @{ Name = 'rail-dark'; Theme = 'Dark'; Options = @() },
     @{ Name = 'rail-light'; Theme = 'Light'; Options = @() },
+    # Tags and automatic naming, Part A: the rail with the tag filter chosen (--rail-tag, test only). Only the rows of the tagged session stay.
+    @{ Name = 'rail-tag-dark'; Theme = 'Dark'; Options = @('--rail-tag', 'screenshot') },
     @{ Name = 'setup-dark'; Theme = 'Dark'; Options = @('--open-tab', 'setup', '--setup-detail', 'models') },
     @{ Name = 'setup-light'; Theme = 'Light'; Options = @('--open-tab', 'setup', '--setup-detail', 'models') },
     @{ Name = 'storage-dark'; Theme = 'Dark'; Options = @('--open-tab', 'storage') },

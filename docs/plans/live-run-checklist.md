@@ -33,6 +33,18 @@ After each step: run `claude agents --json`, count the attach processes (Task Ma
 
 Pass when: no name appears twice at any step, each step has its line, and F20 is answered.
 
+## Tags and automatic naming (docs/plans/tags-and-auto-magic-2026-11-18.md)
+
+- [ ] Tag filter: the rail's show menu lists the tags in use with their counts; a tag shows only its rows in History and the folders,
+  the filter box reads "show: all · #tag", and a second click on the tag clears it. Needs you still lists every waiting session.
+- [ ] Tag filter with a search: a row must match both. A tag that no session has any more clears the filter, with a status line.
+- [ ] Palette: "Filter by tag #x" and "Clear tag filter" do the same as the menu.
+- [ ] Magic rename on a named session ("Magic rename again"): the owner's tags stay, up to two tags are added, and the status line says so.
+- [ ] Automatic naming: with "Toggle automatic magic naming" on, leave the window open on a never-named session of at least four messages
+  until its cache goes from 🔥 to ❄ (about an hour, or five minutes for a five-minute cache). The status line says "Automatic: named N
+  session(s) that went cold". A session that was already ❄ when the window opened is not named.
+- [ ] Turn it off again: nothing that was waiting in the queue is named later.
+
 ## Gates (each needs one real step)
 
 - [ ] **Worktree per coder** (additions item 3) and `--cwd` for listings: with the scratch repo trusted, rerun the gate in

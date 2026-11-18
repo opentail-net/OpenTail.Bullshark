@@ -26,10 +26,17 @@ public sealed class MagicLimitException : Exception
 /// </summary>
 public sealed class HaikuNameModel : IMagicNameModel
 {
-    /// <summary>The instructions the model gets (plan decision D5).</summary>
+    /// <summary>
+    /// The instructions the model gets (plan decision D5, and tags plan Part B): two lines, the name, then the tags line. The reply is read by
+    /// <see cref="MagicName.ParseReply"/>.
+    /// </summary>
     public const string SystemPrompt =
-        "You name past coding sessions. Reply with ONLY a name of at most 5 words (max 40 characters) that says what the session was about " +
-        "and tells it apart from similar sessions. No quotes, no emoji, no punctuation at the end. Do not describe yourself.";
+        "You name past coding sessions. Reply with ONLY two lines and nothing else. " +
+        "Line 1 is a name of at most 5 words (max 40 characters) that says what the session was about and tells it apart from similar sessions. " +
+        "No quotes, no emoji, no punctuation at the end. Do not describe yourself. " +
+        "Line 2 starts with 'tags:' and lists 0 to 2 tags for the session, separated by commas. A tag is one lower-case word of 2 to 20 " +
+        "letters, digits or hyphens, for example login, billing or cache-warmup. When a tag in the list of tags already in use fits the session, " +
+        "reuse that exact tag; invent a new tag only when none of them fits. If no tag fits, write 'tags:' alone.";
 
     /// <summary>How long one call may take before it is stopped (plan step 6).</summary>
     public static readonly TimeSpan CallTimeout = TimeSpan.FromSeconds(90);
@@ -69,11 +76,30 @@ public sealed class HaikuNameModel : IMagicNameModel
         || text.Contains("rate limit", StringComparison.OrdinalIgnoreCase);
 }
 
-/// <summary>One session to name: its id, its last message (the snowflake mark), its extract (null when it has no text), the names already used in its folder, and whether it may replace the owner's own name (a confirmed single rename).</summary>
-public sealed record MagicJob(string SessionId, DateTimeOffset LastActivity, string? Extract, IReadOnlyList<string> UsedNames, bool ReplaceManual = false);
+/// <summary>
+/// One session to name: its id, its last message (the snowflake mark), its extract (null when it has no text), the names already used in its
+/// folder, whether it may replace the owner's own name (a confirmed single rename), and the tags in use in the library that the prompt shows
+/// (null for none; tags plan, Part B).
+/// </summary>
+public sealed record MagicJob(
+    string SessionId,
+    DateTimeOffset LastActivity,
+    string? Extract,
+    IReadOnlyList<string> UsedNames,
+    bool ReplaceManual = false,
+    IReadOnlyList<string>? KnownTags = null);
 
-/// <summary>A name the batch chose, for the caller to store. <see cref="MagicAt"/> is the session's last message; <see cref="MagicNamedAt"/> is now.</summary>
-public sealed record MagicNamed(string SessionId, string Name, DateTimeOffset MagicAt, DateTimeOffset MagicNamedAt, bool ReplaceManual);
+/// <summary>
+/// A name the batch chose, for the caller to store. <see cref="MagicAt"/> is the session's last message; <see cref="MagicNamedAt"/> is now.
+/// <see cref="Tags"/> are the tags the reply offered (null for none); the caller adds them to the session's own tags, never replaces them.
+/// </summary>
+public sealed record MagicNamed(
+    string SessionId,
+    string Name,
+    DateTimeOffset MagicAt,
+    DateTimeOffset MagicNamedAt,
+    bool ReplaceManual,
+    IReadOnlyList<string>? Tags = null);
 
 /// <summary>What a batch did. <see cref="Calls"/> counts the model calls made, including failed ones.</summary>
 public sealed record MagicBatchResult(int Requested, int Named, int Refused, int Failed, int NoText, int SkippedAfterFailures, int Calls, bool StoppedAtLimit);
@@ -156,7 +182,7 @@ public sealed class MagicNamer
             string? reply;
             try
             {
-                reply = await _model.NameAsync(MagicName.PromptFor(job.UsedNames, job.Extract), cancellationToken);
+                reply = await _model.NameAsync(MagicName.PromptFor(job.UsedNames, job.Extract, job.KnownTags ?? []), cancellationToken);
             }
             catch (MagicLimitException)
             {
@@ -171,7 +197,8 @@ public sealed class MagicNamer
                 continue;
             }
 
-            var clean = MagicName.Clean(reply);
+            // The name is what decides a failure. Unusable tags are dropped by the parser and do not fail the reply.
+            var (clean, tags) = MagicName.ParseReply(reply);
             if (clean is null)
             {
                 failed++;
@@ -180,7 +207,7 @@ public sealed class MagicNamer
             }
 
             var name = MagicName.Distinct(clean, takenNames, _clock.GetLocalNow());
-            var written = store(new MagicNamed(job.SessionId, name, job.LastActivity, _clock.GetUtcNow(), job.ReplaceManual));
+            var written = store(new MagicNamed(job.SessionId, name, job.LastActivity, _clock.GetUtcNow(), job.ReplaceManual, tags));
             if (written)
             {
                 takenNames.Add(name);

@@ -130,7 +130,7 @@ The sessions see each other directly and live, with `SendMessage` by session nam
 
 ## Visibility
 
-Decided by the owner (2026-11-14): the session terminals appear as tabs inside OpenTail.Bullshark. That is the primary view. Ctrl+Shift+N goes to the next waiting session (it only shows the tab, and sends nothing); Ctrl+Shift+P opens the command palette, which also finds sessions by their tags, project folder and state.
+Decided by the owner (2026-11-14): the session terminals appear as tabs inside OpenTail.Bullshark. That is the primary view. Ctrl+Shift+N goes to the next waiting session (it only shows the tab, and sends nothing); Ctrl+Shift+P opens the command palette, which also finds sessions by their tags, project folder and state. The rail's show menu filters by one tag at a time (Needs you is never filtered). A magic rename also adds up to two tags to a session, and automatic naming (off by default: `magicAuto` in `ui.json`, or "Toggle automatic magic naming" in the palette) names a never-named session when its cache goes from warm to cold while the window is open; it uses your usage when on.
 
 An activity panel, built from the session transcripts (busy or blocked, last action, what changed), can sit alongside the tabs later (P6). It adds to the tabs; it does not replace them.
 

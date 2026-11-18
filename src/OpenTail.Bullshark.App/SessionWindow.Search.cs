@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
 using OpenTail.Bullshark.Core.Activity;
+using OpenTail.Bullshark.Core.Library;
 using OpenTail.Bullshark.Core.Search;
 
 namespace OpenTail.Bullshark.App;
@@ -201,9 +202,13 @@ public partial class SessionWindow
         item.BringIntoView();
     }
 
-    /// <summary>True when a history session is shown: every one, unless a search filters the history.</summary>
+    /// <summary>
+    /// True when a history session is shown: every one, unless a search filters the history, and only one that holds the tag filter (tags plan,
+    /// Part A). The rail's folders, the Pinned group and the magic rename's visible list all come through here.
+    /// </summary>
     private bool IsShownInHistory(SessionDigest digest) =>
-        _searchMatches is null || _searchMatches.ContainsKey(digest.SessionId);
+        (_searchMatches is null || _searchMatches.ContainsKey(digest.SessionId))
+        && TagIndex.Has(MarkOf(digest.SessionId), ActiveTagFilter);
 
     /// <summary>The match of a session in the last search, or null when it did not match or there is no search.</summary>
     private SessionMatch? MatchOf(string sessionId) =>

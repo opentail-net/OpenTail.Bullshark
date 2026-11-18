@@ -240,4 +240,40 @@ public sealed class MagicCandidatesTests
         Assert.Equal(1, MagicCandidates.NamedSince(marks, Now.AddHours(-1)));
         Assert.Equal(2, MagicCandidates.NamedSince(marks, Now.AddHours(-6)));
     }
+
+    [Fact]
+    public void ANeverNamedSessionIsAnAutoCandidateWithoutAnyTimeRule()
+    {
+        // Five minutes old and not cold: the automatic rename does not wait for the two-hour rule (tags plan, Part C2).
+        Assert.True(MagicCandidates.IsAutoCandidate(Digest(Now.AddMinutes(-5)), null, NoneLive));
+        Assert.False(MagicCandidates.IsCold(Digest(Now.AddMinutes(-5)), null, NoneLive, Now));
+    }
+
+    [Fact]
+    public void AnAutoCandidateNeedsFourMessages()
+    {
+        Assert.False(MagicCandidates.IsAutoCandidate(Digest(Now.AddHours(-3), users: 1, assistants: 2), null, NoneLive));
+        Assert.True(MagicCandidates.IsAutoCandidate(Digest(Now.AddHours(-3), users: 2, assistants: 2), null, NoneLive));
+    }
+
+    [Fact]
+    public void AnAutoCandidateIsNeverAMagicNameAgainOrTheOwnersName()
+    {
+        Assert.False(MagicCandidates.IsAutoCandidate(Cold(), Magic, NoneLive));
+        Assert.False(MagicCandidates.IsAutoCandidate(Cold(), new LibraryEntry(Name: "My name"), NoneLive));
+        Assert.False(MagicCandidates.IsAutoCandidate(Cold(), new LibraryEntry(Name: "x", MagicAt: Now.AddHours(-3)), NoneLive));
+    }
+
+    [Fact]
+    public void AnAutoCandidateFollowsTheSameExclusionsAsAnyMagicRename()
+    {
+        var live = new HashSet<string>([Id], StringComparer.OrdinalIgnoreCase);
+
+        Assert.False(MagicCandidates.IsAutoCandidate(Cold(), null, live));
+        Assert.False(MagicCandidates.IsAutoCandidate(Digest(Now.AddHours(-3), subagent: true), null, NoneLive));
+        Assert.False(MagicCandidates.IsAutoCandidate(Cold(), new LibraryEntry(Archived: true), NoneLive));
+        Assert.False(MagicCandidates.IsAutoCandidate(Digest(Now.AddHours(-3), customTitle: "role"), null, NoneLive));
+        Assert.False(MagicCandidates.IsAutoCandidate(Digest(null), null, NoneLive));
+        Assert.False(MagicCandidates.IsAutoCandidate(Digest(Now.AddHours(-3), users: 2, assistants: 0), null, NoneLive));
+    }
 }

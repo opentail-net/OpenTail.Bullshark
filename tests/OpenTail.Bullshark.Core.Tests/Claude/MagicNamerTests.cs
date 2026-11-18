@@ -373,4 +373,74 @@ public sealed class MagicNamerTests
 
         Assert.Equal(HaikuNameModel.MaxReplyCharacters, reply!.Length);
     }
+
+    [Fact]
+    public async Task AReplyStoresItsTagsWithTheName()
+    {
+        var stored = new List<MagicNamed>();
+
+        await Namer(new ScriptedModel((_, _) => "Fix login\ntags: auth, login")).RunAsync([Job("s1")],
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase), new Dictionary<string, int>(), named => { stored.Add(named); return true; });
+
+        Assert.Equal("Fix login", Assert.Single(stored).Name);
+        Assert.Equal(["auth", "login"], Assert.Single(stored).Tags);
+    }
+
+    [Fact]
+    public async Task ANameOnlyReplyStoresNoTags()
+    {
+        var stored = new List<MagicNamed>();
+
+        await Namer(new ScriptedModel((_, _) => "Fix login")).RunAsync([Job("s1")],
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase), new Dictionary<string, int>(), named => { stored.Add(named); return true; });
+
+        var tags = Assert.Single(stored).Tags;
+        Assert.True(tags is null || tags.Count == 0);
+    }
+
+    [Fact]
+    public async Task AnUnusableTagsLineStillStoresTheName()
+    {
+        var stored = new List<MagicNamed>();
+
+        var result = await Namer(new ScriptedModel((_, _) => "Fix login\ntags: !!! ~~~")).RunAsync([Job("s1")],
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase), new Dictionary<string, int>(), named => { stored.Add(named); return true; });
+
+        Assert.Equal(1, result.Named);
+        Assert.Equal("Fix login", Assert.Single(stored).Name);
+        Assert.True(Assert.Single(stored).Tags is null or { Count: 0 });
+    }
+
+    [Fact]
+    public async Task AFailingNameWithGoodTagsIsAFailureAndStoresNothing()
+    {
+        var stored = new List<MagicNamed>();
+        var failures = new Dictionary<string, int>(StringComparer.Ordinal);
+
+        var result = await Namer(new ScriptedModel((_, _) => "\U0001FA84\ntags: auth, login")).RunAsync([Job("s1")],
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase), failures, named => { stored.Add(named); return true; });
+
+        Assert.Empty(stored);
+        Assert.Equal(1, result.Failed);
+        Assert.Equal(1, failures["s1"]);
+    }
+
+    [Fact]
+    public async Task TheTagsInUseAreInThePrompt()
+    {
+        var model = new ScriptedModel((_, _) => "Fix login");
+        var job = new MagicJob("s1", LastMessage, "You: Fix the login page", [], false, ["auth", "billing"]);
+
+        await Namer(model).RunAsync([job], new HashSet<string>(StringComparer.OrdinalIgnoreCase), new Dictionary<string, int>(), _ => true);
+
+        Assert.Contains("auth, billing", Assert.Single(model.Prompts), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheModelIsAskedForTwoLinesWithATagsLine()
+    {
+        Assert.Contains("Reply with ONLY two lines", HaikuNameModel.SystemPrompt, StringComparison.Ordinal);
+        Assert.Contains("'tags:'", HaikuNameModel.SystemPrompt, StringComparison.Ordinal);
+        Assert.Contains("reuse that exact tag", HaikuNameModel.SystemPrompt, StringComparison.Ordinal);
+    }
 }

@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using OpenTail.Bullshark.Core.Activity;
+using OpenTail.Bullshark.Core.Cache;
 using OpenTail.Bullshark.Core.Claude;
 using OpenTail.Bullshark.Core.Library;
 using OpenTail.Bullshark.Core.Setup;
@@ -14,9 +15,11 @@ namespace OpenTail.Bullshark.App;
 
 /// <summary>
 /// The magic rename (docs/plans/magic-rename-2026-11-18.md): Haiku names a past session that has gone cold, and the library name gets a
-/// wand. One row menu item names one session; the History mark and the palette name the cold sessions (at most 10 a run, after a confirm);
-/// automatic naming is a setting, off by default. The model calls and the transcript reads run on a pool thread, the library is written
-/// through <see cref="SessionLibrary.Update"/> only, and nothing is sent to a session.
+/// wand. One row menu item names one session; the History mark and the palette name the cold sessions (at most 10 a run, after a confirm).
+/// Automatic naming is a setting, off by default: a never-named session is named when its cache goes from warm to cold while the window is
+/// open (docs/plans/tags-and-auto-magic-2026-11-18.md, Part C). A name also carries up to two tags, which are added to the session's own
+/// (Part B). The model calls and the transcript reads run on a pool thread, the library is written through <see cref="SessionLibrary.Update"/>
+/// only, and nothing is sent to a session.
 /// </summary>
 public partial class SessionWindow
 {
@@ -26,10 +29,14 @@ public partial class SessionWindow
     /// <summary>The mark of a magic name, in front of the name and in the palette.</summary>
     private const string Wand = "🪄";
 
-    /// <summary>The window waits this long after it opens before any automatic naming (plan D7c: never at window start).</summary>
-    private static readonly TimeSpan MagicAutoAfterStart = TimeSpan.FromMinutes(5);
+    /// <summary>The cache state each past session was last seen in, for this window (tags plan, Part C1). Only the UI thread touches it.</summary>
+    private readonly CacheWatch _cacheWatch = new();
 
-    private readonly DateTimeOffset _magicStartedAt = DateTimeOffset.Now;
+    /// <summary>
+    /// The sessions that went cold while the window was open and may be named automatically, waiting for the hourly limit (tags plan, Part C3).
+    /// Only the UI thread touches it. It is emptied while the setting is off, so no backlog builds.
+    /// </summary>
+    private readonly HashSet<string> _magicQueue = new(StringComparer.Ordinal);
 
     /// <summary>Whether automatic naming is on, as ui.json holds it. Off unless the owner turned it on.</summary>
     private bool _magicAutoOn;
@@ -140,28 +147,71 @@ public partial class SessionWindow
     }
 
     /// <summary>
-    /// Automatic naming (plan D7c), called when a pass has finished so the window is idle. It runs only when the setting is on, no pass or
-    /// run is going, the window has been open for five minutes, no usage limit is in force (as the status bar last read it), and fewer than
-    /// <see cref="MagicCandidates.AutoPerHour"/> calls were made in the last hour. The limit is checked again before each call.
+    /// Automatic naming (tags plan, Part C), called when a pass has finished, so the window is idle. The cache watch reads the state of every
+    /// past session from the facts read with the history; a session that went from warm or cooling to cold since the last pass is queued when
+    /// it may be named (<see cref="MagicCandidates.IsAutoCandidate"/>). The queue is named only when the setting is on, no pass or run is going,
+    /// the history and the library are readable, and the hourly limit (<see cref="MagicCandidates.AutoPerHour"/>) leaves room; what the limit
+    /// leaves stays queued for a later pass. With the setting off, nothing is queued and the queue is emptied, so no backlog builds. The watch
+    /// runs either way. No pre-check of the usage limits: a limit that is in force may belong to another model, and the call itself reports a
+    /// limit that stops it.
     /// </summary>
     private void MaybeAutoMagicRename()
     {
-        if (!_magicAutoOn || _magicRunning || _passRunning || _history is null || _historyLoading || _libraryError is not null) return;
+        // Nothing to compare until the history is read. The watch is not updated before then, so it does not forget what it has seen.
+        if (_history is null) return;
         var now = DateTimeOffset.Now;
-        if (now - _magicStartedAt < MagicAutoAfterStart) return;
-        // No pre-check of the limits here: a limit that is in force may belong to another model (a weekly Fable limit does not stop Haiku, and
-        // blocked the first real tries on 2026-11-18). The call itself reports a limit that stops it, and the batch stops there.
+        var wentCold = _cacheWatch.Update(_history.Select(digest => (digest.SessionId, CacheStateOf(digest.SessionId, now))));
+        if (!_magicAutoOn)
+        {
+            _magicQueue.Clear();
+            return;
+        }
+
+        // A session that goes cold while it is still open is queued too, and waits in the queue until it is no longer live: a session is usually
+        // closed after its cache has gone cold, and it would otherwise never be named.
+        var live = LiveSessionIds();
+        var noneLive = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var sessionId in wentCold)
+        {
+            var digest = _history.FirstOrDefault(d => SameId(d.SessionId, sessionId));
+            if (digest is not null && AutoEligible(digest, noneLive)) _magicQueue.Add(sessionId);
+        }
+        if (_magicQueue.Count == 0 || _magicRunning || _passRunning || _historyLoading || _libraryError is not null) return;
+
+        // A queued session that is no longer a candidate (named by the owner, archived, failed too often) leaves the queue first.
+        // A live one stays queued and is skipped for now.
+        var candidates = new List<SessionDigest>();
+        foreach (var sessionId in _magicQueue.ToList())
+        {
+            var digest = _history.FirstOrDefault(d => SameId(d.SessionId, sessionId));
+            if (digest is null || !AutoEligible(digest, noneLive)) _magicQueue.Remove(sessionId);
+            else if (!live.Contains(sessionId)) candidates.Add(digest);
+        }
 
         var hour = now.AddHours(-1);
         var used = Math.Max(MagicCandidates.NamedSince(_marks, hour), _magicAutoCalls.Count(at => at >= hour));
         var allowed = MagicCandidates.AutoPerHour - used;
-        if (allowed <= 0) return;
+        if (allowed <= 0 || candidates.Count == 0) return;
 
-        var cold = ColdSessions(now);
-        if (cold.Count == 0) return;
-        var targets = cold.Take(allowed).Select(digest => new MagicTarget(digest, false)).ToList();
+        // The most recent first. The sessions beyond the hour's room stay queued; the ones named leave it at the next pass (not a candidate then).
+        var targets = candidates
+            .OrderByDescending(digest => digest.LastActivity)
+            .Take(allowed)
+            .Select(digest => new MagicTarget(digest, false))
+            .ToList();
         _ = RunMagicAsync(targets, allowed, automatic: true);
     }
+
+    /// <summary>A session the automatic rename may name now: a candidate, and not at the failure limit of this window run (D8).</summary>
+    private bool AutoEligible(SessionDigest digest, ISet<string> live) =>
+        MagicCandidates.IsAutoCandidate(digest, MarkOf(digest.SessionId), live)
+        && !(_magicFailures.TryGetValue(digest.SessionId, out var failures) && failures >= MagicNamer.MaxFailuresPerWindowRun);
+
+    /// <summary>A past session's cache state at <paramref name="now"/>, from the facts read with the history. Unknown when there are none.</summary>
+    private CacheState CacheStateOf(string sessionId, DateTimeOffset now) =>
+        _historyFacts.TryGetValue(sessionId, out var facts)
+            ? CacheRule.Classify(facts.LastRequest, now, facts.Ttl, facts.ContextTokens).State
+            : CacheState.Unknown;
 
     /// <summary>True, with a status line, when a run is going: a second one is not started, and no confirm is shown for it.</summary>
     private bool MagicBusy()
@@ -197,14 +247,14 @@ public partial class SessionWindow
         var taken = MagicCandidates.TakenNames(marks, targets.Select(target => target.Digest.SessionId));
         try
         {
-            var result = await Task.Run(() => NameTargetsAsync(targets, marks, history, taken, maxCalls));
+            var (result, tagsAdded) = await Task.Run(() => NameTargetsAsync(targets, marks, history, taken, maxCalls));
             if (automatic)
             {
                 var now = DateTimeOffset.Now;
                 for (var i = 0; i < result.Calls; i++) _magicAutoCalls.Add(now);
                 _magicAutoCalls.RemoveAll(at => at < now.AddHours(-1));
             }
-            var summary = MagicSummary(result);
+            var summary = MagicSummary(result, tagsAdded, automatic);
             AppLog.Write($"magic rename run: {summary}");
             SetStatus(automatic ? "Automatic: " + summary : summary);
         }
@@ -227,8 +277,11 @@ public partial class SessionWindow
         }
     }
 
-    /// <summary>The run itself, on a pool thread: the transcripts are read here, and each name is written as it is chosen.</summary>
-    private async Task<MagicBatchResult> NameTargetsAsync(
+    /// <summary>
+    /// The run itself, on a pool thread: the transcripts are read here, and each name is written as it is chosen. Returns the batch's result and
+    /// the number of tags the run added to the library.
+    /// </summary>
+    private async Task<(MagicBatchResult Result, int TagsAdded)> NameTargetsAsync(
         IReadOnlyList<MagicTarget> targets,
         IReadOnlyDictionary<string, LibraryEntry> marks,
         IReadOnlyList<SessionDigest> history,
@@ -243,15 +296,32 @@ public partial class SessionWindow
             () => false, // see MaybeAutoMagicRename: the call's own limit error stops the batch, not a limit of another model
             TimeProvider.System,
             AppLog.Write);
-        var jobs = targets.Select(target => JobFor(target, marks, history)).ToList();
-        return await namer.RunAsync(jobs, taken, _magicFailures, StoreMagic, maxCalls, onCall: (call, total) =>
+        // The tags the prompt shows: the most used in the library (tags plan, Part B). Read from the marks the run was given.
+        var knownTags = TagIndex.Counts(marks.Values).Take(MagicName.MaxKnownTags).Select(tag => tag.Tag).ToList();
+        var jobs = targets.Select(target => JobFor(target, marks, history, knownTags)).ToList();
+        var tagsAdded = 0;
+        bool Store(MagicNamed named)
+        {
+            var written = StoreMagic(named, out var added);
+            tagsAdded += added;
+            return written;
+        }
+        var result = await namer.RunAsync(jobs, taken, _magicFailures, Store, maxCalls, onCall: (call, total) =>
             Dispatcher.BeginInvoke(() => SetStatus(total <= 1
                 ? "Naming with Haiku… this takes 5 to 20 seconds."
                 : $"Naming {call} of {total} with Haiku… about 5 to 20 seconds each.")));
+        return (result, tagsAdded);
     }
 
-    /// <summary>One session as the namer needs it: its extract (null when it has no text or cannot be read), and the names used in its folder.</summary>
-    private static MagicJob JobFor(MagicTarget target, IReadOnlyDictionary<string, LibraryEntry> marks, IReadOnlyList<SessionDigest> history)
+    /// <summary>
+    /// One session as the namer needs it: its extract (null when it has no text or cannot be read), the names used in its folder, and the tags
+    /// in use that the prompt shows.
+    /// </summary>
+    private static MagicJob JobFor(
+        MagicTarget target,
+        IReadOnlyDictionary<string, LibraryEntry> marks,
+        IReadOnlyList<SessionDigest> history,
+        IReadOnlyList<string> knownTags)
     {
         var digest = target.Digest;
         string? extract;
@@ -265,39 +335,55 @@ public partial class SessionWindow
             extract = null;
         }
         var used = MagicCandidates.NamesInFolder(history, marks, digest.ProjectFolder);
-        return new MagicJob(digest.SessionId, digest.LastActivity ?? DateTimeOffset.MinValue, extract, used, target.ReplaceManual);
+        return new MagicJob(digest.SessionId, digest.LastActivity ?? DateTimeOffset.MinValue, extract, used, target.ReplaceManual, knownTags);
     }
 
     /// <summary>
     /// Writes one magic name through <see cref="SessionLibrary.Update"/>, on a pool thread. The entry is read again under the lock: a name the
-    /// owner set meanwhile is kept, unless the owner confirmed the replacement. Returns false when it was kept.
+    /// owner set meanwhile is kept, unless the owner confirmed the replacement. Returns false when it was kept, and then nothing is written,
+    /// tags included. The tags the reply offered are added to the session's own tags in the same write (<see cref="MagicName.MergeTags"/>):
+    /// the owner's tags are never removed, and the total is capped at <see cref="MagicName.MaxTags"/>. <paramref name="tagsAdded"/> counts
+    /// the tags that were new to the session (0 when nothing was written).
     /// </summary>
-    private bool StoreMagic(MagicNamed named)
+    private bool StoreMagic(MagicNamed named, out int tagsAdded)
     {
         var written = false;
+        var added = 0;
         _library.Update(entries =>
         {
             var current = entries.TryGetValue(named.SessionId, out var found) ? found : new LibraryEntry();
             var ownersName = !string.IsNullOrWhiteSpace(current.Name) && current.MagicAt is null;
             if (ownersName && !named.ReplaceManual) return;
+            var tags = MagicName.MergeTags(current.Tags, named.Tags ?? [], MagicName.MaxTags);
+            added = tags.Count - MagicName.MergeTags(current.Tags, []).Count;
             entries[named.SessionId] = current with
             {
                 Name = named.Name,
                 MagicAt = named.MagicAt,
                 MagicNamedAt = named.MagicNamedAt,
+                Tags = tags,
             };
             written = true;
         });
+        tagsAdded = written ? added : 0;
         return written;
     }
 
-    /// <summary>The status line after a run: what was named, and what was not and why, in short.</summary>
-    private static string MagicSummary(MagicBatchResult result)
+    /// <summary>
+    /// The status line after a run: what was named, and what was not and why, in short. An automatic run says it named the sessions that went
+    /// cold (tags plan, Part C).
+    /// </summary>
+    private static string MagicSummary(MagicBatchResult result, int tagsAdded, bool automatic)
     {
         if (result.StoppedAtLimit && result.Calls == 0 && result.Named == 0)
             return "A usage limit is in force, so no session was named.";
 
-        var parts = new List<string> { result.Named == 1 ? "Named 1 session" : $"Named {result.Named} sessions" };
+        var parts = new List<string>
+        {
+            automatic ? $"named {result.Named} session(s) that went cold"
+                : result.Named == 1 ? "Named 1 session" : $"Named {result.Named} sessions",
+        };
+        if (tagsAdded > 0) parts.Add(tagsAdded == 1 ? "added 1 tag" : $"added {tagsAdded} tags");
         if (result.Failed > 0) parts.Add($"{result.Failed} failed");
         if (result.Refused > 0) parts.Add($"{result.Refused} kept their own name");
         if (result.NoText > 0) parts.Add(result.NoText == 1
@@ -343,7 +429,7 @@ public partial class SessionWindow
             ActionItem("magic-cold", $"Name cold sessions with Haiku ({cold})",
                 _magicRunning ? "a run is already going" : cold == 0 ? "none has gone cold" : "asks first; at most 10 a run", () => _ = NameColdSessionsAsync()),
             ActionItem("magic-auto", "Toggle automatic magic naming",
-                _magicAutoOn ? "on: at most 3 an hour, only when idle" : "off (the default); it uses your usage when on",
+                _magicAutoOn ? "on: names a never-named session when its cache goes cold ❄" : "off (the default); it uses your usage when on",
                 ToggleMagicAuto),
         ];
     }
@@ -353,9 +439,11 @@ public partial class SessionWindow
     {
         UiFile.Set(_options.StatePath, MagicAutoKey, JsonValue.Create(!_magicAutoOn)!);
         LoadMagicAuto();
+        // Off: whatever was queued while it was on is dropped, so it does not run later (no backlog while off).
+        if (!_magicAutoOn) _magicQueue.Clear();
         AppLog.Write($"automatic magic naming: {(_magicAutoOn ? "on" : "off")} (from the command palette)");
         SetStatus(_magicAutoOn
-            ? "Automatic magic naming is on: at most 3 an hour, only when the window is idle and no usage limit is in force."
+            ? "Automatic magic naming is on: a never-named session is named when its cache goes cold ❄, at most 3 an hour, only when the window is idle."
             : "Automatic magic naming is off.");
     }
 }

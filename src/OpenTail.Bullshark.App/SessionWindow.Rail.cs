@@ -9,6 +9,7 @@ using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Cache;
 using OpenTail.Bullshark.Core.Claude;
 using OpenTail.Bullshark.Core.Folders;
+using OpenTail.Bullshark.Core.Library;
 using OpenTail.Bullshark.Core.Search;
 using OpenTail.Bullshark.Core.Supervisor;
 
@@ -90,7 +91,22 @@ public partial class SessionWindow
     private bool ShowsLive => _filter is RailFilter.All or RailFilter.Running;
     private bool ShowsHistory => _filter != RailFilter.Running;
 
-    private void UpdateFilterMark() => FilterMark.Text = $"show: {_filter.ToString().ToLowerInvariant()} ▾";
+    /// <summary>
+    /// The tag the rail shows rows for, or null (tags plan, Part A). One at a time, held for the window run, as the view is (not kept between
+    /// launches). It hides rows only: the Needs you group is never filtered by it.
+    /// </summary>
+    private string? _tagFilter;
+
+    /// <summary>The tag filter in force. Nothing is filtered while library.json cannot be read: no tag is known then (D-L3).</summary>
+    private string? ActiveTagFilter => _libraryError is null ? _tagFilter : null;
+
+    private void UpdateFilterMark()
+    {
+        var tag = ActiveTagFilter;
+        FilterMark.Text = $"show: {_filter.ToString().ToLowerInvariant()}{(tag is null ? string.Empty : " · #" + tag)} ▾";
+        // The label may be cut with an ellipsis when the tag is long, so the tooltip names the tag in full.
+        FilterBox.ToolTip = tag is null ? "Choose what the rail shows" : $"Choose what the rail shows (tag filter #{tag})";
+    }
 
     private ContextMenu? _filterMenu;
 
@@ -104,6 +120,68 @@ public partial class SessionWindow
             item.Click += (_, _) => ChooseFilter(option);
             _filterMenu.Items.Add(item);
         }
+    }
+
+    /// <summary>
+    /// Rebuilds the part of the dropdown below the views: a separator, the tags in use with their counts (a tick on the one in use), and
+    /// "Clear tag filter" when one is set. It is rebuilt each time the dropdown opens, so it lists the tags as the marks are now.
+    /// </summary>
+    private void RebuildTagMenu()
+    {
+        if (_filterMenu is null) return;
+        var views = Enum.GetValues<RailFilter>().Length;
+        while (_filterMenu.Items.Count > views) _filterMenu.Items.RemoveAt(views);
+
+        var tags = TagIndex.Counts(_marks.Values);
+        if (tags.Count == 0 && ActiveTagFilter is null) return;
+        _filterMenu.Items.Add(new Separator());
+        foreach (var tag in tags)
+        {
+            var name = tag.Tag;
+            var item = new MenuItem
+            {
+                Header = $"#{name} ({tag.Count})",
+                IsCheckable = true,
+                IsChecked = SameTag(name, ActiveTagFilter),
+                Padding = new Thickness(10, 4, 16, 4),
+            };
+            // A click on the tag in use clears it; a click on another tag makes it the one in use.
+            item.Click += (_, _) => ChooseTag(SameTag(name, ActiveTagFilter) ? null : name);
+            _filterMenu.Items.Add(item);
+        }
+        if (ActiveTagFilter is not null)
+        {
+            var clear = new MenuItem { Header = "Clear tag filter", Padding = new Thickness(10, 4, 16, 4) };
+            clear.Click += (_, _) => ChooseTag(null);
+            _filterMenu.Items.Add(clear);
+        }
+    }
+
+    private static bool SameTag(string? a, string? b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Sets the tag the rail shows, or clears it (null). The view and the search still apply. The status line says what the rail shows now.
+    /// </summary>
+    private void ChooseTag(string? tag)
+    {
+        var wanted = string.IsNullOrWhiteSpace(tag) ? null : tag.Trim().ToLowerInvariant();
+        _tagFilter = wanted;
+        UpdateFilterMark();
+        SetStatus(wanted is null ? "Tag filter cleared." : $"Showing the rows tagged #{wanted}. Needs you is never filtered.");
+        RefreshRail();
+    }
+
+    /// <summary>
+    /// A tag that no session holds any more (after an edit or a file change) clears the tag filter, with a status line (tags plan, Part A2).
+    /// Nothing is cleared while library.json cannot be read.
+    /// </summary>
+    private void DropMissingTagFilter()
+    {
+        if (_tagFilter is null || _libraryError is not null) return;
+        if (TagIndex.Counts(_marks.Values).Any(tag => SameTag(tag.Tag, _tagFilter))) return;
+        _tagFilter = null;
+        UpdateFilterMark();
+        SetStatus("The tag filter is cleared: no session has that tag any more.");
     }
 
     private static string FilterLabel(RailFilter filter) => filter switch
@@ -126,7 +204,9 @@ public partial class SessionWindow
     private void FilterMark_Click(object sender, MouseButtonEventArgs e)
     {
         if (_filterMenu is null) return;
-        foreach (var item in _filterMenu.Items.OfType<MenuItem>()) item.IsChecked = (RailFilter)item.Tag == _filter;
+        RebuildTagMenu();
+        foreach (var item in _filterMenu.Items.OfType<MenuItem>())
+            if (item.Tag is RailFilter view) item.IsChecked = view == _filter;
         _filterMenu.IsOpen = true;
     }
 
@@ -149,6 +229,8 @@ public partial class SessionWindow
         InitFilterMenu();
         // A test flag picks the starting filter (all, running, history, temporary). Without it the rail starts on All.
         if (Enum.TryParse<RailFilter>(_options.FilterName, ignoreCase: true, out var start)) _filter = start;
+        // The same for the tag filter (--rail-tag): a test flag, the rail starts with that tag shown. Cleared at the first refresh if no session has it.
+        if (!string.IsNullOrWhiteSpace(_options.FilterTag)) _tagFilter = _options.FilterTag.Trim().ToLowerInvariant();
         ApplyTheme();
     }
 
@@ -251,6 +333,7 @@ public partial class SessionWindow
     {
         // The marks are read again on every refresh: they are small, and another process may have changed them (D-L3 is inside).
         LoadLibrary();
+        DropMissingTagFilter();
         var stored = known ?? ReadRecords();
         // The palette's session entries are read from what was drawn here, so opening it reads no file (SessionWindow.Palette.cs).
         _railRecords = stored;
@@ -321,11 +404,19 @@ public partial class SessionWindow
             var liveGroups = ShowsLive ? groups.Values.ToList() : new List<RailGroup>();
             foreach (var group in liveGroups)
             {
+                // With a tag filter, a session row that does not hold the tag is left out; a failed start has no tags and stays. Needs you
+                // lists the session anyway. A folder with no row left under the filter is not drawn (tags plan, Part A2).
+                var sessions = group.Sessions
+                    .Where(s => string.IsNullOrEmpty(s.Record.SessionId) || TagIndex.Has(MarkOf(s.Record.SessionId), ActiveTagFilter))
+                    .OrderBy(s => s.Record.Name, StringComparer.Ordinal)
+                    .ToList();
+                if (ActiveTagFilter is not null && sessions.Count == 0 && group.Waiting.Count == 0) continue;
+
                 var folderItem = NewItem(Label(group.Header, bold: true),
                     new RailTag(RailKind.Folder, group.Key, Detail: group.Tooltip), group.Tooltip);
                 folderItem.IsExpanded = _expanded.GetValueOrDefault(group.Key, true);
 
-                foreach (var (record, state) in group.Sessions.OrderBy(s => s.Record.Name, StringComparer.Ordinal))
+                foreach (var (record, state) in sessions)
                 {
                     if (string.IsNullOrEmpty(record.SessionId))
                     {
@@ -404,7 +495,7 @@ public partial class SessionWindow
     }
 
     /// <summary>
-    /// The folders the History section lists, in the order it lists them, for the current filter and search. Test and scratch folders under the
+    /// The folders the History section lists, in the order it lists them, for the current filter, tag and search. Test and scratch folders under the
     /// Windows temp folder are shown only by the Temporary filter (owner, 2026-11-15). The rail and the magic rename (which names the top
     /// sessions first) both read this, so they cannot disagree.
     /// </summary>

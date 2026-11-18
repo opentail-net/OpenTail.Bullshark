@@ -19,6 +19,23 @@ public static class MagicName
     /// <summary>How many names of the same folder the prompt shows the model, so it can avoid them.</summary>
     public const int MaxUsedNames = 30;
 
+    /// <summary>How many tags in use the prompt shows the model, most used first (tags plan, Part B).</summary>
+    public const int MaxKnownTags = 30;
+
+    /// <summary>How many tags a session may hold in all. The owner's own tags are never dropped, even above this (tags plan, Part B).</summary>
+    public const int MaxTags = 8;
+
+    /// <summary>How many tags one reply may add to a session (tags plan, Part B).</summary>
+    public const int MaxNewTags = 2;
+
+    /// <summary>The shortest and the longest tag the magic rename adds, in characters (tags plan, Part B).</summary>
+    public const int MinTagLength = 2;
+
+    /// <summary>See <see cref="MinTagLength"/>.</summary>
+    public const int MaxTagLength = 20;
+
+    private const string TagsPrefix = "tags:";
+
     private static readonly char[] TrailingPunctuation = ['.', ',', ';', ':', '!', '?', '-', '–', '—', '…', '*', '_', '~'];
     private static readonly char[] LeadingMarks = ['#', '*', '-', '>', '•', '~', '_'];
 
@@ -59,6 +76,65 @@ public static class MagicName
     }
 
     /// <summary>
+    /// A reply read as a name and its tags (tags plan, Part B). A line that starts with "tags:" (any case, after a bullet mark if there is one)
+    /// is the tags line; the name is the first other line, cleaned by <see cref="Clean"/>, so a reply of one line is still a name and a tags
+    /// line may come first. The tags on it are split on commas and spaces, normalised with <see cref="SessionLibrary.TagsOf"/>, and kept when
+    /// they are <see cref="MinTagLength"/> to <see cref="MaxTagLength"/> characters of a-z, 0-9 and hyphen. At most <see cref="MaxNewTags"/>,
+    /// without repeats. The name is null when nothing usable is left; the caller then fails the reply, whatever tags it had. A reply with no tags
+    /// line gives no tags.
+    /// </summary>
+    public static (string? Name, IReadOnlyList<string> Tags) ParseReply(string? reply)
+    {
+        if (string.IsNullOrWhiteSpace(reply)) return (null, []);
+        var lines = reply
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+            .Select(part => part.Trim())
+            .Where(part => part.Length > 0)
+            .ToList();
+
+        string? nameLine = null;
+        var tags = new List<string>();
+        foreach (var line in lines)
+        {
+            var tagText = TagsTextOf(line);
+            if (tagText is null)
+            {
+                nameLine ??= line;
+                continue;
+            }
+            foreach (var tag in SessionLibrary.TagsOf(tagText))
+            {
+                if (tags.Count >= MaxNewTags) break;
+                if (IsTag(tag) && !tags.Contains(tag, StringComparer.Ordinal)) tags.Add(tag);
+            }
+        }
+
+        var name = nameLine is null ? null : Clean(nameLine);
+        return (name, tags);
+    }
+
+    /// <summary>
+    /// The tags a session holds after a magic rename (tags plan, Part B): the owner's tags first, in their order, then the added ones in
+    /// their order, without a repeat (compared without case), and never more than <paramref name="cap"/> in all. Nothing is removed: the
+    /// owner's tags stay even when they already number more than the cap, and blank ones are left out. Pure.
+    /// </summary>
+    public static IReadOnlyList<string> MergeTags(IReadOnlyList<string>? existing, IReadOnlyList<string> added, int cap = MaxTags)
+    {
+        var merged = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var tag in existing ?? [])
+        {
+            if (!string.IsNullOrWhiteSpace(tag) && seen.Add(tag)) merged.Add(tag);
+        }
+        foreach (var tag in added)
+        {
+            if (merged.Count >= cap) break;
+            if (!string.IsNullOrWhiteSpace(tag) && seen.Add(tag)) merged.Add(tag);
+        }
+        return merged;
+    }
+
+    /// <summary>
     /// A name that is not in <paramref name="taken"/>. When it is, a dated part is added (" - 18 Nov"), then a number (" 2", " 3"), each
     /// within <see cref="MaxLength"/>. <paramref name="taken"/> must compare names without case (the caller's set does).
     /// </summary>
@@ -77,8 +153,15 @@ public static class MagicName
     /// <summary>
     /// The user message the model is given after the system prompt: the names already used in the folder, then the session's extract
     /// (<see cref="NameExtract"/>). The names are shown so the model avoids them; <see cref="Distinct"/> is the rule that enforces it.
+    /// This overload gives no tags in use; see the one with <paramref name="knownTags"/>.
     /// </summary>
-    public static string PromptFor(IReadOnlyList<string> usedNames, string extract)
+    public static string PromptFor(IReadOnlyList<string> usedNames, string extract) => PromptFor(usedNames, extract, []);
+
+    /// <summary>
+    /// <see cref="PromptFor(IReadOnlyList{string}, string)"/> with the tags in use in the library (tags plan, Part B): the first
+    /// <see cref="MaxKnownTags"/> of them, in the order given (most used first), so the model reuses one when it fits.
+    /// </summary>
+    public static string PromptFor(IReadOnlyList<string> usedNames, string extract, IReadOnlyList<string> knownTags)
     {
         var text = new StringBuilder();
         if (usedNames.Count == 0)
@@ -90,6 +173,10 @@ public static class MagicName
             text.Append("Names already used in this folder (do not repeat them):\n");
             foreach (var name in usedNames.Take(MaxUsedNames)) text.Append("- ").Append(name).Append('\n');
         }
+        var tags = knownTags.Where(tag => !string.IsNullOrWhiteSpace(tag)).Take(MaxKnownTags).ToList();
+        text.Append(tags.Count == 0
+            ? "No tag is in use in the library yet.\n"
+            : "Tags already in use (reuse one when it fits): " + string.Join(", ", tags) + ".\n");
         text.Append("\nThe session:\n").Append(extract);
         return text.ToString();
     }
@@ -126,6 +213,24 @@ public static class MagicName
         var category = Rune.GetUnicodeCategory(rune);
         if (category is UnicodeCategory.OtherSymbol or UnicodeCategory.ModifierSymbol or UnicodeCategory.Surrogate) return true;
         return rune.Value is 0x200B or 0x200C or 0x200D or 0x20E3 or (>= 0xFE00 and <= 0xFE0F);
+    }
+
+    /// <summary>The text after "tags:" when the line is the tags line (any case, after a bullet mark if there is one); otherwise null.</summary>
+    private static string? TagsTextOf(string line)
+    {
+        var text = line.TrimStart(LeadingMarks).TrimStart();
+        return text.StartsWith(TagsPrefix, StringComparison.OrdinalIgnoreCase) ? text[TagsPrefix.Length..] : null;
+    }
+
+    /// <summary>A tag the magic rename may add: 2 to 20 characters, each a-z, 0-9 or hyphen. The tag is already in lower case.</summary>
+    private static bool IsTag(string tag)
+    {
+        if (tag.Length < MinTagLength || tag.Length > MaxTagLength) return false;
+        foreach (var c in tag)
+        {
+            if (!((c is >= 'a' and <= 'z') || (c is >= '0' and <= '9') || c == '-')) return false;
+        }
+        return true;
     }
 
     private static bool IsDoubleQuote(Rune rune) =>

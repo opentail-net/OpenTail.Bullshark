@@ -55,6 +55,16 @@ public static class MagicCandidates
     }
 
     /// <summary>
+    /// True when a session may be named automatically when its cache goes cold (tags plan, Part C): <see cref="KindFor"/> is Fresh (never
+    /// named, not the owner's name, never "again"), it has no magic name, and it has at least <see cref="MinMessages"/> messages. There is no
+    /// time rule: a cache that went cold already means the session is idle.
+    /// </summary>
+    public static bool IsAutoCandidate(SessionDigest digest, LibraryEntry? mark, ISet<string> live) =>
+        KindFor(digest, mark, live) == RenameKind.Fresh
+        && mark?.MagicAt is null
+        && digest.UserMessages + digest.AssistantMessages >= MinMessages;
+
+    /// <summary>
     /// True when a session is cold and may be named by the batch or automatically (D1): eligible, with no name of any kind, not yet named by
     /// magic, at least <see cref="MinMessages"/> messages, and its last message older than <see cref="ColdAge"/>.
     /// </summary>

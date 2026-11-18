@@ -196,10 +196,11 @@
                 <DockPanel DockPanel.Dock="Top" Margin="8,8,8,4">
                     <TextBlock x:Name="ThemeMark" DockPanel.Dock="Right" Cursor="Hand" FontSize="12" VerticalAlignment="Center"
                                ToolTip="Switch between the dark and the light rail" MouseLeftButtonUp="ThemeMark_Click" />
+                    <!-- MaxWidth keeps the title readable when a tag filter adds its name to the label (the label is cut with an ellipsis). -->
                     <Border x:Name="FilterBox" DockPanel.Dock="Right" Cursor="Hand" CornerRadius="4" BorderThickness="1"
-                            Padding="8,2" Margin="0,0,12,0" VerticalAlignment="Center"
+                            Padding="8,2" Margin="0,0,12,0" VerticalAlignment="Center" MaxWidth="130"
                             ToolTip="Choose what the rail shows" MouseLeftButtonUp="FilterMark_Click">
-                        <TextBlock x:Name="FilterMark" FontSize="12" />
+                        <TextBlock x:Name="FilterMark" FontSize="12" TextTrimming="CharacterEllipsis" />
                     </Border>
                     <TextBlock x:Name="SessionsTitle" Text="Sessions" FontWeight="SemiBold" VerticalAlignment="Center" />
                 </DockPanel>

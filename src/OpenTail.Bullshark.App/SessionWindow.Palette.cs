@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
 using OpenTail.Bullshark.Core.Claude;
+using OpenTail.Bullshark.Core.Library;
 using OpenTail.Bullshark.Core.Supervisor;
 using OpenTail.Bullshark.Core.Ui;
 
@@ -129,6 +130,8 @@ public partial class SessionWindow
         if (_review.Count > 0)
             items.Add(ActionItem("review-all", "Mark all ready sessions reviewed", _review.Count == 1 ? "1 session" : $"{_review.Count} sessions",
                 MarkAllReviewed));
+        // The tag filter (tags plan, Part A3): one entry per tag in use, and Clear when one is set. The keyboard route to the rail's dropdown.
+        items.AddRange(TagPaletteItems());
         // The magic rename (magic-rename plan): Haiku names cold past sessions, after a confirm. Nothing is sent to a session.
         items.AddRange(MagicPaletteItems());
         items.Add(ActionItem("notify", "Toggle sound and flash for new waits", null, ToggleNotify));
@@ -136,6 +139,22 @@ public partial class SessionWindow
         // Quick capture (ideas #7, SessionWindow.Ideas.cs): an idea goes to ideas.md, never to a session.
         items.Add(ActionItem("add-idea", "Add idea…", "saved to ideas.md, not sent to a session", AddIdea));
         items.Add(ActionItem("open-ideas", "Open ideas file", "ideas.md beside the state file", OpenIdeas));
+        return items;
+    }
+
+    /// <summary>
+    /// The palette's entries for the tag filter (tags plan, Part A3): "Filter by tag #x" for each tag in use, with its session count, and
+    /// "Clear tag filter" while one is set. Read from memory only.
+    /// </summary>
+    private List<PaletteItem> TagPaletteItems()
+    {
+        var items = new List<PaletteItem>();
+        foreach (var tag in TagIndex.Counts(_marks.Values))
+        {
+            var count = tag.Count == 1 ? "1 session" : $"{tag.Count} sessions";
+            items.Add(ActionItem("tag:" + tag.Tag, $"Filter by tag #{tag.Tag}", count, () => ChooseTag(tag.Tag)));
+        }
+        if (ActiveTagFilter is { } active) items.Add(ActionItem("tag-clear", "Clear tag filter", "#" + active, () => ChooseTag(null)));
         return items;
     }
 

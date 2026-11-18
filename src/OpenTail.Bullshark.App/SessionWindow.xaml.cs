@@ -692,6 +692,8 @@ public sealed record LaunchOptions(
     double ShotAfterSeconds = 8,
     string? SelfTestPath = null,
     string? FilterName = null,
+    /// <summary>--rail-tag: the rail starts with this tag filter, for the screenshots only (tags plan, Part A).</summary>
+    string? FilterTag = null,
     string? SetupDetail = null,
     string? SelfTestMode = null,
     string? OpenSessionId = null,
@@ -717,7 +719,7 @@ public sealed record LaunchOptions(
 
     public static LaunchOptions Parse(string[] args)
     {
-        string? workdir = null, task = null, state = null, shot = null, selfTest = null, filterName = null, selfTestMode = null, setupDetail = null, openSession = null, claudeHome = null, openTab = null;
+        string? workdir = null, task = null, state = null, shot = null, selfTest = null, filterName = null, filterTag = null, selfTestMode = null, setupDetail = null, openSession = null, claudeHome = null, openTab = null;
         double shotAfter = 8;
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         if (args.Length > 0 && args[^1] == "--state") throw new ArgumentException("--state needs the path of a state file.");
@@ -733,6 +735,7 @@ public sealed record LaunchOptions(
                 case "--selftest": selfTest = args[++i]; break;
                 case "--selftest-mode": selfTestMode = args[++i]; break;
                 case "--rail-filter": filterName = args[++i]; break;
+                case "--rail-tag": filterTag = args[++i]; break;
                 case "--setup-detail": setupDetail = args[++i]; break;
                 case "--open-transcript": openSession = args[++i]; break;
                 case "--claude-home": claudeHome = args[++i]; break;
@@ -750,6 +753,7 @@ public sealed record LaunchOptions(
             ShotAfterSeconds: shotAfter,
             SelfTestPath: selfTest,
             FilterName: filterName,
+            FilterTag: filterTag,
             SetupDetail: setupDetail,
             SelfTestMode: selfTestMode,
             OpenSessionId: openSession,
