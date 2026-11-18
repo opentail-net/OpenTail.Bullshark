@@ -118,6 +118,9 @@ public partial class SessionWindow
                 MarkAllReviewed));
         items.Add(ActionItem("notify", "Toggle sound and flash for new waits", null, ToggleNotify));
         items.Add(ActionItem("toast", "Toggle toasts", "when the window is in the background", ToggleToasts));
+        // Quick capture (ideas #7, SessionWindow.Ideas.cs): an idea goes to ideas.md, never to a session.
+        items.Add(ActionItem("add-idea", "Add idea…", "saved to ideas.md, not sent to a session", AddIdea));
+        items.Add(ActionItem("open-ideas", "Open ideas file", "ideas.md beside the state file", OpenIdeas));
         return items;
     }
 
