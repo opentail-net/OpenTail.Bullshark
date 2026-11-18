@@ -23,6 +23,8 @@ public partial class SetupView : UserControl
 {
     private readonly PatternStore _patterns;
     private readonly string _claudeJson = TrustCheck.DefaultClaudeJsonPath;
+    /// <summary>The folder of the transcripts, where the usage limit Claude Code last reported is read from (gems item 5, D5.6).</summary>
+    private readonly string _projectsRoot;
     private bool _loading = true;
     private bool _updatingBriefEditors;
     private string? _plannerBrief;
@@ -54,10 +56,11 @@ public partial class SetupView : UserControl
     /// <summary>The folder is untrusted. The window opens its Trust step for this repository root.</summary>
     public event Action<string>? TrustNeeded;
 
-    public SetupView(string stateFile, string defaultTask)
+    public SetupView(string stateFile, string defaultTask, string projectsRoot)
     {
         InitializeComponent();
         _patterns = PatternStore.Beside(stateFile);
+        _projectsRoot = projectsRoot;
 
         PatternBox.ItemsSource = PatternSpec.Shipped;
         ReviewerBox.ItemsSource = ReviewerChoices;
@@ -385,7 +388,7 @@ public partial class SetupView : UserControl
     /// Checks the run and, if it is valid, saves the settings for the next launch. Nothing is started, and the run file is
     /// not written: the launch comes in S5.
     /// </summary>
-    private void Start_Click(object sender, RoutedEventArgs e)
+    private async void Start_Click(object sender, RoutedEventArgs e)
     {
         // A start time that is not a time stops the run here, before anything is written (gems item 5).
         if (StartTime.Parse(StartAtBox.Text, DateTimeOffset.Now).Error is { } startError)
@@ -416,6 +419,24 @@ public partial class SetupView : UserControl
             return;
         }
 
+        // "Start when the usage limit resets": the reset time is read on a pool thread, and the run starts after it. The button is off
+        // meanwhile. With no limit in force, the run has no start time and starts at once.
+        if (WaitForLimitBox.IsChecked == true)
+        {
+            StartButton.IsEnabled = false;
+            SetStartStatus("Looking for the usage limit Claude Code last reported…");
+            DateTimeOffset? resetsAt;
+            try
+            {
+                resetsAt = await Task.Run(() => LimitReset.Find(_projectsRoot, DateTimeOffset.Now));
+            }
+            finally
+            {
+                StartButton.IsEnabled = true;
+            }
+            request = request with { StartAt = resetsAt is { } reset ? LimitReset.StartFor(reset) : null };
+        }
+
         try
         {
             _patterns.Save(new PatternSettings(request.PatternKey, request.PlannerModel, request.PlannerEffort,
@@ -441,6 +462,18 @@ public partial class SetupView : UserControl
 
     /// <summary>Shows the outcome of a started run. The window calls this after it writes the run.</summary>
     public void ShowStarted(string text) => SetStartStatus(text);
+
+    /// <summary>
+    /// "Start when the usage limit resets" and "Start at" are two start times, and only one is kept: ticking the box clears and disables
+    /// the time. Unticking it enables the time again.
+    /// </summary>
+    private void WaitForLimit_Changed(object sender, RoutedEventArgs e)
+    {
+        var waiting = WaitForLimitBox.IsChecked == true;
+        StartAtBox.IsEnabled = !waiting;
+        if (waiting) StartAtBox.Text = string.Empty;
+        Refresh();
+    }
 
     private void Browse_Click(object sender, RoutedEventArgs e)
     {

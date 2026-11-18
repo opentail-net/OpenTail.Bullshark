@@ -270,6 +270,10 @@
                         <TextBox x:Name="StartAtBox" Width="64" MaxLength="5"
                                  ToolTip="Optional. A 24-hour time, HH:mm, on this computer's clock. The run waits until then. Blank starts it at once." />
                     </StackPanel>
+                    <CheckBox x:Name="WaitForLimitBox" Content="Start when the usage limit resets" FontSize="11" HorizontalAlignment="Right"
+                              Margin="0,2,0,0" Foreground="{DynamicResource SetupMuted}"
+                              ToolTip="The run waits until the reset time of the last usage limit Claude Code reported on this computer (plus 2 minutes). If no limit is active, it starts at once."
+                              Checked="WaitForLimit_Changed" Unchecked="WaitForLimit_Changed" />
                     <TextBlock Text="Starts only while this window is open." FontSize="11" HorizontalAlignment="Right"
                                Foreground="{DynamicResource SetupMuted}" />
                 </StackPanel>

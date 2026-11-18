@@ -29,7 +29,7 @@ F63 (daemon not running while the listing still shows sessions; the daemon runs 
 
 Decisions:
 - Windows toast notifications need a package (CommunityToolkit or Windows App SDK). Today: flash + sound in the window only.
-- Start a run "when my usage limit resets"? Not built.
+- Start when the limit resets: built 2026-11-18, see `limit-reset-start-2026-11-18.md`. Not checked in a running window.
 - Should old transcripts ever be deleted (today: archive only)?
 - Should a `done` coder in a live run ever be woken? Today: no.
 - A sound when a session that is already waiting goes stale (daemon stopped)? Today: no new sound (round 8 B2.2).

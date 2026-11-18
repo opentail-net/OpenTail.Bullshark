@@ -118,7 +118,7 @@ public partial class SessionWindow : Window
         _events = new EventLog(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(options.StatePath))!, "events.jsonl"), log: AppLog.Write);
         runner.Events = _events;
 
-        _setup = new SetupView(options.StatePath, options.Task) { Visibility = Visibility.Hidden };
+        _setup = new SetupView(options.StatePath, options.Task, options.ProjectsRoot) { Visibility = Visibility.Hidden };
         _setup.ShowFolder(options.WorkDir);
         if (options.SetupDetail is not null) _setup.ShowDetail(options.SetupDetail);
         _setup.ApplyTheme(Palette);
@@ -574,7 +574,12 @@ public partial class SessionWindow : Window
             return;
         }
         AppLog.Write($"run {run.RunId} written: {run.Specs.Count} session(s) in {run.WorkingDirectory}");
-        _setup.ShowStarted($"Run {run.RunId} written: {run.Specs.Count} session(s). They start on the next pass, within about 15 seconds.");
+        // A run that waits (a start time, or the usage limit's reset) does not start on the next pass, so the line says when it starts.
+        var now = DateTimeOffset.UtcNow;
+        var when = run.StartAt is { } startAt && RunStore.IsWaiting(run, now)
+            ? $"They start at {StartTime.Describe(startAt, now)}."
+            : "They start on the next pass, within about 15 seconds.";
+        _setup.ShowStarted($"Run {run.RunId} written: {run.Specs.Count} session(s). {when}");
         try
         {
             await PassAndRefreshAsync();
