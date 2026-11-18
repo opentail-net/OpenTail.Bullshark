@@ -117,6 +117,7 @@ public partial class SessionWindow
             items.Add(ActionItem("review-all", "Mark all ready sessions reviewed", _review.Count == 1 ? "1 session" : $"{_review.Count} sessions",
                 MarkAllReviewed));
         items.Add(ActionItem("notify", "Toggle sound and flash for new waits", null, ToggleNotify));
+        items.Add(ActionItem("toast", "Toggle toasts", "when the window is in the background", ToggleToasts));
         return items;
     }
 
@@ -155,5 +156,18 @@ public partial class SessionWindow
         var now = AttentionList.NotificationsOn(UiFile.Read(_options.StatePath, NotifyKey));
         AppLog.Write($"sound and flash for new waits: {(now ? "on" : "off")} (from the command palette)");
         SetStatus($"Sound and flash for new waits: {(now ? "on" : "off")}.");
+    }
+
+    /// <summary>
+    /// Turns the toast for new waits on or off in ui.json, the key the announcement reads (toasts D3). Like the sound, it is a setting only:
+    /// "notify": false still silences toasts too.
+    /// </summary>
+    private void ToggleToasts()
+    {
+        var on = AttentionList.NotificationsOn(UiFile.Read(_options.StatePath, ToastKey));
+        UiFile.Set(_options.StatePath, ToastKey, JsonValue.Create(!on)!);
+        var now = AttentionList.NotificationsOn(UiFile.Read(_options.StatePath, ToastKey));
+        AppLog.Write($"toasts when the window is in the background: {(now ? "on" : "off")} (from the command palette)");
+        SetStatus($"Toasts when the window is in the background: {(now ? "on" : "off")}.");
     }
 }

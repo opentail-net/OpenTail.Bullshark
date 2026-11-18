@@ -126,7 +126,7 @@ The sessions see each other directly and live, with `SendMessage` by session nam
 - **Supervisor:** a Windows Task Scheduler task, trigger "At log on", running as the owner's user account. *Expected, not verified:* a Windows Service would run under another account and would not see the owner's Claude login, so a service is the wrong choice.
 - **Window:** opened by the owner. Auto-open at log-on is optional (owner's choice).
 - **Log-on, not power-on.** A PC that boots without logging in does not run OpenTail.Bullshark. Auto-logon would change that (D6).
-- **Blocked sessions:** the supervisor alerts once per entry into `blocked`. The window lists the session under "Needs you" at the top of the rail, shows the count in the status bar, and flashes the taskbar button with a sound when a session newly needs the owner (turn off with `"notify": false` in `ui.json`). Windows toast notifications are not built (they need a package; owner decision).
+- **Blocked sessions:** the supervisor alerts once per entry into `blocked`. The window lists the session under "Needs you" at the top of the rail, shows the count in the status bar, and flashes the taskbar button with a sound when a session newly needs the owner (turn off with `"notify": false` in `ui.json`). When the window is not in front (minimised or behind other windows), a silent Windows toast also shows the session's name and reason, one per batch; turn it off with `"toast": false` in `ui.json` or "Toggle toasts" in the command palette. A toast is not seen on screen until a run is checked by the owner.
 
 ## Visibility
 
@@ -176,7 +176,7 @@ Not needed for the core. It is useful for recovery when a restart is not enough,
 | D7 | Window stack | C# WPF with WPF-UI.Terminal, to be proven in P1. Fallback: Windows Terminal tabs. Intelligent Terminal not chosen. |
 | D8 | Orchestrator (later): which model, and when to start? | Not now. Start P8 only after P1-P7 work. Stingray with a Qwen3-class model, chosen by testing. |
 | D9 | Orchestrator authority: which actions may it take without asking? | A fixed list only (continue, run tests, wait). Everything else is an alert to the owner. |
-| D10 | How do alerts reach the owner when AFK? | Partly done (2026-11-17): in the window, a "Needs you" rail group, taskbar flash and sound. Still open for AFK: a Windows toast (needs a package), or the Teams path in OpenTail.Orca (already used for approval cards; check its limits). |
+| D10 | How do alerts reach the owner when AFK? | Partly done (2026-11-17): in the window, a "Needs you" rail group, taskbar flash and sound. A Windows toast was added on 2026-11-18 (not seen on screen yet). Still open for AFK: the Teams path in OpenTail.Orca (already used for approval cards; check its limits). |
 
 ## Repo
 

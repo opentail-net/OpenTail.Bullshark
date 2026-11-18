@@ -2,6 +2,7 @@ using System.Media;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
+using CommunityToolkit.WinUI.Notifications;
 using OpenTail.Bullshark.Core.Claude;
 using OpenTail.Bullshark.Core.Supervisor;
 
@@ -14,6 +15,9 @@ namespace OpenTail.Bullshark.App;
 public partial class SessionWindow
 {
     private const string NeedsYouKey = "needs-you";
+
+    /// <summary>The ui.json key for the toast shown when the window is not in front (toasts-2026-11-18, D3). Missing or not a boolean means on.</summary>
+    private const string ToastKey = "toast";
 
     /// <summary>The sessions that need the owner, as the last refresh saw them. Shown under Needs you and counted in the status bar.</summary>
     private IReadOnlyList<AttentionItem> _attention = [];
@@ -139,7 +143,8 @@ public partial class SessionWindow
 
     /// <summary>
     /// Called after each pass. When a session joined the list since the last pass, the window flashes its taskbar button until it
-    /// is in front and plays the notification sound once. Both are off when ui.json says "notify": false. The first pass after the
+    /// is in front and plays the notification sound once. Both are off when ui.json says "notify": false. When the window is not in front, a
+    /// silent Windows toast is shown too, unless ui.json says "toast": false (toasts-2026-11-18). The first pass after the
     /// window opens only sets the baseline. The escalation runs on every pass: a session that still waits after its interval sounds
     /// again, with the same sound and flash, and is logged as "again" (escalation-2026-11-18).
     /// </summary>
@@ -169,5 +174,51 @@ public partial class SessionWindow
         SystemSounds.Asterisk.Play();
         var handle = new WindowInteropHelper(this).Handle;
         if (handle != IntPtr.Zero) TaskbarFlash.UntilFocused(handle);
+
+        // A toast only when the window is not in front (toasts D2): minimised, or behind other windows.
+        // "notify": false returned above, so it silences toasts too.
+        if (!IsActive && AttentionList.NotificationsOn(UiFile.Read(_options.StatePath, ToastKey)))
+            ToastNotifier.Show(gained, due);
     }
+
+    /// <summary>
+    /// The toast subscriptions (toasts D5). A click on a toast brings the window to the front; the history of this app's toasts is cleared
+    /// when the window is activated, so old toasts do not pile up. The subscription ends with the window. A failure here is logged once and
+    /// the window still opens: a toast is never worth a crash at start.
+    /// </summary>
+    private void InitToasts()
+    {
+        try
+        {
+            ToastNotificationManagerCompat.OnActivated += OnToastActivated;
+        }
+        catch (Exception ex)
+        {
+            ToastNotifier.LogFailure("click not handled", ex);
+        }
+        Activated += (_, _) => ToastNotifier.ClearHistory();
+        Closing += (_, _) => UnsubscribeToasts();
+    }
+
+    private void UnsubscribeToasts()
+    {
+        try
+        {
+            ToastNotificationManagerCompat.OnActivated -= OnToastActivated;
+        }
+        catch (Exception ex)
+        {
+            ToastNotifier.LogFailure("click handler not removed", ex);
+        }
+    }
+
+    /// <summary>
+    /// A click on a toast: the window is shown and brought to the front. The library calls this on a background thread,
+    /// so the work goes to the UI thread.
+    /// </summary>
+    private void OnToastActivated(ToastNotificationActivatedEventArgsCompat args) => Dispatcher.BeginInvoke(new Action(() =>
+    {
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        Activate();
+    }));
 }
