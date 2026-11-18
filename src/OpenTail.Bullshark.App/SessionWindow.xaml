@@ -64,6 +64,9 @@
                 <TextBlock x:Name="NeedsYouText" DockPanel.Dock="Left" Visibility="Collapsed" FontSize="12" FontWeight="SemiBold"
                            VerticalAlignment="Center" Margin="0,0,14,0" Foreground="{DynamicResource BarText}"
                            ToolTip="Sessions that wait for you. They are listed under Needs you at the top of the rail." />
+                <!-- The usage limit in force and when it resets, read from the transcripts on this computer (A2). Collapsed while none is in force. -->
+                <TextBlock x:Name="LimitStatusText" DockPanel.Dock="Left" Visibility="Collapsed" FontSize="12" FontWeight="SemiBold"
+                           VerticalAlignment="Center" Margin="0,0,14,0" Foreground="{DynamicResource BarText}" />
                 <!-- The zoom of the terminals and the transcripts, as in Word's status bar (zoom.md). -->
                 <StackPanel x:Name="ZoomBar" DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,0,0"
                             ToolTip="Zoom the session text: the transcripts and the terminals. Ctrl+plus, Ctrl+minus and Ctrl+0 do the same.">

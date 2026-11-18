@@ -240,6 +240,8 @@ public partial class SessionWindow : Window
     /// </summary>
     private async Task PassAndRefreshAsync()
     {
+        // The status-bar limit is drawn and, at most once a minute, scanned here too (A2). It does not wait for the pass.
+        RefreshLimitStatus();
         if (_passRunning) return;
         _passRunning = true;
         try

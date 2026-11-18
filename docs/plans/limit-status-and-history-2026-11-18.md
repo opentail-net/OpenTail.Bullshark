@@ -18,9 +18,17 @@ show the raw type, with a friendly label only for `five_hour` ("5-hour") and `we
 
 ## A2. Status bar: active limit
 
-- [ ] Core `LimitStatus` (new, `Core/Setup/LimitStatus.cs`): `Active(projectsRoot, now)` -> list of `(string Type, DateTimeOffset ResetsAt)` for every rejected, still-future limit found (latest per type), sorted by `ResetsAt` descending (the one that governs first). Reuse the tail reader of `LimitReset` (make a shared internal `LimitEntries` reader that yields `(Timestamp, Type, Status, ResetsAt)` per limit line; `FromLine` stays). Why: the status bar needs the type and all active limits, `Find` returns only an instant.
-- [ ] App: a status-bar text, hidden when no limit is active: "5-hour limit resets 13:10" (use `StartTime.Describe`, local time); with two limits: "weekly limit resets Nov 19 09:00 (5-hour also active)". Tooltip: full list. Refresh: on window load, then at most every 60 s via the existing timer/pass hook (look at how the status bar updates the Storage button / pass status; do not add a second timer if one exists), in `Task.Run`, cached result; when the cached reset time passes, the text disappears without a scan.
-- [ ] Tests: two types active -> both returned, governing first; one in the past -> excluded; non-rejected -> excluded; same type twice -> latest kept; empty/missing root -> empty.
+- [x] Core `LimitStatus` (new, `Core/Setup/LimitStatus.cs`): `Active(projectsRoot, now)` -> list of `(string Type, DateTimeOffset ResetsAt)` for every rejected, still-future limit found (latest per type), sorted by `ResetsAt` descending (the one that governs first). Reuse the tail reader of `LimitReset` (make a shared internal `LimitEntries` reader that yields `(Timestamp, Type, Status, ResetsAt)` per limit line; `FromLine` stays). Why: the status bar needs the type and all active limits, `Find` returns only an instant.
+- [x] App: a status-bar text, hidden when no limit is active: "5-hour limit resets 13:10" (use `StartTime.Describe`, local time); with two limits: "weekly limit resets Nov 19 09:00 (5-hour also active)". Tooltip: full list. Refresh: on window load, then at most every 60 s via the existing timer/pass hook (look at how the status bar updates the Storage button / pass status; do not add a second timer if one exists), in `Task.Run`, cached result; when the cached reset time passes, the text disappears without a scan.
+- [x] Tests: two types active -> both returned, governing first; one in the past -> excluded; non-rejected -> excluded; same type twice -> latest kept; empty/missing root -> empty.
+
+## Decisions
+
+- A2-D1 The text uses `StartTime.Describe`, so a reset on another day reads `2026-11-19 09:00`, not `Nov 19 09:00` as the example above had it. The plan named `Describe` for the time, so the format follows it.
+- A2-D2 "Latest per type" means the largest `resetsAt` of that type among the entries still in force, not the most recently written entry.
+- A2-D3 The refresh rides the existing 15 s pass tick (and the 3 s trust tick, which also calls the pass). The scan starts at most once a minute, after the load. Nothing new is added to the timers.
+- A2-D4 `LimitReset.FromLine` keeps its signature (the contract names it) but has no caller now: `Find` reads entries through `LimitEntries.Tail`. It is internal, so it is left in place; it can be deleted if the owner prefers.
+- A2-D5 The shared reader is `Core/Setup/LimitEntries.cs` (internal). `LimitReset.Find` and its 13 tests are unchanged in behaviour.
 
 ## A4. Limit history page (read-only)
 
