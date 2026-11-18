@@ -23,6 +23,7 @@ sides changed it (both kept). Tests: 357 at the start, 1007 at the end.
 | `round12-2026-11-17.md` | A bad transcript line or file is skipped, not fatal, in every reader and in the window's pass; shared line helper; the merge check and Changes tab use the writes cache; bounded CLI output reads; supervisor reads logs for live sessions only; the log rotates at 5 MB; the index parses UTF-8 bytes (cold 1.69 s to 1.35 s). Merged to `main` and pushed. |
 | `toasts-2026-11-18.md` | Windows toast when the window is not in front: one silent toast per batch (session name and reason only), click brings the window forward, `"toast"` setting and "Toggle toasts" in the palette. New package `CommunityToolkit.WinUI.Notifications` 7.1.2 (MIT); the App targets `net10.0-windows10.0.19041.0`. Not seen on screen. |
 | `batch-b-2026-11-18.md` (B1) | "Copy review prompt" in the Changes tab: a note box and a button copy a prompt that names the changed files to the clipboard. Nothing is sent. Not seen in a running window. |
+| `batch-b-2026-11-18.md` (B2) | "Copy as Markdown" on the Away page copies the digest the page shows (same fields, Markdown characters escaped). The page stays open. Not seen in a running window. |
 
 Findings added: F61 (`agents --json` hides finished/stopped sessions without `--all`), F62 (`--bg` refuses an untrusted folder),
 F63 (daemon not running while the listing still shows sessions; the daemon runs on demand).

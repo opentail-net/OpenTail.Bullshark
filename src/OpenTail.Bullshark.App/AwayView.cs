@@ -30,18 +30,57 @@ public sealed class AwayView : UserControl
         Margin = new Thickness(0, 12, 0, 0),
     };
 
+    /// <summary>"Copy as Markdown" (batch B2): copies the digest on the page. It does not dismiss the page. Off until a digest is shown.</summary>
+    private readonly Button _copy = new()
+    {
+        Content = "Copy as Markdown",
+        Padding = new Thickness(10, 2, 10, 2),
+        Margin = new Thickness(8, 0, 0, 0),
+        IsEnabled = false,
+    };
+
+    private readonly TextBlock _copyStatus = new() { TextWrapping = TextWrapping.Wrap, FontSize = 11, Margin = new Thickness(0, 4, 0, 0) };
+
+    /// <summary>The digest on the page, kept so that Copy as Markdown copies what is shown. Null when the page shows a problem.</summary>
+    private AwayDigest? _digest;
+
     public AwayView()
     {
-        var gotIt = new Button { Content = "Got it", Padding = new Thickness(10, 2, 10, 2), HorizontalAlignment = HorizontalAlignment.Left };
+        var gotIt = new Button { Content = "Got it", Padding = new Thickness(10, 2, 10, 2) };
         gotIt.Click += (_, _) => DismissRequested?.Invoke();
+        _copy.Click += (_, _) => CopyMarkdown();
+
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Left };
+        actions.Children.Add(gotIt);
+        actions.Children.Add(_copy);
 
         var root = new StackPanel { Margin = new Thickness(12, 8, 12, 8) };
         root.Children.Add(new TextBlock { Text = "While you were away", FontSize = 17, FontWeight = FontWeights.SemiBold });
         root.Children.Add(_caption);
-        root.Children.Add(gotIt);
+        root.Children.Add(actions);
+        root.Children.Add(_copyStatus);
         root.Children.Add(_body);
         root.Children.Add(_footer);
         Content = new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+    }
+
+    /// <summary>
+    /// Copies the digest on the page as Markdown. The page stays open. Nothing is sent to a session; a busy clipboard is said in the status line,
+    /// and the owner presses the button again.
+    /// </summary>
+    private void CopyMarkdown()
+    {
+        if (_digest is not { } digest) return;
+        var text = AwayExport.Markdown(digest, digest.Since, digest.Now);
+        try
+        {
+            Clipboard.SetText(text);
+            _copyStatus.Text = "The digest is on the clipboard as Markdown. Nothing was sent to a session.";
+        }
+        catch (System.Runtime.InteropServices.ExternalException ex)
+        {
+            _copyStatus.Text = $"The clipboard is busy, so the digest was not copied ({ex.Message}). Press the button again.";
+        }
     }
 
     /// <summary>The Got it button was pressed. The window records that the period was seen, and closes the page.</summary>
@@ -53,11 +92,15 @@ public sealed class AwayView : UserControl
         _palette = palette;
         Foreground = RailPalette.Brush(palette.Text);
         _footer.Foreground = RailPalette.Brush(palette.Muted);
+        _copyStatus.Foreground = RailPalette.Brush(palette.Muted);
     }
 
     /// <summary>Draws the period: the sessions with activity, the supervisor's events, the limit hits, then the quiet sessions by name.</summary>
     public void Show(AwayDigest digest)
     {
+        _digest = digest;
+        _copy.IsEnabled = true;
+        _copyStatus.Text = string.Empty;
         _body.Children.Clear();
         _caption.Text = $"From {LocalTime(digest.Since)} to {LocalTime(digest.Now)}.";
 
@@ -93,6 +136,9 @@ public sealed class AwayView : UserControl
     /// <summary>Shows a line in place of the page's content, for a digest that could not be built.</summary>
     public void ShowProblem(string text)
     {
+        _digest = null;
+        _copy.IsEnabled = false;
+        _copyStatus.Text = string.Empty;
         _caption.Text = text;
         _body.Children.Clear();
     }
