@@ -12,6 +12,12 @@ public sealed class TestScreensTests
     [InlineData("timeline", TestScreen.Timeline)]
     [InlineData(" TIMELINE ", TestScreen.Timeline)]
     [InlineData("setup", TestScreen.Setup)]
+    [InlineData("insights", TestScreen.Insights)]
+    [InlineData("away", TestScreen.Away)]
+    [InlineData("usage", TestScreen.Usage)]
+    [InlineData("settings", TestScreen.Settings)]
+    [InlineData("settings-naming", TestScreen.SettingsNaming)]
+    [InlineData("Settings-Claude", TestScreen.SettingsClaude)]
     public void ThePlainScreensParse(string value, TestScreen screen)
     {
         var request = TestScreenRequest.Parse(value);
@@ -45,6 +51,10 @@ public sealed class TestScreensTests
     [InlineData("storage:extra")]
     [InlineData("timeline:extra")]
     [InlineData("setup:extra")]
+    [InlineData("insights:away")]
+    [InlineData("usage:extra")]
+    [InlineData("settings:naming")]
+    [InlineData("settings-general")]
     [InlineData("storag")]
     [InlineData("setups")]
     public void AnythingElseOpensNothing(string? value)

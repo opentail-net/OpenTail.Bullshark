@@ -45,6 +45,17 @@ Pass when: no name appears twice at any step, each step has its line, and F20 is
   session(s) that went cold". A session that was already ❄ when the window opened is not named.
 - [ ] Turn it off again: nothing that was waiting in the queue is named later.
 
+## Insights and Settings (docs/plans/insights-and-settings-2026-11-18.md)
+
+- [ ] Insights: the four sub-tabs (Away, Usage, Timeline, Storage) switch with the mouse and with Left and Right; the window reads the
+  page again when it is shown; the sub-tab shown last comes back when the Insights button is pressed again.
+- [ ] Settings: each switch and choice (notifications, automatic naming, the re-alert interval, theme) writes ui.json, and the page shows the
+  value the file holds afterwards. A file that cannot be written shows "Not saved" and the old value.
+- [ ] A return to the window with news opens Insights on Away; Got it closes Insights when the return opened it.
+- [ ] Zoom: the slider, the percentage and the − and + at the bottom right of the status bar still zoom; Ctrl+plus, Ctrl+minus and Ctrl+0 do the same.
+- [ ] The status bar on a 1366 px window keeps the zoom, Settings, Insights and Go to… at the right, with Retry, Respawn and Trust only when they show.
+- [ ] Palette: Open Insights, Open Settings, and Open Timeline, Storage, Limits and Away open Insights on their sub-tab.
+
 ## Gates (each needs one real step)
 
 - [ ] **Worktree per coder** (additions item 3) and `--cwd` for listings: with the scratch repo trusted, rerun the gate in

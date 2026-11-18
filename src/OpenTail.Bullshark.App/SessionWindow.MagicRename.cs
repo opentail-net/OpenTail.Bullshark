@@ -434,16 +434,24 @@ public partial class SessionWindow
         ];
     }
 
-    /// <summary>Turns automatic naming on or off in ui.json. The status line says what the file holds after the write.</summary>
-    private void ToggleMagicAuto()
+    /// <summary>Turns automatic naming on or off in ui.json: the palette's toggle and the Settings switch both come here.</summary>
+    private void ToggleMagicAuto() => SetMagicAuto(!_magicAutoOn);
+
+    /// <summary>
+    /// Writes the automatic naming key, reads it back, and shows what the file holds: a file that cannot be written leaves the setting as it was, and
+    /// the status line says so.
+    /// </summary>
+    private void SetMagicAuto(bool on)
     {
-        UiFile.Set(_options.StatePath, MagicAutoKey, JsonValue.Create(!_magicAutoOn)!);
+        UiFile.Set(_options.StatePath, MagicAutoKey, JsonValue.Create(on)!);
         LoadMagicAuto();
         // Off: whatever was queued while it was on is dropped, so it does not run later (no backlog while off).
         if (!_magicAutoOn) _magicQueue.Clear();
-        AppLog.Write($"automatic magic naming: {(_magicAutoOn ? "on" : "off")} (from the command palette)");
-        SetStatus(_magicAutoOn
+        AppLog.Write($"automatic magic naming: {(_magicAutoOn ? "on" : "off")} (the owner's choice)");
+        SetStatus(_magicAutoOn != on ? "Not saved: ui.json cannot be written. See the log."
+            : _magicAutoOn
             ? "Automatic magic naming is on: a never-named session is named when its cache goes cold ❄, at most 3 an hour, only when the window is idle."
             : "Automatic magic naming is off.");
+        RefreshSettingsPage();
     }
 }

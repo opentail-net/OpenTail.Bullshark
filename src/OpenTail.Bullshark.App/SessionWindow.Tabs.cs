@@ -28,17 +28,13 @@ public partial class SessionWindow
         /// <summary>A live session's changes (item 2 of the additions plan). Key: the session id.</summary>
         Changes,
 
-        /// <summary>The storage page (gems item 6). One tab, with the key "storage".</summary>
-        Storage,
+        /// <summary>
+        /// Insights: Away, Usage, Timeline and Storage as sub-tabs (2026-11-18). One tab, with the key "insights". The sub-tab is the page's own.
+        /// </summary>
+        Insights,
 
-        /// <summary>The run timeline (additions item 5). One tab, with the key "timeline".</summary>
-        Timeline,
-
-        /// <summary>The limit history (A4, read-only). One tab, with the key "limits".</summary>
-        Limits,
-
-        /// <summary>"While you were away" (backlog D1, read-only). One tab, with the key "away".</summary>
-        Away,
+        /// <summary>Settings: General, Naming and Claude (2026-11-18). One tab, with the key "settings".</summary>
+        Settings,
     }
 
     private sealed class OpenTab(TabKind kind, string key, string title)
@@ -151,24 +147,15 @@ public partial class SessionWindow
                 await ShowChangesAsync(tab.Key);
                 break;
 
-            case TabKind.Storage:
-                ShowOnly(_storage);
-                _ = RefreshStorageAsync();
+            case TabKind.Insights:
+                // Shows the sub-tab it was on, and reads that page again (InsightsView.SubTabShown).
+                ShowOnly(_insights);
+                _insights.Show(_insights.Current);
                 break;
 
-            case TabKind.Timeline:
-                ShowOnly(_timeline);
-                _ = RefreshTimelineAsync();
-                break;
-
-            case TabKind.Limits:
-                ShowOnly(_limits);
-                _ = RefreshLimitsAsync();
-                break;
-
-            case TabKind.Away:
-                ShowOnly(_away);
-                _ = RefreshAwayAsync(onReturn: false);
+            case TabKind.Settings:
+                ShowOnly(_settings);
+                RefreshSettingsPage();
                 break;
         }
     }

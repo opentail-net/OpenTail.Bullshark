@@ -77,12 +77,7 @@ public sealed class StorageView : UserControl
         bottom.Children.Add(archivedButtons);
 
         var root = new StackPanel { Margin = new Thickness(12, 8, 12, 8) };
-        root.Children.Add(new TextBlock
-        {
-            Text = "Storage",
-            FontSize = 17,
-            FontWeight = FontWeights.SemiBold,
-        });
+        // No page title here: the Insights tab's sub-tab row names the page (2026-11-18).
         root.Children.Add(_note);
         root.Children.Add(_retention);
         root.Children.Add(toolbar);
@@ -94,6 +89,16 @@ public sealed class StorageView : UserControl
                      "A session that claude lists, or that Bullshark records, is never archived.";
         _transcriptsCaption.Text = "Choose a project to see its transcripts";
         _archivedCaption.Text = "Archived";
+    }
+
+    /// <summary>Takes the rail's palette, as the other views do. The text follows the theme; the notes are muted.</summary>
+    public void ApplyTheme(RailPalette palette)
+    {
+        Foreground = RailPalette.Brush(palette.Text);
+        var muted = RailPalette.Brush(palette.Muted);
+        _note.Foreground = muted;
+        _retention.Foreground = muted;
+        _archiveWait.Foreground = muted;
     }
 
     /// <summary>The Refresh button was pressed.</summary>

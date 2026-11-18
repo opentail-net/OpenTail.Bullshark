@@ -13,10 +13,13 @@ public sealed class TimelineView : UserControl
 {
     private const string AllSessions = "All sessions";
 
-    /// <summary>A run in the run list. The label is what the owner reads.</summary>
-    private sealed record RunChoice(RunRecord Run, string Label);
+    /// <summary>A run in the run list. The label is what the owner reads, and it is what the list shows (ToString).</summary>
+    private sealed record RunChoice(RunRecord Run, string Label)
+    {
+        public override string ToString() => Label;
+    }
 
-    private readonly ComboBox _runs = new() { MinWidth = 320, DisplayMemberPath = nameof(RunChoice.Label) };
+    private readonly ComboBox _runs = new() { MinWidth = 320 };
     private readonly ComboBox _sessions = new() { MinWidth = 240, Margin = new Thickness(8, 0, 0, 0) };
     // The list is not inside a ScrollViewer: the ListBox scrolls and virtualizes its own rows (round 5 item 10).
     private readonly ListBox _lines = new()
@@ -41,6 +44,9 @@ public sealed class TimelineView : UserControl
 
     public TimelineView()
     {
+        // The two choosers take the palette's drop-down style (Styles/Controls.xaml), which follows the theme.
+        _runs.Style = (Style)FindResource("UiComboBox");
+        _sessions.Style = (Style)FindResource("UiComboBox");
         var refresh = new Button { Content = UiIcon.Label(UiIcon.Refresh, "Refresh"), Padding = new Thickness(12, 4, 12, 4) };
         refresh.Click += (_, _) => RefreshRequested?.Invoke();
 
@@ -60,7 +66,7 @@ public sealed class TimelineView : UserControl
         };
 
         var root = new StackPanel { Margin = new Thickness(12, 8, 12, 8) };
-        root.Children.Add(new TextBlock { Text = "Timeline", FontSize = 17, FontWeight = FontWeights.SemiBold });
+        // No page title here: the Insights tab's sub-tab row names the page (2026-11-18).
         root.Children.Add(_caption);
         root.Children.Add(choosers);
         root.Children.Add(_olderRow);

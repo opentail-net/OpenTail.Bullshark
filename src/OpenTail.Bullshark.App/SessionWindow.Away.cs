@@ -9,17 +9,16 @@ using OpenTail.Bullshark.Core.Supervisor;
 namespace OpenTail.Bullshark.App;
 
 /// <summary>
-/// "While you were away" (backlog D1): opened by the status bar's Away button, and by itself when the window comes back after at least
-/// <see cref="AwayDigest.ReturnGap"/> away with something to say (D2). The time the window was last in use is kept in ui.json: it is written when
-/// the window is deactivated, when it closes, and on Got it (D1, D4). The digest is built on a pool thread from the window's own transcript index,
-/// listing and attention list, and from the supervisor's log and the limit history. Nothing is sent to a session; no sound plays and nothing flashes.
+/// "While you were away" (backlog D1): the Away sub-tab of Insights (2026-11-18), opened from the Insights tab, and by itself when the window comes
+/// back after at least <see cref="AwayDigest.ReturnGap"/> away with something to say (D2). The time the window was last in use is kept in ui.json:
+/// it is written when the window is deactivated, when it closes, and on Got it (D1, D4). The digest is built on a pool thread from the window's own
+/// transcript index, listing and attention list, and from the supervisor's log and the limit history. Nothing is sent to a session; no sound plays
+/// and nothing flashes.
 /// </summary>
 public partial class SessionWindow
 {
     /// <summary>The key of the last-seen time in ui.json.</summary>
     private const string LastSeenKey = "lastSeen";
-
-    private const string AwayKey = "away";
 
     private readonly AwayView _away = new() { Visibility = Visibility.Hidden };
 
@@ -31,31 +30,32 @@ public partial class SessionWindow
 
     private void InitAway()
     {
-        Pane.Children.Add(_away);
         _away.DismissRequested += DismissAway;
         Activated += (_, _) => _ = RefreshAwayAsync(onReturn: true);
         Deactivated += (_, _) => WriteLastSeen();
         Closing += (_, _) => WriteLastSeen();
     }
 
-    private void AwayButton_Click(object sender, RoutedEventArgs e)
-    {
-        SetActive(TabFor(TabKind.Away, AwayKey, () => "Away"));
-        ShowOnly(_away);
-        _ = RefreshAwayAsync(onReturn: false);
-    }
-
-    /// <summary>Got it: the period counts as seen, so the page does not open again for it (D4). Its tab closes.</summary>
+    /// <summary>
+    /// Got it: the period counts as seen, so the page does not open again for it (D4). When the return opened Insights for this digest, the Insights
+    /// tab closes, as it always did. When the owner opened Insights by hand, Got it moves to the next sub-tab instead (the plan's decision, 2026-11-18).
+    /// </summary>
     private void DismissAway()
     {
         WriteLastSeen();
-        if (_tabs.FirstOrDefault(tab => tab.Kind == TabKind.Away) is { } tab) CloseTab(tab);
+        if (_insightsForDigest)
+        {
+            _insightsForDigest = false;
+            if (_tabs.FirstOrDefault(tab => tab.Kind == TabKind.Insights) is { } tab) CloseTab(tab);
+            return;
+        }
+        _insights.Show(InsightsView.Next(_insights.Current));
     }
 
     /// <summary>
-    /// Builds the digest for the period and draws it. On a return the page opens only after a gap of <see cref="AwayDigest.ReturnGap"/> and only when
-    /// something happened in the period (D2); the button and the tab always draw it. A failure is said on the page when the owner asked, and is only
-    /// logged on a return.
+    /// Builds the digest for the period and draws it. On a return the Insights tab opens on Away only after a gap of <see cref="AwayDigest.ReturnGap"/>
+    /// and only when something happened in the period (D2); the Away sub-tab always draws it when the owner opens it. A failure is said on the page
+    /// when the owner asked, and is only logged on a return.
     /// </summary>
     private async Task RefreshAwayAsync(bool onReturn)
     {
@@ -74,7 +74,7 @@ public partial class SessionWindow
             {
                 // The transcripts are still being read: a return asks again once they are, and the button says it cannot show the page yet.
                 if (onReturn) _awayWaitsForHistory = true;
-                else _away.ShowProblem("The transcripts are still being read. Press Away again in a moment.");
+                else _away.ShowProblem("The transcripts are still being read. Open Insights again in a moment.");
                 return;
             }
 
@@ -89,8 +89,9 @@ public partial class SessionWindow
 
             if (onReturn)
             {
-                SetActive(TabFor(TabKind.Away, AwayKey, () => "Away"));
-                ShowOnly(_away);
+                // The digest is built here, so the page is not read again by the tab (refresh: false). The tab then closes on Got it.
+                OpenInsights(InsightsTab.Away, refresh: false);
+                _insightsForDigest = true;
             }
             _away.Show(digest);
         }

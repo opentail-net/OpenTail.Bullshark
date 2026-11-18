@@ -28,7 +28,6 @@ public partial class SessionWindow
 
     private void InitStorage()
     {
-        Pane.Children.Add(_storage);
         // The Archive button starts disabled, with its note, until the first listing has been read: the button is enabled by default, and the
         // first pass only sets it at its end (round 6 item 9). The click guard in ArchiveAsync stays as well.
         _storage.SetArchiveAvailable(ArchiveAllowed);
@@ -36,13 +35,6 @@ public partial class SessionWindow
         _storage.ProjectChosen += folder => _ = ShowProjectAsync(folder);
         _storage.ArchiveRequested += paths => _ = ArchiveAsync(paths);
         _storage.RestoreRequested += paths => _ = RestoreAsync(paths);
-    }
-
-    private void StorageButton_Click(object sender, RoutedEventArgs e)
-    {
-        SetActive(TabFor(TabKind.Storage, "storage", () => "Storage"));
-        ShowOnly(_storage);
-        _ = RefreshStorageAsync();
     }
 
     /// <summary>The project folder whose transcripts the middle list shows, so the list can be read again after a move (round 5 item 11).</summary>

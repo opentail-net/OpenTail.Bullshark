@@ -5,8 +5,8 @@ using OpenTail.Bullshark.Core.Supervisor;
 namespace OpenTail.Bullshark.App;
 
 /// <summary>
-/// The Limits page (A4), opened from the status bar next to Storage: the usage-limit hits and the usage per day of the last 30 days, read-only. The transcripts are
-/// read on a pool thread, and the page only draws what it is given.
+/// The Limits page (A4), the Usage sub-tab of Insights (2026-11-18): the usage-limit hits and the usage per day of the last 30 days, read-only. The
+/// transcripts are read on a pool thread, and the page only draws what it is given.
 /// </summary>
 public partial class SessionWindow
 {
@@ -14,15 +14,7 @@ public partial class SessionWindow
 
     private void InitLimits()
     {
-        Pane.Children.Add(_limits);
         _limits.RefreshRequested += () => _ = RefreshLimitsAsync();
-    }
-
-    private void LimitsButton_Click(object sender, RoutedEventArgs e)
-    {
-        SetActive(TabFor(TabKind.Limits, "limits", () => "Limits"));
-        ShowOnly(_limits);
-        _ = RefreshLimitsAsync();
     }
 
     /// <summary>Reads the limit hits and the usage report on a pool thread, then draws them. A read that fails is said on the page.</summary>

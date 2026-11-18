@@ -17,15 +17,7 @@ public partial class SessionWindow
 
     private void InitTimeline()
     {
-        Pane.Children.Add(_timeline);
         _timeline.RefreshRequested += () => _ = RefreshTimelineAsync();
-    }
-
-    private void TimelineButton_Click(object sender, RoutedEventArgs e)
-    {
-        SetActive(TabFor(TabKind.Timeline, "timeline", () => "Timeline"));
-        ShowOnly(_timeline);
-        _ = RefreshTimelineAsync();
     }
 
     /// <summary>Reads the runs and the events on a pool thread, then draws them. A log that cannot be read is shown as a line, not an error.</summary>

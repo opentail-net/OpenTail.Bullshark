@@ -13,7 +13,7 @@
 # Each run prints PASS or FAIL: the app exits 0 (it closes itself after the screenshot) and the PNG is written. The script exits 1 if
 # any check fails. The PNGs are for a person to look at; they are not committed.
 param(
-    [string]$Exe = (Join-Path (Split-Path -Parent $PSScriptRoot) 'src\OpenTail.Bullshark.App\bin\Debug\net10.0-windows\OpenTail.Bullshark.App.exe'),
+    [string]$Exe = (Join-Path (Split-Path -Parent $PSScriptRoot) 'src\OpenTail.Bullshark.App\bin\Debug\net10.0-windows10.0.19041.0\OpenTail.Bullshark.App.exe'),
     [string]$Out = (Join-Path $env:TEMP 'bullshark-newscreens')
 )
 $ErrorActionPreference = 'Stop'
@@ -220,6 +220,17 @@ $screens = @(
     @{ Name = 'storage-dark'; Theme = 'Dark'; Options = @('--open-tab', 'storage') },
     @{ Name = 'timeline-dark'; Theme = 'Dark'; Options = @('--open-tab', 'timeline') },
     @{ Name = 'timeline-light'; Theme = 'Light'; Options = @('--open-tab', 'timeline') },
+    # Insights and Settings (2026-11-18): the four sub-tabs of Insights, the three of Settings. The Storage light screen checks the theme of the
+    # Storage page (it had none). Each opens its own sub-tab; the status bar is in every screen.
+    @{ Name = 'insights-away-dark'; Theme = 'Dark'; Options = @('--open-tab', 'away') },
+    @{ Name = 'insights-usage-dark'; Theme = 'Dark'; Options = @('--open-tab', 'usage') },
+    @{ Name = 'insights-timeline-dark'; Theme = 'Dark'; Options = @('--open-tab', 'timeline') },
+    @{ Name = 'insights-storage-dark'; Theme = 'Dark'; Options = @('--open-tab', 'storage') },
+    @{ Name = 'insights-storage-light'; Theme = 'Light'; Options = @('--open-tab', 'storage') },
+    @{ Name = 'settings-general-dark'; Theme = 'Dark'; Options = @('--open-tab', 'settings') },
+    @{ Name = 'settings-general-light'; Theme = 'Light'; Options = @('--open-tab', 'settings') },
+    @{ Name = 'settings-naming-dark'; Theme = 'Dark'; Options = @('--open-tab', 'settings-naming') },
+    @{ Name = 'settings-claude-dark'; Theme = 'Dark'; Options = @('--open-tab', 'settings-claude') },
     @{ Name = 'transcript-dark'; Theme = 'Dark'; Options = @('--open-transcript', '5e4f3a21-0000-4000-8000-00000000c0d1') },
     # The effort panel open (--effort-open), in both themes: its contents are what the screens check (round 5 item 16).
     @{ Name = 'effort-dark'; Theme = 'Dark'; Options = @('--open-transcript', '5e4f3a21-0000-4000-8000-00000000c0d1', '--effort-open') },

@@ -80,7 +80,7 @@ public sealed class LimitsView : UserControl
         _usageBlock.Children.Add(_projectTable);
 
         var root = new StackPanel { Margin = new Thickness(12, 8, 12, 8) };
-        root.Children.Add(new TextBlock { Text = "Limits", FontSize = 17, FontWeight = FontWeights.SemiBold });
+        // No page title here: the Insights tab's sub-tab row names the page (2026-11-18).
         root.Children.Add(_note);
         root.Children.Add(_caption);
         root.Children.Add(refresh);

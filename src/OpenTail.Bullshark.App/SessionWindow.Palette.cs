@@ -96,10 +96,13 @@ public partial class SessionWindow
             items.Add(new PaletteItem(entry, () => GoToSession(sessionId, LiveTitle(record))));
         }
 
-        items.Add(PageItem("timeline", "Open Timeline", null, () => TimelineButton_Click(TimelineButton, new RoutedEventArgs())));
-        items.Add(PageItem("storage", "Open Storage", null, () => StorageButton_Click(StorageButton, new RoutedEventArgs())));
-        items.Add(PageItem("limits", "Open Limits", null, () => LimitsButton_Click(LimitsButton, new RoutedEventArgs())));
-        items.Add(PageItem("away", "Open Away", null, () => AwayButton_Click(AwayButton, new RoutedEventArgs())));
+        // The four pages are sub-tabs of Insights (2026-11-18): their entries open Insights on that sub-tab.
+        items.Add(PageItem("timeline", "Open Timeline", null, () => OpenInsights(InsightsTab.Timeline)));
+        items.Add(PageItem("storage", "Open Storage", null, () => OpenInsights(InsightsTab.Storage)));
+        items.Add(PageItem("limits", "Open Limits", null, () => OpenInsights(InsightsTab.Usage)));
+        items.Add(PageItem("away", "Open Away", null, () => OpenInsights(InsightsTab.Away)));
+        items.Add(PageItem("insights", "Open Insights", "the sub-tab shown last", () => OpenInsights(_insights.Current)));
+        items.Add(PageItem("settings", "Open Settings", null, () => OpenSettings(_settings.Current)));
         // The window has no Library page: its past sessions are listed under the rail's Archived filter, so the entry sets that filter.
         items.Add(PageItem("library", "Show archived sessions (Library)", "rail filter: Archived", () => ChooseFilter(RailFilter.Archived)));
         items.Add(PageItem("search", "Search what was said", null, SearchFromPalette));
@@ -240,25 +243,13 @@ public partial class SessionWindow
     /// Turns sound and flash for new waits on or off in ui.json, the same key the attention code reads each pass. The status line says what the
     /// file holds after the write, so a file that cannot be written does not show as changed.
     /// </summary>
-    private void ToggleNotify()
-    {
-        var on = AttentionList.NotificationsOn(UiFile.Read(_options.StatePath, NotifyKey));
-        UiFile.Set(_options.StatePath, NotifyKey, JsonValue.Create(!on)!);
-        var now = AttentionList.NotificationsOn(UiFile.Read(_options.StatePath, NotifyKey));
-        AppLog.Write($"sound and flash for new waits: {(now ? "on" : "off")} (from the command palette)");
-        SetStatus($"Sound and flash for new waits: {(now ? "on" : "off")}.");
-    }
+    private void ToggleNotify() =>
+        WriteFlag(NotifyKey, !AttentionList.NotificationsOn(UiFile.Read(_options.StatePath, NotifyKey)), "Sound and flash for new waits");
 
     /// <summary>
     /// Turns the toast for new waits on or off in ui.json, the key the announcement reads (toasts D3). Like the sound, it is a setting only:
     /// "notify": false still silences toasts too.
     /// </summary>
-    private void ToggleToasts()
-    {
-        var on = AttentionList.NotificationsOn(UiFile.Read(_options.StatePath, ToastKey));
-        UiFile.Set(_options.StatePath, ToastKey, JsonValue.Create(!on)!);
-        var now = AttentionList.NotificationsOn(UiFile.Read(_options.StatePath, ToastKey));
-        AppLog.Write($"toasts when the window is in the background: {(now ? "on" : "off")} (from the command palette)");
-        SetStatus($"Toasts when the window is in the background: {(now ? "on" : "off")}.");
-    }
+    private void ToggleToasts() =>
+        WriteFlag(ToastKey, !AttentionList.NotificationsOn(UiFile.Read(_options.StatePath, ToastKey)), "Toasts when the window is in the background");
 }

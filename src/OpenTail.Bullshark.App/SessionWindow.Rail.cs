@@ -274,6 +274,11 @@ public partial class SessionWindow
         _timeline.ApplyTheme(palette);
         _limits.ApplyTheme(palette);
         _away.ApplyTheme(palette);
+        _storage.ApplyTheme(palette);
+        _insights.ApplyTheme(palette);
+        _settings.ApplyTheme(palette);
+        // The window's own text colour follows the theme too: text with no colour of its own would otherwise stay the dark theme's light grey.
+        Foreground = RailPalette.Brush(palette.Text);
         FilterBox.Background = RailPalette.Brush(palette.Panel);
         FilterBox.BorderBrush = RailPalette.Brush(palette.Muted);
         UpdateFilterMark();
@@ -311,13 +316,8 @@ public partial class SessionWindow
     private void Splitter_DragCompleted(object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e) =>
         AppLog.Write($"splitter: drag completed, rail width {RailPanel.ActualWidth:0}");
 
-    private void ThemeMark_Click(object sender, MouseButtonEventArgs e)
-    {
-        _theme = _theme == RailTheme.Dark ? RailTheme.Light : RailTheme.Dark;
-        ThemeStore.Save(_options.StatePath, _theme);
-        ApplyTheme();
-        RefreshRail();
-    }
+    /// <summary>The rail's switch between the dark and the light theme. The Settings page's Theme choice does the same (SetTheme).</summary>
+    private void ThemeMark_Click(object sender, MouseButtonEventArgs e) => SetTheme(_theme == RailTheme.Dark ? RailTheme.Light : RailTheme.Dark);
 
     private void OnRailExpansionChanged(object sender, RoutedEventArgs e)
     {

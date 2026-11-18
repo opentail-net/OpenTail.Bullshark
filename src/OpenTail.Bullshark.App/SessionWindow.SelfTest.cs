@@ -32,6 +32,7 @@ public partial class SessionWindow
     /// <summary>
     /// Opens the screen that <c>--open-tab</c> names, with no click (round 4, item 5), for the screenshots. A changes request names a
     /// session by its run name. It does nothing when no record has that name, so the window opens as it would without the option.
+    /// The Insights and Settings screens (2026-11-18) open their sub-tab; storage and timeline open Insights on theirs, as before.
     /// </summary>
     private void OpenTestScreen()
     {
@@ -40,10 +41,26 @@ public partial class SessionWindow
         switch (request.Screen)
         {
             case TestScreen.Storage:
-                StorageButton_Click(this, new RoutedEventArgs());
+                OpenInsights(InsightsTab.Storage);
                 break;
             case TestScreen.Timeline:
-                TimelineButton_Click(this, new RoutedEventArgs());
+                OpenInsights(InsightsTab.Timeline);
+                break;
+            case TestScreen.Insights:
+            case TestScreen.Away:
+                OpenInsights(InsightsTab.Away);
+                break;
+            case TestScreen.Usage:
+                OpenInsights(InsightsTab.Usage);
+                break;
+            case TestScreen.Settings:
+                OpenSettings(SettingsTab.General);
+                break;
+            case TestScreen.SettingsNaming:
+                OpenSettings(SettingsTab.Naming);
+                break;
+            case TestScreen.SettingsClaude:
+                OpenSettings(SettingsTab.Claude);
                 break;
             case TestScreen.Setup:
                 OpenSetupTab(null);

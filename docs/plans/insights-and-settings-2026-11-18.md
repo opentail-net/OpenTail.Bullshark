@@ -36,26 +36,26 @@ icons and clear minimalism is better. Agreed structure (owner: "I like it").
 - Principle 3: nothing here sends anything to a session. Privacy: no new reads of transcripts.
 
 ## Steps (one coder; UI, so checked by build + screenshots)
-- [ ] 1. `Styles/Controls.xaml`: a `SwitchToggle` style for a `CheckBox`/`ToggleButton` (a rounded track and a knob, accent when on, themed, keyboard focus ring) and make `PillToggle`
+- [x] 1. `Styles/Controls.xaml`: a `SwitchToggle` style for a `CheckBox`/`ToggleButton` (a rounded track and a knob, accent when on, themed, keyboard focus ring) and make `PillToggle`
   final (selected = accent soft fill + accent border; text only). Test that both render in a throwaway window only if easy; otherwise they are checked on the pages.
-- [ ] 2. `PillTabs` (App, code or small UserControl): a row of `PillToggle` `RadioButton`/`ToggleButton`s from a list of headers, one selected, event `SelectionChanged(int)`, `Select(int)`,
+- [x] 2. `PillTabs` (App, code or small UserControl): a row of `PillToggle` `RadioButton`/`ToggleButton`s from a list of headers, one selected, event `SelectionChanged(int)`, `Select(int)`,
   themed. Keyboard: Left/Right moves, Enter/Space selects.
-- [ ] 3. `InsightsView` (UserControl): `PillTabs` on top and a content area that hosts the four existing view instances (move them from `Pane.Children` into the host; remove the
+- [x] 3. `InsightsView` (UserControl): `PillTabs` on top and a content area that hosts the four existing view instances (move them from `Pane.Children` into the host; remove the
   duplicated big page titles ("Storage", "Limits"...) inside the views, keep their notes and tables). `Show(sub)` selects the tab and raises a `SubTabShown` event so the window refreshes that page
   (call the existing `Refresh*Async`). Remembers the last sub-tab in memory.
-- [ ] 4. `SettingsView` (UserControl) with the three sub-tabs above. Controls read their state when the page is shown and when a toggle changes (re-read from ui.json after a write).
+- [x] 4. `SettingsView` (UserControl) with the three sub-tabs above. Controls read their state when the page is shown and when a toggle changes (re-read from ui.json after a write).
   Theme and zoom call the existing code paths (`ThemeMark_Click` logic factored into a method `SetTheme(RailTheme)`; `ZoomBy`/store). Escalation choice writes `escalateMinutes` (number of minutes; Off = 0).
   Instructions/Check setup buttons call the existing handlers' bodies (factor the dialog opening into methods; keep the handlers if anything else uses them).
-- [ ] 5. Window wiring: `TabKind.Insights` and `TabKind.Settings` replace `Away/Limits/Storage/Timeline` (keep the keys for any code that reads them, or migrate); `ActivateTab`, `ShowOnly`
+- [x] 5. Window wiring: `TabKind.Insights` and `TabKind.Settings` replace `Away/Limits/Storage/Timeline` (keep the keys for any code that reads them, or migrate); `ActivateTab`, `ShowOnly`
   (include the two hosts), `AwayButton_Click`/`LimitsButton_Click`/`StorageButton_Click`/`TimelineButton_Click` become `OpenInsights(sub)`; away-on-return and Got it as in Contracts;
   palette entries; `OpenTestScreen`. Delete the dead code (the old per-page tab kinds, their `ShowOnly` lines, unused click handlers) only after a grep shows no remaining use.
-- [ ] 6. `SessionWindow.xaml` status bar: remove the wrench, the cog and the zoom bar; the buttons `Away/Limits/Storage/Timeline` are replaced by `Insights` and `Settings` (GhostButton, text only);
+- [x] 6. `SessionWindow.xaml` status bar (zoom stays in the bar, see Open / decided): remove the wrench, the cog and the zoom bar; the buttons `Away/Limits/Storage/Timeline` are replaced by `Insights` and `Settings` (GhostButton, text only);
   `Go to…` and the conditional buttons lose their icons. Keep names/handlers other code uses (`GoToButton`, `RespawnButton`, `RetryButton`, `TrustButton`); fix anything that referenced the removed controls
   (`ZoomBar`, `ZoomSlider`, `ZoomPercentText`, `InstructionsLabel`, `SetupCheckLabel`) by moving that logic to the Settings page.
-- [ ] 7. Screens: extend `scripts/Test-NewScreens.ps1` with insights-away, insights-usage, insights-timeline, insights-storage (dark), settings-general (dark and light), settings-naming (dark),
+- [x] 7. Screens (25 of 25 written and viewed; the open items are under Open / decided): extend `scripts/Test-NewScreens.ps1` with insights-away, insights-usage, insights-timeline, insights-storage (dark), settings-general (dark and light), settings-naming (dark),
   settings-claude (dark); keep the existing screens working. Default `-Exe` of that script points at a stale folder: change it to the `net10.0-windows10.0.19041.0` build folder.
   Run it, view every new picture and fix what is wrong (clipped text, wrong colours in light, tabs not aligned, emoji where text was meant).
-- [ ] 8. Tests: Core has nothing new unless a pure helper appears (e.g. the escalation choices list <-> minutes mapping in Core with tests: Off=0, 5, 15, 30, 60, an unknown stored value shows
+- [x] 8. Tests: Core has nothing new unless a pure helper appears (e.g. the escalation choices list <-> minutes mapping in Core with tests: Off=0, 5, 15, 30, 60, an unknown stored value shows
   as "Custom (N min)" without being rewritten). Run the whole suite. README: update the line about the status bar/pages. `docs/plans/live-run-checklist.md`: Insights tabs, Settings switches write
   ui.json, Away opens on return into Insights, zoom keys still work with the slider gone from the bar, the three permanent buttons on a narrow window (1366 px).
 
@@ -68,3 +68,10 @@ zoom keys still handled, dead code removed only when unused, light theme screens
 - The rail marks (🔥🌡️❄️🚀, the wand) are kept: they carry meaning now (auto naming fires on 🔥 to ❄).
 - No "new Away" dot on the Insights button (not planned; Away still opens by itself on return when there is news).
 - Storage stays under Insights although it has archive actions (it is mostly "what takes space").
+- **Owner, 2026-11-18 (overrides step 6 and the General list of step 4):** zoom stays in the bottom-right corner of the status bar, as at HEAD. Settings has no zoom row. The wrench and the cog still leave the bar: Check setup… and Edit standing instructions… are on Settings > Claude.
+- Got it when the owner opened Insights by hand moves to the next sub-tab (assumption, the plan's wording). When a return opened Insights for the digest, Got it closes the tab, as before.
+- Theme and zoom keep their existing write path (no read-back). The three switches and the re-alert choice read the file back and show what it holds.
+- A custom re-alert value in ui.json shows as one more pill, "Custom (N min)", and is not rewritten (EscalationChoices, tested).
+- The old Limits and Away views never showed: ShowOnly did not toggle them. Hosting them in Insights fixes it.
+- Timeline's run and session choosers use a themed drop-down style (Styles/Controls.xaml, UiComboBox). Storage has no drop-downs.
+- Open: a white band covers the bottom of some screenshots, cutting the second status row (insights-away-dark once, rail-tag-dark once, storage-dark once). Not specific to Insights; it does not reproduce on demand and was not investigated further.

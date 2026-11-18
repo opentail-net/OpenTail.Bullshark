@@ -150,6 +150,91 @@
         </Setter>
     </Style>
 
+    <!-- One item of a drop-down list: a quiet row, with the accent tint when it is under the pointer or chosen. -->
+    <Style x:Key="UiComboItem" TargetType="ComboBoxItem">
+        <Setter Property="Foreground" Value="{DynamicResource UiText}" />
+        <Setter Property="Padding" Value="8,4,8,4" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ComboBoxItem">
+                    <Border x:Name="Frame" Background="Transparent" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter TextElement.Foreground="{TemplateBinding Foreground}" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsHighlighted" Value="True">
+                            <Setter TargetName="Frame" Property="Background" Value="{DynamicResource UiAccentSoft}" />
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Frame" Property="Background" Value="{DynamicResource UiAccentSoft}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- A drop-down choice (the Timeline's run and session): the same face, border and radius as the buttons, with a small chevron. The system's
+         template draws its own colours, which stayed light on the dark theme, so the template is replaced here. The list is the palette's menu colour. -->
+    <Style x:Key="UiComboBox" TargetType="ComboBox">
+        <Setter Property="Background" Value="{DynamicResource UiFace}" />
+        <Setter Property="Foreground" Value="{DynamicResource UiText}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource UiBorder}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="10,3,8,3" />
+        <Setter Property="MinHeight" Value="26" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="ItemContainerStyle" Value="{StaticResource UiComboItem}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ComboBox">
+                    <Grid x:Name="Root">
+                        <ToggleButton x:Name="Toggle" Focusable="False" ClickMode="Press"
+                                      Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                      BorderThickness="{TemplateBinding BorderThickness}"
+                                      IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                            <ToggleButton.Template>
+                                <ControlTemplate TargetType="ToggleButton">
+                                    <Border x:Name="Frame" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="8">
+                                        <Path Data="M 0 0 L 4 4 L 8 0" Stroke="{DynamicResource UiMuted}" StrokeThickness="1.5"
+                                              HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,10,0" />
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource UiBorderHover}" />
+                                        </Trigger>
+                                        <Trigger Property="IsChecked" Value="True">
+                                            <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource UiAccent}" />
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </ToggleButton.Template>
+                        </ToggleButton>
+                        <ContentPresenter IsHitTestVisible="False" Margin="{TemplateBinding Padding}" VerticalAlignment="Center"
+                                          HorizontalAlignment="Left" Content="{TemplateBinding SelectionBoxItem}"
+                                          ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                          TextElement.Foreground="{TemplateBinding Foreground}" />
+                        <Popup x:Name="PART_Popup" IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Bottom" AllowsTransparency="True"
+                               Focusable="False" PopupAnimation="Fade" MinWidth="{Binding ActualWidth, ElementName=Root}">
+                            <Border Margin="0,2,0,0" Padding="3" MaxHeight="320" Background="{DynamicResource UiMenuBg}"
+                                    BorderBrush="{DynamicResource UiBorder}" BorderThickness="1" CornerRadius="8">
+                                <ScrollViewer SnapsToDevicePixels="True" VerticalScrollBarVisibility="Auto">
+                                    <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Contained" />
+                                </ScrollViewer>
+                            </Border>
+                        </Popup>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.45" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- A call-to-action in the accent colour, for the main safe action of a page. -->
     <Style x:Key="AccentButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
         <Setter Property="Background" Value="{DynamicResource UiAccent}" />
@@ -163,30 +248,85 @@
         </Style.Triggers>
     </Style>
 
-    <!-- A segment of a row of choices (a filter or a toggle): a pill that is filled in the accent tint when it is checked. -->
+    <!-- A segment of a row of choices (the sub-tabs of Insights and Settings, a Settings choice): text only, no border until it is chosen.
+         The chosen one is filled in the accent tint with an accent border; the pointer gives the quiet hover tint; keyboard focus draws the ring. -->
     <Style x:Key="PillToggle" TargetType="ToggleButton">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="Foreground" Value="{DynamicResource UiMuted}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource UiBorder}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Padding" Value="12,4" />
+        <Setter Property="FontSize" Value="13" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="FocusVisualStyle" Value="{x:Null}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ToggleButton">
-                    <Border x:Name="Frame" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="14" Padding="{TemplateBinding Padding}">
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Border>
+                    <Grid>
+                        <Border x:Name="Ring" CornerRadius="15" BorderThickness="2" BorderBrush="Transparent" Margin="-2" />
+                        <Border x:Name="Frame" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="14" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              TextElement.Foreground="{TemplateBinding Foreground}" />
+                        </Border>
+                    </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Frame" Property="Background" Value="{DynamicResource UiGhostHover}" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Ring" Property="BorderBrush" Value="{DynamicResource UiAccent}" />
                         </Trigger>
                         <Trigger Property="IsChecked" Value="True">
                             <Setter TargetName="Frame" Property="Background" Value="{DynamicResource UiAccentSoft}" />
                             <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource UiAccent}" />
                             <Setter Property="Foreground" Value="{DynamicResource UiText}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.45" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- An on-or-off setting: a rounded track with a knob. The track is the accent when it is on; the knob moves to the right. The label is the
+         check box's content, and keyboard focus draws the accent ring round the track. -->
+    <Style x:Key="SwitchToggle" TargetType="CheckBox">
+        <Setter Property="Foreground" Value="{DynamicResource UiText}" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="CheckBox">
+                    <StackPanel Orientation="Horizontal" Background="Transparent">
+                        <Grid Width="38" Height="22" VerticalAlignment="Center">
+                            <Border x:Name="Ring" CornerRadius="13" BorderThickness="2" BorderBrush="Transparent" Margin="-3" />
+                            <Border x:Name="Track" CornerRadius="11" Background="{DynamicResource UiFace}"
+                                    BorderBrush="{DynamicResource UiBorder}" BorderThickness="1" />
+                            <Ellipse x:Name="Knob" Width="14" Height="14" Fill="{DynamicResource UiMuted}"
+                                     HorizontalAlignment="Left" Margin="3,0,0,0" />
+                        </Grid>
+                        <ContentPresenter Margin="10,0,0,0" VerticalAlignment="Center" RecognizesAccessKey="True" />
+                    </StackPanel>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource UiBorderHover}" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Ring" Property="BorderBrush" Value="{DynamicResource UiAccent}" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Track" Property="Background" Value="{DynamicResource UiAccent}" />
+                            <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource UiAccent}" />
+                            <Setter TargetName="Knob" Property="Fill" Value="{DynamicResource UiAccentText}" />
+                            <Setter TargetName="Knob" Property="HorizontalAlignment" Value="Right" />
+                            <Setter TargetName="Knob" Property="Margin" Value="0,0,3,0" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.45" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>

@@ -107,6 +107,8 @@ public partial class SessionWindow : Window
     {
         _options = options;
         InitializeComponent();
+        // The Insights page hosts the four views that were tabs of their own (2026-11-18). It is made before InitRail, which draws the theme into it.
+        _insights = new InsightsView(_away, _limits, _timeline, _storage) { Visibility = Visibility.Hidden };
         InitRail();
         _store = new StateStore(options.StatePath, AppLog.Write);
         _runStore = new RunStore(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(options.StatePath))!, "runs.json"));
@@ -137,6 +139,8 @@ public partial class SessionWindow : Window
         InitTimeline();
         InitLimits();
         InitAway();
+        InitInsights();
+        InitSettings();
         InitToasts();
         InitTabDrag();
         InitZoom();
@@ -426,8 +430,9 @@ public partial class SessionWindow : Window
         _setup.Visibility = ReferenceEquals(_setup, element) ? Visibility.Visible : Visibility.Hidden;
         _search.Visibility = ReferenceEquals(_search, element) ? Visibility.Visible : Visibility.Hidden;
         _changes.Visibility = ReferenceEquals(_changes, element) ? Visibility.Visible : Visibility.Hidden;
-        _storage.Visibility = ReferenceEquals(_storage, element) ? Visibility.Visible : Visibility.Hidden;
-        _timeline.Visibility = ReferenceEquals(_timeline, element) ? Visibility.Visible : Visibility.Hidden;
+        // The Insights and Settings pages. The four views inside Insights are shown by it (InsightsView.Show), not here.
+        _insights.Visibility = ReferenceEquals(_insights, element) ? Visibility.Visible : Visibility.Hidden;
+        _settings.Visibility = ReferenceEquals(_settings, element) ? Visibility.Visible : Visibility.Hidden;
 
         _shown = element as ExtendedTerminalControl;
         if (_shown is not null)

@@ -55,7 +55,7 @@ public sealed class AwayView : UserControl
         actions.Children.Add(_copy);
 
         var root = new StackPanel { Margin = new Thickness(12, 8, 12, 8) };
-        root.Children.Add(new TextBlock { Text = "While you were away", FontSize = 17, FontWeight = FontWeights.SemiBold });
+        // No page title here: the Insights tab's sub-tab row names the page (2026-11-18).
         root.Children.Add(_caption);
         root.Children.Add(actions);
         root.Children.Add(_copyStatus);
