@@ -59,7 +59,7 @@ public sealed class LimitsView : UserControl
 
     public LimitsView()
     {
-        var refresh = new Button { Content = "Refresh", Padding = new Thickness(10, 2, 10, 2), HorizontalAlignment = HorizontalAlignment.Left };
+        var refresh = new Button { Content = UiIcon.Label(UiIcon.Refresh, "Refresh"), Padding = new Thickness(12, 4, 12, 4), HorizontalAlignment = HorizontalAlignment.Left };
         refresh.Click += (_, _) => RefreshRequested?.Invoke();
 
         _tableBlock.Children.Add(new TextBlock { Text = "Hits, newest first", FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 8, 0, 4) });

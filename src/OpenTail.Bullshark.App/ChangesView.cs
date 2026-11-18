@@ -58,8 +58,8 @@ public sealed class ChangesView : UserControl
     private readonly TextBlock _reviewLabel = new() { Text = "What should be fixed?", FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
     private readonly Button _copyReview = new()
     {
-        Content = "Copy review prompt",
-        Padding = new Thickness(10, 2, 10, 2),
+        Content = UiIcon.Label(UiIcon.Copy, "Copy review prompt"),
+        Padding = new Thickness(12, 4, 12, 4),
         Margin = new Thickness(8, 0, 0, 0),
         IsEnabled = false,
     };

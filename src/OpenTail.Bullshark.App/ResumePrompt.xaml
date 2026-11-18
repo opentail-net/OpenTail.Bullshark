@@ -6,77 +6,13 @@
         WindowStartupLocation="CenterOwner"
         Background="{DynamicResource PromptBg}" Foreground="{DynamicResource PromptText}" FontFamily="Segoe UI">
     <Window.Resources>
-        <!-- The buttons and the radio buttons take the palette: the system templates would stay light in dark mode. -->
-        <Style TargetType="Button">
-            <Setter Property="Background" Value="{DynamicResource PromptPanel}" />
-            <Setter Property="Foreground" Value="{DynamicResource PromptText}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource PromptBorder}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Padding" Value="14,6" />
+        <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Padding" Value="14,7" />
             <Setter Property="Margin" Value="0,0,8,0" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Frame" Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="3" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Frame" Property="Background" Value="{DynamicResource PromptSelection}" />
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Frame" Property="Background" Value="{DynamicResource PromptSelection}" />
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Opacity" Value="0.5" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
         </Style>
-
-        <!-- Resume is the button that starts a session, so it is the same green as Start on the setup page (owner, 2026-11-16).
-             The transcript's "Resume…" only opens this prompt, so it stays plain. -->
-        <Style x:Key="GoButton" TargetType="Button">
-            <Setter Property="Background" Value="{DynamicResource PromptGo}" />
-            <Setter Property="Foreground" Value="{DynamicResource PromptGoText}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource PromptGo}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Padding" Value="18,6" />
+        <Style x:Key="GoButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Padding" Value="20,7" />
             <Setter Property="Margin" Value="0,0,8,0" />
-            <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Frame" Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="3" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Frame" Property="Background" Value="{DynamicResource PromptGoHover}" />
-                                <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource PromptGoHover}" />
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Frame" Property="Background" Value="{DynamicResource PromptGoPressed}" />
-                                <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource PromptGoPressed}" />
-                            </Trigger>
-                            <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource PromptText}" />
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Opacity" Value="0.5" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
         </Style>
 
         <Style TargetType="TextBox">

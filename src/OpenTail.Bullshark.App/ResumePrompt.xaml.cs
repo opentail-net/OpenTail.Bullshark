@@ -39,6 +39,7 @@ public partial class ResumePrompt : Window
     public ResumePrompt(string heading, string facts, long contextTokens, RailPalette palette, string defaultModel, string defaultEffort)
     {
         InitializeComponent();
+        UiTheme.Apply(palette);
         Resources["PromptBg"] = RailPalette.Brush(palette.Background);
         Resources["PromptPanel"] = RailPalette.Brush(palette.Panel);
         Resources["PromptText"] = RailPalette.Brush(palette.Text);

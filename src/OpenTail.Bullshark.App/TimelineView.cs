@@ -41,7 +41,7 @@ public sealed class TimelineView : UserControl
 
     public TimelineView()
     {
-        var refresh = new Button { Content = "Refresh", Padding = new Thickness(10, 2, 10, 2) };
+        var refresh = new Button { Content = UiIcon.Label(UiIcon.Refresh, "Refresh"), Padding = new Thickness(12, 4, 12, 4) };
         refresh.Click += (_, _) => RefreshRequested?.Invoke();
 
         var choosers = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 6) };

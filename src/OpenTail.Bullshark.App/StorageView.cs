@@ -39,12 +39,12 @@ public sealed class StorageView : UserControl
 
     public StorageView()
     {
-        var refresh = new Button { Content = "Refresh", Padding = new Thickness(10, 2, 10, 2), HorizontalAlignment = HorizontalAlignment.Left };
+        var refresh = new Button { Content = UiIcon.Label(UiIcon.Refresh, "Refresh"), Padding = new Thickness(12, 4, 12, 4), HorizontalAlignment = HorizontalAlignment.Left };
         refresh.Click += (_, _) => RefreshRequested?.Invoke();
 
-        _archive = new Button { Content = "Archive checked…", Padding = new Thickness(10, 2, 10, 2), Margin = new Thickness(8, 0, 0, 0) };
+        _archive = new Button { Content = UiIcon.Label(UiIcon.Archive, "Archive checked…"), Padding = new Thickness(12, 4, 12, 4), Margin = new Thickness(8, 0, 0, 0) };
         _archive.Click += (_, _) => ArchiveRequested?.Invoke(Checked(_transcripts));
-        var restore = new Button { Content = "Restore checked", Padding = new Thickness(10, 2, 10, 2), Margin = new Thickness(8, 0, 0, 0) };
+        var restore = new Button { Content = UiIcon.Label(UiIcon.Restore, "Restore checked"), Padding = new Thickness(12, 4, 12, 4), Margin = new Thickness(8, 0, 0, 0) };
         restore.Click += (_, _) => RestoreRequested?.Invoke(Checked(_archived));
 
         var toolbar = new StackPanel { Orientation = Orientation.Horizontal };

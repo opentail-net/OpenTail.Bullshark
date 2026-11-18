@@ -113,6 +113,7 @@ public partial class SetupView : UserControl
     /// </summary>
     public void ApplyTheme(RailPalette palette)
     {
+        UiTheme.Apply(palette);
         var resources = Resources;
         resources["SetupBg"] = RailPalette.Brush(palette.Background);
         resources["SetupPanel"] = RailPalette.Brush(palette.Panel);

@@ -116,25 +116,62 @@
                     </Border.Style>
                     <TextBlock Text="🔧" FontSize="14" Foreground="{DynamicResource BarText}" />
                 </Border>
-                <Button x:Name="TrustButton" DockPanel.Dock="Right" Visibility="Collapsed" Padding="10,2" Margin="10,0,0,0"
-                        Content="Restart trust step" Click="TrustButton_Click" />
-                <Button x:Name="RetryButton" DockPanel.Dock="Right" Visibility="Collapsed" Padding="10,2" Margin="10,0,0,0"
-                        Content="Retry failed starts" Click="RetryButton_Click"
-                        ToolTip="Tries the sessions whose start failed. Nothing is retried on its own." />
-                <Button x:Name="RespawnButton" DockPanel.Dock="Right" Visibility="Collapsed" Padding="10,2" Margin="10,0,0,0"
-                        Content="Respawn all…" Click="RespawnButton_Click"
-                        ToolTip="The background daemon runs another claude version. Respawn all restarts the background sessions after you confirm." />
-                <Button x:Name="GoToButton" DockPanel.Dock="Right" Padding="10,2" Margin="10,0,0,0" Content="Go to…"
+                <Button x:Name="TrustButton" Style="{StaticResource GhostButton}" DockPanel.Dock="Right" Visibility="Collapsed" Margin="6,0,0,0" Click="TrustButton_Click" >
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE72E;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" Margin="0,1,7,0" VerticalAlignment="Center" />
+                        <TextBlock Text="Restart trust step" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="RetryButton" Style="{StaticResource GhostButton}" DockPanel.Dock="Right" Visibility="Collapsed" Margin="6,0,0,0" Click="RetryButton_Click"
+                        ToolTip="Tries the sessions whose start failed. Nothing is retried on its own." >
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE72C;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" Margin="0,1,7,0" VerticalAlignment="Center" />
+                        <TextBlock Text="Retry failed starts" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="RespawnButton" Style="{StaticResource GhostButton}" DockPanel.Dock="Right" Visibility="Collapsed" Margin="6,0,0,0" Click="RespawnButton_Click"
+                        ToolTip="The background daemon runs another claude version. Respawn all restarts the background sessions after you confirm." >
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE777;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" Margin="0,1,7,0" VerticalAlignment="Center" />
+                        <TextBlock Text="Respawn all…" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="GoToButton" Style="{StaticResource GhostButton}" DockPanel.Dock="Right" Margin="6,0,0,0"
                         Click="GoToButton_Click"
-                        ToolTip="Jump to a session or a page, or run a safe action. Ctrl+Shift+P does the same." />
-                <Button x:Name="TimelineButton" DockPanel.Dock="Right" Padding="10,2" Margin="10,0,0,0" Content="Timeline"
-                        Click="TimelineButton_Click" ToolTip="What the supervisor did, run by run: starts, resumes, alerts and state changes." />
-                <Button x:Name="StorageButton" DockPanel.Dock="Right" Padding="10,2" Margin="10,0,0,0" Content="Storage"
-                        Click="StorageButton_Click" ToolTip="How much the transcripts take up, and the archive of old ones." />
-                <Button x:Name="LimitsButton" DockPanel.Dock="Right" Padding="10,2" Margin="10,0,0,0" Content="Limits"
-                        Click="LimitsButton_Click" ToolTip="The usage limits Claude Code reached on this computer in the last 30 days, by day, with the tokens used before each." />
-                <Button x:Name="AwayButton" DockPanel.Dock="Right" Padding="10,2" Margin="10,0,0,0" Content="Away"
-                        Click="AwayButton_Click" ToolTip="What happened while you were away: each session's activity, the supervisor's events and the limits hit. Reads only; nothing is sent to a session." />
+                        ToolTip="Jump to a session or a page, or run a safe action. Ctrl+Shift+P does the same." >
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE721;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" Margin="0,1,7,0" VerticalAlignment="Center" />
+                        <TextBlock Text="Go to…" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="TimelineButton" Style="{StaticResource GhostButton}" DockPanel.Dock="Right" Margin="6,0,0,0"
+                        Click="TimelineButton_Click" ToolTip="What the supervisor did, run by run: starts, resumes, alerts and state changes." >
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE81C;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" Margin="0,1,7,0" VerticalAlignment="Center" />
+                        <TextBlock Text="Timeline" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="StorageButton" Style="{StaticResource GhostButton}" DockPanel.Dock="Right" Margin="6,0,0,0"
+                        Click="StorageButton_Click" ToolTip="How much the transcripts take up, and the archive of old ones." >
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xEDA2;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" Margin="0,1,7,0" VerticalAlignment="Center" />
+                        <TextBlock Text="Storage" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="LimitsButton" Style="{StaticResource GhostButton}" DockPanel.Dock="Right" Margin="6,0,0,0"
+                        Click="LimitsButton_Click" ToolTip="The usage limits Claude Code reached on this computer in the last 30 days, by day, with the tokens used before each." >
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE9D9;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" Margin="0,1,7,0" VerticalAlignment="Center" />
+                        <TextBlock Text="Limits" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="AwayButton" Style="{StaticResource GhostButton}" DockPanel.Dock="Right" Margin="6,0,0,0"
+                        Click="AwayButton_Click" ToolTip="What happened while you were away: each session's activity, the supervisor's events and the limits hit. Reads only; nothing is sent to a session." >
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE708;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" Margin="0,1,7,0" VerticalAlignment="Center" />
+                        <TextBlock Text="Away" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
             </DockPanel>
             <!-- Second row: the usage limit in force (A2), then the status text. They sit here, not in the row of controls, so that the
                  controls keep their width on a narrow window. -->

@@ -156,6 +156,7 @@ public partial class SessionWindow
     private void ApplyTheme()
     {
         var palette = Palette;
+        UiTheme.Apply(palette);
         RailPanel.Background = RailPalette.Brush(palette.Background);
         SessionsTitle.Foreground = RailPalette.Brush(palette.Text);
         ThemeMark.Text = _theme == RailTheme.Dark ? "☀ light" : "☾ dark";

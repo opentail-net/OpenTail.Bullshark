@@ -33,8 +33,8 @@ public sealed class AwayView : UserControl
     /// <summary>"Copy as Markdown" (batch B2): copies the digest on the page. It does not dismiss the page. Off until a digest is shown.</summary>
     private readonly Button _copy = new()
     {
-        Content = "Copy as Markdown",
-        Padding = new Thickness(10, 2, 10, 2),
+        Content = UiIcon.Label(UiIcon.Copy, "Copy as Markdown"),
+        Padding = new Thickness(12, 4, 12, 4),
         Margin = new Thickness(8, 0, 0, 0),
         IsEnabled = false,
     };
@@ -46,7 +46,7 @@ public sealed class AwayView : UserControl
 
     public AwayView()
     {
-        var gotIt = new Button { Content = "Got it", Padding = new Thickness(10, 2, 10, 2) };
+        var gotIt = new Button { Content = UiIcon.Label(UiIcon.Check, "Got it"), Padding = new Thickness(12, 4, 12, 4) };
         gotIt.Click += (_, _) => DismissRequested?.Invoke();
         _copy.Click += (_, _) => CopyMarkdown();
 

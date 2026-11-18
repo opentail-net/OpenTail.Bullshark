@@ -25,78 +25,7 @@
             <Setter Property="SelectionBrush" Value="{DynamicResource SetupSelection}" />
         </Style>
 
-        <Style TargetType="Button">
-            <Setter Property="Background" Value="{DynamicResource SetupPanel}" />
-            <Setter Property="Foreground" Value="{DynamicResource SetupText}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource SetupBorder}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Padding" Value="12,5" />
-            <Setter Property="Cursor" Value="Hand" />
-            <!-- The button draws itself. The default Windows template paints its own light blue on hover and ignores the
-                 Background set by a trigger, which is wrong in both themes. -->
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Frame" Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="3" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Frame" Property="Background" Value="{DynamicResource SetupSelection}" />
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Frame" Property="Background" Value="{DynamicResource SetupSelection}" />
-                            </Trigger>
-                            <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource SetupText}" />
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Opacity" Value="0.5" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
 
-        <!-- Start is the one button that launches something, so it is green (owner, 2026-11-16). The greens are set per theme
-             in ApplyTheme: the text is white on both, and hover and press are shades of the same green. -->
-        <Style x:Key="GoButton" TargetType="Button">
-            <Setter Property="Background" Value="{DynamicResource SetupGo}" />
-            <Setter Property="Foreground" Value="{DynamicResource SetupGoText}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource SetupGo}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Frame" Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="3" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Frame" Property="Background" Value="{DynamicResource SetupGoHover}" />
-                                <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource SetupGoHover}" />
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Frame" Property="Background" Value="{DynamicResource SetupGoPressed}" />
-                                <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource SetupGoPressed}" />
-                            </Trigger>
-                            <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource SetupText}" />
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Opacity" Value="0.5" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
 
         <!-- A combo box template drawn with the setup's own brushes. The default Windows 11 template takes its colours from the
              system theme, so it stays light in dark mode. The whole box opens the list when clicked, not only the arrow. An
@@ -250,10 +179,15 @@
         <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource SetupBorder}" BorderThickness="0,1,0,0"
                 Background="{DynamicResource SetupPanel}" Padding="20,10">
             <DockPanel>
-                <Button x:Name="StartButton" DockPanel.Dock="Left" Content="Start" Padding="22,6" FontWeight="SemiBold"
+                <Button x:Name="StartButton" DockPanel.Dock="Left" Padding="22,7" FontWeight="SemiBold"
                         Style="{StaticResource GoButton}" VerticalAlignment="Center"
                         ToolTip="Checks the run and saves the pattern and model settings for the next launch. Save briefs separately in Preview. Nothing starts until you press Start; the sessions then start on the next pass, within about 15 seconds. A running session keeps the brief it started with."
-                        Click="Start_Click" />
+                        Click="Start_Click">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE768;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" Margin="0,1,8,0" VerticalAlignment="Center" />
+                        <TextBlock Text="Start" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
                 <StackPanel DockPanel.Dock="Right" VerticalAlignment="Center" Margin="14,0,0,0">
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                         <TextBlock Text="Limit: tokens" VerticalAlignment="Center" Foreground="{DynamicResource SetupMuted}" Margin="0,0,6,0" />

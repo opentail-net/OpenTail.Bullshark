@@ -19,6 +19,7 @@ public partial class ClosePrompt : Window
     public ClosePrompt(string sessionName, RailPalette palette)
     {
         InitializeComponent();
+        UiTheme.Apply(palette);
         Resources["PromptBg"] = RailPalette.Brush(palette.Background);
         Resources["PromptPanel"] = RailPalette.Brush(palette.Panel);
         Resources["PromptText"] = RailPalette.Brush(palette.Text);

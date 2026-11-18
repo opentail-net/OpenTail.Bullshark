@@ -35,6 +35,26 @@ public sealed record RailPalette(string Panel, string Background, string Text, s
 
     public string GoText => "#FFFFFF";
 
+    // The look of buttons and menus (Styles/Controls.xaml, 2026-11-18). A raised face one step off the panel, a brighter border on hover,
+    // and one accent colour for focus rings and the checked state.
+    public string Face => IsLight ? "#FFFFFF" : "#1C2027";
+
+    public string FaceHover => IsLight ? "#EAF0FA" : "#262C36";
+
+    public string FacePressed => IsLight ? "#DCE4F1" : "#15181D";
+
+    public string BorderHover => IsLight ? "#9FB0C8" : "#4A5566";
+
+    public string Accent => IsLight ? "#2563EB" : "#5B9DF5";
+
+    public string AccentText => IsLight ? "#FFFFFF" : "#08111F";
+
+    public string GhostHover => IsLight ? "#1F000000" : "#33FFFFFF";
+
+    public string GhostPressed => IsLight ? "#33000000" : "#22FFFFFF";
+
+    public string MenuBg => IsLight ? "#FFFFFF" : "#171A20";
+
     /// <summary>
     /// The eight colours a session may have (session library, D-L11): a name, a shade for the dark theme and one for the light.
     /// None of them is green, amber or grey: those are the tab's state dots (working, blocked, other).
@@ -107,5 +127,63 @@ public static class ThemeStore
         {
             AppLog.Write($"rail theme not saved: {ex.Message}");
         }
+    }
+}
+
+/// <summary>
+/// Puts the palette into the application's resources, for the shared button and menu styles (Styles/Controls.xaml). Called whenever a window
+/// applies its theme, so one call restyles every button in every window. Replacing a brush updates all controls that use it.
+/// </summary>
+public static class UiTheme
+{
+    public static void Apply(RailPalette palette)
+    {
+        var resources = System.Windows.Application.Current?.Resources;
+        if (resources is null) return;
+        resources["UiText"] = RailPalette.Brush(palette.Text);
+        resources["UiMuted"] = RailPalette.Brush(palette.Muted);
+        resources["UiFace"] = RailPalette.Brush(palette.Face);
+        resources["UiFaceHover"] = RailPalette.Brush(palette.FaceHover);
+        resources["UiFacePressed"] = RailPalette.Brush(palette.FacePressed);
+        resources["UiBorder"] = RailPalette.Brush(palette.Border);
+        resources["UiBorderHover"] = RailPalette.Brush(palette.BorderHover);
+        resources["UiAccent"] = RailPalette.Brush(palette.Accent);
+        resources["UiAccentSoft"] = RailPalette.Brush(palette.Selection);
+        resources["UiAccentText"] = RailPalette.Brush(palette.AccentText);
+        resources["UiGhostHover"] = RailPalette.Brush(palette.GhostHover);
+        resources["UiGhostPressed"] = RailPalette.Brush(palette.GhostPressed);
+        resources["UiGo"] = RailPalette.Brush(palette.Go);
+        resources["UiGoHover"] = RailPalette.Brush(palette.GoHover);
+        resources["UiGoPressed"] = RailPalette.Brush(palette.GoPressed);
+        resources["UiGoText"] = RailPalette.Brush(palette.GoText);
+        resources["UiMenuBg"] = RailPalette.Brush(palette.MenuBg);
+    }
+}
+
+/// <summary>A button's content with a small icon before the text (Segoe Fluent Icons, falling back to Segoe MDL2 Assets). The icon is a hint, not the label.</summary>
+public static class UiIcon
+{
+    public const string Refresh = "";
+    public const string Copy = "";
+    public const string Check = "";
+    public const string Play = "";
+    public const string Folder = "";
+    public const string Archive = "";
+    public const string Restore = "";
+    public const string Save = "";
+
+    public static System.Windows.UIElement Label(string glyph, string text)
+    {
+        var row = new System.Windows.Controls.StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal };
+        row.Children.Add(new System.Windows.Controls.TextBlock
+        {
+            Text = glyph,
+            FontFamily = new System.Windows.Media.FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"),
+            FontSize = 13,
+            Margin = new System.Windows.Thickness(0, 1, 7, 0),
+            VerticalAlignment = System.Windows.VerticalAlignment.Center,
+        });
+        row.Children.Add(new System.Windows.Controls.TextBlock { Text = text, VerticalAlignment = System.Windows.VerticalAlignment.Center });
+        return row;
     }
 }

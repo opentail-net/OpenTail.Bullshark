@@ -43,7 +43,7 @@ public sealed class SetupCheckDialog : Window
             HorizontalAlignment = HorizontalAlignment.Right,
             Margin = new Thickness(0, 12, 0, 0),
         };
-        var again = new Button { Content = "Check again", Padding = new Thickness(12, 4, 12, 4), Margin = new Thickness(0, 0, 8, 0) };
+        var again = new Button { Content = UiIcon.Label(UiIcon.Refresh, "Check again"), Padding = new Thickness(12, 4, 12, 4), Margin = new Thickness(0, 0, 8, 0) };
         again.Click += (_, _) => Check();
         var close = new Button { Content = "Close", Padding = new Thickness(12, 4, 12, 4), IsDefault = true, IsCancel = true };
         close.Click += (_, _) => Close();
