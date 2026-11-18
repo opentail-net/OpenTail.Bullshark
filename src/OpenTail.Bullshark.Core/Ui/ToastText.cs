@@ -26,14 +26,18 @@ public static class ToastText
     /// due (<paramref name="due"/>), in that order. The body names the first session and its reason, and says "and N more" for the other sessions
     /// (each session counted once, by name). The title is "Needs you" when a session is new, and "Still waiting" for re-alerts only.
     /// Returns null when there is nothing to show, so no toast is made.
+    /// <paramref name="allow"/> (toasts by event) keeps only the items whose reason it allows; without it every reason is allowed. An item the
+    /// filter drops is not counted in the body or the title, so a batch the owner switched off in full gives null.
     /// </summary>
-    public static ToastMessage? Build(IReadOnlyList<AttentionItem> gained, IReadOnlyList<ReAlert> due)
+    public static ToastMessage? Build(IReadOnlyList<AttentionItem> gained, IReadOnlyList<ReAlert> due, Func<AttentionReason, bool>? allow = null)
     {
         ArgumentNullException.ThrowIfNull(gained);
         ArgumentNullException.ThrowIfNull(due);
+        var permitted = allow ?? (_ => true);
 
-        var sessions = gained.Select(item => (item.Name, item.Reason))
-            .Concat(due.Select(alert => (alert.Item.Name, alert.Item.Reason)))
+        var newWaits = gained.Where(item => permitted(item.Reason)).ToList();
+        var sessions = newWaits.Select(item => (item.Name, item.Reason))
+            .Concat(due.Where(alert => permitted(alert.Item.Reason)).Select(alert => (alert.Item.Name, alert.Item.Reason)))
             .ToList();
         if (sessions.Count == 0) return null;
 
@@ -42,7 +46,40 @@ public static class ToastText
         var body = $"{ShortName(first.Name)} · {ReasonText(first.Reason)}";
         if (count > 1) body += $", and {count - 1} more";
 
-        return new ToastMessage(gained.Count > 0 ? NeedsYouTitle : StillWaitingTitle, body);
+        return new ToastMessage(newWaits.Count > 0 ? NeedsYouTitle : StillWaitingTitle, body);
+    }
+
+    /// <summary>The title of the silent toast for coders that are ready for review (toasts by event).</summary>
+    public const string ReadyTitle = "Ready for review";
+
+    /// <summary>The title of the silent toast for a usage limit that reset (toasts by event).</summary>
+    public const string LimitResetTitle = "Usage limit reset";
+
+    /// <summary>
+    /// The toast for coders that newly joined the Ready-for-review list: the first name, and "and N more" for the others (each name counted once).
+    /// The names are the session names only, never a path or a detail. Null when there are none.
+    /// </summary>
+    public static ToastMessage? Ready(IReadOnlyList<string> names)
+    {
+        ArgumentNullException.ThrowIfNull(names);
+        var distinct = names.Distinct(StringComparer.Ordinal).ToList();
+        if (distinct.Count == 0) return null;
+
+        var body = ShortName(distinct[0]);
+        if (distinct.Count > 1) body += $", and {distinct.Count - 1} more";
+        return new ToastMessage(ReadyTitle, body);
+    }
+
+    /// <summary>
+    /// The toast for usage limits that reset: the labels of the limits (for example "5-hour"), each once, joined with commas. The labels are
+    /// those of <see cref="Setup.LimitStatus.LabelOf"/>. Null when there are none.
+    /// </summary>
+    public static ToastMessage? LimitReset(IReadOnlyList<string> labels)
+    {
+        ArgumentNullException.ThrowIfNull(labels);
+        var distinct = labels.Where(label => !string.IsNullOrWhiteSpace(label)).Select(ShortName).Distinct(StringComparer.Ordinal).ToList();
+        if (distinct.Count == 0) return null;
+        return new ToastMessage(LimitResetTitle, string.Join(", ", distinct));
     }
 
     /// <summary>The short words for a reason. Fixed here, so the toast never carries the detail of the item.</summary>

@@ -1,7 +1,9 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using OpenTail.Bullshark.Core.Cache;
 using OpenTail.Bullshark.Core.Supervisor;
+using OpenTail.Bullshark.Core.Ui;
 
 namespace OpenTail.Bullshark.App;
 
@@ -16,8 +18,16 @@ public enum SettingsTab
 /// <summary>
 /// What the Settings page shows: the values the window read from ui.json (or holds in memory) after its last write. The page draws these
 /// and never reads or writes a file itself. The zoom is not here: it stays in the status bar (owner's decision, 2026-11-18).
+/// <see cref="ContextWindow"/> is the window the ctx meter uses; <see cref="ToastEvents"/> is the switch of each kind of toast (toasts by event).
 /// </summary>
-public sealed record SettingsState(RailTheme Theme, bool Notify, bool Toast, bool MagicAuto, EscalationChoice Escalation);
+public sealed record SettingsState(
+    RailTheme Theme,
+    bool Notify,
+    bool Toast,
+    bool MagicAuto,
+    EscalationChoice Escalation,
+    ContextWindowChoice ContextWindow,
+    IReadOnlyDictionary<ToastCategory, bool> ToastEvents);
 
 /// <summary>
 /// The Settings page (Insights and Settings plan). A tab with pill sub-tabs: General (theme and notifications), Naming (automatic magic
@@ -33,9 +43,11 @@ public sealed class SettingsView : UserControl
     private readonly PillTabs _tabs = new();
     private readonly PillTabs _theme = new();
     private readonly PillTabs _escalate = new();
+    private readonly PillTabs _contextWindow = new();
     private readonly CheckBox _notify;
     private readonly CheckBox _toast;
     private readonly CheckBox _magic;
+    private readonly Dictionary<ToastCategory, CheckBox> _toastEvents = new();
     private readonly List<TextBlock> _notes = [];
     private readonly Dictionary<SettingsTab, UIElement> _pages = new();
     private SettingsTab _current = SettingsTab.General;
@@ -45,6 +57,12 @@ public sealed class SettingsView : UserControl
         _notify = Switch("Sound and flash for new waits");
         _toast = Switch("Toasts when the window is in the background");
         _magic = Switch("Automatic magic naming");
+        foreach (var category in Enum.GetValues<ToastCategory>())
+        {
+            var box = Switch(EventLabel(category));
+            _toastEvents[category] = box;
+            box.Click += (_, _) => ToastEventChanged?.Invoke(category, box.IsChecked == true);
+        }
 
         _tabs.SetItems(Headers, (int)_current);
         _tabs.Chosen += index => Show((SettingsTab)index);
@@ -54,6 +72,11 @@ public sealed class SettingsView : UserControl
         _escalate.Chosen += index =>
         {
             if (index < EscalationChoices.Presets.Count) EscalateChosen?.Invoke(EscalationChoices.Presets[index]);
+        };
+        _contextWindow.SetItems(ContextMeter.Presets.Select(ContextMeter.PresetLabel).ToList(), 0);
+        _contextWindow.Chosen += index =>
+        {
+            if (index < ContextMeter.Presets.Count) ContextWindowChosen?.Invoke(ContextMeter.Presets[index]);
         };
 
         _notify.Click += (_, _) => NotifyChanged?.Invoke(_notify.IsChecked == true);
@@ -69,7 +92,17 @@ public sealed class SettingsView : UserControl
             _notify,
             Note("Off: no sound, no flash and no toast."),
             _toast,
-            Note("A silent Windows toast when the window is not in front. It needs the sound and flash to be on."));
+            Note("A silent Windows toast when the window is not in front. It needs the sound and flash to be on."),
+            Lead("Toasts for:"),
+            _toastEvents[ToastCategory.Blocked],
+            _toastEvents[ToastCategory.Problems],
+            _toastEvents[ToastCategory.Notices],
+            _toastEvents[ToastCategory.Ready],
+            _toastEvents[ToastCategory.LimitReset],
+            Note("A kind that is off gives no toast. Its sound and flash are unchanged. The switches are dimmed while the toast switch above is off."),
+            Heading("Context window for the ctx meter"),
+            Note("The window of the model is not read from Claude; this is your choice. The warning mark shows at 80 %."),
+            _contextWindow);
 
         var naming = Page(
             Heading("Automatic magic naming"),
@@ -118,6 +151,12 @@ public sealed class SettingsView : UserControl
 
     public event Action<bool>? MagicAutoChanged;
 
+    /// <summary>One kind of toast switched on or off (toasts by event).</summary>
+    public event Action<ToastCategory, bool>? ToastEventChanged;
+
+    /// <summary>A context window chosen from the presets, in tokens (ctx meter, Part 1).</summary>
+    public event Action<long>? ContextWindowChosen;
+
     /// <summary>A re-alert interval chosen from the presets, in minutes (0 is Off).</summary>
     public event Action<int>? EscalateChosen;
 
@@ -155,6 +194,24 @@ public sealed class SettingsView : UserControl
             index = labels.Count - 1;
         }
         _escalate.SetItems(labels, index);
+
+        // The context window: the presets, and a value in the file that is not one of them, shown selected and not rewritten (ContextMeter).
+        var windowLabels = ContextMeter.Presets.Select(ContextMeter.PresetLabel).ToList();
+        var windowIndex = ContextMeter.Presets.ToList().IndexOf(state.ContextWindow.Tokens);
+        if (state.ContextWindow.IsCustom)
+        {
+            windowLabels.Add(state.ContextWindow.Label);
+            windowIndex = windowLabels.Count - 1;
+        }
+        _contextWindow.SetItems(windowLabels, windowIndex);
+
+        // The kinds of toast are dimmed while the toast switch is off: they have no effect then (toasts by event).
+        foreach (var (category, box) in _toastEvents)
+        {
+            box.IsChecked = state.ToastEvents.GetValueOrDefault(category, true);
+            box.IsEnabled = state.Toast;
+            box.Opacity = state.Toast ? 1 : 0.5;
+        }
     }
 
     /// <summary>Takes the rail's palette: the text and the notes follow the theme. The pills and switches take the Ui brushes.</summary>
@@ -192,6 +249,25 @@ public sealed class SettingsView : UserControl
         _notes.Add(note);
         return note;
     }
+
+    /// <summary>A bold line that leads a group of switches, such as "Toasts for:".</summary>
+    private static TextBlock Lead(string text) => new()
+    {
+        Text = text,
+        FontWeight = FontWeights.SemiBold,
+        Margin = new Thickness(0, 10, 0, 2),
+    };
+
+    /// <summary>The name of a kind of toast, as its switch shows it: what triggers it, in a few words.</summary>
+    private static string EventLabel(ToastCategory category) => category switch
+    {
+        ToastCategory.Blocked => "Blocked: a session waits for a permission or a question",
+        ToastCategory.Problems => "Problems: a restart loop, a failed start, a stopped or a failed session",
+        ToastCategory.Notices => "Notices: a shared file, a conflict with the default branch, the run limit",
+        ToastCategory.Ready => "Ready for review: a coder finished with changes",
+        ToastCategory.LimitReset => "Usage limit reset",
+        _ => category.ToString(),
+    };
 
     private CheckBox Switch(string label) => new()
     {

@@ -45,4 +45,23 @@ public static class LimitStatus
         _ when type.StartsWith("seven_day", StringComparison.Ordinal) => "weekly",
         _ => type,
     };
+
+    /// <summary>The limit types in force at <paramref name="now"/> (a reset time after it), from a list that <see cref="Active"/> gave.</summary>
+    public static IReadOnlySet<string> TypesInForce(IEnumerable<ActiveLimit> limits, DateTimeOffset now) =>
+        limits.Where(limit => limit.ResetsAt > now).Select(limit => limit.Type).ToHashSet(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The labels of the limit types that were in force (<paramref name="before"/>) and are not in force now: the limits that reset since the last
+    /// look. A type that is still in force, even with a later reset, is not listed. Each label is given once, in type order.
+    /// </summary>
+    public static IReadOnlyList<string> Lifted(IReadOnlySet<string> before, IEnumerable<ActiveLimit> limits, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(before);
+        var stillIn = TypesInForce(limits, now);
+        return before.Where(type => !stillIn.Contains(type))
+            .OrderBy(type => type, StringComparer.Ordinal)
+            .Select(LabelOf)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+    }
 }

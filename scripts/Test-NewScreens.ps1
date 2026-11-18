@@ -125,13 +125,18 @@ lines.Add(Call("Bash", new { command = "dotnet test --no-build" }));
 lines.Add(new { type = "user", timestamp = Stamp(70), message = new { role = "user", content = new object[] { new { type = "tool_result", content = "error: the build failed", is_error = true, tool_use_id = "toolu_7" } } } });
 lines.Add(Call("Edit", new { file_path = Path.Combine(repo, "notes.md"), old_string = "draft", new_string = "batch 1 notes" }));
 lines.Add(new { type = "assistant", timestamp = Stamp(90), requestId = "r-text", message = new { id = "m-text", model = "claude-opus-5-5", content = new object[] { new { type = "text", text = "Batch 1 notes are written. The build failed once and is fixed." } }, usage = Usage(3, 40) } });
+// The last request carries 170,003 tokens (ctx 170k): at the assumed 200k window that is 85 %, so the warning mark shows (ctx meter, Part 1).
+lines.Add(new { type = "assistant", timestamp = Stamp(91), requestId = "r-big", message = new { id = "m-big", model = "claude-opus-5-5", content = new object[] { new { type = "text", text = "The context is large now." } }, usage = new { input_tokens = 3L, output_tokens = 40L, cache_creation_input_tokens = 0L, cache_read_input_tokens = 170000L } } });
 lines.Add(new { type = "system", subtype = "turn_duration", durationMs = 92000, timestamp = Stamp(92) });
 var projectFolder = Path.Combine(claudeHome, "projects", "scratch-repo");
 Directory.CreateDirectory(projectFolder);
 File.WriteAllText(Path.Combine(projectFolder, coder1Id + ".jsonl"), string.Join("\n", lines.Select(line => JsonSerializer.Serialize(line))) + "\n");
 
 // One tag on the coder's session, for the tag-filter screen (--rail-tag screenshot): only its rows stay in the rail under that filter.
-new SessionLibrary(Path.Combine(stateFolder, "library.json")).Update(entries => entries[coder1Id] = new LibraryEntry(Tags: ["screenshot"]));
+// A plan file on the same session (plan progress, Part 2): 2 of 5 items are done, so its row shows 2/5 and its next item is "Run the build".
+var planPath = Path.GetFullPath(Path.Combine(stateFolder, "plan.md"));
+File.WriteAllText(planPath, "# Batch plan (screenshot fixture)\n\n- [x] Read the brief\n- [x] Write notes.md\n- [ ] Run the build\n  - [ ] Nested: run the tests\n- [!] Ask the owner about the rename\n");
+new SessionLibrary(Path.Combine(stateFolder, "library.json")).Update(entries => entries[coder1Id] = new LibraryEntry(Tags: ["screenshot"], PlanFile: planPath));
 
 Console.WriteLine($"coder1Id={coder1Id}");
 Console.WriteLine($"coder1={coders[0].Name}");
@@ -245,7 +250,14 @@ $screens = @(
     @{ Name = 'daemon-drift-dark'; Theme = 'Dark'; Options = @(); Env = @{ FAKECLAUDE_DAEMON = 'running'; FAKECLAUDE_DAEMON_VERSION = '2.1.300' } },
     # Round 7 item 5: the Storage page says how long Claude keeps transcripts. This screen has a settings.json that sets 45 days; the
     # default screens above have none (Settings is written for this screen only, and removed after it).
-    @{ Name = 'storage-retention-dark'; Theme = 'Dark'; Options = @('--open-tab', 'storage'); Settings = '{ "cleanupPeriodDays": 45 }' }
+    @{ Name = 'storage-retention-dark'; Theme = 'Dark'; Options = @('--open-tab', 'storage'); Settings = '{ "cleanupPeriodDays": 45 }' },
+    # Toasts by event and the ctx meter (2026-11-18). UiExtra adds keys to ui.json. The toast switch off dims the five kinds of toast (Settings, General).
+    @{ Name = 'settings-toasts-off-dark'; Theme = 'Dark'; Options = @('--open-tab', 'settings'); UiExtra = ', "toast": false' },
+    # A context window that is not a preset is shown as Custom (N), and two kinds of toast are switched off.
+    @{ Name = 'settings-window-custom-light'; Theme = 'Light'; Options = @('--open-tab', 'settings');
+       UiExtra = ', "contextWindow": 300000, "toastEvents": { "notices": false, "ready": false }' },
+    # The same rail as rail-dark with a 1M window: the 170k row has no warning mark, and its figure is the same.
+    @{ Name = 'rail-ctx-1m-dark'; Theme = 'Dark'; Options = @(); UiExtra = ', "contextWindow": 1000000' }
 )
 
 # The stand-in goes first on PATH for these runs only: the window's claude calls reach it, not the owner's claude.
@@ -260,7 +272,8 @@ foreach ($screen in $screens) {
     # The settings file of the test home is there only for the screens that set it (round 7 item 5).
     $settingsPath = Join-Path $claudeHome 'settings.json'
     if ($screen.Settings) { Set-Content -LiteralPath $settingsPath -Value $screen.Settings -Encoding UTF8 } else { Remove-Item -LiteralPath $settingsPath -ErrorAction SilentlyContinue }
-    Set-Content -LiteralPath "$state\ui.json" -Value ('{"railTheme": "' + $screen.Theme + '"}') -Encoding UTF8
+    # ui.json: the theme, and any extra keys the screen names (UiExtra, a JSON fragment that starts with a comma).
+    Set-Content -LiteralPath "$state\ui.json" -Value ('{"railTheme": "' + $screen.Theme + '"' + $screen.UiExtra + '}') -Encoding UTF8
     $png = Join-Path $shots "$name.png"
     $argList = @('--state', "$state\state.json", '--no-pass', '--workdir', $repo, '--claude-home', $claudeHome,
         '--shot', $png, '--shot-after', '9') + $screen.Options

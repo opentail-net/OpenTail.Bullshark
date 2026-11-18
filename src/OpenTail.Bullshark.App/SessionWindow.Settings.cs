@@ -1,13 +1,16 @@
 using System.Text.Json.Nodes;
 using System.Windows;
+using OpenTail.Bullshark.Core.Cache;
 using OpenTail.Bullshark.Core.Supervisor;
+using OpenTail.Bullshark.Core.Ui;
 
 namespace OpenTail.Bullshark.App;
 
 /// <summary>
 /// The Settings tab (Insights and Settings plan, 2026-11-18). Every choice writes the key it always wrote, in ui.json through <see cref="UiFile"/>,
 /// and then draws what the file holds (a file that cannot be written shows its old value and a status line). The keys and their readers are
-/// unchanged: "notify", "toast", "magicAuto", "escalateMinutes" and "railTheme". The zoom stays in the status bar. Nothing here is sent to a session.
+/// unchanged: "notify", "toast", "magicAuto", "escalateMinutes" and "railTheme". The ctx meter's "contextWindow" and the kinds of toast in
+/// "toastEvents" (Parts 1 and 3, 2026-11-18) are written here too. The zoom stays in the status bar. Nothing here is sent to a session.
 /// </summary>
 public partial class SessionWindow
 {
@@ -22,6 +25,8 @@ public partial class SessionWindow
         _settings.ThemeChosen += SetTheme;
         _settings.NotifyChanged += on => WriteFlag(NotifyKey, on, "Sound and flash for new waits");
         _settings.ToastChanged += on => WriteFlag(ToastKey, on, "Toasts when the window is in the background");
+        _settings.ToastEventChanged += SetToastEvent;
+        _settings.ContextWindowChosen += SetContextWindow;
         _settings.MagicAutoChanged += SetMagicAuto;
         _settings.EscalateChosen += SetEscalation;
         _settings.InstructionsRequested += OpenInstructions;
@@ -46,12 +51,46 @@ public partial class SessionWindow
     /// </summary>
     private void RefreshSettingsPage()
     {
+        var events = UiFile.Read(_options.StatePath, ToastCategories.Key);
         _settings.ShowState(new SettingsState(
             Theme: _theme,
             Notify: AttentionList.NotificationsOn(UiFile.Read(_options.StatePath, NotifyKey)),
             Toast: AttentionList.NotificationsOn(UiFile.Read(_options.StatePath, ToastKey)),
             MagicAuto: _magicAutoOn,
-            Escalation: EscalationChoices.Of(UiFile.Read(_options.StatePath, EscalateKey))));
+            Escalation: EscalationChoices.Of(UiFile.Read(_options.StatePath, EscalateKey)),
+            ContextWindow: ContextMeter.ChoiceOf(UiFile.Read(_options.StatePath, ContextWindowKey)),
+            ToastEvents: Enum.GetValues<ToastCategory>().ToDictionary(category => category, category => ToastCategories.Enabled(events, category))));
+    }
+
+    /// <summary>
+    /// Switches one kind of toast on or off (toasts by event). Only that key of the object changes; the others are kept. The page then draws what the
+    /// file holds, so a file that cannot be written shows the old switch and the status line says the change was not saved.
+    /// </summary>
+    private void SetToastEvent(ToastCategory category, bool on)
+    {
+        var path = _options.StatePath;
+        UiFile.Set(path, ToastCategories.Key, ToastCategories.With(UiFile.Read(path, ToastCategories.Key), category, on));
+        var now = ToastCategories.Enabled(UiFile.Read(path, ToastCategories.Key), category);
+        var title = ToastCategories.TitleOf(category);
+        AppLog.Write($"toast for {title}: {(now ? "on" : "off")} (the owner's choice in Settings)");
+        SetStatus(now == on ? $"Toasts for {title}: {(now ? "on" : "off")}." : "Not saved: ui.json cannot be written. See the log.");
+        RefreshSettingsPage();
+    }
+
+    /// <summary>
+    /// Sets the window the ctx meter uses, in tokens, and shows the value the file holds afterwards. The rail's ctx figures and warning marks are
+    /// drawn again with it. The window is the owner's choice: nothing here reads it from Claude.
+    /// </summary>
+    private void SetContextWindow(long tokens)
+    {
+        UiFile.Set(_options.StatePath, ContextWindowKey, JsonValue.Create(tokens)!);
+        var choice = ContextMeter.ChoiceOf(UiFile.Read(_options.StatePath, ContextWindowKey));
+        AppLog.Write($"context window: {choice.Tokens} tokens (the owner's choice in Settings)");
+        SetStatus(choice.Tokens == ContextMeter.WindowFrom(JsonValue.Create(tokens))
+            ? $"Context window: {choice.Label}."
+            : "Not saved: ui.json cannot be written. See the log.");
+        RefreshRail();
+        RefreshSettingsPage();
     }
 
     /// <summary>

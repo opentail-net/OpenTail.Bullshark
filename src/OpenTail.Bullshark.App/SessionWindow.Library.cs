@@ -149,13 +149,36 @@ public partial class SessionWindow
     public void SetColour(string sessionId, string? colour) =>
         ChangeMark(sessionId, mark => mark with { Colour = string.IsNullOrEmpty(colour) ? null : colour });
 
-    /// <summary>The name, tags, note and colour from the edit dialog, in one write.</summary>
+    /// <summary>The name, tags, note, colour and plan file from the edit dialog, in one write.</summary>
     public void SetDetails(string sessionId, LibraryEntry details) => ChangeMark(sessionId, mark => WithName(mark, details.Name) with
     {
         Tags = details.Tags ?? [],
         Note = string.IsNullOrWhiteSpace(details.Note) ? null : details.Note.Trim(),
         Colour = string.IsNullOrEmpty(details.Colour) ? null : details.Colour,
+        PlanFile = PlanProgress.PathOf(details.PlanFile),
     });
+
+    /// <summary>
+    /// The plan counts of a session's plan file, read through the cache, or null when the session has no plan file or it cannot be read (plan
+    /// progress, Part 2). The counts are cached per file; the text is never logged.
+    /// </summary>
+    private PlanProgressCount? PlanOf(string sessionId) =>
+        MarkOf(sessionId)?.PlanFile is { } path ? _planProgress.Get(path) : null;
+
+    /// <summary>The plan figure of a row, "3/7": the checked items of all the items. Null when there is no plan file, or it has no items.</summary>
+    private string? PlanFigure(string sessionId) =>
+        PlanOf(sessionId) is { Total: > 0 } plan ? $"{plan.Done}/{plan.Total}" : null;
+
+    /// <summary>
+    /// The plan line at the top of a row's tooltip: "Plan: 3 of 7 done. Next: ...", with the first open item's text. Empty when the row shows no
+    /// plan figure. The plan's text is in the tooltip only, never in the log.
+    /// </summary>
+    private string PlanTip(LibraryEntry? mark)
+    {
+        if (mark?.PlanFile is not { } path || _planProgress.Get(path) is not { Total: > 0 } plan) return string.Empty;
+        var next = plan.Next is null ? string.Empty : " Next: " + plan.Next;
+        return $"Plan: {plan.Done} of {plan.Total} done.{next}\n";
+    }
 
     /// <summary>The text the search reads besides the messages: the owner's name, tags and note (D-L7).</summary>
     private static string? SearchableText(IReadOnlyDictionary<string, LibraryEntry> marks, string sessionId)

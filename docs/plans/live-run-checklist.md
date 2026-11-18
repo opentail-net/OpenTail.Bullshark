@@ -56,6 +56,22 @@ Pass when: no name appears twice at any step, each step has its line, and F20 is
 - [ ] The status bar on a 1366 px window keeps the zoom, Settings, Insights and Go to… at the right, with Retry, Respawn and Trust only when they show.
 - [ ] Palette: Open Insights, Open Settings, and Open Timeline, Storage, Limits and Away open Insights on their sub-tab.
 
+## Desktop batch: context meter, plan progress, toasts by event (docs/plans/desktop-codex-batch-2026-11-18.md)
+
+- [ ] Context meter: a session with a transcript shows "ctx N" on its live row and its history row, after the state. A window of 200k with
+  a last request of about 170k shows "⚠" after it; Settings, General, "1M" removes the mark. The tooltip still gives the cache's tokens.
+- [ ] Context window in Settings: "200k (assumed)" is selected by default; a value set by hand in ui.json shows as "Custom (N)" and is not rewritten.
+- [ ] Plan progress: in a session's Edit dialog, Browse… picks a Markdown file; a relative path is refused with a red line. The row shows
+  "3/7" after the cache and state; ticking an item in the file and waiting for the next pass (or 🔄) changes it. Its tooltip gives "Next: ...".
+- [ ] Plan file removed or cleared in Edit: the figure goes; the library still loads with the rest of the marks.
+- [ ] Toasts by event: with the window minimised, each kind can be switched off under Settings, General, and its toast does not come
+  (blocked, problems, notices). Sound and flash come as before for a wait whatever the switches say.
+- [ ] Ready for review: a coder that finishes with changes gives one silent toast "Ready for review" when it joins the list, and none on
+  the first pass after the window opens. Opening its Changes tab (or Mark reviewed) and no new work gives no toast.
+- [ ] Usage limit reset: with a limit in force, the first pass after its reset gives one silent toast "Usage limit reset" with its name
+  ("5-hour", "weekly"), and nothing when the window is in front.
+- [ ] Toasts switched off as a whole (Toast switch off): the five kinds are dimmed and give no toast.
+
 ## Gates (each needs one real step)
 
 - [ ] **Worktree per coder** (additions item 3) and `--cwd` for listings: with the scratch repo trusted, rerun the gate in

@@ -91,7 +91,7 @@ public partial class SessionWindow
                     string.Empty, resume, MatchBadge(match), leadSlot: true),
                 mark?.Colour),
             new RailTag(RailKind.History, digest.SessionId, digest),
-            SearchTip(match, MagicTip(mark) + NoteTip(mark) + ContinuesTip(digest) + FactsTip(digest)
+            SearchTip(match, MagicTip(mark) + NoteTip(mark) + PlanTip(mark) + ContinuesTip(digest) + FactsTip(digest)
                 + (cache.Full is null ? digest.FilePath : cache.Full + "\n" + digest.FilePath)));
         if (mark?.Archived == true) row.Opacity = 0.55;
         var menu = RowMenu(digest.SessionId, history: true, title);

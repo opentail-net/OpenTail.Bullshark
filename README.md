@@ -127,6 +127,7 @@ The sessions see each other directly and live, with `SendMessage` by session nam
 - **Window:** opened by the owner. Auto-open at log-on is optional (owner's choice).
 - **Log-on, not power-on.** A PC that boots without logging in does not run OpenTail.Bullshark. Auto-logon would change that (D6).
 - **Blocked sessions:** the supervisor alerts once per entry into `blocked`. The window lists the session under "Needs you" at the top of the rail, shows the count in the status bar, and flashes the taskbar button with a sound when a session newly needs the owner (turn off with `"notify": false` in `ui.json`). When the window is not in front (minimised or behind other windows), a silent Windows toast also shows the session's name and reason, one per batch; turn it off with `"toast": false` in `ui.json` or "Toggle toasts" in the command palette. A toast is not seen on screen until a run is checked by the owner.
+- **Row marks (2026-11-18):** a session row shows its context figure (`ctx 142k`, with ⚠ at 80 % of the window; the window is the owner's setting in Settings, 200k assumed, not read from Claude) and, when a plan file is attached in its Edit dialog, the checked items of that plan (`3/7`). Each kind of toast (blocked, problems, notices, ready for review, usage limit reset) can be switched off under Settings, General; the last two are silent toasts.
 
 ## Visibility
 

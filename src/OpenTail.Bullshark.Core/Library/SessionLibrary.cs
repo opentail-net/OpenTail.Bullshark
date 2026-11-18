@@ -9,6 +9,8 @@ namespace OpenTail.Bullshark.Core.Library;
 /// <see cref="MagicAt"/> and <see cref="MagicNamedAt"/> are set only when <see cref="Name"/> was given by the magic rename (D2, D6):
 /// <see cref="MagicAt"/> is the session's last message when it was named (the snowflake rule), and <see cref="MagicNamedAt"/> is when it
 /// was named (the date shown, and the automatic limit per hour). A file written before them loads with both null.
+/// <see cref="PlanFile"/> is the absolute path of a Markdown plan file the owner attached by hand; its checkboxes show as progress on the row
+/// (plan progress, 2026-11-18). A file written before it loads with null.
 /// </summary>
 public sealed record LibraryEntry(
     string? Name = null,
@@ -18,11 +20,12 @@ public sealed record LibraryEntry(
     string? Note = null,
     string? Colour = null,
     DateTimeOffset? MagicAt = null,
-    DateTimeOffset? MagicNamedAt = null)
+    DateTimeOffset? MagicNamedAt = null,
+    string? PlanFile = null)
 {
     public bool IsEmpty =>
         string.IsNullOrWhiteSpace(Name) && !Pinned && !Archived && (Tags is null || Tags.Count == 0)
-        && string.IsNullOrWhiteSpace(Note) && string.IsNullOrWhiteSpace(Colour);
+        && string.IsNullOrWhiteSpace(Note) && string.IsNullOrWhiteSpace(Colour) && string.IsNullOrWhiteSpace(PlanFile);
 }
 
 /// <summary>

@@ -76,6 +76,15 @@ public partial class SessionWindow
     /// <summary>The cache facts of the past sessions, read with the history.</summary>
     private Dictionary<string, TailFacts> _historyFacts = new(StringComparer.Ordinal);
 
+    /// <summary>The ui.json key of the context window the ctx meter uses (Settings, General). Missing gives the assumed 200,000.</summary>
+    private const string ContextWindowKey = "contextWindow";
+
+    /// <summary>The context window in tokens, read from ui.json on each rail build (SessionWindow.Settings.cs). UI thread only.</summary>
+    private long _contextWindow = ContextMeter.DefaultWindow;
+
+    /// <summary>The plan counts of the sessions' plan files, kept between rail builds (SessionWindow.Library.cs). UI thread only.</summary>
+    private readonly PlanProgressCache _planProgress = new();
+
     /// <summary>Whether each folder, heading or section is expanded, kept across rebuilds.</summary>
     private readonly Dictionary<string, bool> _expanded = new(StringComparer.Ordinal);
 
@@ -334,6 +343,8 @@ public partial class SessionWindow
         // The marks are read again on every refresh: they are small, and another process may have changed them (D-L3 is inside).
         LoadLibrary();
         DropMissingTagFilter();
+        // The context window is read with the other settings each build, so a change in Settings shows at the next one (ctx meter, Part 1).
+        _contextWindow = ContextMeter.WindowFrom(UiFile.Read(_options.StatePath, ContextWindowKey));
         var stored = known ?? ReadRecords();
         // The palette's session entries are read from what was drawn here, so opening it reads no file (SessionWindow.Palette.cs).
         _railRecords = stored;
@@ -732,7 +743,8 @@ public partial class SessionWindow
     /// <summary>
     /// The start of a row's second line: the mark, then how long ago the session was last active, then (for a live session) its
     /// state. The mark is 🚀 for a running session, otherwise the cache's temperature. The time comes from the cache when it is
-    /// known, otherwise from the fallback time.
+    /// known, otherwise from the fallback time. Then the context figure ("ctx 142k", with ⚠ at 80 % of the window) and the plan figure ("3/7"),
+    /// each after a " · " when there is one.
     /// </summary>
     private string ActivityLine(string sessionId, string? state, DateTimeOffset? fallback, bool running)
     {
@@ -746,7 +758,18 @@ public partial class SessionWindow
         var ago = known is { } seen ? RelativeTime(DateTimeOffset.UtcNow - seen.Idle) : RelativeTime(fallback);
         var when = ago.Length == 0 ? string.Empty : ago + " ago";
         var head = string.Join(" ", new[] { mark, when }.Where(part => part.Length > 0));
-        return string.IsNullOrEmpty(state) ? head : head + " · " + DaemonStatus.DisplayState(state);
+        var line = string.IsNullOrEmpty(state) ? head : head + " · " + DaemonStatus.DisplayState(state);
+
+        if (facts is { ContextTokens: > 0 } withTokens)
+        {
+            // The figure and its mark are one unit when the second line wraps: their spaces are no-break spaces (2026-11-18). The text is not changed.
+            var ctx = (ContextMeter.Short(withTokens.ContextTokens)
+                       + (ContextMeter.IsHigh(withTokens.ContextTokens, _contextWindow) ? " ⚠" : string.Empty))
+                      .Replace(' ', ' ');
+            line = line.Length == 0 ? ctx : line + " · " + ctx;
+        }
+        if (PlanFigure(sessionId) is { } plan) line = line.Length == 0 ? plan : line + " · " + plan;
+        return line;
     }
 
     /// <summary>
@@ -849,14 +872,15 @@ public partial class SessionWindow
             top.Children.Add(badge);
         }
 
+        // The second line wraps rather than being cut: at the default rail width the figures at its end (ctx, plan, ⚠) were lost (2026-11-18).
+        // The full text is also in the tooltip. A long line takes a second visual line; its width is still the rail's.
         var detailText = new TextBlock
         {
             Text = details,
             Foreground = RailPalette.Brush(Palette.Muted),
             FontFamily = new FontFamily("Segoe UI"),
             FontSize = 11,
-            TextWrapping = TextWrapping.NoWrap,
-            TextTrimming = TextTrimming.CharacterEllipsis,
+            TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 1, 0, 0),
         };
 
@@ -925,7 +949,7 @@ public partial class SessionWindow
             ColourEdge(TwoLine(title, ActivityLine(record.SessionId, state, record.StartedAt, state == "working"), string.Empty,
                 badge: MatchBadge(MatchOf(record.SessionId))), MarkOf(record.SessionId)?.Colour),
             new RailTag(RailKind.Session, record.SessionId),
-            NoteTip(MarkOf(record.SessionId)) + SearchTip(MatchOf(record.SessionId), cache.Full ?? record.SessionId));
+            NoteTip(MarkOf(record.SessionId)) + PlanTip(MarkOf(record.SessionId)) + SearchTip(MatchOf(record.SessionId), cache.Full ?? record.SessionId));
         item.ContextMenu = RowMenu(record.SessionId, history: false, title);
         return item;
     }
