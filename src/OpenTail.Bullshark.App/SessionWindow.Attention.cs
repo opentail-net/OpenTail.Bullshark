@@ -31,6 +31,12 @@ public partial class SessionWindow
     /// </summary>
     private readonly HashSet<string> _announcedNotices = new(StringComparer.Ordinal);
 
+    /// <summary>The re-alerts for the sessions that wait and are not answered (escalation-2026-11-18). Kept in memory for the life of the window; UI thread only.</summary>
+    private readonly AttentionEscalation _escalation = new();
+
+    /// <summary>The ui.json key for the re-alert interval, in minutes: 0 turns re-alerts off, and a missing value is 15.</summary>
+    private const string EscalateKey = "escalateMinutes";
+
     private void UpdateNeedsYouCount()
     {
         // A session can be waiting for more than one reason (gems item 1: a blocked session can also share a file), and it is one session.
@@ -65,14 +71,61 @@ public partial class SessionWindow
             if (!records.TryGetValue(item.Name, out var record)) continue;
             if (string.IsNullOrEmpty(record.SessionId))
             {
-                section.Items.Add(NewItem(Label($"{record.Name} · {item.Detail}", muted: true),
-                    new RailTag(RailKind.Heading, NeedsYouKey + ":failed:" + record.Name), item.Detail));
+                var failed = NewItem(Label($"{record.Name} · {item.Detail}", muted: true),
+                    new RailTag(RailKind.Heading, NeedsYouKey + ":failed:" + record.Name), item.Detail);
+                if (IsEscalating(record.Name)) AddEscalationItems(failed, record.Name);
+                section.Items.Add(failed);
                 continue;
             }
             var listed = _agents.FirstOrDefault(a => string.Equals(a.SessionId, record.SessionId, StringComparison.OrdinalIgnoreCase));
-            section.Items.Add(LiveRow(record, StateWithWaiting(listed)));
+            var row = LiveRow(record, StateWithWaiting(listed));
+            if (IsEscalating(record.Name)) AddEscalationItems(row, record.Name);
+            section.Items.Add(row);
         }
         return section;
+    }
+
+    /// <summary>
+    /// Whether the escalation holds a session: its item is one the owner must act on (D1). A row that is only a notice (overlap, conflict,
+    /// limit) has no choices, since it never re-alerts.
+    /// </summary>
+    private bool IsEscalating(string name) => _attention.Any(i => i.Name == name && AttentionEscalation.Escalates(i));
+
+    /// <summary>
+    /// Adds the escalation's choices to the top of a Needs-you row's menu: Acknowledge, and snooze for one hour or four (D3, D4). Nothing is
+    /// typed into the session; the choices only decide when the window sounds again. A row with no menu gets one.
+    /// </summary>
+    private void AddEscalationItems(TreeViewItem row, string name)
+    {
+        var menu = row.ContextMenu ??= StyledMenu();
+        menu.Items.Insert(0, MenuItemFor("Acknowledge", () => AcknowledgeNeed(name)));
+        menu.Items.Insert(1, MenuItemFor("Snooze 1 hour", () => SnoozeNeed(name, TimeSpan.FromHours(1))));
+        menu.Items.Insert(2, MenuItemFor("Snooze 4 hours", () => SnoozeNeed(name, TimeSpan.FromHours(4))));
+    }
+
+    /// <summary>The owner acknowledged a waiting session: no more re-alerts for it until it stops waiting. It stays in the list.</summary>
+    private void AcknowledgeNeed(string name)
+    {
+        _escalation.Acknowledge(name);
+        AppLog.Write($"needs you: {name} acknowledged");
+    }
+
+    /// <summary>The owner snoozed a waiting session for a span: no re-alert until then, and one at the end if it still waits.</summary>
+    private void SnoozeNeed(string name, TimeSpan span)
+    {
+        var until = DateTimeOffset.Now + span;
+        _escalation.Snooze(name, until);
+        AppLog.Write($"needs you: {name} snoozed until {until:HH:mm}");
+    }
+
+    /// <summary>
+    /// Opening a session's tab acknowledges its wait (D3). Called where a tab becomes the active one, so nothing polls. A session the
+    /// escalation does not hold has nothing to acknowledge.
+    /// </summary>
+    private void AcknowledgeSession(string sessionId)
+    {
+        var name = _attention.FirstOrDefault(i => SameId(i.SessionId, sessionId) && AttentionEscalation.Escalates(i))?.Name;
+        if (name is not null) _escalation.Acknowledge(name);
     }
 
     /// <summary>
@@ -87,12 +140,16 @@ public partial class SessionWindow
     /// <summary>
     /// Called after each pass. When a session joined the list since the last pass, the window flashes its taskbar button until it
     /// is in front and plays the notification sound once. Both are off when ui.json says "notify": false. The first pass after the
-    /// window opens only sets the baseline.
+    /// window opens only sets the baseline. The escalation runs on every pass: a session that still waits after its interval sounds
+    /// again, with the same sound and flash, and is logged as "again" (escalation-2026-11-18).
     /// </summary>
     private void AnnounceAttention()
     {
         var previous = _announced;
         _announced = _attention;
+        // Every pass updates the escalation, so a session that was already waiting when the window opened is counted from the first pass.
+        // A re-alert that falls while "notify" is false is used up without a sound: the owner chose silence.
+        var due = _escalation.Update(_attention, DateTimeOffset.Now, AttentionEscalation.IntervalOf(UiFile.Read(_options.StatePath, EscalateKey)));
         if (previous is null)
         {
             // The first pass sets the baseline: the notices in view are remembered, so they are not announced later on.
@@ -104,10 +161,11 @@ public partial class SessionWindow
         // A notice is remembered once it has been in view, so a session that leaves done, or drops out of one listing, and returns with the same
         // files does not sound again.
         _announcedNotices.UnionWith(AttentionList.NoticeKeys(_attention));
-        if (gained.Count == 0) return;
+        if (gained.Count == 0 && due.Count == 0) return;
         if (!AttentionList.NotificationsOn(UiFile.Read(_options.StatePath, "notify"))) return;
 
-        AppLog.Write($"needs you: {string.Join(", ", gained.Select(g => g.Name))}");
+        if (gained.Count > 0) AppLog.Write($"needs you: {string.Join(", ", gained.Select(g => g.Name))}");
+        foreach (var again in due) AppLog.Write($"needs you (again, {again.Again}): {again.Item.Name}");
         SystemSounds.Asterisk.Play();
         var handle = new WindowInteropHelper(this).Handle;
         if (handle != IntPtr.Zero) TaskbarFlash.UntilFocused(handle);

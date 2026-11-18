@@ -115,6 +115,8 @@ public partial class SessionWindow
     {
         if (IsRight(tab)) _activeTabRight = tab;
         else _activeTab = tab;
+        // The owner opening a session's tab acknowledges its wait (escalation D3). Nothing else acknowledges it.
+        if (tab.Kind == TabKind.Session) AcknowledgeSession(tab.Key);
         RefreshTabStrip();
     }
 
