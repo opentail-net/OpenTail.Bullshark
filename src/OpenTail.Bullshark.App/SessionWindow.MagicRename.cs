@@ -79,8 +79,9 @@ public partial class SessionWindow
         if (_history is null) return [];
         var listed = new List<SessionDigest>();
         if (PinnedGroupShown) listed.AddRange(HistoryOrder.Sorted(_history.Where(IsShownInHistory).Where(InPinnedGroup)));
-        foreach (var folder in ShownHistoryFolders()) listed.AddRange(HistoryOrder.Sorted(folder).Take(MaxHistoryPerFolder));
-        return MagicCandidates.ColdInOrder(listed, _marks, LiveSessionIds(), now)
+        foreach (var group in ShownHistoryFolders()) listed.AddRange(HistoryOrder.Sorted(group.Sessions).Take(MaxHistoryPerFolder));
+        // A session with several tags is in each of its tag groups (features batch G4): it is named once, where it first appears.
+        return MagicCandidates.ColdInOrder(listed.DistinctBy(digest => digest.SessionId), _marks, LiveSessionIds(), now)
             .Where(digest => !_magicFailures.TryGetValue(digest.SessionId, out var count) || count < MagicNamer.MaxFailuresPerWindowRun)
             .ToList();
     }

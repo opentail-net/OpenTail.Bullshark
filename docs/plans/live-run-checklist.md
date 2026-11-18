@@ -79,6 +79,17 @@ Pass when: no name appears twice at any step, each step has its line, and F20 is
 - [ ] Closing the window (or a tab whose session ended) writes no "detach failed" line to `logs\app.log`. If one appears, note the
   exception and whether the session was still running.
 
+## Features batch (docs/plans/features-batch-2026-11-18.md)
+
+- [ ] Viewed marks: in Changes, tick two changed files; restart the window and open Changes again: they are still ticked, and "3 of 7 viewed"
+  (or the count you have) is right. Edit a ticked file in the scratch repo: its tick clears and the count drops. "Clear" removes the session's ticks.
+- [ ] Big-deletion check: delete a tracked file in the scratch repo, and empty a tracked file of most of its lines: each shows "check: ..." on its row,
+  the count line says how many, and no sound or toast comes.
+- [ ] Same-call loop: in a real transcript where a command failed three times in a row, the effort panel lists "Same call failed 3 times in a row"
+  with its lines, and a click shows the first one. A run of fail, edit, pass is not listed.
+- [ ] Group by tag: the show menu's "Group by: Tag" lists the History tag groups with their counts; a session with two tags is under both; "No tag"
+  is last; "Group by: Folder" brings the folders back. Needs you and the tag filter behave as before.
+
 ## Gates (each needs one real step)
 
 - [ ] **Worktree per coder** (additions item 3) and `--cwd` for listings: with the scratch repo trusted, rerun the gate in

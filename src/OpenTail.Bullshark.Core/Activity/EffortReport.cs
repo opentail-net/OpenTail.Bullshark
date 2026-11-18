@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 namespace OpenTail.Bullshark.Core.Activity;
@@ -12,6 +14,13 @@ public sealed record EffortItem(string Label, int Count, int Line);
 public sealed record EffortTurn(int StartLine, string Prompt, TokenUsage Tokens);
 
 /// <summary>
+/// A call that failed again and again: the same tool with the same input, failing <see cref="Count"/> times in a row with no success of that
+/// call in between. <see cref="FirstLine"/> and <see cref="LastLine"/> are the lines of its first and last failed result, so the view can jump
+/// to the first one.
+/// </summary>
+public sealed record EffortLoop(string Tool, int Count, int FirstLine, int LastLine);
+
+/// <summary>
 /// Where a session's effort went (gems item 4, from dashboard-for-claude-code and token-dashboard). Computed from the transcript
 /// lines, with no model involved. The rules:
 /// <list type="bullet">
@@ -20,6 +29,9 @@ public sealed record EffortTurn(int StartLine, string Prompt, TokenUsage Tokens)
 /// <item>Shell commands run more than <see cref="RepeatThreshold"/> times, by their exact text.</item>
 /// <item>Turns that wrote no file and gave no text answer, with the tokens their messages used. A message counts once, however many
 /// records carry it. A turn is the same span <see cref="TurnFacts"/> shows (a typed prompt starts it, its turn_duration ends it).</item>
+/// <item>Failing loops (features batch G3): the same tool with the same input failing <see cref="LoopThreshold"/> times or more in a row for
+/// that call, with no success of that call in between. Other calls in between do not break the run; a fail, edit, pass sequence is not
+/// a loop. The input is compared by a hash and is never kept.</item>
 /// </list>
 /// </summary>
 public sealed record EffortReport(
@@ -34,6 +46,15 @@ public sealed record EffortReport(
 
     /// <summary>A command is listed when it was run more than this many times.</summary>
     public const int RepeatThreshold = 2;
+
+    /// <summary>A call is listed as a failing loop from this many failures in a row.</summary>
+    public const int LoopThreshold = 3;
+
+    /// <summary>
+    /// The failing loops (G3), in the order they start. Not part of the positional list, so the callers that build a report from the other five
+    /// values keep working; it is empty for those.
+    /// </summary>
+    public IReadOnlyList<EffortLoop> FailingLoops { get; init; } = [];
 
     /// <summary>All failed tool calls.</summary>
     public int FailedCalls => FailedByTool.Sum(item => item.Count);
@@ -58,6 +79,11 @@ public sealed record EffortReport(
         var turns = 0;
         OpenTurn? open = null;
         var facts = new LineFacts();
+        // The failing loops (G3): each call's tool and signature, the calls whose result was read, and the run of failures per signature.
+        var callKeys = new Dictionary<string, CallKey>(StringComparer.Ordinal);
+        var resolvedCalls = new HashSet<string>(StringComparer.Ordinal);
+        var streaks = new Dictionary<string, Streak>(StringComparer.Ordinal);
+        var loops = new List<EffortLoop>();
 
         void CloseTurn()
         {
@@ -65,6 +91,13 @@ public sealed record EffortReport(
             turns++;
             if (!open.Wrote && !open.Texted) withoutOutput.Add(new EffortTurn(open.StartLine, open.Prompt, open.Tokens));
             open = null;
+        }
+
+        // A run that ends (a success of its call, or the end of the transcript) is a loop when it reached the threshold.
+        void EndRun(string signature)
+        {
+            if (!streaks.Remove(signature, out var run) || run.Count < LoopThreshold) return;
+            loops.Add(new EffortLoop(run.Tool, run.Count, run.FirstLine, run.LastLine));
         }
 
         var number = 0;
@@ -115,6 +148,7 @@ public sealed record EffortReport(
 
                         var name = block.Name ?? "unknown";
                         toolNames[callId] = name;
+                        callKeys[callId] = new CallKey(name, name + "\u001f" + (block.InputHash ?? string.Empty));
                         // A call is counted once per id: the same message can be written in more than one record.
                         open ??= new OpenTurn(number, string.Empty);
                         if (!countedCalls.Add(callId)) continue;
@@ -127,21 +161,33 @@ public sealed record EffortReport(
             }
             else if (facts.Type == "user" && facts.UserResultsArray)
             {
-                foreach (var failedId in facts.FailedResultIds)
+                foreach (var result in facts.Results)
                 {
-                    if (failedId is { } failedCallId && failedIds.Add(failedCallId))
+                    if (result.Failed && result.Id is { } failedCallId && failedIds.Add(failedCallId))
                         failed.Add(toolNames.TryGetValue(failedCallId, out var tool) ? tool : "unknown", number);
+
+                    // Only the first result of a call decides its run: a repeated record of the same result changes nothing (G3).
+                    if (result.Id is { } resultId && callKeys.TryGetValue(resultId, out var call) && resolvedCalls.Add(resultId))
+                    {
+                        if (!result.Failed) EndRun(call.Signature);
+                        else if (streaks.TryGetValue(call.Signature, out var run)) { run.Count++; run.LastLine = number; }
+                        else streaks[call.Signature] = new Streak(call.Tool, 1, number, number);
+                    }
                 }
             }
         }
         CloseTurn();
+        foreach (var signature in streaks.Keys.ToList()) EndRun(signature);
 
         return new EffortReport(
             turns,
             failed.Items(minimumExclusive: 0),
             rereads.Items(minimumExclusive: RereadThreshold, keepWhole: true),
             commands.Items(minimumExclusive: RepeatThreshold),
-            withoutOutput);
+            withoutOutput)
+        {
+            FailingLoops = loops.OrderBy(loop => loop.FirstLine).ToList(),
+        };
     }
 
     /// <summary>
@@ -166,7 +212,7 @@ public sealed record EffortReport(
     private sealed class LineFacts
     {
         private readonly List<Block> _blocks = [];
-        private readonly List<string?> _failedResultIds = [];
+        private readonly List<(string? Id, bool Failed)> _results = [];
 
         public string? Type { get; private set; }
         public string? Subtype { get; private set; }
@@ -177,7 +223,9 @@ public sealed record EffortReport(
         public string? MessageKey { get; private set; }
         public TokenUsage? Usage { get; private set; }
         public IReadOnlyList<Block> Blocks => _blocks;
-        public IReadOnlyList<string?> FailedResultIds => _failedResultIds;
+
+        /// <summary>The tool results of a user record, in order: the call's id and whether the result is an error.</summary>
+        public IReadOnlyList<(string? Id, bool Failed)> Results => _results;
 
         public void Read(JsonElement root, int number)
         {
@@ -191,7 +239,7 @@ public sealed record EffortReport(
             MessageKey = null;
             Usage = null;
             _blocks.Clear();
-            _failedResultIds.Clear();
+            _results.Clear();
 
             if (Type == "assistant" && root.TryGetProperty("message", out var message) && message.ValueKind == JsonValueKind.Object)
             {
@@ -220,7 +268,7 @@ public sealed record EffortReport(
                         {
                             var input = block.TryGetProperty("input", out var inputElement) ? inputElement : default;
                             _blocks.Add(new Block("tool_use", TranscriptJson.Str(block, "id"), TranscriptJson.Str(block, "name"),
-                                TranscriptJson.Str(input, "file_path"), TranscriptJson.Str(input, "command"), false));
+                                TranscriptJson.Str(input, "file_path"), TranscriptJson.Str(input, "command"), false, InputHash(input)));
                         }
                     }
                 }
@@ -232,15 +280,37 @@ public sealed record EffortReport(
                 UserResultsArray = true;
                 foreach (var block in results.EnumerateArray())
                 {
-                    if (TranscriptJson.Str(block, "type") == "tool_result" && TranscriptLine.IsFailedResult(block))
-                        _failedResultIds.Add(TranscriptJson.Str(block, "tool_use_id"));
+                    if (TranscriptJson.Str(block, "type") == "tool_result")
+                        _results.Add((TranscriptJson.Str(block, "tool_use_id"), TranscriptLine.IsFailedResult(block)));
                 }
             }
         }
+
+        /// <summary>
+        /// A stable hash of a call's input, so two calls with the same input are the same call (G3). Only the hash is kept: the input text is
+        /// hashed where it stands and dropped. An input that is not there hashes as the empty text.
+        /// </summary>
+        private static string InputHash(JsonElement input)
+        {
+            var text = input.ValueKind == JsonValueKind.Undefined ? string.Empty : input.GetRawText();
+            return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)))[..32];
+        }
     }
 
-    /// <summary>One block of an assistant message as the report counts it: its type, a call's id, name, file and command, and whether a text block has text.</summary>
-    private readonly record struct Block(string? Type, string? Id, string? Name, string? FilePath, string? Command, bool HasText);
+    /// <summary>One block of an assistant message as the report counts it: its type, a call's id, name, file and command, whether a text block has text, and the hash of a call's input.</summary>
+    private readonly record struct Block(string? Type, string? Id, string? Name, string? FilePath, string? Command, bool HasText, string? InputHash = null);
+
+    /// <summary>A call as the loop rule keys it: its tool, and the tool with the hash of its input.</summary>
+    private sealed record CallKey(string Tool, string Signature);
+
+    /// <summary>The failures of one call signature in a row: the tool, how many, and the lines of the first and the last.</summary>
+    private sealed class Streak(string tool, int count, int firstLine, int lastLine)
+    {
+        public string Tool { get; } = tool;
+        public int Count { get; set; } = count;
+        public int FirstLine { get; } = firstLine;
+        public int LastLine { get; set; } = lastLine;
+    }
 
     /// <summary>A turn while it is open. Its flags and counts are kept here until it closes.</summary>
     private sealed class OpenTurn(int startLine, string prompt)

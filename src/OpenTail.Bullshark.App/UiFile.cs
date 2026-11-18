@@ -14,6 +14,6 @@ public static class UiFile
     /// <summary>The value of one key, or null when the file or the key is missing, or the file cannot be read.</summary>
     public static JsonNode? Read(string stateFile, string key) => UiSettingsFile.Read(PathFor(stateFile), key, AppLog.Write);
 
-    /// <summary>Sets one key and writes the file, keeping the other keys.</summary>
-    public static void Set(string stateFile, string key, JsonNode value) => UiSettingsFile.Set(PathFor(stateFile), key, value, AppLog.Write);
+    /// <summary>Sets one key and writes the file, keeping the other keys. False when the file was not written (the failure is logged).</summary>
+    public static bool Set(string stateFile, string key, JsonNode value) => UiSettingsFile.Set(PathFor(stateFile), key, value, AppLog.Write);
 }

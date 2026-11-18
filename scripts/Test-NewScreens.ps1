@@ -123,6 +123,12 @@ lines.Add(new { type = "user", timestamp = Stamp(40), message = new { role = "us
 for (var i = 0; i < 3; i++) lines.Add(Call("Bash", new { command = "dotnet build" }));
 lines.Add(Call("Bash", new { command = "dotnet test --no-build" }));
 lines.Add(new { type = "user", timestamp = Stamp(70), message = new { role = "user", content = new object[] { new { type = "tool_result", content = "error: the build failed", is_error = true, tool_use_id = "toolu_7" } } } });
+// The same lint call failing three times in a row, with no success in between: the failing loop of the effort panel (features batch G3).
+for (var i = 0; i < 3; i++)
+{
+    lines.Add(Call("Bash", new { command = "npm run lint" }));
+    lines.Add(new { type = "user", timestamp = Stamp(100 + i), message = new { role = "user", content = new object[] { new { type = "tool_result", content = "lint: 4 errors", is_error = true, tool_use_id = "toolu_" + callNo } } } });
+}
 lines.Add(Call("Edit", new { file_path = Path.Combine(repo, "notes.md"), old_string = "draft", new_string = "batch 1 notes" }));
 lines.Add(new { type = "assistant", timestamp = Stamp(90), requestId = "r-text", message = new { id = "m-text", model = "claude-opus-5-5", content = new object[] { new { type = "text", text = "Batch 1 notes are written. The build failed once and is fixed." } }, usage = Usage(3, 40) } });
 // The last request carries 170,003 tokens (ctx 170k): at the assumed 200k window that is 85 %, so the warning mark shows (ctx meter, Part 1).
@@ -132,11 +138,33 @@ var projectFolder = Path.Combine(claudeHome, "projects", "scratch-repo");
 Directory.CreateDirectory(projectFolder);
 File.WriteAllText(Path.Combine(projectFolder, coder1Id + ".jsonl"), string.Join("\n", lines.Select(line => JsonSerializer.Serialize(line))) + "\n");
 
+// Two more past sessions, for Group by tag (features batch G4): one tagged "docs" and one with no tag at all.
+const string docsId = "5e4f3a21-0000-4000-8000-00000000d0d1";
+const string untaggedId = "5e4f3a21-0000-4000-8000-00000000d0d2";
+void SmallSession(string id, string prompt, int minutesAgo)
+{
+    var when = now.AddMinutes(-minutesAgo).ToString("O");
+    var rows = new[]
+    {
+        JsonSerializer.Serialize(new { type = "user", timestamp = when, message = new { role = "user", content = prompt } }),
+        JsonSerializer.Serialize(new { type = "assistant", timestamp = when, requestId = "r-" + id, message = new { id = "m-" + id, model = "claude-opus-5-5", content = new object[] { new { type = "text", text = "Done." } }, usage = new { input_tokens = 3L, output_tokens = 5L, cache_creation_input_tokens = 0L, cache_read_input_tokens = 100L } } }),
+        JsonSerializer.Serialize(new { type = "system", subtype = "turn_duration", durationMs = 1000, timestamp = when }),
+    };
+    File.WriteAllText(Path.Combine(projectFolder, id + ".jsonl"), string.Join("\n", rows) + "\n");
+}
+SmallSession(docsId, "Tidy the docs index.", 200);
+SmallSession(untaggedId, "Check the file names.", 210);
+
 // One tag on the coder's session, for the tag-filter screen (--rail-tag screenshot): only its rows stay in the rail under that filter.
 // A plan file on the same session (plan progress, Part 2): 2 of 5 items are done, so its row shows 2/5 and its next item is "Run the build".
 var planPath = Path.GetFullPath(Path.Combine(stateFolder, "plan.md"));
 File.WriteAllText(planPath, "# Batch plan (screenshot fixture)\n\n- [x] Read the brief\n- [x] Write notes.md\n- [ ] Run the build\n  - [ ] Nested: run the tests\n- [!] Ask the owner about the rename\n");
-new SessionLibrary(Path.Combine(stateFolder, "library.json")).Update(entries => entries[coder1Id] = new LibraryEntry(Tags: ["screenshot"], PlanFile: planPath));
+// The coder's session has two tags, so Group by tag lists it under both (features batch G4); the docs session has one.
+new SessionLibrary(Path.Combine(stateFolder, "library.json")).Update(entries =>
+{
+    entries[coder1Id] = new LibraryEntry(Tags: ["screenshot", "batch"], PlanFile: planPath);
+    entries[docsId] = new LibraryEntry(Tags: ["docs"]);
+});
 
 Console.WriteLine($"coder1Id={coder1Id}");
 Console.WriteLine($"coder1={coders[0].Name}");
@@ -197,14 +225,32 @@ if ($LASTEXITCODE -ne 0) { throw "The fixture generator did not build (see dotne
 & dotnet build "$tools\fakeclaude\fakeclaude.csproj" -o "$tools\fakebin" | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "The stand-in for claude did not build" }
 
-# The git repo: one committed file and one edited file, so the Changes tab has a change to show.
+# The git repo: one committed file and one edited file, so the Changes tab has a change to show. Two more files make the big-deletion
+# check (features batch G2) show: old-notes.md loses 55 of its 60 lines (mostly deleted), and retired.md is deleted.
 $git = @('-c', 'user.name=scratch', '-c', 'user.email=scratch@example.invalid')
 & git init -q $repo
 Set-Content -LiteralPath "$repo\README.md" -Value "# Scratch repo`nNothing here is real.`n" -Encoding UTF8
 Set-Content -LiteralPath "$repo\notes.md" -Value "draft`n" -Encoding UTF8
-& git -C $repo add README.md notes.md
+Set-Content -LiteralPath "$repo\old-notes.md" -Value ((1..60 | ForEach-Object { "old line $_" }) -join "`n") -Encoding UTF8
+Set-Content -LiteralPath "$repo\retired.md" -Value "retired`n" -Encoding UTF8
+& git -C $repo add README.md notes.md old-notes.md retired.md
 & git -C $repo @git commit -q -m "Scratch base"
 Set-Content -LiteralPath "$repo\README.md" -Value "# Scratch repo`nNothing here is real. Edited for the screenshot.`n" -Encoding UTF8
+Set-Content -LiteralPath "$repo\old-notes.md" -Value ((1..5 | ForEach-Object { "kept line $_" }) -join "`n") -Encoding UTF8
+Remove-Item -LiteralPath "$repo\retired.md"
+
+# The viewed ticks of the coder's Changes tab (features batch G1), written into ui.json for the two Changes screens only: README.md is ticked
+# with its current stamp (viewed); retired.md is ticked as deleted (viewed); old-notes.md has a stale stamp, so its tick does not count (it
+# changed after the tick). The stamp is "length:last-write ticks", as the app reads it. Changed: 3, 2 of 3 viewed.
+$coderSession = '5e4f3a21-0000-4000-8000-00000000c0d1'
+$readme = Get-Item -LiteralPath "$repo\README.md"
+$ticks = [ordered]@{
+    $coderSession = [ordered]@{
+        at = (Get-Date).ToUniversalTime().ToString('o')
+        files = [ordered]@{ 'README.md' = "$($readme.Length):$($readme.LastWriteTimeUtc.Ticks)"; 'retired.md' = 'deleted'; 'old-notes.md' = '1:1' }
+    }
+}
+$viewedExtra = ', "viewedFiles": ' + ($ticks | ConvertTo-Json -Depth 6 -Compress)
 
 & dotnet "$tools\gen\out\gen.dll" $state $repo $claudeHome
 if ($LASTEXITCODE -ne 0) { throw "The fixture generator failed" }
@@ -220,6 +266,8 @@ $screens = @(
     @{ Name = 'rail-light'; Theme = 'Light'; Options = @() },
     # Tags and automatic naming, Part A: the rail with the tag filter chosen (--rail-tag, test only). Only the rows of the tagged session stay.
     @{ Name = 'rail-tag-dark'; Theme = 'Dark'; Options = @('--rail-tag', 'screenshot') },
+    # Group by tag (features batch G4): the History section lists tag groups; the coder's session is in both of its tag groups.
+    @{ Name = 'rail-group-tag-dark'; Theme = 'Dark'; Options = @('--rail-group', 'tag') },
     @{ Name = 'setup-dark'; Theme = 'Dark'; Options = @('--open-tab', 'setup', '--setup-detail', 'models') },
     @{ Name = 'setup-light'; Theme = 'Light'; Options = @('--open-tab', 'setup', '--setup-detail', 'models') },
     @{ Name = 'storage-dark'; Theme = 'Dark'; Options = @('--open-tab', 'storage') },
@@ -240,7 +288,9 @@ $screens = @(
     # The effort panel open (--effort-open), in both themes: its contents are what the screens check (round 5 item 16).
     @{ Name = 'effort-dark'; Theme = 'Dark'; Options = @('--open-transcript', '5e4f3a21-0000-4000-8000-00000000c0d1', '--effort-open') },
     @{ Name = 'effort-light'; Theme = 'Light'; Options = @('--open-transcript', '5e4f3a21-0000-4000-8000-00000000c0d1', '--effort-open') },
-    @{ Name = 'changes-dark'; Theme = 'Dark'; Options = @('--open-tab', 'changes:bullshark-coder-r4a1-1') },
+    # The Changes tab with the flags of the big-deletion check and the viewed ticks (features batch G1 and G2), in both themes.
+    @{ Name = 'changes-dark'; Theme = 'Dark'; Options = @('--open-tab', 'changes:bullshark-coder-r4a1-1'); UiExtra = $viewedExtra },
+    @{ Name = 'changes-light'; Theme = 'Light'; Options = @('--open-tab', 'changes:bullshark-coder-r4a1-1'); UiExtra = $viewedExtra },
     # Round 7 item 1: the daemon is not running, so the Needs you group says so and the pass starts nothing.
     # The listing has two sessions that claim working or blocked, while the daemon is not running: the Needs-you note counts them, and the
     # rail and the tab show them as "not running (daemon idle)".

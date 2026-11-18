@@ -648,6 +648,14 @@ public sealed class TranscriptView : UserControl
         foreach (var item in report.FailedByTool)
             panel.Children.Add(EffortJump($"{item.Label}: {item.Count:N0} failed", item.Line, null));
 
+        // The same call failing again and again (features batch G3). The line is the first failed result, so a click shows where it began.
+        panel.Children.Add(EffortCaption($"Same call failed in a row: {report.FailingLoops.Count:N0}"));
+        foreach (var loop in report.FailingLoops)
+            panel.Children.Add(EffortJump(
+                $"Same call failed {loop.Count:N0} times in a row: {loop.Tool} (lines {loop.FirstLine:N0}-{loop.LastLine:N0})",
+                loop.FirstLine,
+                $"{EffortReport.LoopThreshold} or more failures of one call in a row, with no success of that call in between"));
+
         panel.Children.Add(EffortCaption($"Files read more than {EffortReport.RereadThreshold} times: {report.RereadFiles.Count:N0}"));
         foreach (var item in report.RereadFiles)
             panel.Children.Add(EffortPathJump(item.Label, $": read {item.Count:N0} times", item.Line));

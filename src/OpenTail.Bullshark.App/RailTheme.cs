@@ -55,6 +55,9 @@ public sealed record RailPalette(string Panel, string Background, string Text, s
 
     public string MenuBg => IsLight ? "#FFFFFF" : "#171A20";
 
+    /// <summary>The warning colour: a label to check (the Changes tab's big-deletion flags, features batch G2). The setup check's warning colours.</summary>
+    public string Warn => IsLight ? "#9A6B00" : "#E0B341";
+
     /// <summary>
     /// The eight colours a session may have (session library, D-L11): a name, a shade for the dark theme and one for the light.
     /// None of them is green, amber or grey: those are the tab's state dots (working, blocked, other).

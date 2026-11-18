@@ -106,13 +106,20 @@ public partial class SessionWindow
     /// </summary>
     private string? _tagFilter;
 
+    /// <summary>
+    /// Whether the History section groups its sessions by tag rather than by folder (features batch G4). One at a time, held for the window run,
+    /// as the tag filter is (not kept between launches). UI thread only.
+    /// </summary>
+    private bool _groupByTag;
+
     /// <summary>The tag filter in force. Nothing is filtered while library.json cannot be read: no tag is known then (D-L3).</summary>
     private string? ActiveTagFilter => _libraryError is null ? _tagFilter : null;
 
     private void UpdateFilterMark()
     {
         var tag = ActiveTagFilter;
-        FilterMark.Text = $"show: {_filter.ToString().ToLowerInvariant()}{(tag is null ? string.Empty : " · #" + tag)} ▾";
+        var grouping = _groupByTag ? " · by tag" : string.Empty;
+        FilterMark.Text = $"show: {_filter.ToString().ToLowerInvariant()}{(tag is null ? string.Empty : " · #" + tag)}{grouping} ▾";
         // The label may be cut with an ellipsis when the tag is long, so the tooltip names the tag in full.
         FilterBox.ToolTip = tag is null ? "Choose what the rail shows" : $"Choose what the rail shows (tag filter #{tag})";
     }
@@ -142,28 +149,54 @@ public partial class SessionWindow
         while (_filterMenu.Items.Count > views) _filterMenu.Items.RemoveAt(views);
 
         var tags = TagIndex.Counts(_marks.Values);
-        if (tags.Count == 0 && ActiveTagFilter is null) return;
-        _filterMenu.Items.Add(new Separator());
-        foreach (var tag in tags)
+        if (tags.Count > 0 || ActiveTagFilter is not null)
         {
-            var name = tag.Tag;
-            var item = new MenuItem
+            _filterMenu.Items.Add(new Separator());
+            foreach (var tag in tags)
             {
-                Header = $"#{name} ({tag.Count})",
-                IsCheckable = true,
-                IsChecked = SameTag(name, ActiveTagFilter),
-                Padding = new Thickness(10, 4, 16, 4),
-            };
-            // A click on the tag in use clears it; a click on another tag makes it the one in use.
-            item.Click += (_, _) => ChooseTag(SameTag(name, ActiveTagFilter) ? null : name);
+                var name = tag.Tag;
+                var item = new MenuItem
+                {
+                    Header = $"#{name} ({tag.Count})",
+                    IsCheckable = true,
+                    IsChecked = SameTag(name, ActiveTagFilter),
+                    Padding = new Thickness(10, 4, 16, 4),
+                };
+                // A click on the tag in use clears it; a click on another tag makes it the one in use.
+                item.Click += (_, _) => ChooseTag(SameTag(name, ActiveTagFilter) ? null : name);
+                _filterMenu.Items.Add(item);
+            }
+            if (ActiveTagFilter is not null)
+            {
+                var clear = new MenuItem { Header = "Clear tag filter", Padding = new Thickness(10, 4, 16, 4) };
+                clear.Click += (_, _) => ChooseTag(null);
+                _filterMenu.Items.Add(clear);
+            }
+        }
+
+        // The grouping of the History section (features batch G4): folders or tags, with a tick on the one in use.
+        _filterMenu.Items.Add(new Separator());
+        _filterMenu.Items.Add(new MenuItem { Header = "Group by", IsEnabled = false, Padding = new Thickness(10, 4, 16, 4) });
+        foreach (var (label, byTag) in new[] { ("Folder", false), ("Tag", true) })
+        {
+            var item = new MenuItem { Header = label, IsCheckable = true, IsChecked = _groupByTag == byTag, Padding = new Thickness(10, 4, 16, 4) };
+            item.Click += (_, _) => ChooseGrouping(byTag);
             _filterMenu.Items.Add(item);
         }
-        if (ActiveTagFilter is not null)
-        {
-            var clear = new MenuItem { Header = "Clear tag filter", Padding = new Thickness(10, 4, 16, 4) };
-            clear.Click += (_, _) => ChooseTag(null);
-            _filterMenu.Items.Add(clear);
-        }
+    }
+
+    /// <summary>
+    /// Sets how the History section groups its sessions: by folder, or by tag (features batch G4). The filters and the search still apply, and
+    /// Needs you is not affected.
+    /// </summary>
+    private void ChooseGrouping(bool byTag)
+    {
+        _groupByTag = byTag;
+        UpdateFilterMark();
+        SetStatus(byTag
+            ? "The History section groups its sessions by tag. A session with several tags is under each of them."
+            : "The History section groups its sessions by folder.");
+        RefreshRail();
     }
 
     private static bool SameTag(string? a, string? b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
@@ -240,6 +273,8 @@ public partial class SessionWindow
         if (Enum.TryParse<RailFilter>(_options.FilterName, ignoreCase: true, out var start)) _filter = start;
         // The same for the tag filter (--rail-tag): a test flag, the rail starts with that tag shown. Cleared at the first refresh if no session has it.
         if (!string.IsNullOrWhiteSpace(_options.FilterTag)) _tagFilter = _options.FilterTag.Trim().ToLowerInvariant();
+        // --rail-group tag starts the History section grouped by tag, for the screenshots only (features batch G4).
+        _groupByTag = string.Equals(_options.GroupName, "tag", StringComparison.OrdinalIgnoreCase);
         ApplyTheme();
     }
 
@@ -506,13 +541,33 @@ public partial class SessionWindow
     }
 
     /// <summary>
-    /// The folders the History section lists, in the order it lists them, for the current filter, tag and search. Test and scratch folders under the
-    /// Windows temp folder are shown only by the Temporary filter (owner, 2026-11-15). The rail and the magic rename (which names the top
-    /// sessions first) both read this, so they cannot disagree.
+    /// One group the History section lists: a folder (<see cref="Key"/> is the folder, and <see cref="Tag"/> is null), or with Group by tag a tag
+    /// (<see cref="Tag"/> is the tag in lower case, or null for the sessions with no tag, and <see cref="Key"/> is the group's own key).
     /// </summary>
-    private List<IGrouping<string, SessionDigest>> ShownHistoryFolders()
+    private sealed record HistoryGroup(string Key, string? Tag, IReadOnlyList<SessionDigest> Sessions);
+
+    /// <summary>
+    /// The groups the History section lists, in the order it lists them, for the current filter, tag and search: the folders (by their newest
+    /// main session), or with Group by tag the tags in use (features batch G4). Test and scratch folders under the Windows temp folder are shown
+    /// only by the Temporary filter (owner, 2026-11-15). The rail and the magic rename (which names the top sessions first) both read this, so
+    /// they cannot disagree.
+    /// </summary>
+    private List<HistoryGroup> ShownHistoryFolders()
     {
         if (_history is null) return [];
+        var tempPrefix = FolderKey.From(Path.GetTempPath());
+        if (_groupByTag)
+        {
+            // The sessions the filters show, with the temporary rule applied per session (every session of a folder is in the same place).
+            var sessions = _history
+                .Where(IsShownInHistory)
+                .Where(InFolders)
+                .Where(d => IsTemporary(d.ProjectFolder, tempPrefix) == (_filter == RailFilter.Temporary))
+                .ToList();
+            return TagGrouping.Groups(sessions, id => MarkOf(id))
+                .Select(group => new HistoryGroup(group.Tag is null ? "tag-none" : "tag:" + group.Tag, group.Tag, group.Sessions))
+                .ToList();
+        }
         var folders = _history
             .Where(IsShownInHistory)
             .Where(InFolders)
@@ -520,29 +575,45 @@ public partial class SessionWindow
             .OrderBy(g => HistoryOrder.FolderRank(g))
             .ThenByDescending(g => HistoryOrder.FolderRecency(g))
             .ToList();
-        var tempPrefix = FolderKey.From(Path.GetTempPath());
-        return folders.Where(f => IsTemporary(f.Key, tempPrefix) == (_filter == RailFilter.Temporary)).ToList();
+        return folders
+            .Where(f => IsTemporary(f.Key, tempPrefix) == (_filter == RailFilter.Temporary))
+            .Select(f => new HistoryGroup(f.Key, null, f.ToList()))
+            .ToList();
     }
 
-    /// <summary>One folder of the History section, with its past sessions, newest first.</summary>
+    /// <summary>
+    /// One group of the History section, with its past sessions, newest first. A folder is named as the live folder's name when it is one of
+    /// this window's. A tag group is "#tag (N)"; the sessions with no tag are "No tag (N)".
+    /// </summary>
     private TreeViewItem HistoryFolderItem(
-        IGrouping<string, SessionDigest> folder,
+        HistoryGroup group,
         IReadOnlyDictionary<string, string> liveNames,
         ISet<string> openIds,
         bool expandByDefault = false)
     {
-        var key = HistoryKey + ":" + folder.Key;
-        var name = liveNames.TryGetValue(folder.Key, out var live) ? live : folder.Key;
-        var folderItem = NewItem(Label(name),
-            new RailTag(RailKind.Heading, key),
-            "Folder: " + folder.Key + "\n(the name Claude gave the transcripts, F44)");
+        var key = HistoryKey + ":" + group.Key;
+        string header;
+        string tooltip;
+        if (_groupByTag)
+        {
+            header = group.Tag is null ? $"No tag ({group.Sessions.Count})" : $"#{group.Tag} ({group.Sessions.Count})";
+            tooltip = group.Tag is null
+                ? "Sessions with no tag."
+                : $"Tag #{group.Tag}. A session with several tags is listed under each of them.";
+        }
+        else
+        {
+            header = liveNames.TryGetValue(group.Key, out var live) ? live : group.Key;
+            tooltip = "Folder: " + group.Key + "\n(the name Claude gave the transcripts, F44)";
+        }
+        var folderItem = NewItem(Label(header), new RailTag(RailKind.Heading, key), tooltip);
         // OPENTAIL_BULLSHARK_EXPAND=1 expands the history folders, for screenshots only. Normally they start collapsed.
         // The top (most recent) folder starts expanded, so the sessions are visible at once. A collapse the owner makes is kept.
         folderItem.IsExpanded = _expanded.GetValueOrDefault(key,
             expandByDefault || Environment.GetEnvironmentVariable("OPENTAIL_BULLSHARK_EXPAND") == "1");
 
         // Subagent transcripts come last, so the cap cuts them first (owner, 2026-11-18).
-        foreach (var digest in HistoryOrder.Sorted(folder).Take(MaxHistoryPerFolder))
+        foreach (var digest in HistoryOrder.Sorted(group.Sessions).Take(MaxHistoryPerFolder))
         {
             folderItem.Items.Add(HistoryRow(digest, openIds));
         }

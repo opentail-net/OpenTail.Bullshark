@@ -36,7 +36,8 @@ public static class UiSettingsFile
     }
 
     /// <summary>Sets one key and writes the file, keeping the other keys. The change is not made when the file cannot be written.</summary>
-    public static void Set(string path, string key, JsonNode value, Action<string>? log = null)
+    /// <summary>Sets one key and writes the file. Returns true when it was written; a failure is logged and gives false (nothing is thrown).</summary>
+    public static bool Set(string path, string key, JsonNode value, Action<string>? log = null)
     {
         log ??= _ => { };
         try
@@ -45,10 +46,12 @@ public static class UiSettingsFile
             var root = ReadRoot(path, log) ?? new JsonObject();
             root[key] = value;
             FileLock.WriteAtomic(path, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+            return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or TimeoutException)
         {
             log($"ui.json not saved: {ex.Message}");
+            return false;
         }
     }
 

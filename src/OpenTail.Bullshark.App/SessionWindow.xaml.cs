@@ -688,6 +688,8 @@ public sealed record LaunchOptions(
     string? FilterName = null,
     /// <summary>--rail-tag: the rail starts with this tag filter, for the screenshots only (tags plan, Part A).</summary>
     string? FilterTag = null,
+    /// <summary>--rail-group tag: the History section starts grouped by tag rather than by folder, for the screenshots only (features batch G4).</summary>
+    string? GroupName = null,
     string? SetupDetail = null,
     string? SelfTestMode = null,
     string? OpenSessionId = null,
@@ -713,7 +715,7 @@ public sealed record LaunchOptions(
 
     public static LaunchOptions Parse(string[] args)
     {
-        string? workdir = null, task = null, state = null, shot = null, selfTest = null, filterName = null, filterTag = null, selfTestMode = null, setupDetail = null, openSession = null, claudeHome = null, openTab = null;
+        string? workdir = null, task = null, state = null, shot = null, selfTest = null, filterName = null, filterTag = null, groupName = null, selfTestMode = null, setupDetail = null, openSession = null, claudeHome = null, openTab = null;
         double shotAfter = 8;
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         if (args.Length > 0 && args[^1] == "--state") throw new ArgumentException("--state needs the path of a state file.");
@@ -730,6 +732,7 @@ public sealed record LaunchOptions(
                 case "--selftest-mode": selfTestMode = args[++i]; break;
                 case "--rail-filter": filterName = args[++i]; break;
                 case "--rail-tag": filterTag = args[++i]; break;
+                case "--rail-group": groupName = args[++i]; break;
                 case "--setup-detail": setupDetail = args[++i]; break;
                 case "--open-transcript": openSession = args[++i]; break;
                 case "--claude-home": claudeHome = args[++i]; break;
@@ -748,6 +751,7 @@ public sealed record LaunchOptions(
             SelfTestPath: selfTest,
             FilterName: filterName,
             FilterTag: filterTag,
+            GroupName: groupName,
             SetupDetail: setupDetail,
             SelfTestMode: selfTestMode,
             OpenSessionId: openSession,

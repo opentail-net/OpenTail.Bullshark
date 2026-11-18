@@ -265,5 +265,173 @@ public sealed class EffortReportTests
         Assert.Empty(report.RepeatedCommands);
         Assert.Empty(report.TurnsWithoutOutput);
         Assert.Equal(TokenUsage.Zero, report.TokensWithoutOutput);
+        Assert.Empty(report.FailingLoops);
+    }
+
+    /// <summary>A successful result of a call (no error flag).</summary>
+    private static string Succeeded(string toolId) =>
+        Json(new
+        {
+            type = "user",
+            timestamp = At,
+            message = new { role = "user", content = new object[] { new { type = "tool_result", content = "ok", tool_use_id = toolId } } },
+        });
+
+    /// <summary>A call with a given tool and input. Its id is <paramref name="toolId"/>; its message id is unique to it.</summary>
+    private static string ToolCall(string toolId, string name, object input) => Call(toolId, name, input, "m-" + toolId);
+
+    [Fact]
+    public void ThreeFailuresOfTheSameCallInARowAreALoopWithItsFirstAndLastLine()
+    {
+        var report = EffortReport.From([
+            Prompt("build it"),                             // 1
+            ToolCall("b1", "Bash", Bash("npm run lint")),   // 2
+            Failed("b1"),                                   // 3
+            ToolCall("b2", "Bash", Bash("npm run lint")),   // 4
+            Failed("b2"),                                   // 5
+            ToolCall("b3", "Bash", Bash("npm run lint")),   // 6
+            Failed("b3"),                                   // 7
+            Done(),                                         // 8
+        ]);
+
+        var loop = Assert.Single(report.FailingLoops);
+        Assert.Equal(new EffortLoop("Bash", 3, 3, 7), loop);
+    }
+
+    [Fact]
+    public void FailFailSuccessFailIsNotALoop()
+    {
+        var report = EffortReport.From([
+            Prompt("try"),
+            ToolCall("s1", "Bash", Bash("make")), Failed("s1"),
+            ToolCall("s2", "Bash", Bash("make")), Failed("s2"),
+            ToolCall("s3", "Bash", Bash("make")), Succeeded("s3"),
+            ToolCall("s4", "Bash", Bash("make")), Failed("s4"),
+            Done(),
+        ]);
+
+        Assert.Empty(report.FailingLoops);
+    }
+
+    [Fact]
+    public void AFailEditPassSequenceIsNotALoop()
+    {
+        // The same test fails, a file is edited, and the test passes: the edit is the work, not a retry of one call.
+        var report = EffortReport.From([
+            Prompt("fix the test"),
+            ToolCall("t1", "Bash", Bash("dotnet test")), Failed("t1"),
+            Call("e1", "Edit", Write("x.cs"), "me1"), Succeeded("e1"),
+            ToolCall("t2", "Bash", Bash("dotnet test")), Succeeded("t2"),
+            Done(),
+        ]);
+
+        Assert.Empty(report.FailingLoops);
+    }
+
+    [Fact]
+    public void DifferentInputsAreDifferentCallsAndDoNotAddUp()
+    {
+        var report = EffortReport.From([
+            Prompt("many"),
+            ToolCall("d1", "Bash", Bash("make a")), Failed("d1"),
+            ToolCall("d2", "Bash", Bash("make b")), Failed("d2"),
+            ToolCall("d3", "Bash", Bash("make c")), Failed("d3"),
+            Done(),
+        ]);
+
+        Assert.Empty(report.FailingLoops);
+        Assert.Equal(3, report.FailedCalls);
+    }
+
+    [Fact]
+    public void OtherCallsInBetweenDoNotBreakTheRunOfOneCall()
+    {
+        var report = EffortReport.From([
+            Prompt("interleave"),                                   // 1
+            ToolCall("i1", "Bash", Bash("deploy")), Failed("i1"),   // 2, 3
+            Call("r1", "Read", Read("a.md"), "mr1"), Succeeded("r1"), // 4, 5
+            ToolCall("i2", "Bash", Bash("deploy")), Failed("i2"),   // 6, 7
+            Call("r2", "Read", Read("b.md"), "mr2"), Succeeded("r2"), // 8, 9
+            ToolCall("i3", "Bash", Bash("deploy")), Failed("i3"),   // 10, 11
+            Done(),
+        ]);
+
+        var loop = Assert.Single(report.FailingLoops);
+        Assert.Equal(new EffortLoop("Bash", 3, 3, 11), loop);
+    }
+
+    [Fact]
+    public void ASuccessfulResultEndsARunAndADuplicateFailureRecordCountsOnce()
+    {
+        var report = EffortReport.From([
+            Prompt("dup"),
+            ToolCall("u1", "Bash", Bash("go")), Failed("u1"), Failed("u1"),
+            ToolCall("u2", "Bash", Bash("go")), Succeeded("u2"),
+            ToolCall("u3", "Bash", Bash("go")), Failed("u3"),
+            Done(),
+        ]);
+
+        Assert.Empty(report.FailingLoops);
+    }
+
+    [Fact]
+    public void ALargeInputIsHashedAndTheLoopShowsOnlyTheToolAndLines()
+    {
+        var secret = "token=" + new string('z', 200_000);
+        var report = EffortReport.From([
+            Prompt("big"),
+            ToolCall("g1", "Bash", Bash(secret)), Failed("g1"),
+            ToolCall("g2", "Bash", Bash(secret)), Failed("g2"),
+            ToolCall("g3", "Bash", Bash(secret)), Failed("g3"),
+            Done(),
+        ]);
+
+        Assert.Equal(new EffortLoop("Bash", 3, 3, 7), Assert.Single(report.FailingLoops));
+    }
+
+    [Fact]
+    public void GarbageLinesAreSkippedAndTheLoopStillCountsItsLines()
+    {
+        var report = EffortReport.From([
+            Prompt("garbage"),                              // 1
+            ToolCall("h1", "Bash", Bash("x")), Failed("h1"), // 2, 3
+            "not json at all",                              // 4
+            "",                                             // 5
+            ToolCall("h2", "Bash", Bash("x")), Failed("h2"), // 6, 7
+            "{ broken",                                     // 8
+            ToolCall("h3", "Bash", Bash("x")), Failed("h3"), // 9, 10
+            Done(),
+        ]);
+
+        Assert.Equal(new EffortLoop("Bash", 3, 3, 10), Assert.Single(report.FailingLoops));
+    }
+
+    [Fact]
+    public void AResultForAnUnknownCallChangesNoRun()
+    {
+        var report = EffortReport.From([
+            Prompt("orphan"),
+            ToolCall("o1", "Bash", Bash("y")), Failed("o1"),
+            Failed("never-called"),
+            ToolCall("o2", "Bash", Bash("y")), Failed("o2"),
+            ToolCall("o3", "Bash", Bash("y")), Failed("o3"),
+            Done(),
+        ]);
+
+        Assert.Equal(new EffortLoop("Bash", 3, 3, 8), Assert.Single(report.FailingLoops));
+    }
+
+    [Fact]
+    public void AStreakThatIsStillOpenAtTheEndOfTheTranscriptIsALoop()
+    {
+        // No success and no turn end after the third failure: the run still counts (it ends with the transcript).
+        var report = EffortReport.From([
+            Prompt("open end"),
+            ToolCall("x1", "Bash", Bash("z")), Failed("x1"),
+            ToolCall("x2", "Bash", Bash("z")), Failed("x2"),
+            ToolCall("x3", "Bash", Bash("z")), Failed("x3"),
+        ]);
+
+        Assert.Equal(new EffortLoop("Bash", 3, 3, 7), Assert.Single(report.FailingLoops));
     }
 }
