@@ -384,7 +384,8 @@ public partial class SessionWindow
             .Where(IsShownInHistory)
             .Where(InFolders)
             .GroupBy(d => d.ProjectFolder, StringComparer.OrdinalIgnoreCase)
-            .OrderByDescending(g => g.Max(d => d.LastActivity ?? DateTimeOffset.MinValue))
+            .OrderBy(g => HistoryOrder.FolderRank(g))
+            .ThenByDescending(g => HistoryOrder.FolderRecency(g))
             .ToList();
 
         // Test and scratch folders under the Windows temp folder are shown only by the Temporary filter (owner, 2026-11-15).
@@ -421,9 +422,8 @@ public partial class SessionWindow
         folderItem.IsExpanded = _expanded.GetValueOrDefault(key,
             expandByDefault || Environment.GetEnvironmentVariable("OPENTAIL_BULLSHARK_EXPAND") == "1");
 
-        foreach (var digest in folder
-                     .OrderByDescending(d => d.LastActivity ?? DateTimeOffset.MinValue)
-                     .Take(MaxHistoryPerFolder))
+        // Subagent transcripts come last, so the cap cuts them first (owner, 2026-11-18).
+        foreach (var digest in HistoryOrder.Sorted(folder).Take(MaxHistoryPerFolder))
         {
             folderItem.Items.Add(HistoryRow(digest, openIds));
         }

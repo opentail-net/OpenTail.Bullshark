@@ -37,10 +37,9 @@ public partial class SessionWindow
         var group = NewItem(Label("Pinned", bold: true), new RailTag(RailKind.Heading, key),
             "Sessions you pinned. Each one is listed here only.");
         group.IsExpanded = _expanded.GetValueOrDefault(key, true);
-        foreach (var digest in _history!
+        foreach (var digest in HistoryOrder.Sorted(_history!
                      .Where(IsShownInHistory)
-                     .Where(InPinnedGroup)
-                     .OrderByDescending(d => d.LastActivity ?? DateTimeOffset.MinValue))
+                     .Where(InPinnedGroup)))
         {
             group.Items.Add(HistoryRow(digest, openIds));
         }
