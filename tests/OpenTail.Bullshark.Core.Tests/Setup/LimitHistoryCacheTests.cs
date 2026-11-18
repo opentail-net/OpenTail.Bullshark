@@ -145,6 +145,8 @@ public sealed class LimitHistoryCacheTests : IDisposable
         // The same length, but a new write time (the file was written again): the entry does not match, and the new text is read.
         var text = File.ReadAllText(path);
         File.WriteAllText(path, text.Replace("\"rejected\"", "\"rejectex\"", StringComparison.Ordinal), new UTF8Encoding(false));
+        // Two writes inside one file-system clock tick can share a write time (this test failed once in a full run), so the new time is set.
+        File.SetLastWriteTimeUtc(path, File.GetLastWriteTimeUtc(path).AddSeconds(2));
 
         Assert.Empty(Cached().Hits);
         Assert.Empty(Uncached().Hits);

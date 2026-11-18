@@ -138,7 +138,8 @@ public partial class SessionWindow
         if (!_magicAutoOn || _magicRunning || _passRunning || _history is null || _historyLoading || _libraryError is not null) return;
         var now = DateTimeOffset.Now;
         if (now - _magicStartedAt < MagicAutoAfterStart) return;
-        if (_activeLimits.Any(limit => limit.ResetsAt > now)) return;
+        // No pre-check of the limits here: a limit that is in force may belong to another model (a weekly Fable limit does not stop Haiku, and
+        // blocked the first real tries on 2026-11-18). The call itself reports a limit that stops it, and the batch stops there.
 
         var hour = now.AddHours(-1);
         var used = Math.Max(MagicCandidates.NamedSince(_marks, hour), _magicAutoCalls.Count(at => at >= hour));
@@ -219,7 +220,7 @@ public partial class SessionWindow
         var root = _options.ProjectsRoot;
         var namer = new MagicNamer(
             new HaikuNameModel(new ProcessCliRunner(), folder),
-            () => LimitStatus.Active(root, DateTimeOffset.Now).Count > 0,
+            () => false, // see MaybeAutoMagicRename: the call's own limit error stops the batch, not a limit of another model
             TimeProvider.System,
             AppLog.Write);
         var jobs = targets.Select(target => JobFor(target, marks, history)).ToList();
