@@ -2,6 +2,7 @@ using System.Diagnostics;
 using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Cache;
 using OpenTail.Bullshark.Core.Search;
+using OpenTail.Bullshark.Core.Setup;
 using OpenTail.Bullshark.Core.Storage;
 using OpenTail.Bullshark.Core.Supervisor;
 
@@ -9,7 +10,7 @@ using OpenTail.Bullshark.Core.Supervisor;
 // file, folder or session name, so its output can be written into the repository. A failure prints the exception type only, because a
 // message can hold a path.
 //
-// Usage: OpenTail.Bullshark.Bench [--projects <folder>] [--only index,search,storage,effort,pager,overlap,history,verify] [--repeat <n>] [--cache <file>]
+// Usage: OpenTail.Bullshark.Bench [--projects <folder>] [--only index,search,storage,effort,pager,overlap,history,verify,limits] [--repeat <n>] [--cache <file>]
 // The default folder is the owner's, read only. Run each step in its own process with --only, so the peak working set belongs to that step.
 // --cache gives the index build a cache file of its own (a scratch file, never the owner's): the first build writes it, the next ones read it.
 
@@ -85,6 +86,39 @@ internal static class Program
                 sw.Stop();
                 Report($"history path, index and tails{(cachePath is null ? string.Empty : " with cache")}, run {run}", sw.Elapsed,
                     $"sessions {built.Sessions.Count}, tails read {tails}");
+            }
+        }
+
+        if (steps.Contains("limits"))
+        {
+            // The limit paths of the window: the history (the Limits page and the Away digest) and the status bar's reads (Active, Find). Only counts
+            // are printed. Run 1 is the first read of the files in this process; the OS file cache may hold them from earlier runs. The window sizes
+            // mirror the code: the history reads from 30 days and five hours back (LimitHistory.DefaultDays, TokenWindow), the status reads from 8 days
+            // back (LimitEntries.LimitWindow is internal, so the figure is repeated here), and a tail is the last 256 KB (LimitEntries.Tail, private size).
+            var historySince = DateTime.UtcNow - TimeSpan.FromDays(LimitHistory.DefaultDays) - LimitHistory.TokenWindow;
+            var statusSince = DateTime.UtcNow - TimeSpan.FromDays(8);
+            var historyFiles = transcripts.Where(f => f.LastWriteTimeUtc >= historySince).ToList();
+            var statusFiles = transcripts.Where(f => f.LastWriteTimeUtc >= statusSince).ToList();
+            Console.WriteLine($"limit windows: history {historyFiles.Count} transcripts, {historyFiles.Sum(f => f.Length) / Mb:0.0} MB; " +
+                              $"status {statusFiles.Count} transcripts, {statusFiles.Sum(f => f.Length) / Mb:0.0} MB, " +
+                              $"tails {statusFiles.Sum(f => Math.Min(f.Length, 256L * 1024)) / Mb:0.0} MB");
+            for (var run = 1; run <= repeat; run++)
+            {
+                var sw = Stopwatch.StartNew();
+                var history = LimitHistory.Read(projects, DateTimeOffset.UtcNow);
+                sw.Stop();
+                Report($"limit history (LimitHistory.Read), run {run}", sw.Elapsed,
+                    $"hits {history.Hits.Count}, days {history.Days.Count}");
+
+                sw.Restart();
+                var active = LimitStatus.Active(projects, DateTimeOffset.UtcNow);
+                sw.Stop();
+                Report($"limit status (LimitStatus.Active), run {run}", sw.Elapsed, $"limits in force {active.Count}");
+
+                sw.Restart();
+                var reset = LimitReset.Find(projects, DateTimeOffset.UtcNow);
+                sw.Stop();
+                Report($"limit reset (LimitReset.Find), run {run}", sw.Elapsed, $"reset in force: {(reset is null ? "no" : "yes")}");
             }
         }
 
