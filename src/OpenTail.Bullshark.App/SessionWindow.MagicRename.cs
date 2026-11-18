@@ -86,12 +86,15 @@ public partial class SessionWindow
             MagicCandidates.RenameKind.ReplaceManual => "Magic rename… (replaces your name)",
             _ => "Magic rename",
         };
-        menu.Items.Add(MenuItemFor(header, () => _ = MagicRenameOneAsync(digest, kind)));
+        var item = MenuItemFor(_magicRunning ? header + " (running…)" : header, () => _ = MagicRenameOneAsync(digest, kind));
+        item.IsEnabled = !_magicRunning;
+        menu.Items.Add(item);
     }
 
     /// <summary>Names one past session. The owner's own name is replaced only after a confirm.</summary>
     private async Task MagicRenameOneAsync(SessionDigest digest, MagicCandidates.RenameKind kind)
     {
+        if (MagicBusy()) return;
         var replace = kind == MagicCandidates.RenameKind.ReplaceManual;
         if (replace)
         {
@@ -110,6 +113,7 @@ public partial class SessionWindow
     /// <summary>The History mark and the palette: names the cold sessions, at most ten a run, after a confirm that says how many and that it uses Haiku.</summary>
     private async Task NameColdSessionsAsync()
     {
+        if (MagicBusy()) return;
         var cold = ColdSessions(DateTimeOffset.Now);
         if (cold.Count == 0)
         {
@@ -152,6 +156,14 @@ public partial class SessionWindow
         _ = RunMagicAsync(targets, allowed, automatic: true);
     }
 
+    /// <summary>True, with a status line, when a run is going: a second one is not started, and no confirm is shown for it.</summary>
+    private bool MagicBusy()
+    {
+        if (!_magicRunning) return false;
+        SetStatus("A magic rename is already running. Wait for it to finish.");
+        return true;
+    }
+
     /// <summary>
     /// Names the targets in one background run, then redraws the rail and the tab titles. A run that is already going is refused. A failed
     /// write or an unexpected error is logged and shown on the status line; nothing is left half-drawn.
@@ -171,8 +183,7 @@ public partial class SessionWindow
         if (targets.Count == 0) return;
 
         _magicRunning = true;
-        // The owner waits for the answer, so the pointer shows it (an automatic run is in the background and leaves the pointer alone).
-        if (!automatic) Mouse.OverrideCursor = Cursors.Wait;
+        // Background work: the window stays usable (no wait cursor); the status line shows progress.
         SetStatus(automatic ? "Automatic magic naming with Haiku…" : $"Naming {targets.Count} session(s) with Haiku…");
         var marks = _marks;
         var history = _history ?? [];
@@ -202,7 +213,6 @@ public partial class SessionWindow
         }
         finally
         {
-            if (!automatic) Mouse.OverrideCursor = null;
             _magicRunning = false;
             LoadLibrary();
             RefreshRail();
@@ -324,7 +334,7 @@ public partial class SessionWindow
         return
         [
             ActionItem("magic-cold", $"Name cold sessions with Haiku ({cold})",
-                cold == 0 ? "none has gone cold" : "asks first; at most 10 a run", () => _ = NameColdSessionsAsync()),
+                _magicRunning ? "a run is already going" : cold == 0 ? "none has gone cold" : "asks first; at most 10 a run", () => _ = NameColdSessionsAsync()),
             ActionItem("magic-auto", "Toggle automatic magic naming",
                 _magicAutoOn ? "on: at most 3 an hour, only when idle" : "off (the default); it uses your usage when on",
                 ToggleMagicAuto),
