@@ -62,14 +62,21 @@ public partial class SessionWindow
             .Select(id => id!)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>The cold sessions in the loaded history, the most recent first. Read from memory only.</summary>
+    /// <summary>
+    /// The cold sessions that the History section lists now, in the order it lists them (the Pinned group first, then the folders, each newest
+    /// first), so a run names the top of the list and not an arbitrary ten. Read from memory only.
+    /// </summary>
     /// <remarks>A session that failed twice in this window run is left out, so it does not take a place in the batch (D8).</remarks>
-    private IReadOnlyList<SessionDigest> ColdSessions(DateTimeOffset now) =>
-        _history is null
-            ? []
-            : MagicCandidates.Cold(_history, _marks, LiveSessionIds(), now)
-                .Where(digest => !_magicFailures.TryGetValue(digest.SessionId, out var count) || count < MagicNamer.MaxFailuresPerWindowRun)
-                .ToList();
+    private IReadOnlyList<SessionDigest> ColdSessions(DateTimeOffset now)
+    {
+        if (_history is null) return [];
+        var listed = new List<SessionDigest>();
+        if (PinnedGroupShown) listed.AddRange(HistoryOrder.Sorted(_history.Where(IsShownInHistory).Where(InPinnedGroup)));
+        foreach (var folder in ShownHistoryFolders()) listed.AddRange(HistoryOrder.Sorted(folder).Take(MaxHistoryPerFolder));
+        return MagicCandidates.ColdInOrder(listed, _marks, LiveSessionIds(), now)
+            .Where(digest => !_magicFailures.TryGetValue(digest.SessionId, out var count) || count < MagicNamer.MaxFailuresPerWindowRun)
+            .ToList();
+    }
 
     /// <summary>
     /// Adds the row menu's magic rename for one past session, if one is offered (D7a and D2). A live session, a subagent and an archived
@@ -117,7 +124,7 @@ public partial class SessionWindow
         var cold = ColdSessions(DateTimeOffset.Now);
         if (cold.Count == 0)
         {
-            SetStatus("No session has gone cold yet: two hours without a message, at least four messages, and no name.");
+            SetStatus("No session in the list has gone cold yet: two hours without a message, at least four messages, and no name.");
             return;
         }
         var take = Math.Min(cold.Count, MagicNamer.MaxPerRun);

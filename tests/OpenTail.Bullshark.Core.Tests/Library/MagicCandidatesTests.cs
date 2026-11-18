@@ -138,13 +138,25 @@ public sealed class MagicCandidatesTests
     }
 
     [Fact]
-    public void AMagicNameIsRenamedAgainOnlyAfterTheSessionChanged()
+    public void AMagicNameCanAlwaysBeRolledAgain()
     {
         var unchanged = Digest(Now.AddHours(-3));
         var changed = Digest(Now.AddHours(-1));
 
-        Assert.Equal(MagicCandidates.RenameKind.None, MagicCandidates.KindFor(unchanged, Magic, NoneLive));
+        Assert.Equal(MagicCandidates.RenameKind.Again, MagicCandidates.KindFor(unchanged, Magic, NoneLive));
         Assert.Equal(MagicCandidates.RenameKind.Again, MagicCandidates.KindFor(changed, Magic, NoneLive));
+    }
+
+    [Fact]
+    public void ColdInOrderKeepsTheOrderTheCallerGave()
+    {
+        var older = Digest(Now.AddHours(-9), "older");
+        var newer = Digest(Now.AddHours(-3), "newer");
+        var marks = new Dictionary<string, LibraryEntry>(StringComparer.Ordinal);
+
+        var listed = MagicCandidates.ColdInOrder([older, newer], marks, NoneLive, Now);
+
+        Assert.Equal(["older", "newer"], listed.Select(d => d.SessionId));
     }
 
     [Fact]

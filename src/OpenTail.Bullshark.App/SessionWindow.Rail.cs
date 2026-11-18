@@ -387,17 +387,7 @@ public partial class SessionWindow
             return section;
         }
 
-        var folders = _history
-            .Where(IsShownInHistory)
-            .Where(InFolders)
-            .GroupBy(d => d.ProjectFolder, StringComparer.OrdinalIgnoreCase)
-            .OrderBy(g => HistoryOrder.FolderRank(g))
-            .ThenByDescending(g => HistoryOrder.FolderRecency(g))
-            .ToList();
-
-        // Test and scratch folders under the Windows temp folder are shown only by the Temporary filter (owner, 2026-11-15).
-        var tempPrefix = FolderKey.From(Path.GetTempPath());
-        var shown = folders.Where(f => IsTemporary(f.Key, tempPrefix) == (_filter == RailFilter.Temporary)).ToList();
+        var shown = ShownHistoryFolders();
 
         // The sessions open now, listed by the agents or recorded. A history row for one of them gets no ⏩: it is already running.
         var openIds = _agents.Select(a => a.SessionId)
@@ -410,6 +400,25 @@ public partial class SessionWindow
         for (int i = 0; i < shown.Count; i++)
             section.Items.Add(HistoryFolderItem(shown[i], liveNames, openIds, expandByDefault: i == 0));
         return section;
+    }
+
+    /// <summary>
+    /// The folders the History section lists, in the order it lists them, for the current filter and search. Test and scratch folders under the
+    /// Windows temp folder are shown only by the Temporary filter (owner, 2026-11-15). The rail and the magic rename (which names the top
+    /// sessions first) both read this, so they cannot disagree.
+    /// </summary>
+    private List<IGrouping<string, SessionDigest>> ShownHistoryFolders()
+    {
+        if (_history is null) return [];
+        var folders = _history
+            .Where(IsShownInHistory)
+            .Where(InFolders)
+            .GroupBy(d => d.ProjectFolder, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(g => HistoryOrder.FolderRank(g))
+            .ThenByDescending(g => HistoryOrder.FolderRecency(g))
+            .ToList();
+        var tempPrefix = FolderKey.From(Path.GetTempPath());
+        return folders.Where(f => IsTemporary(f.Key, tempPrefix) == (_filter == RailFilter.Temporary)).ToList();
     }
 
     /// <summary>One folder of the History section, with its past sessions, newest first.</summary>

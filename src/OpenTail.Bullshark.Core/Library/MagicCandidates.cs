@@ -49,8 +49,9 @@ public static class MagicCandidates
     {
         if (!Eligible(digest, mark, live)) return RenameKind.None;
         if (IsBlank(mark?.Name)) return RenameKind.Fresh;
-        if (mark!.MagicAt is not { } magicAt) return RenameKind.ReplaceManual;
-        return digest.LastActivity > magicAt ? RenameKind.Again : RenameKind.None;
+        if (mark!.MagicAt is null) return RenameKind.ReplaceManual;
+        // A magic name can always be asked for again (the owner may not like it), not only after new messages.
+        return RenameKind.Again;
     }
 
     /// <summary>
@@ -63,6 +64,16 @@ public static class MagicCandidates
         && mark?.MagicAt is null
         && digest.UserMessages + digest.AssistantMessages >= MinMessages
         && now - digest.LastActivity!.Value > ColdAge;
+
+    /// <summary>The cold sessions in the order given: the caller passes the sessions as the rail lists them, so a run names the top ones first.</summary>
+    public static IReadOnlyList<SessionDigest> ColdInOrder(
+        IEnumerable<SessionDigest> history,
+        IReadOnlyDictionary<string, LibraryEntry> marks,
+        ISet<string> live,
+        DateTimeOffset now) =>
+        history
+            .Where(digest => IsCold(digest, MarkOf(marks, digest.SessionId), live, now))
+            .ToList();
 
     /// <summary>The cold sessions, the most recent first.</summary>
     public static IReadOnlyList<SessionDigest> Cold(
