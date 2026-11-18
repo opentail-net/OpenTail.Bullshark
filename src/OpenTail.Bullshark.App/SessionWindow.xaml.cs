@@ -133,6 +133,7 @@ public partial class SessionWindow : Window
         InitChanges();
         InitStorage();
         InitTimeline();
+        InitLimits();
         InitTabDrag();
         InitZoom();
 

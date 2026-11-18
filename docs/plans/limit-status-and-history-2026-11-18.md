@@ -32,9 +32,19 @@ show the raw type, with a friendly label only for `five_hour` ("5-hour") and `we
 
 ## A4. Limit history page (read-only)
 
-- [ ] Core `LimitHistory.Read(projectsRoot, now, days = 30)` -> `(IReadOnlyList<LimitHit> Hits, IReadOnlyList<DayRow> Days)`. `LimitHit`: Time (entry timestamp), Type, ResetsAt, TokensBefore (tokens from `UsageLedger` over the 5 hours before the hit across ALL transcripts, counted once per message; if that is expensive, count only transcripts modified in the window, and say so in the doc comment). One hit = one distinct `(Type, ResetsAt)` pair (the CLI may write the same limit entry several times as the session retries; collapse them, keeping the earliest timestamp). `DayRow`: local date, hits per type. Files: all `.jsonl` (subagents included) modified within `days`; full read allowed here (not tail), streaming, pre-filter `usage_limit_reached`.
-- [ ] App: a "Limits" page opened from the status bar next to Storage (copy the Storage page wiring): a table of hits (time local, type, resets, tokens in the 5 h before, with a thousands separator) and a per-day summary; a footer line: "Counts only sessions on this computer. Other machines and claude.ai chat use the same limit and are not shown." Empty state: "No limit hits in the last 30 days."
-- [ ] Tests (temp tree): duplicate entries collapse to one hit; two types on one day; hit outside `days` excluded; tokens-before counts only messages in the 5 h before and counts a message id once; a file with garbage lines is skipped line by line; locked file skipped.
+- [x] Core `LimitHistory.Read(projectsRoot, now, days = 30)` -> `(IReadOnlyList<LimitHit> Hits, IReadOnlyList<DayRow> Days)`. `LimitHit`: Time (entry timestamp), Type, ResetsAt, TokensBefore (tokens from `UsageLedger` over the 5 hours before the hit across ALL transcripts, counted once per message; if that is expensive, count only transcripts modified in the window, and say so in the doc comment). One hit = one distinct `(Type, ResetsAt)` pair (the CLI may write the same limit entry several times as the session retries; collapse them, keeping the earliest timestamp). `DayRow`: local date, hits per type. Files: all `.jsonl` (subagents included) modified within `days`; full read allowed here (not tail), streaming, pre-filter `usage_limit_reached`.
+- [x] App: a "Limits" page opened from the status bar next to Storage (copy the Storage page wiring): a table of hits (time local, type, resets, tokens in the 5 h before, with a thousands separator) and a per-day summary; a footer line: "Counts only sessions on this computer. Other machines and claude.ai chat use the same limit and are not shown." Empty state: "No limit hits in the last 30 days."
+- [x] Tests (temp tree): duplicate entries collapse to one hit; two types on one day; hit outside `days` excluded; tokens-before counts only messages in the 5 h before and counts a message id once; a file with garbage lines is skipped line by line; locked file skipped.
+
+- A4-D1 The page's tokens are the four kinds added together (input, output, cache written, cache read), with the breakdown in the cell's tooltip. The plan did not say which kinds; cache reads are usually the largest part of the sum, so the number is not known to be what the limit counts.
+- A4-D2 The files read for the tokens are the `.jsonl` files last written since five hours before the window starts (the earliest a message in the window can be in). This is exact, not an approximation, so no "say so" is needed; each file is read in full, and a file that fails part way gives none of its messages.
+- A4-D3 Only `rejected` entries are hits. Other statuses are read by the shared reader and left out here.
+- A4-D4 A hit's `Time` is the earliest entry of its (type, reset). A hit with no readable timestamp is left out. Hits are newest first, and days are newest first, with days that have a hit only.
+- A4-D5 `Read` takes one optional parameter, the time zone for the local date (the computer's zone when not given). The plan's signature is kept, with that addition, so the day test can use a fixed zone.
+- A4-D6 The usage of each record is read by `TranscriptReader.UsageRecords` (internal), which uses the reader that `Summarize` uses (`LineFacts`), so a message key and its usage mean the same as in the rest of the app. It skips lines without the word "usage" before parsing.
+- A4-D7 `TokensBefore` is a `UsageLedger` per hit. Each message goes to every hit whose window (the five hours up to the hit, both ends in) holds it; a message id counts once per hit (the largest value per field, as `UsageLedger` keeps it).
+- A4-D8 `SessionWindow.Rail.cs` gained one line, `_limits.ApplyTheme(palette)`, so the page follows the theme. It is outside the files the plan named.
+- A4-D9 The Limits page is in the tab strip as the key "limits", with a Limits button next to Storage in the status bar.
 
 ## Steps for the coder (order)
 
@@ -45,3 +55,10 @@ show the raw type, with a friendly label only for `five_hour` ("5-hour") and `we
 ## How to check
 
 `dotnet test OpenTail.Bullshark.slnx -nodeReuse:false` (1020 passing now; report exact counts and exit code), the App builds. Say plainly that the status text and the page were not seen in a running window.
+
+## Result (2026-11-18)
+
+- A2 (commit `a470bf8`): `dotnet test OpenTail.Bullshark.slnx -nodeReuse:false` passed 1030, failed 0, exit 0 (1020 + 10 `LimitStatusTests`).
+- A4 (its own commit): passed 1038, failed 0, exit 0 (1030 + 8 `LimitHistoryTests`). The 23 `LimitReset`/`LimitStatus` tests were run again after the A4 Core change.
+- Build: the whole solution, App included, 0 errors. One warning, CS8601 in `MainWindow.xaml.cs(23)`, which was there before this work.
+- Not checked: the status-bar text, its tooltip, the Limits button and the page in a running window. The cost of the scans on the owner's transcripts was not measured (the status scan reads at most 256 KB per recent transcript once a minute; the history reads whole transcripts of 30 days plus five hours, on a click).

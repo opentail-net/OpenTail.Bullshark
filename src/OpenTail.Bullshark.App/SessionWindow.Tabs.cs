@@ -33,6 +33,9 @@ public partial class SessionWindow
 
         /// <summary>The run timeline (additions item 5). One tab, with the key "timeline".</summary>
         Timeline,
+
+        /// <summary>The limit history (A4, read-only). One tab, with the key "limits".</summary>
+        Limits,
     }
 
     private sealed class OpenTab(TabKind kind, string key, string title)
@@ -151,6 +154,11 @@ public partial class SessionWindow
             case TabKind.Timeline:
                 ShowOnly(_timeline);
                 _ = RefreshTimelineAsync();
+                break;
+
+            case TabKind.Limits:
+                ShowOnly(_limits);
+                _ = RefreshLimitsAsync();
                 break;
         }
     }

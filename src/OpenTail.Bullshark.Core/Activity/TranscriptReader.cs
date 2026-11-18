@@ -129,6 +129,38 @@ public static class TranscriptReader
         SummarizeUtf8(TranscriptFile.ReadLineBytes(path), ledger, path);
 
     /// <summary>
+    /// The usage of each assistant record in the lines, with the record's time, read by the same reader as <see cref="Summarize"/> (so the message
+    /// key and the usage mean what they mean there). A record whose time or values cannot be read is skipped, as a line is in <see cref="Summarize"/>.
+    /// The key of a record with no message id is keyed by its file and line, as the count keys it. Used by the limit history (A4), which counts
+    /// the usage of a time window through a <see cref="UsageLedger"/>.
+    /// </summary>
+    internal static IEnumerable<(DateTimeOffset? Time, string Key, string Model, TokenUsage Usage)> UsageRecords(IEnumerable<string> lines, string fileName)
+    {
+        var facts = new LineFacts();
+        var lineNumber = 0;
+        foreach (var line in lines)
+        {
+            lineNumber++;
+            // A record without the word "usage" cannot carry a usage object, so it is not parsed.
+            if (!line.Contains("usage", StringComparison.Ordinal)) continue;
+            if (!TranscriptJson.TryParse(line, out var document)) continue;
+            using (document)
+            {
+                try
+                {
+                    facts.Read(document.RootElement, wantFirstUserText: false, wantContinuesId: false);
+                }
+                catch (Exception ex) when (TranscriptJson.IsUnreadable(ex))
+                {
+                    continue;
+                }
+            }
+            if (!facts.IsAssistant || facts.Usage is not { } usage) continue;
+            yield return (facts.Time, facts.MessageKey ?? $"unkeyed:{fileName}:{lineNumber}", facts.Model, usage);
+        }
+    }
+
+    /// <summary>
     /// The count of one transcript, record by record. The state that <see cref="Summarize"/> keeps across the lines is kept here, so the text and
     /// the UTF-8 readers count alike.
     /// </summary>
