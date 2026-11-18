@@ -5,7 +5,7 @@ using OpenTail.Bullshark.Core.Supervisor;
 namespace OpenTail.Bullshark.App;
 
 /// <summary>
-/// The Limits page (A4), opened from the status bar next to Storage: the usage-limit hits of the last 30 days, read-only. The transcripts are
+/// The Limits page (A4), opened from the status bar next to Storage: the usage-limit hits and the usage per day of the last 30 days, read-only. The transcripts are
 /// read on a pool thread, and the page only draws what it is given.
 /// </summary>
 public partial class SessionWindow
@@ -25,14 +25,14 @@ public partial class SessionWindow
         _ = RefreshLimitsAsync();
     }
 
-    /// <summary>Reads the limit hits on a pool thread, then draws them. A read that fails is said on the page.</summary>
+    /// <summary>Reads the limit hits and the usage report on a pool thread, then draws them. A read that fails is said on the page.</summary>
     private async Task RefreshLimitsAsync()
     {
         try
         {
-            var (hits, days) = await Task.Run(() =>
-                LimitHistory.ReadWithCache(_options.ProjectsRoot, DateTimeOffset.Now, _options.LimitHistoryCachePath, log: AppLog.Write));
-            _limits.Show(hits, days);
+            var report = await Task.Run(() =>
+                LimitHistory.ReadReportWithCache(_options.ProjectsRoot, DateTimeOffset.Now, _options.LimitHistoryCachePath, log: AppLog.Write));
+            _limits.Show(report);
         }
         catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {

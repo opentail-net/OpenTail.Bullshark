@@ -15,6 +15,9 @@ public sealed record LimitDay(DateOnly Day, IReadOnlyDictionary<string, int> Hit
     public int Total => HitsByType.Values.Sum();
 }
 
+/// <summary>What the Limits page shows, from one read: the hits and their days (as <see cref="LimitHistory.ReadWithCache"/> gives them) and the usage report.</summary>
+public sealed record LimitsReport(IReadOnlyList<LimitHit> Hits, IReadOnlyList<LimitDay> Days, UsageReport Usage);
+
 /// <summary>
 /// The limit history (A4): the usage-limit hits of the last days, from the transcripts on this computer, for the read-only Limits page.
 /// Counts and times only; no prompt or message text is kept. Rules:
@@ -57,14 +60,40 @@ public static class LimitHistory
         string projectsRoot, DateTimeOffset now, string cachePath, int days = DefaultDays, TimeZoneInfo? zone = null, Action<string>? log = null) =>
         Compute(projectsRoot, now, days, zone, cachePath, log);
 
+    /// <summary>
+    /// The Limits page's read: the hits and days of <see cref="ReadWithCache"/>, and the usage report (<see cref="UsageReport"/>) of the same transcripts.
+    /// The transcripts are listed and read once, so both come from one set of files and one cache save. The usage report is built even when there is no
+    /// hit. Its local days are the <paramref name="days"/> days ending on the local date of <paramref name="now"/>.
+    /// </summary>
+    public static LimitsReport ReadReportWithCache(
+        string projectsRoot, DateTimeOffset now, string cachePath, int days = DefaultDays, TimeZoneInfo? zone = null, Action<string>? log = null)
+    {
+        var clock = zone ?? TimeZoneInfo.Local;
+        var since = now.AddDays(-days);
+        var reads = ReadWindow(projectsRoot, since, cachePath, log);
+        var (hits, byDay) = HitsOf(reads, since, now, clock);
+        return new LimitsReport(hits, byDay, UsageReport.Build(reads, projectsRoot, now, days, clock));
+    }
+
     private static (IReadOnlyList<LimitHit> Hits, IReadOnlyList<LimitDay> Days) Compute(
         string projectsRoot, DateTimeOffset now, int days, TimeZoneInfo? zone, string? cachePath, Action<string>? log)
     {
         var clock = zone ?? TimeZoneInfo.Local;
         var since = now.AddDays(-days);
-        var files = LimitEntries.Recent(projectsRoot, since.UtcDateTime - TokenWindow);
-        var reads = RecordsOf(files, cachePath, log);
+        return HitsOf(ReadWindow(projectsRoot, since, cachePath, log), since, now, clock);
+    }
 
+    /// <summary>
+    /// The records of the window's transcripts: the ones last written since <paramref name="since"/> less <see cref="TokenWindow"/>, read or taken from
+    /// the cache. Every reader of the window goes through here, so they share the file set and the cache save.
+    /// </summary>
+    private static List<FileRecords> ReadWindow(string projectsRoot, DateTimeOffset since, string? cachePath, Action<string>? log) =>
+        RecordsOf(LimitEntries.Recent(projectsRoot, since.UtcDateTime - TokenWindow), cachePath, log);
+
+    /// <summary>The hits of the window, newest first, and the days they fall on, newest first. Empty when there is no hit.</summary>
+    private static (IReadOnlyList<LimitHit> Hits, IReadOnlyList<LimitDay> Days) HitsOf(
+        List<FileRecords> reads, DateTimeOffset since, DateTimeOffset now, TimeZoneInfo clock)
+    {
         var found = FirstHits(reads, since, now);
         if (found.Count == 0) return ([], []);
 

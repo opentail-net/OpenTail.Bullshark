@@ -27,6 +27,8 @@ After each step: run `claude agents --json`, count the attach processes (Task Ma
 - [ ] Resume in full; resume from a summary; look for the summary call in History (finding 15).
 - [ ] Open the screens the rounds built and see them with live data: Needs you, Changes tab, merge check, effort panel, run
   timeline, Storage page (do not press Archive), file-overlap notice.
+- [ ] Limits page (2026-11-18 usage plan): it shows usage per day and top projects under the hits; the numbers are plausible against the Storage
+  page; the page stays responsive on the owner's data (the first open after a restart is the cold read).
 - [ ] Ctrl+Shift+N with a terminal focused: does the chord reach the window (not the terminal), and does it show the next waiting session with the keyboard in its terminal?
 
 Pass when: no name appears twice at any step, each step has its line, and F20 is answered.

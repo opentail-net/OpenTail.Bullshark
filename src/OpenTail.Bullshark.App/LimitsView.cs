@@ -2,17 +2,29 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Shapes;
+using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Setup;
 
 namespace OpenTail.Bullshark.App;
 
 /// <summary>
 /// The Limits page (A4): a table of the limit hits (local time, the limit, its reset, the tokens used in the five hours before it), a line per day
-/// with the hits of each type, and the line that says what is counted. It only draws what the window gives it; the hits were read on a pool thread.
+/// with the hits of each type, the usage per local day and the top projects of the same transcripts, and the line that says what is counted. It only
+/// draws what the window gives it; the report was read on a pool thread.
 /// </summary>
 public sealed class LimitsView : UserControl
 {
     private const string Footer = "Counts only sessions on this computer. Other machines and claude.ai chat use the same limit and are not shown.";
+
+    private const string UsageCaption = "Tokens as the transcripts report them, counted once per message. New = input + output + cache written. " +
+                                        "Cache read is shown apart. Not money, and not the same as what counts toward a limit.";
+
+    /// <summary>The width of the busiest day's bar, in device-independent pixels.</summary>
+    private const double BarWidth = 160;
+
+    /// <summary>The bars are drawn at this opacity, so the figures next to them read first.</summary>
+    private const double BarOpacity = 0.45;
 
     private readonly TextBlock _note = new()
     {
@@ -27,6 +39,16 @@ public sealed class LimitsView : UserControl
     private readonly StackPanel _tableBlock = new();
     private readonly StackPanel _days = new();
     private readonly StackPanel _daysBlock = new();
+
+    private readonly TextBlock _usageCaption = new() { Text = UsageCaption, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 4) };
+    private readonly Grid _usageTable = new();
+    private readonly Grid _projectTable = new();
+    private readonly StackPanel _usageBlock = new();
+
+    /// <summary>The bars of the usage-per-day table, kept so that a theme change can recolour them.</summary>
+    private readonly List<Rectangle> _bars = [];
+
+    private SolidColorBrush _barFill = RailPalette.Brush(RailPalette.DarkPalette.Text);
 
     private readonly TextBlock _footer = new()
     {
@@ -43,8 +65,19 @@ public sealed class LimitsView : UserControl
         _tableBlock.Children.Add(new TextBlock { Text = "Hits, newest first", FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 8, 0, 4) });
         _tableBlock.Children.Add(_table);
 
-        _daysBlock.Children.Add(new TextBlock { Text = "Per day (local date)", FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 12, 0, 4) });
+        _daysBlock.Children.Add(new TextBlock { Text = "Limit hits per day (local date)", FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 12, 0, 4) });
         _daysBlock.Children.Add(_days);
+
+        _usageBlock.Children.Add(new TextBlock { Text = "Usage per day (local date)", FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 12, 0, 4) });
+        _usageBlock.Children.Add(_usageCaption);
+        _usageBlock.Children.Add(_usageTable);
+        _usageBlock.Children.Add(new TextBlock
+        {
+            Text = $"Top projects, last {LimitHistory.DefaultDays} days",
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 12, 0, 4),
+        });
+        _usageBlock.Children.Add(_projectTable);
 
         var root = new StackPanel { Margin = new Thickness(12, 8, 12, 8) };
         root.Children.Add(new TextBlock { Text = "Limits", FontSize = 17, FontWeight = FontWeights.SemiBold });
@@ -53,6 +86,7 @@ public sealed class LimitsView : UserControl
         root.Children.Add(refresh);
         root.Children.Add(_tableBlock);
         root.Children.Add(_daysBlock);
+        root.Children.Add(_usageBlock);
         root.Children.Add(_footer);
         Content = new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     }
@@ -60,33 +94,44 @@ public sealed class LimitsView : UserControl
     /// <summary>The Refresh button was pressed. The window reads the transcripts again.</summary>
     public event Action? RefreshRequested;
 
-    /// <summary>Takes the rail's palette, as the other views do: the text and the muted lines follow the theme.</summary>
+    /// <summary>Takes the rail's palette, as the other views do: the text and the muted lines follow the theme, and so do the bars.</summary>
     public void ApplyTheme(RailPalette palette)
     {
         Foreground = RailPalette.Brush(palette.Text);
         var muted = RailPalette.Brush(palette.Muted);
         _note.Foreground = muted;
         _footer.Foreground = muted;
+        _usageCaption.Foreground = muted;
+        _barFill = RailPalette.Brush(palette.Text);
+        foreach (var bar in _bars) bar.Fill = _barFill;
     }
 
-    /// <summary>Shows the hits (newest first) and the days. With no hit, the empty-state line is shown and the tables are hidden.</summary>
-    public void Show(IReadOnlyList<LimitHit> hits, IReadOnlyList<LimitDay> days)
+    /// <summary>
+    /// Shows the hits (newest first) with their days, then the usage per day and the top projects. With no hit, the empty-state line is shown in place
+    /// of the hits; the usage tables are shown either way.
+    /// </summary>
+    public void Show(LimitsReport report)
     {
         var window = LimitHistory.DefaultDays;
-        if (hits.Count == 0)
+        if (report.Hits.Count == 0)
         {
             _caption.Text = $"No limit hits in the last {window} days.";
             _tableBlock.Visibility = Visibility.Collapsed;
             _daysBlock.Visibility = Visibility.Collapsed;
-            return;
+        }
+        else
+        {
+            _caption.Text = $"{report.Hits.Count} limit {(report.Hits.Count == 1 ? "hit" : "hits")} in the last {window} days.";
+            _tableBlock.Visibility = Visibility.Visible;
+            _daysBlock.Visibility = Visibility.Visible;
+            DrawTable(report.Hits);
+            _days.Children.Clear();
+            foreach (var day in report.Days) _days.Children.Add(DayLine(day));
         }
 
-        _caption.Text = $"{hits.Count} limit {(hits.Count == 1 ? "hit" : "hits")} in the last {window} days.";
-        _tableBlock.Visibility = Visibility.Visible;
-        _daysBlock.Visibility = Visibility.Visible;
-        DrawTable(hits);
-        _days.Children.Clear();
-        foreach (var day in days) _days.Children.Add(DayLine(day));
+        _usageBlock.Visibility = Visibility.Visible;
+        DrawDays(report.Usage);
+        DrawProjects(report.Usage);
     }
 
     /// <summary>Shows a line in place of the page's content, for a read that failed.</summary>
@@ -95,55 +140,167 @@ public sealed class LimitsView : UserControl
         _caption.Text = text;
         _tableBlock.Visibility = Visibility.Collapsed;
         _daysBlock.Visibility = Visibility.Collapsed;
+        _usageBlock.Visibility = Visibility.Collapsed;
     }
 
     /// <summary>The hits as a table: the header, then one row per hit. The tokens are the four kinds together, with the breakdown in the tooltip.</summary>
     private void DrawTable(IReadOnlyList<LimitHit> hits)
     {
-        _table.Children.Clear();
-        _table.RowDefinitions.Clear();
-        _table.ColumnDefinitions.Clear();
-        for (var column = 0; column < 4; column++) _table.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        Reset(_table, 4);
 
-        AddRow(0, bold: true, ["When", "Limit", "Resets", "Tokens in the 5 h before"], lastTip: null);
+        AddRow(_table, 0, bold: true, ["When", "Limit", "Resets", "Tokens in the 5 h before"], lastTip: null);
         for (var i = 0; i < hits.Count; i++)
         {
             var hit = hits[i];
             var tokens = hit.TokensBefore;
             var total = tokens.Input + tokens.Output + tokens.CacheCreation + tokens.CacheRead;
-            var breakdown = $"Input {Count(tokens.Input)} · output {Count(tokens.Output)} · " +
-                            $"cache written {Count(tokens.CacheCreation)} · cache read {Count(tokens.CacheRead)}";
-            AddRow(i + 1, bold: false, [LocalTime(hit.Time), LimitStatus.LabelOf(hit.Type), LocalTime(hit.ResetsAt), Count(total)], lastTip: breakdown);
+            AddRow(_table, i + 1, bold: false, [LocalTime(hit.Time), LimitStatus.LabelOf(hit.Type), LocalTime(hit.ResetsAt), Count(total)], lastTip: Breakdown(tokens));
         }
     }
 
     /// <summary>
-    /// One table row, one cell per text. The last cell is right-aligned, and it takes the tooltip when one is given (the token breakdown).
+    /// The usage per local day, newest first: the date, New and Cache read, a bar for New scaled to the busiest day, and that day's top project.
+    /// Every day of the window is a row, zeros included.
     /// </summary>
-    private void AddRow(int row, bool bold, string[] cells, string? lastTip)
+    private void DrawDays(UsageReport usage)
     {
-        _table.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        for (var column = 0; column < cells.Length; column++)
+        Reset(_usageTable, 5);
+        _bars.Clear();
+        AddRow(_usageTable, 0, [Cell("Day", bold: true), Cell("New", bold: true, right: true),
+            Cell("Cache read", bold: true, right: true), Cell("", bold: true), Cell("Top project", bold: true)]);
+
+        var busiest = usage.Days.Count == 0 ? 0 : usage.Days.Max(day => day.Total.NewTokens());
+        for (var i = 0; i < usage.Days.Count; i++)
         {
-            var last = column == cells.Length - 1;
-            var cell = new TextBlock
-            {
-                Text = cells[column],
-                FontWeight = bold ? FontWeights.SemiBold : FontWeights.Normal,
-                FontFamily = new FontFamily("Consolas"),
-                FontSize = 12,
-                Margin = new Thickness(0, 2, 18, 2),
-                TextAlignment = last ? TextAlignment.Right : TextAlignment.Left,
-                ToolTip = last ? lastTip : null,
-            };
-            Grid.SetRow(cell, row);
-            Grid.SetColumn(cell, column);
-            _table.Children.Add(cell);
+            var day = usage.Days[i];
+            var newTokens = day.Total.NewTokens();
+            AddRow(_usageTable, i + 1,
+            [
+                Cell(day.Day.ToString("yyyy-MM-dd ddd", CultureInfo.CurrentCulture)),
+                Cell(Count(newTokens), right: true, tip: Breakdown(day.Total)),
+                Cell(Count(day.Total.CacheRead), right: true),
+                Bar(newTokens, busiest),
+                Cell(day.TopProject ?? "-"),
+            ]);
         }
     }
 
+    /// <summary>
+    /// The top projects of the window: the name, New, Cache read, the share of all New tokens, and the days with usage. The last row is the Other row
+    /// when <see cref="UsageReport.OtherProjects"/> is above 0; its name says how many projects it holds.
+    /// </summary>
+    private void DrawProjects(UsageReport usage)
+    {
+        Reset(_projectTable, 5);
+        AddRow(_projectTable, 0, [Cell("Project", bold: true), Cell("New", bold: true, right: true),
+            Cell("Cache read", bold: true, right: true), Cell("Share", bold: true, right: true), Cell("Active days", bold: true, right: true)]);
+
+        if (usage.Projects.Count == 0)
+        {
+            var none = Cell($"No usage in the last {LimitHistory.DefaultDays} days.");
+            Grid.SetColumnSpan(none, 5);
+            Place(_projectTable, 1, 0, none);
+            _projectTable.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            return;
+        }
+
+        var totalNew = usage.Total.NewTokens();
+        for (var i = 0; i < usage.Projects.Count; i++)
+        {
+            var project = usage.Projects[i];
+            var isOther = usage.OtherProjects > 0 && i == usage.Projects.Count - 1;
+            var name = isOther ? $"{UsageReport.OtherName} ({ProjectCount(usage.OtherProjects)})" : project.Project;
+            var newTokens = project.Total.NewTokens();
+            var share = totalNew == 0 ? 0.0 : 100.0 * newTokens / totalNew;
+            AddRow(_projectTable, i + 1,
+            [
+                Cell(name),
+                Cell(Count(newTokens), right: true, tip: Breakdown(project.Total)),
+                Cell(Count(project.Total.CacheRead), right: true),
+                Cell($"{share.ToString("0.0", CultureInfo.CurrentCulture)}%", right: true),
+                Cell(project.ActiveDays.ToString(CultureInfo.CurrentCulture), right: true),
+            ]);
+        }
+    }
+
+    /// <summary>A bar for a day's New tokens, scaled so that the busiest day is <see cref="BarWidth"/> wide. Plain, at reduced opacity.</summary>
+    private Rectangle Bar(long value, long busiest)
+    {
+        var bar = new Rectangle
+        {
+            Height = 10,
+            Width = busiest == 0 ? 0 : Math.Round(BarWidth * value / busiest),
+            Fill = _barFill,
+            Opacity = BarOpacity,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 2, 18, 2),
+        };
+        _bars.Add(bar);
+        return bar;
+    }
+
+    /// <summary>
+    /// Clears a table and sets its columns, all sized to their content. The table is then filled with <see cref="AddRow"/>.
+    /// </summary>
+    private static void Reset(Grid table, int columns)
+    {
+        table.Children.Clear();
+        table.RowDefinitions.Clear();
+        table.ColumnDefinitions.Clear();
+        for (var column = 0; column < columns; column++) table.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+    }
+
+    /// <summary>
+    /// One table row, one cell per element. Each element is placed in its column. The bars of the usage table are in the cells too, so the
+    /// row takes elements rather than text.
+    /// </summary>
+    private static void AddRow(Grid table, int row, UIElement[] cells)
+    {
+        table.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        for (var column = 0; column < cells.Length; column++) Place(table, row, column, cells[column]);
+    }
+
+    /// <summary>
+    /// One table row of text, one cell per text. The last cell is right-aligned, and it takes the tooltip when one is given (the token breakdown).
+    /// </summary>
+    private static void AddRow(Grid table, int row, bool bold, string[] cells, string? lastTip)
+    {
+        var elements = new UIElement[cells.Length];
+        for (var column = 0; column < cells.Length; column++)
+        {
+            var last = column == cells.Length - 1;
+            elements[column] = Cell(cells[column], bold, right: last, tip: last ? lastTip : null);
+        }
+        AddRow(table, row, elements);
+    }
+
+    private static void Place(Grid table, int row, int column, UIElement element)
+    {
+        Grid.SetRow(element, row);
+        Grid.SetColumn(element, column);
+        table.Children.Add(element);
+    }
+
+    /// <summary>A table cell's text: Consolas 12, right-aligned when asked, with a tooltip when one is given.</summary>
+    private static TextBlock Cell(string text, bool bold = false, bool right = false, string? tip = null) => new()
+    {
+        Text = text,
+        FontWeight = bold ? FontWeights.SemiBold : FontWeights.Normal,
+        FontFamily = new FontFamily("Consolas"),
+        FontSize = 12,
+        Margin = new Thickness(0, 2, 18, 2),
+        TextAlignment = right ? TextAlignment.Right : TextAlignment.Left,
+        ToolTip = tip,
+    };
+
+    /// <summary>The four kinds of tokens, as the tooltip names them.</summary>
+    private static string Breakdown(TokenUsage tokens) =>
+        $"Input {Count(tokens.Input)} · output {Count(tokens.Output)} · cache written {Count(tokens.CacheCreation)} · cache read {Count(tokens.CacheRead)}";
+
     /// <summary>A token count with a thousands separator, as the current culture writes it.</summary>
     private static string Count(long value) => value.ToString("N0", CultureInfo.CurrentCulture);
+
+    private static string ProjectCount(int projects) => projects == 1 ? "1 project" : $"{projects} projects";
 
     private static TextBlock DayLine(LimitDay day)
     {
