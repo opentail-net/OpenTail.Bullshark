@@ -30,7 +30,8 @@ public partial class SessionWindow
     {
         try
         {
-            var (hits, days) = await Task.Run(() => LimitHistory.Read(_options.ProjectsRoot, DateTimeOffset.Now));
+            var (hits, days) = await Task.Run(() =>
+                LimitHistory.ReadWithCache(_options.ProjectsRoot, DateTimeOffset.Now, _options.LimitHistoryCachePath, log: AppLog.Write));
             _limits.Show(hits, days);
         }
         catch (Exception ex) when (StoreErrors.IsExpected(ex))

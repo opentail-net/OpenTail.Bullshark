@@ -700,6 +700,9 @@ public sealed record LaunchOptions(
     /// </summary>
     public string IndexCachePath => Path.Combine(Path.GetDirectoryName(Path.GetFullPath(StatePath))!, "cache", "transcript-index.json");
 
+    /// <summary>What the limit history read from each transcript, kept between reads (perf plan 2026-11-18). It sits beside the index cache.</summary>
+    public string LimitHistoryCachePath => Path.Combine(Path.GetDirectoryName(Path.GetFullPath(StatePath))!, "cache", "limit-history.json");
+
     public static LaunchOptions Parse(string[] args)
     {
         string? workdir = null, task = null, state = null, shot = null, selfTest = null, filterName = null, selfTestMode = null, setupDetail = null, openSession = null, claudeHome = null, openTab = null;

@@ -117,11 +117,12 @@ public partial class SessionWindow
         var events = _events;
         var store = _store;
         var projectsRoot = _options.ProjectsRoot;
+        var limitCachePath = _options.LimitHistoryCachePath;
         return await Task.Run(() =>
         {
             var (records, problem) = LoadRecords(store);
             var log = events.ReadSince(since, AwayDigest.EventLimit);
-            var hits = LimitHistory.Read(projectsRoot, now).Hits;
+            var hits = LimitHistory.ReadWithCache(projectsRoot, now, limitCachePath, log: AppLog.Write).Hits;
             var digest = AwayDigest.Build(records.Values.ToList(), digests, agents, log, hits, attention, since, now);
             return (digest, problem);
         });

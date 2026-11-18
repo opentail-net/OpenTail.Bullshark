@@ -13,6 +13,7 @@ using OpenTail.Bullshark.Core.Supervisor;
 // Usage: OpenTail.Bullshark.Bench [--projects <folder>] [--only index,search,storage,effort,pager,overlap,history,verify,limits] [--repeat <n>] [--cache <file>]
 // The default folder is the owner's, read only. Run each step in its own process with --only, so the peak working set belongs to that step.
 // --cache gives the index build a cache file of its own (a scratch file, never the owner's): the first build writes it, the next ones read it.
+// With the limits step, --cache is the limit history's cache file (removed first, so the first run writes it).
 
 internal static class Program
 {
@@ -120,6 +121,31 @@ internal static class Program
                 sw.Stop();
                 Report($"limit reset (LimitReset.Find), run {run}", sw.Elapsed, $"reset in force: {(reset is null ? "no" : "yes")}");
             }
+        }
+
+        if (steps.Contains("limits") && cachePath is not null)
+        {
+            // The cached history (LimitHistory.ReadWithCache) on a scratch cache file. The file is removed first, so run 1 reads every transcript and
+            // writes the cache, and the later runs read it. The last result is compared with an uncached read at the same time: only "yes" or "no"
+            // is printed. The notes the cache logs are counted, not printed, because a note can hold a path.
+            if (File.Exists(cachePath)) File.Delete(cachePath);
+            var notes = 0;
+            Action<string> log = _ => notes++;
+            var lastAt = DateTimeOffset.UtcNow;
+            var cachedText = string.Empty;
+            for (var run = 1; run <= repeat; run++)
+            {
+                lastAt = DateTimeOffset.UtcNow;
+                var sw = Stopwatch.StartNew();
+                var cached = LimitHistory.ReadWithCache(projects, lastAt, cachePath, log: log);
+                sw.Stop();
+                cachedText = LimitsText(cached.Hits, cached.Days);
+                Report($"limit history with cache, run {run}{(run == 1 ? " (writes the cache)" : string.Empty)}", sw.Elapsed,
+                    $"hits {cached.Hits.Count}, days {cached.Days.Count}");
+            }
+            var uncached = LimitHistory.Read(projects, lastAt);
+            Console.WriteLine($"limit history with cache: identical to the uncached read: {LimitsText(uncached.Hits, uncached.Days) == cachedText}; " +
+                              $"cache file {new FileInfo(cachePath).Length / Mb:0.0} MB; cache notes {notes}");
         }
 
         if (steps.Contains("verify"))
@@ -270,6 +296,11 @@ internal static class Program
         lines.Add($"skipped {index.Skipped.Count}");
         return string.Join("\n", lines);
     }
+
+    /// <summary>Every hit and day of a limit history as text, in order. Only the comparison of two such texts is printed, never the text.</summary>
+    private static string LimitsText(IReadOnlyList<LimitHit> hits, IReadOnlyList<LimitDay> days) => string.Join("\n",
+        hits.Select(hit => $"{hit.Time:O}|{hit.Type}|{hit.ResetsAt:O}|{hit.TokensBefore}")
+            .Concat(days.Select(day => $"{day.Day}|{string.Join(",", day.HitsByType.Select(pair => $"{pair.Key}={pair.Value}"))}")));
 
     private static string Hash(string text) =>
         Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(text)))[..16];

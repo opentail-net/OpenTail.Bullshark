@@ -23,9 +23,10 @@ public sealed record LimitDay(DateOnly Day, IReadOnlyDictionary<string, int> Hit
 /// <item>Tokens before a hit are the usage of the messages written in the five hours up to the hit (both ends included), across all transcripts
 /// of the window. A message with the same id and request is counted once, as <see cref="UsageLedger"/> counts it.</item>
 /// <item>The transcripts read are the <c>.jsonl</c> files, subagent ones included, last written since the window starts five hours earlier. A
-/// transcript older than that cannot hold a message of the window. Each is read in full, as a stream. A file that cannot be read is skipped.</item>
+/// transcript older than that cannot hold a message of the window. Each is read in full, once, as a stream. A file that cannot be read is skipped.</item>
 /// <item>A day is the local date of a hit's time.</item>
 /// </list>
+/// <see cref="ReadWithCache"/> gives the same result, and reads a transcript again only when it has changed since the last read.
 /// Other machines and claude.ai chat use the same limit, and their usage is not visible here.
 /// </summary>
 public static class LimitHistory
@@ -43,13 +44,28 @@ public static class LimitHistory
     /// first. <paramref name="zone"/> sets the local date (the computer's zone when null). A missing folder gives empty lists.
     /// </summary>
     public static (IReadOnlyList<LimitHit> Hits, IReadOnlyList<LimitDay> Days) Read(
-        string projectsRoot, DateTimeOffset now, int days = DefaultDays, TimeZoneInfo? zone = null)
+        string projectsRoot, DateTimeOffset now, int days = DefaultDays, TimeZoneInfo? zone = null) =>
+        Compute(projectsRoot, now, days, zone, cachePath: null, log: null);
+
+    /// <summary>
+    /// The same result as <see cref="Read"/>, with what each transcript held kept in <paramref name="cachePath"/> between reads. A transcript whose
+    /// length and last write time are the same as when it was read is not read again. The cache holds counts, times, types, message keys and token
+    /// totals; no message text. A cache that is missing, unreadable, damaged or from another build is not used, and is rebuilt. A cache that cannot
+    /// be written is said to <paramref name="log"/>, and nothing is thrown.
+    /// </summary>
+    public static (IReadOnlyList<LimitHit> Hits, IReadOnlyList<LimitDay> Days) ReadWithCache(
+        string projectsRoot, DateTimeOffset now, string cachePath, int days = DefaultDays, TimeZoneInfo? zone = null, Action<string>? log = null) =>
+        Compute(projectsRoot, now, days, zone, cachePath, log);
+
+    private static (IReadOnlyList<LimitHit> Hits, IReadOnlyList<LimitDay> Days) Compute(
+        string projectsRoot, DateTimeOffset now, int days, TimeZoneInfo? zone, string? cachePath, Action<string>? log)
     {
         var clock = zone ?? TimeZoneInfo.Local;
         var since = now.AddDays(-days);
         var files = LimitEntries.Recent(projectsRoot, since.UtcDateTime - TokenWindow);
+        var reads = RecordsOf(files, cachePath, log);
 
-        var found = FirstHits(files, since, now);
+        var found = FirstHits(reads, since, now);
         if (found.Count == 0) return ([], []);
 
         // The tokens of each hit: the messages in its window. Ordered by time, so that a message finds its hits by a search.
@@ -58,9 +74,12 @@ public static class LimitHistory
         var ledgers = ordered.Select(_ => new UsageLedger()).ToArray();
         var from = ordered[0].Time - TokenWindow;
         var to = ordered[^1].Time;
-        foreach (var file in files)
+        foreach (var file in reads)
         {
-            foreach (var usage in UsageIn(file.FullName, from, to)) Count(usage, times, ledgers, file.FullName);
+            foreach (var usage in file.Usage)
+            {
+                if (usage.Time >= from && usage.Time <= to) Count(usage, times, ledgers, file.Path);
+            }
         }
 
         var hits = ordered
@@ -80,15 +99,52 @@ public static class LimitHistory
     }
 
     /// <summary>
-    /// The rejected limits of the window, one per (type, reset time), each at its earliest entry. A limit entry that cannot be placed in time
-    /// (no timestamp) is left out. A file that cannot be read gives none of its entries.
+    /// The records of each transcript of the window, in the order of <paramref name="files"/>. With a cache, a transcript whose length and last write
+    /// time match its entry takes the entry, and the others are read. A transcript that cannot be read gives none, and is not cached. The cache is
+    /// saved when a transcript was read, or when the set of cached transcripts has changed (a transcript left the window, or was added).
     /// </summary>
-    private static List<(DateTimeOffset Time, string Type, DateTimeOffset ResetsAt)> FirstHits(List<FileInfo> files, DateTimeOffset since, DateTimeOffset now)
+    private static List<FileRecords> RecordsOf(List<FileInfo> files, string? cachePath, Action<string>? log)
     {
-        var earliest = new Dictionary<(string Type, DateTimeOffset ResetsAt), DateTimeOffset>();
+        var cached = cachePath is null ? null : LimitHistoryCache.Load(cachePath, log);
+        var reads = new List<FileRecords>(files.Count);
+        var entries = new List<LimitHistoryCache.Entry>(files.Count);
+        var readNow = false;
         foreach (var file in files)
         {
-            foreach (var entry in LimitEntries.Whole(file.FullName))
+            // The length and the write time are the ones the file had when the window listed it, before any read. A file that changes during its read
+            // is then read again next time, because its entry would not match.
+            FileRecords? records = null;
+            if (cached is not null && cached.TryGetValue(file.FullName, out var entry) &&
+                entry.Length == file.Length && entry.Written == file.LastWriteTimeUtc.Ticks)
+            {
+                records = LimitHistoryCache.Restore(entry);
+            }
+            if (records is null)
+            {
+                records = ReadFile(file.FullName);
+                if (records is null) continue;
+                readNow = true;
+            }
+            reads.Add(records);
+            entries.Add(LimitHistoryCache.EntryOf(file, records));
+        }
+        if (cachePath is not null && (cached is null || cached.Count != entries.Count || readNow))
+        {
+            LimitHistoryCache.Save(cachePath, entries, log);
+        }
+        return reads;
+    }
+
+    /// <summary>
+    /// The rejected limits of the window, one per (type, reset time), each at its earliest entry. A limit entry that cannot be placed in time
+    /// (no timestamp) is left out. A transcript that gave no records gives none of its entries.
+    /// </summary>
+    private static List<(DateTimeOffset Time, string Type, DateTimeOffset ResetsAt)> FirstHits(List<FileRecords> reads, DateTimeOffset since, DateTimeOffset now)
+    {
+        var earliest = new Dictionary<(string Type, DateTimeOffset ResetsAt), DateTimeOffset>();
+        foreach (var file in reads)
+        {
+            foreach (var entry in file.Limits)
             {
                 if (entry.Status != Rejected || entry.Written is not { } written || written < since || written > now) continue;
                 var key = (entry.Type, entry.ResetsAt);
@@ -99,33 +155,46 @@ public static class LimitHistory
     }
 
     /// <summary>
-    /// The usage records of one transcript that fall between <paramref name="from"/> and <paramref name="to"/>. The whole file is read first,
-    /// so a file that fails part way gives none of its records, as it gives no limit entries.
+    /// The records of one transcript, read in one pass: its usage-limit entries (as <see cref="LimitEntries.Whole"/> finds them) and its usage
+    /// records with a time. The whole file is read first into the records, so a file that fails part way gives none of them. Null when the file
+    /// cannot be read (locked, removed, or denied).
     /// </summary>
-    private static List<(DateTimeOffset Time, string Key, string Model, TokenUsage Usage)> UsageIn(string path, DateTimeOffset from, DateTimeOffset to)
+    private static FileRecords? ReadFile(string path)
     {
-        var found = new List<(DateTimeOffset Time, string Key, string Model, TokenUsage Usage)>();
+        var limits = new List<LimitEntry>();
+        var usage = new List<UsageRecord>();
         try
         {
-            foreach (var record in TranscriptReader.UsageRecords(TranscriptFile.ReadLines(path), path))
+            foreach (var record in TranscriptReader.UsageRecords(WithLimits(TranscriptFile.ReadLines(path), limits), path))
             {
-                if (record.Time is { } time && time >= from && time <= to) found.Add((time, record.Key, record.Model, record.Usage));
+                if (record.Time is { } time) usage.Add(new UsageRecord(time, record.Key, record.Model, record.Usage));
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            return [];
+            return null;
         }
-        return found;
+        return new FileRecords(path, limits, usage);
+    }
+
+    /// <summary>
+    /// The lines, each passed on as it is read. The usage-limit entries among them are added to <paramref name="limits"/> on the way, so that one pass
+    /// finds both the entries and the usage. The test for an entry is the one <see cref="LimitEntries.Whole"/> uses.
+    /// </summary>
+    private static IEnumerable<string> WithLimits(IEnumerable<string> lines, List<LimitEntry> limits)
+    {
+        foreach (var line in lines)
+        {
+            if (line.Contains(LimitEntries.LimitError, StringComparison.Ordinal) && LimitEntries.FromLine(line) is { } entry) limits.Add(entry);
+            yield return line;
+        }
     }
 
     /// <summary>
     /// Counts one message in every hit whose window holds it: a hit at time T holds a message at t when T - 5 hours is at or before t, and t is at
     /// or before T. The hits are sorted by time, so the first hit at or after t is found by a search, and the hits after it are checked in turn.
     /// </summary>
-    private static void Count(
-        (DateTimeOffset Time, string Key, string Model, TokenUsage Usage) usage,
-        DateTimeOffset[] times, UsageLedger[] ledgers, string file)
+    private static void Count(UsageRecord usage, DateTimeOffset[] times, UsageLedger[] ledgers, string file)
     {
         var last = usage.Time + TokenWindow;
         // The first hit at or after the message's time: a lower bound, so that equal times are all reached.
@@ -143,3 +212,9 @@ public static class LimitHistory
         }
     }
 }
+
+/// <summary>What one transcript holds for the limit history: its path, its usage-limit entries and its usage records with a time, in file order.</summary>
+internal sealed record FileRecords(string Path, IReadOnlyList<LimitEntry> Limits, IReadOnlyList<UsageRecord> Usage);
+
+/// <summary>One usage record with its time: the usage of an assistant message, keyed as <see cref="UsageLedger"/> keys it.</summary>
+internal sealed record UsageRecord(DateTimeOffset Time, string Key, string Model, TokenUsage Usage);
