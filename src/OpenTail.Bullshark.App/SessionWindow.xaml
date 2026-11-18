@@ -59,14 +59,19 @@
     </Window.Resources>
     <DockPanel>
         <Border x:Name="StatusBar" DockPanel.Dock="Bottom" Padding="10,4">
-            <DockPanel>
+            <!-- Two rows (2026-11-18): the controls on top and the status text under them, on the full width. With the text in the same
+                 row it got whatever width the buttons left, which was nearly none on a 1366 px window, so it wrapped one letter to a line
+                 and the bar grew over the whole window. -->
+            <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <DockPanel Grid.Row="0" LastChildFill="False">
                 <!-- The number of sessions that wait for the owner (the Needs you group of the rail). Collapsed while there are none. -->
                 <TextBlock x:Name="NeedsYouText" DockPanel.Dock="Left" Visibility="Collapsed" FontSize="12" FontWeight="SemiBold"
                            VerticalAlignment="Center" Margin="0,0,14,0" Foreground="{DynamicResource BarText}"
                            ToolTip="Sessions that wait for you. They are listed under Needs you at the top of the rail." />
-                <!-- The usage limit in force and when it resets, read from the transcripts on this computer (A2). Collapsed while none is in force. -->
-                <TextBlock x:Name="LimitStatusText" DockPanel.Dock="Left" Visibility="Collapsed" FontSize="12" FontWeight="SemiBold"
-                           VerticalAlignment="Center" Margin="0,0,14,0" Foreground="{DynamicResource BarText}" />
                 <!-- The zoom of the terminals and the transcripts, as in Word's status bar (zoom.md). -->
                 <StackPanel x:Name="ZoomBar" DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,0,0"
                             ToolTip="Zoom the session text: the transcripts and the terminals. Ctrl+plus, Ctrl+minus and Ctrl+0 do the same.">
@@ -130,9 +135,17 @@
                         Click="LimitsButton_Click" ToolTip="The usage limits Claude Code reached on this computer in the last 30 days, by day, with the tokens used before each." />
                 <Button x:Name="AwayButton" DockPanel.Dock="Right" Padding="10,2" Margin="10,0,0,0" Content="Away"
                         Click="AwayButton_Click" ToolTip="What happened while you were away: each session's activity, the supervisor's events and the limits hit. Reads only; nothing is sent to a session." />
-                <TextBlock x:Name="StatusText" Foreground="{DynamicResource BarMuted}" FontFamily="Consolas" FontSize="12" Text="starting…"
-                           TextWrapping="Wrap" VerticalAlignment="Center" />
             </DockPanel>
+            <!-- Second row: the usage limit in force (A2), then the status text. They sit here, not in the row of controls, so that the
+                 controls keep their width on a narrow window. -->
+            <DockPanel Grid.Row="1" Margin="0,2,0,0">
+                <TextBlock x:Name="LimitStatusText" DockPanel.Dock="Left" Visibility="Collapsed" FontSize="12" FontWeight="SemiBold"
+                           VerticalAlignment="Center" Margin="0,0,14,0" Foreground="{DynamicResource BarText}" MaxWidth="520"
+                           TextTrimming="CharacterEllipsis" />
+                <TextBlock x:Name="StatusText" Foreground="{DynamicResource BarMuted}" FontFamily="Consolas" FontSize="12" Text="starting…"
+                           TextWrapping="Wrap" MaxHeight="64" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+            </DockPanel>
+            </Grid>
         </Border>
         <Grid>
             <Grid.ColumnDefinitions>

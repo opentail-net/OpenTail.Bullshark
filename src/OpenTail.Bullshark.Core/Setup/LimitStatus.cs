@@ -41,6 +41,8 @@ public static class LimitStatus
     {
         "five_hour" => "5-hour",
         "weekly" or "seven_day" => "weekly",
+        // seven_day_opus, seven_day_overage_included and the like: a weekly limit, perhaps of one model (owner's screenshot, 2026-11-18).
+        _ when type.StartsWith("seven_day", StringComparison.Ordinal) => "weekly",
         _ => type,
     };
 }

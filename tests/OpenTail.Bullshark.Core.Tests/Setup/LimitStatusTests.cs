@@ -99,6 +99,8 @@ public sealed class LimitStatusTests : IDisposable
     [InlineData("five_hour", "5-hour")]
     [InlineData("weekly", "weekly")]
     [InlineData("seven_day", "weekly")]
+    [InlineData("seven_day_overage_included", "weekly")]
+    [InlineData("seven_day_opus", "weekly")]
     [InlineData("opus_limit", "opus_limit")]
     public void TheLimitTypeIsNamedForAPerson(string type, string label)
     {
