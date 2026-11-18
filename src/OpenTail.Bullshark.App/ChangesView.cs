@@ -53,6 +53,19 @@ public sealed class ChangesView : UserControl
 
     private string? _resolvePrompt;
 
+    /// <summary>The owner's note for the review prompt, and the button that copies the prompt (batch B1). Nothing is sent to the session.</summary>
+    private readonly TextBox _reviewNote = new() { Padding = new Thickness(6, 3, 6, 3) };
+    private readonly TextBlock _reviewLabel = new() { Text = "What should be fixed?", FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
+    private readonly Button _copyReview = new()
+    {
+        Content = "Copy review prompt",
+        Padding = new Thickness(10, 2, 10, 2),
+        Margin = new Thickness(8, 0, 0, 0),
+        IsEnabled = false,
+    };
+
+    private string _sessionName = string.Empty;
+
     public ChangesView()
     {
         var header = new DockPanel { LastChildFill = true };
@@ -61,6 +74,13 @@ public sealed class ChangesView : UserControl
         DockPanel.SetDock(_copyPrompt, Dock.Right);
         header.Children.Add(_copyPrompt);
         header.Children.Add(_title);
+
+        var review = new DockPanel { Margin = new Thickness(0, 4, 0, 4) };
+        DockPanel.SetDock(_copyReview, Dock.Right);
+        review.Children.Add(_copyReview);
+        DockPanel.SetDock(_reviewLabel, Dock.Left);
+        review.Children.Add(_reviewLabel);
+        review.Children.Add(_reviewNote);
 
         var lists = new Grid();
         lists.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(3, GridUnitType.Star) });
@@ -80,6 +100,7 @@ public sealed class ChangesView : UserControl
         root.Children.Add(header);
         var top = new StackPanel();
         top.Children.Add(_note);
+        top.Children.Add(review);
         top.Children.Add(_sharedList);
         top.Children.Add(lists);
         DockPanel.SetDock(top, Dock.Top);
@@ -88,6 +109,7 @@ public sealed class ChangesView : UserControl
 
         _refresh.Click += (_, _) => RefreshRequested?.Invoke();
         _copyPrompt.Click += (_, _) => CopyPrompt();
+        _copyReview.Click += (_, _) => CopyReviewPrompt();
         Content = root;
         _changedCaption.Text = "Changed";
         _writtenCaption.Text = "Files written by the session";
@@ -107,6 +129,11 @@ public sealed class ChangesView : UserControl
         _note.Foreground = RailPalette.Brush(palette.Muted);
         _changedCaption.Foreground = RailPalette.Brush(palette.Muted);
         _writtenCaption.Foreground = RailPalette.Brush(palette.Muted);
+        _reviewLabel.Foreground = RailPalette.Brush(palette.Muted);
+        _reviewNote.Background = RailPalette.Brush(palette.Background);
+        _reviewNote.Foreground = RailPalette.Brush(palette.Text);
+        _reviewNote.CaretBrush = RailPalette.Brush(palette.Text);
+        _reviewNote.BorderBrush = RailPalette.Brush(palette.Muted);
         _diff.Background = RailPalette.Brush(palette.Background);
         _diff.Foreground = RailPalette.Brush(palette.Text);
         if (_report is not null) Draw();
@@ -141,12 +168,48 @@ public sealed class ChangesView : UserControl
         }
     }
 
+    /// <summary>
+    /// The name of the session the tab shows. A different session clears the note, so one session's note is never copied into another
+    /// session's review prompt. A new read of the same session keeps the note.
+    /// </summary>
+    public string SessionName
+    {
+        get => _sessionName;
+        set
+        {
+            if (string.Equals(_sessionName, value, StringComparison.Ordinal)) return;
+            _sessionName = value;
+            _reviewNote.Text = string.Empty;
+        }
+    }
+
+    /// <summary>
+    /// Copies the review prompt for the changed files and the owner's note to the clipboard. Nothing is sent to the session. The button is
+    /// off when there are no changed files. A busy clipboard is said in the status line, and the owner presses the button again.
+    /// </summary>
+    private void CopyReviewPrompt()
+    {
+        var files = _report is null ? new List<string>() : _report.Files.Select(file => file.Path).ToList();
+        var text = ReviewPrompt.Build(_sessionName, files, _reviewNote.Text);
+        if (text is null) return;
+        try
+        {
+            Clipboard.SetText(text);
+            _note.Text = $"Review prompt copied ({files.Count} files). Paste it into the coder's tab.";
+        }
+        catch (System.Runtime.InteropServices.ExternalException ex)
+        {
+            _note.Text = $"The clipboard is busy, so the review prompt was not copied ({ex.Message}). Press the button again.";
+        }
+    }
+
     /// <summary>A read has started for this folder. The old lists stay out of sight until it finishes.</summary>
     public void ShowLoading(string folder)
     {
         _title.Text = "Changes in " + folder;
         _note.Text = "Reading the changes…";
         _refresh.IsEnabled = false;
+        _copyReview.IsEnabled = false;
         ResolvePrompt = null;
         _changed.Children.Clear();
         _written.Children.Clear();
@@ -178,6 +241,7 @@ public sealed class ChangesView : UserControl
         _title.Text = title;
         _note.Text = message;
         _refresh.IsEnabled = true;
+        _copyReview.IsEnabled = false;
         ResolvePrompt = null;
         _changed.Children.Clear();
         _written.Children.Clear();
@@ -196,6 +260,7 @@ public sealed class ChangesView : UserControl
 
         _title.Text = "Changes in " + report.Folder;
         _note.Text = report.Message;
+        _copyReview.IsEnabled = report.Files.Count > 0;
 
         _sharedList.Children.Clear();
         var shared = _sharedLines ?? [];

@@ -540,6 +540,10 @@ public partial class SessionWindow : Window
         bool paste = (e.Key == System.Windows.Input.Key.V && modifiers == System.Windows.Input.ModifierKeys.Control)
                   || (e.Key == System.Windows.Input.Key.Insert && modifiers == System.Windows.Input.ModifierKeys.Shift);
         if (!paste || !System.Windows.Clipboard.ContainsText()) return;
+        // A text box of this window (the Changes note, the rail's search) pastes into itself. Without this, PasteTarget can still be a session
+        // of the right pane that is on screen, and the clipboard would go into that session (principle 3). A terminal with focus has no WPF
+        // focused element, so the paste into a terminal is unchanged.
+        if (System.Windows.Input.Keyboard.FocusedElement is System.Windows.Controls.Primitives.TextBoxBase) return;
 
         var term = PasteTarget()?.ConPTYTerm;
         if (term is null) return;

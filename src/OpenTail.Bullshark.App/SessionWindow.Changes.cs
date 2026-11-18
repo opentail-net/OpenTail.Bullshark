@@ -45,6 +45,7 @@ public partial class SessionWindow
         try
         {
             var record = ReadRecords().Values.FirstOrDefault(r => SameId(r.SessionId, sessionId));
+            _changes.SessionName = record?.Name ?? string.Empty;
             var listed = _agents.FirstOrDefault(a => string.Equals(a.SessionId, sessionId, StringComparison.OrdinalIgnoreCase))?.Cwd;
             var spec = record is null ? null : Specs.FirstOrDefault(s => string.Equals(s.Name, record.Name, StringComparison.Ordinal))?.WorkingDirectory;
             // The transcript is read first, on a pool thread. Its latest folder is the one the session edits now, which can be a worktree,
