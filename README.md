@@ -2,7 +2,7 @@
 
 Bullshark - saves your bytes.
 
-> **Status (2026-11-17, end of an autonomous session): built, not yet proven end to end with live sessions.** Everything planned on 2026-11-17, up to round 12, is on `main` (1007 tests). What was built, the owner's open decisions and the gated checks are in [docs/plans/session-summary-2026-11-17.md](docs/plans/session-summary-2026-11-17.md). The end-to-end run with the real `claude` CLI (review of 2026-11-15, Phase 3) has not been done. See [Plans](#plans).
+> **Status (2026-11-17, end of an autonomous session): built, not yet proven end to end with live sessions.** Everything planned on 2026-11-17, up to round 12, is on `main`, and on 2026-11-18 three additions that read the usage-limit entries of the transcripts: start a run when the limit resets, the status-bar limit text and a Limits history page (1038 tests; see [docs/plans/backlog-2026-11-18.md](docs/plans/backlog-2026-11-18.md)). What was built, the owner's open decisions and the gated checks are in [docs/plans/session-summary-2026-11-17.md](docs/plans/session-summary-2026-11-17.md). The end-to-end run with the real `claude` CLI (review of 2026-11-15, Phase 3) has not been done. See [Plans](#plans).
 
 ## What it is
 
@@ -38,7 +38,7 @@ The sessions run whether or not the window is open. The window is a view onto th
 
 ## Requirements
 
-1. **Starts with the PC.** The supervisor starts at log-on and keeps watch over both sessions.
+1. **Starts with the PC.** *Not built, and not wanted now (P4, owner decision of 2026-11-15):* the window is the one supervisor, so sessions are watched while the window is open. The sessions themselves keep running without it.
 2. **Sessions persist.** A session runs until the owner ends it. Its transcript stays on disk and can be resumed by ID.
 3. **Launch with direction.** OpenTail.Bullshark starts each session and gives it its first instruction: a role brief and a pointer to the plan file.
 4. **Visible.** Each session is a tab in OpenTail.Bullshark, with its full terminal. The owner sees the activity without attaching elsewhere.
