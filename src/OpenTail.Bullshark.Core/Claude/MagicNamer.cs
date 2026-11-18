@@ -113,13 +113,16 @@ public sealed class MagicNamer
     /// <param name="failures">The failures counted per session id for this window run. Updated here.</param>
     /// <param name="store">Writes one name. Returns false when the name was not written (the owner's name is there and was kept).</param>
     /// <param name="maxCalls">The most model calls this run makes, at most <see cref="MaxPerRun"/>.</param>
+    /// <param name="onCall">Called just before each model call with the number of this call and the most calls the run can make, so the window can
+    /// say "naming 2 of 5" while a call takes its 5 to 20 seconds (a call with no sign of life looks like a broken window).</param>
     public async Task<MagicBatchResult> RunAsync(
         IReadOnlyList<MagicJob> jobs,
         ISet<string> takenNames,
         IDictionary<string, int> failures,
         Func<MagicNamed, bool> store,
         int maxCalls = MaxPerRun,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Action<int, int>? onCall = null)
     {
         var limit = Math.Clamp(maxCalls, 0, MaxPerRun);
         int named = 0, refused = 0, failed = 0, noText = 0, skipped = 0, calls = 0;
@@ -149,6 +152,7 @@ public sealed class MagicNamer
             }
 
             calls++;
+            onCall?.Invoke(calls, Math.Min(limit, jobs.Count));
             string? reply;
             try
             {

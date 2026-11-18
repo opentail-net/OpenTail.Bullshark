@@ -62,6 +62,32 @@ public sealed class MagicNamerTests
     }
 
     [Fact]
+    public async Task EveryCallIsAnnouncedBeforeItIsMade()
+    {
+        var seen = new List<(int Call, int Total, int PromptsSoFar)>();
+        var model = new ScriptedModel((_, _) => "some name");
+        var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        await Namer(model).RunAsync([Job("a"), Job("b"), Job("c")], taken, new Dictionary<string, int>(), _ => true, maxCalls: 2,
+            onCall: (call, total) => seen.Add((call, total, model.Prompts.Count)));
+
+        // Two calls are allowed of three sessions: each is announced as "n of 2", before its prompt is sent.
+        Assert.Equal([(1, 2, 0), (2, 2, 1)], seen);
+    }
+
+    [Fact]
+    public async Task ASessionWithNoTextIsNotAnnounced()
+    {
+        var seen = new List<int>();
+        var model = new ScriptedModel((_, _) => "some name");
+
+        await Namer(model).RunAsync([Job("a", extract: null)], new HashSet<string>(StringComparer.OrdinalIgnoreCase), new Dictionary<string, int>(),
+            _ => true, onCall: (call, _) => seen.Add(call));
+
+        Assert.Empty(seen);
+    }
+
+    [Fact]
     public async Task ThePromptCarriesTheExtract()
     {
         var model = new ScriptedModel((_, _) => "Fix login");

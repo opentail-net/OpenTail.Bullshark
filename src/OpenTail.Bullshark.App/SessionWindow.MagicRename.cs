@@ -171,6 +171,8 @@ public partial class SessionWindow
         if (targets.Count == 0) return;
 
         _magicRunning = true;
+        // The owner waits for the answer, so the pointer shows it (an automatic run is in the background and leaves the pointer alone).
+        if (!automatic) Mouse.OverrideCursor = Cursors.Wait;
         SetStatus(automatic ? "Automatic magic naming with Haiku…" : $"Naming {targets.Count} session(s) with Haiku…");
         var marks = _marks;
         var history = _history ?? [];
@@ -200,6 +202,7 @@ public partial class SessionWindow
         }
         finally
         {
+            if (!automatic) Mouse.OverrideCursor = null;
             _magicRunning = false;
             LoadLibrary();
             RefreshRail();
@@ -224,7 +227,10 @@ public partial class SessionWindow
             TimeProvider.System,
             AppLog.Write);
         var jobs = targets.Select(target => JobFor(target, marks, history)).ToList();
-        return await namer.RunAsync(jobs, taken, _magicFailures, StoreMagic, maxCalls);
+        return await namer.RunAsync(jobs, taken, _magicFailures, StoreMagic, maxCalls, onCall: (call, total) =>
+            Dispatcher.BeginInvoke(() => SetStatus(total <= 1
+                ? "Naming with Haiku… this takes 5 to 20 seconds."
+                : $"Naming {call} of {total} with Haiku… about 5 to 20 seconds each.")));
     }
 
     /// <summary>One session as the namer needs it: its extract (null when it has no text or cannot be read), and the names used in its folder.</summary>
