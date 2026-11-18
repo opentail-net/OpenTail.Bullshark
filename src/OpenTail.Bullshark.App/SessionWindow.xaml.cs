@@ -514,6 +514,15 @@ public partial class SessionWindow : Window
     {
         var modifiers = System.Windows.Input.Keyboard.Modifiers;
 
+        // Ctrl+Shift+P opens the command palette (ideas D3). It is the only chord checked here for it, and the zoom and the paste below are
+        // unchanged. The palette opens once this key is finished, so the new window takes the keyboard after the key's own handling.
+        if (e.Key == System.Windows.Input.Key.P && modifiers == (System.Windows.Input.ModifierKeys.Control | System.Windows.Input.ModifierKeys.Shift))
+        {
+            e.Handled = true;
+            Dispatcher.BeginInvoke(new Action(OpenPalette), System.Windows.Threading.DispatcherPriority.Input);
+            return;
+        }
+
         // Ctrl+plus, Ctrl+minus and Ctrl+0 change the zoom of the transcripts (zoom.md). The window gets them even while a
         // terminal has the keyboard (checked 2026-11-16).
         var zoom = OpenTail.Bullshark.Core.Zoom.ZoomKeys.FromVirtualKey(System.Windows.Input.KeyInterop.VirtualKeyFromKey(e.Key),

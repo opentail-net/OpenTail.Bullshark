@@ -40,18 +40,20 @@ public partial class SessionWindow
     /// The terminal a paste goes to: the one whose native window has the keyboard focus, else the one shown last. WPF's own
     /// focus does not follow a click inside an embedded terminal (F55), so the native focus is asked.
     /// </summary>
-    private ExtendedTerminalControl? PasteTarget()
+    private ExtendedTerminalControl? PasteTarget() =>
+        NativeFocusedTerminal() ?? (_focusTerminal is { IsVisible: true } last ? last : null) ?? _shown ?? _shownRight;
+
+    /// <summary>The visible terminal whose native window has the keyboard focus, or null when none has it.</summary>
+    private ExtendedTerminalControl? NativeFocusedTerminal()
     {
         var focus = GetFocus();
-        if (focus != IntPtr.Zero)
+        if (focus == IntPtr.Zero) return null;
+        foreach (var terminal in AllTerminals().Where(t => t.IsVisible))
         {
-            foreach (var terminal in AllTerminals().Where(t => t.IsVisible))
-            {
-                var host = NativeHostOf(terminal);
-                if (host != IntPtr.Zero && (host == focus || IsChild(host, focus))) return terminal;
-            }
+            var host = NativeHostOf(terminal);
+            if (host != IntPtr.Zero && (host == focus || IsChild(host, focus))) return terminal;
         }
-        return (_focusTerminal is { IsVisible: true } last ? last : null) ?? _shown ?? _shownRight;
+        return null;
     }
 
     /// <summary>The native window of a terminal: the first hosted window in its visual tree. Zero before the terminal is loaded.</summary>

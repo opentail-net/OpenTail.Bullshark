@@ -251,6 +251,8 @@ public partial class SessionWindow
         // The marks are read again on every refresh: they are small, and another process may have changed them (D-L3 is inside).
         LoadLibrary();
         var stored = known ?? ReadRecords();
+        // The palette's session entries are read from what was drawn here, so opening it reads no file (SessionWindow.Palette.cs).
+        _railRecords = stored;
         var records = stored.Values.OrderBy(r => r.Name, StringComparer.Ordinal).ToList();
         // A start that failed has no session, so it gets no terminal (it is listed as a failure below).
         foreach (var record in records.Where(r => !string.IsNullOrEmpty(r.SessionId) && !IsInOwnWindow(r.SessionId))) EnsureTerminal(record);

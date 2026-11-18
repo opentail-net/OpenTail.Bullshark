@@ -32,6 +32,7 @@ Decisions:
 - Start when the limit resets: built 2026-11-18, see `limit-reset-start-2026-11-18.md`. Not checked in a running window.
 - Limit in force on the status bar and the Limits history page (backlog A2, A4): built 2026-11-18, see `limit-status-and-history-2026-11-18.md`. Not checked in a running window.
 - "While you were away" digest (backlog D1): built 2026-11-18, see `away-digest-2026-11-18.md`. Not checked in a running window.
+- Command palette, Ctrl+Shift+P or "Go to..." (backlog D3): built 2026-11-18, see `palette-2026-11-18.md`. Not checked in a running window (the chord, the button, the window, the focus return to a terminal).
 - Needs-you escalation, snooze and acknowledge (backlog D2): built 2026-11-18, see `escalation-2026-11-18.md`. Not checked in a running window (sound, flash, menu, tab acknowledgement).
 - Should old transcripts ever be deleted (today: archive only)?
 - Should a `done` coder in a live run ever be woken? Today: no.
