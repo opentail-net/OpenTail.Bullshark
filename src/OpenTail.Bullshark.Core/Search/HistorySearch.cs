@@ -95,6 +95,7 @@ public static class HistorySearch
             var batch = ordered.GetRange(start, Math.Min(size, ordered.Count - start));
             start += batch.Count;
             var read = ReadBatch(batch, words, probes, extraText, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             for (var i = 0; i < batch.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -125,6 +126,10 @@ public static class HistorySearch
         var read = new (SessionMatch? Match, Exception? Error)[batch.Count];
         Parallel.For(0, batch.Count, TranscriptIndex.ReadOptions(cancellationToken), i =>
         {
+            // Checked before each session, not left to Parallel.For, which may still run bodies after a cancel. Measured on 2026-11-18 (a
+            // probe under CPU load): the batch test read all 32 sessions after a cancel at the 10th. With this check, a session that starts
+            // after the cancel is not read; at most one session per thread can be past the check when the cancel lands.
+            if (cancellationToken.IsCancellationRequested) return;
             try
             {
                 read[i] = (MatchSession(batch[i], words, probes, extraText?.Invoke(batch[i]), cancellationToken), null);

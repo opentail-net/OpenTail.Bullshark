@@ -78,8 +78,9 @@ public sealed class HaikuNameModel : IMagicNameModel
 
 /// <summary>
 /// One session to name: its id, its last message (the snowflake mark), its extract (null when it has no text), the names already used in its
-/// folder, whether it may replace the owner's own name (a confirmed single rename), and the tags in use in the library that the prompt shows
-/// (null for none; tags plan, Part B).
+/// folder, whether it may replace the owner's own name (a confirmed single rename), the tags in use in the library that the prompt shows
+/// (null for none; tags plan, Part B), and for a re-roll the session's current magic name (null for a fresh name), which the new name must not
+/// repeat (<see cref="MagicNamer.RunAsync"/>).
 /// </summary>
 public sealed record MagicJob(
     string SessionId,
@@ -87,7 +88,8 @@ public sealed record MagicJob(
     string? Extract,
     IReadOnlyList<string> UsedNames,
     bool ReplaceManual = false,
-    IReadOnlyList<string>? KnownTags = null);
+    IReadOnlyList<string>? KnownTags = null,
+    string? CurrentName = null);
 
 /// <summary>
 /// A name the batch chose, for the caller to store. <see cref="MagicAt"/> is the session's last message; <see cref="MagicNamedAt"/> is now.
@@ -182,7 +184,7 @@ public sealed class MagicNamer
             string? reply;
             try
             {
-                reply = await _model.NameAsync(MagicName.PromptFor(job.UsedNames, job.Extract, job.KnownTags ?? []), cancellationToken);
+                reply = await _model.NameAsync(MagicName.PromptFor(job.UsedNames, job.Extract, job.KnownTags ?? [], job.CurrentName), cancellationToken);
             }
             catch (MagicLimitException)
             {
@@ -206,7 +208,14 @@ public sealed class MagicNamer
                 continue;
             }
 
-            var name = MagicName.Distinct(clean, takenNames, _clock.GetLocalNow());
+            // A re-roll must not hand the owner the same name again: the session's current name counts as taken for this call only. It is not
+            // added to takenNames, so it stays free for the other sessions (the name is free once this session has a new one).
+            var scope = takenNames;
+            if (!string.IsNullOrWhiteSpace(job.CurrentName))
+            {
+                scope = new HashSet<string>(takenNames, StringComparer.OrdinalIgnoreCase) { job.CurrentName.Trim() };
+            }
+            var name = MagicName.Distinct(clean, scope, _clock.GetLocalNow());
             var written = store(new MagicNamed(job.SessionId, name, job.LastActivity, _clock.GetUtcNow(), job.ReplaceManual, tags));
             if (written)
             {

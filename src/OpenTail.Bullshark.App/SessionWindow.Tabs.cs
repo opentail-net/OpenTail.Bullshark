@@ -7,6 +7,7 @@ using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Claude;
 using OpenTail.Bullshark.Core.Supervisor;
 using OpenTail.Bullshark.Core.Tabs;
+using Wpf.Ui.Terminal;
 
 namespace OpenTail.Bullshark.App;
 
@@ -322,10 +323,43 @@ public partial class SessionWindow
         if (ReferenceEquals(_shownRight, terminal)) _shownRight = null;
         if (ReferenceEquals(_focusTerminal, terminal)) _focusTerminal = null;
         (terminal.Parent as Panel)?.Children.Remove(terminal);
+        DetachConnection(terminal);
+    }
+
+    /// <summary>
+    /// Disconnects a terminal from its session's process and disposes the connection. When the process has already ended, the library's
+    /// disconnect throws (its pipe is closed: "Cannot access a closed file", four times per close in the screenshot runs, 2026-11-18). Then
+    /// nothing is left to detach, so it is not logged as a failure, and the connection is still disposed so its handles are released. A
+    /// failure while the process is still running is logged, as before.
+    /// </summary>
+    private static void DetachConnection(ExtendedTerminalControl terminal)
+    {
+        // Read before the disconnect, which may throw; the connection is what the disposal needs.
+        var connection = terminal.ConPTYTerm;
+        bool ended;
+        try
+        {
+            ended = connection?.Process is { HasExited: true };
+        }
+        catch (InvalidOperationException)
+        {
+            ended = false; // the process object is not usable: treat it as running, so a failure is still logged
+        }
         try
         {
             var term = terminal.DisconnectConPTYTerm();
             term?.Dispose();
+        }
+        catch (Exception ex) when (ended && ex is ObjectDisposedException or IOException or InvalidOperationException)
+        {
+            try
+            {
+                connection?.Dispose();
+            }
+            catch (Exception inner) when (inner is ObjectDisposedException or IOException or InvalidOperationException)
+            {
+                // Closed with the process already: nothing more to release.
+            }
         }
         catch (Exception ex)
         {

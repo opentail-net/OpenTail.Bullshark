@@ -454,18 +454,7 @@ public partial class SessionWindow : Window
     private void DetachAll()
     {
         CloseDetachedWindows();
-        foreach (var terminal in AllTerminals())
-        {
-            try
-            {
-                var term = terminal.DisconnectConPTYTerm();
-                term?.Dispose();
-            }
-            catch (Exception ex)
-            {
-                AppLog.Write($"detach failed: {ex.GetType().Name}: {ex.Message}");
-            }
-        }
+        foreach (var terminal in AllTerminals()) DetachConnection(terminal);
     }
 
     private void SetStatus(string text) => StatusText.Text = text;

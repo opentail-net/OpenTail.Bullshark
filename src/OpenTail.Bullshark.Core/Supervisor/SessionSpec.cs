@@ -12,7 +12,8 @@ public enum SessionRole
 
 /// <summary>
 /// What one role should look like. It is the desired state the supervisor keeps alive.
-/// Defaults follow the README decisions: planner on Opus, coder on Haiku, coder with acceptEdits (D1, D3).
+/// Defaults follow the code (RunPlan): planner on Opus, coder on Haiku, and the permission mode "auto" for both (D3 as revised; see
+/// SetupPlan.PermissionMode and README "Permission mode").
 /// </summary>
 public sealed record SessionSpec(
     SessionRole Role,

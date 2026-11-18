@@ -159,6 +159,25 @@ public sealed class MagicNameTests
     }
 
     [Fact]
+    public void ARerollPromptNamesTheCurrentNameToAvoid()
+    {
+        var prompt = MagicName.PromptFor(["Fix login"], "You: hello", [], "Fix login");
+
+        Assert.Contains("Its current name, do not repeat it: Fix login.", prompt, StringComparison.Ordinal);
+        Assert.EndsWith("You: hello", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AFreshNamePromptHasNoCurrentNameLine()
+    {
+        var fresh = MagicName.PromptFor(["Fix login"], "You: hello", [], null);
+
+        Assert.DoesNotContain("Its current name", fresh, StringComparison.Ordinal);
+        Assert.Equal(MagicName.PromptFor(["Fix login"], "You: hello", []), fresh);
+        Assert.Equal(fresh, MagicName.PromptFor(["Fix login"], "You: hello", [], "   "));
+    }
+
+    [Fact]
     public void TheDateIsInTheInvariantFormat()
     {
         Assert.Equal("18 Nov", Eighteenth.ToString("d MMM", CultureInfo.InvariantCulture));

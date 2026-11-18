@@ -114,7 +114,7 @@ The sessions see each other directly and live, with `SendMessage` by session nam
 
 - **Live messages only:** the planner sends the coder each batch with `SendMessage` (the batch text is in the message), and the coder sends its report back the same way. Session names come from `ListAgents`. No file is used to pass messages (owner decision, 2026-11-14).
 - **Recovery:** a restarted session resumes with its own transcript, so it keeps its context. Its continuation prompt tells it to ask the other session to resend the current batch (F23). OpenTail.Bullshark writes no plan file for messages.
-- **Permission mode:** both sessions must run in the same mode, or a message waits for approval (F22). Default: `auto` for both (D3).
+- **Permission mode:** both sessions must run in the same mode, or a message waits for approval (F22). Default: `auto` for both (D3, revised; the code's default, see `SetupPlan` and `RunPlan`).
 
 - **The plan:** `docs/bullshark/PLAN.md`, a checkbox list (the owner's plan format). The planner writes each batch as a block with fixed decisions, STOP conditions and a capped report format.
 - **The report:** the coder ticks the boxes and writes a short report under the batch.
@@ -148,7 +148,7 @@ Not needed for the core. It is useful for recovery when a restart is not enough,
 
 - OpenTail.Bullshark adds no permission that the owner has not set. Sessions follow the owner's `CLAUDE.md` and memory rules, which already say: no deleting repos, no changes that destabilise the OS, no pushing unless asked, no commits outside the project's scope.
 - The nudge is typed input. OpenTail.Bullshark types only the nudge line, and only into a tab the owner is not using (D5).
-- Default permission mode for the coder: open (D3).
+- Default permission mode for the coder: `auto`, the mode the code sets for both roles (D3, revised; see the decision table below).
 - An unattended session that hits a permission prompt stops in `blocked`. That is the main failure to watch for. A blocked session does nothing until someone looks.
 
 ## Phases
@@ -170,7 +170,7 @@ Not needed for the core. It is useful for recovery when a restart is not enough,
 |---|---|---|
 | D1 | Planner model: Fable, Opus or Sonnet? | Opus by default; switch per project. Fable for the hardest planning. |
 | D2 | Visibility | **Decided (2026-11-14):** tabs inside OpenTail.Bullshark. Activity panel later (P6). |
-| D3 | Coder permission mode: `acceptEdits` with an allowlist, or `bypassPermissions`? | `acceptEdits` plus an allowlist. Bypass only in a sandbox with no internet. |
+| D3 | Coder permission mode: `acceptEdits` with an allowlist, or `bypassPermissions`? | `acceptEdits` plus an allowlist. Bypass only in a sandbox with no internet. *Superseded in code (2026-11-18): the default is `auto` (`SetupPlan.PermissionMode`, `RunPlan` default; D-S14 in `docs/plans/setup-and-sessions.md`). This row is kept as the record of the first recommendation.* |
 | D4 | Budget: own spend check (the `--print` cap is ruled out). | Own spend check, in P7. |
 | D5 | How long must a tab be idle before OpenTail.Bullshark may type into it? | Ten minutes, set by the owner. Check the typing behaviour in P1. |
 | D6 | Startup: log-on only, or also auto-logon? | Log-on only. Auto-logon is a security trade-off for the owner to decide. |

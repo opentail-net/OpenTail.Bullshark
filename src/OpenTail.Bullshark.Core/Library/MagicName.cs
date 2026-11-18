@@ -161,7 +161,15 @@ public static class MagicName
     /// <see cref="PromptFor(IReadOnlyList{string}, string)"/> with the tags in use in the library (tags plan, Part B): the first
     /// <see cref="MaxKnownTags"/> of them, in the order given (most used first), so the model reuses one when it fits.
     /// </summary>
-    public static string PromptFor(IReadOnlyList<string> usedNames, string extract, IReadOnlyList<string> knownTags)
+    public static string PromptFor(IReadOnlyList<string> usedNames, string extract, IReadOnlyList<string> knownTags) =>
+        PromptFor(usedNames, extract, knownTags, currentName: null);
+
+    /// <summary>
+    /// <see cref="PromptFor(IReadOnlyList{string}, string, IReadOnlyList{string})"/> for a re-roll ("Magic rename again"): the session's current
+    /// name is named as one not to repeat, on a line of its own, so the model sees it even when the folder's list is cut at
+    /// <see cref="MaxUsedNames"/>. A null or blank name adds no line, so a fresh name gets the same prompt as before.
+    /// </summary>
+    public static string PromptFor(IReadOnlyList<string> usedNames, string extract, IReadOnlyList<string> knownTags, string? currentName)
     {
         var text = new StringBuilder();
         if (usedNames.Count == 0)
@@ -177,6 +185,7 @@ public static class MagicName
         text.Append(tags.Count == 0
             ? "No tag is in use in the library yet.\n"
             : "Tags already in use (reuse one when it fits): " + string.Join(", ", tags) + ".\n");
+        if (!string.IsNullOrWhiteSpace(currentName)) text.Append("Its current name, do not repeat it: ").Append(currentName.Trim()).Append(".\n");
         text.Append("\nThe session:\n").Append(extract);
         return text.ToString();
     }

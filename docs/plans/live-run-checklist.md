@@ -72,6 +72,13 @@ Pass when: no name appears twice at any step, each step has its line, and F20 is
   ("5-hour", "weekly"), and nothing when the window is in front.
 - [ ] Toasts switched off as a whole (Toast switch off): the five kinds are dimmed and give no toast.
 
+## Fixes batch (docs/plans/fixes-batch-2026-11-18.md)
+
+- [ ] Magic rename again (row menu, a session with a magic name): the new name is not the old one. When the model repeats it, the name
+  comes back with " - 18 Nov" (or " 2") after it. The old name is free again for other sessions.
+- [ ] Closing the window (or a tab whose session ended) writes no "detach failed" line to `logs\app.log`. If one appears, note the
+  exception and whether the session was still running.
+
 ## Gates (each needs one real step)
 
 - [ ] **Worktree per coder** (additions item 3) and `--cwd` for listings: with the scratch repo trusted, rerun the gate in

@@ -335,7 +335,10 @@ public partial class SessionWindow
             extract = null;
         }
         var used = MagicCandidates.NamesInFolder(history, marks, digest.ProjectFolder);
-        return new MagicJob(digest.SessionId, digest.LastActivity ?? DateTimeOffset.MinValue, extract, used, target.ReplaceManual, knownTags);
+        // A re-roll ("Magic rename again") names the current magic name as one not to repeat. The owner's own name is not a magic name, so a
+        // confirmed replacement (ReplaceManual) gets none.
+        var current = !target.ReplaceManual && marks.TryGetValue(digest.SessionId, out var mark) && IsMagicNamed(mark) ? mark!.Name : null;
+        return new MagicJob(digest.SessionId, digest.LastActivity ?? DateTimeOffset.MinValue, extract, used, target.ReplaceManual, knownTags, current);
     }
 
     /// <summary>

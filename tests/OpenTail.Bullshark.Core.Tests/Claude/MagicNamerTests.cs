@@ -275,6 +275,49 @@ public sealed class MagicNamerTests
     }
 
     [Fact]
+    public async Task ARerollThatRepeatsItsCurrentNameGetsADatedVariant()
+    {
+        var stored = new List<MagicNamed>();
+        var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var model = new ScriptedModel((_, _) => "fix login");
+        var reroll = new MagicJob("s1", LastMessage, "You: Fix the login page", [], false, null, "Fix login");
+
+        await Namer(model).RunAsync([reroll], taken, new Dictionary<string, int>(), named => { stored.Add(named); return true; });
+
+        Assert.Equal("Fix login - 18 Nov", Assert.Single(stored).Name);
+        Assert.Contains("Its current name, do not repeat it: Fix login.", Assert.Single(model.Prompts), StringComparison.Ordinal);
+        // The new name is taken; the current one is not left taken, so it is free for other sessions.
+        Assert.Equal(["Fix login - 18 Nov"], taken.ToList());
+    }
+
+    [Fact]
+    public async Task ARerollWithADifferentNameKeepsIt()
+    {
+        var stored = new List<string>();
+        var reroll = new MagicJob("s1", LastMessage, "You: Fix the login page", [], false, null, "Fix login");
+
+        var result = await Namer(new ScriptedModel((_, _) => "Review queue")).RunAsync([reroll],
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase), new Dictionary<string, int>(), named => { stored.Add(named.Name); return true; });
+
+        Assert.Equal(["Review queue"], stored);
+        Assert.Equal(1, result.Named);
+    }
+
+    [Fact]
+    public async Task TheCurrentNameOfARerollStaysFreeForOtherSessions()
+    {
+        var stored = new List<string>();
+        var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var reroll = new MagicJob("s1", LastMessage, "You: Fix the login page", [], false, null, "Fix login");
+        // The first call repeats the current name; the second session is a fresh one that gets the same words.
+        var model = new ScriptedModel((call, _) => call == 1 ? "fix login" : "Fix login");
+
+        await Namer(model).RunAsync([reroll, Job("s2")], taken, new Dictionary<string, int>(), named => { stored.Add(named.Name); return true; });
+
+        Assert.Equal(["Fix login - 18 Nov", "Fix login"], stored);
+    }
+
+    [Fact]
     public async Task AKeptOwnersNameIsNotCountedAsNamed()
     {
         var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
