@@ -39,6 +39,16 @@ public sealed class MagicCandidatesTests
     }
 
     [Fact]
+    public void ASessionClaudeNeverAnsweredIsNotOfferedAMagicRename()
+    {
+        // The owner's own case (2026-11-18): a session that holds only a /clear and its caveat, two "user" entries and no answer.
+        var onlyCommands = Digest(Now.AddHours(-3), users: 2, assistants: 0);
+
+        Assert.Equal(MagicCandidates.RenameKind.None, MagicCandidates.KindFor(onlyCommands, null, NoneLive));
+        Assert.False(MagicCandidates.IsCold(onlyCommands, null, NoneLive, Now));
+    }
+
+    [Fact]
     public void ASessionLessThanTwoHoursOldIsNotCold()
     {
         Assert.False(MagicCandidates.IsCold(Digest(Now.AddHours(-1)), null, NoneLive, Now));

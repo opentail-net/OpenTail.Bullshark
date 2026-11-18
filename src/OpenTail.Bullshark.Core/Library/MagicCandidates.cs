@@ -40,7 +40,9 @@ public static class MagicCandidates
         && mark?.Archived != true
         && !live.Contains(digest.SessionId)
         && digest.LastActivity is not null
-        && IsBlank(digest.CustomTitle);
+        && IsBlank(digest.CustomTitle)
+        // A session where Claude never answered has no conversation to name (a /clear, a command or two): no menu item, no dead end.
+        && digest.AssistantMessages > 0;
 
     /// <summary>What the row menu offers for a past session, for one rename (D7a). The 2-hour rule does not apply to a single rename.</summary>
     public static RenameKind KindFor(SessionDigest digest, LibraryEntry? mark, ISet<string> live)
