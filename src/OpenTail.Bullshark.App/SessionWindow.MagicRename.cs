@@ -283,7 +283,9 @@ public partial class SessionWindow
         var parts = new List<string> { result.Named == 1 ? "Named 1 session" : $"Named {result.Named} sessions" };
         if (result.Failed > 0) parts.Add($"{result.Failed} failed");
         if (result.Refused > 0) parts.Add($"{result.Refused} kept their own name");
-        if (result.NoText > 0) parts.Add($"{result.NoText} had no text");
+        if (result.NoText > 0) parts.Add(result.NoText == 1
+            ? "1 has nothing to read (only commands such as /clear, no conversation), so no model call was made"
+            : $"{result.NoText} have nothing to read (only commands such as /clear), so no model call was made");
         if (result.SkippedAfterFailures > 0) parts.Add($"{result.SkippedAfterFailures} skipped after two failures");
         var text = string.Join(", ", parts) + ".";
         if (result.StoppedAtLimit) text += " A usage limit stopped the run; the rest were not named.";
