@@ -25,6 +25,7 @@ sides changed it (both kept). Tests: 357 at the start, 1007 at the end.
 | `batch-b-2026-11-18.md` (B1) | "Copy review prompt" in the Changes tab: a note box and a button copy a prompt that names the changed files to the clipboard. Nothing is sent. Not seen in a running window. |
 | `batch-b-2026-11-18.md` (B2) | "Copy as Markdown" on the Away page copies the digest the page shows (same fields, Markdown characters escaped). The page stays open. Not seen in a running window. |
 | `batch-b-2026-11-18.md` (B3) | Quick capture: the palette's "Add idea…" appends an unchecked line to `ideas.md` beside the state file; "Open ideas file" opens it. Nothing is sent to a session. Not seen in a running window. |
+| `magic-rename-2026-11-18.md` | Haiku names cold past sessions (a wand marks the name): row menu "Magic rename" (the owner's name only after a confirm), History mark and palette "Name cold sessions with Haiku (N)" (asks first, 10 a run), automatic naming off by default. Core tests 95, suite 1273. The gate: `--no-session-persistence` leaves no session file. Not seen in a running window. |
 
 Findings added: F61 (`agents --json` hides finished/stopped sessions without `--all`), F62 (`--bg` refuses an untrusted folder),
 F63 (daemon not running while the listing still shows sessions; the daemon runs on demand).

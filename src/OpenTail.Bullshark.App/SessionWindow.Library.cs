@@ -125,7 +125,18 @@ public partial class SessionWindow
 
     /// <summary>The owner's name. Blank removes it, so the transcript's title shows again.</summary>
     public void SetName(string sessionId, string? name) =>
-        ChangeMark(sessionId, mark => mark with { Name = string.IsNullOrWhiteSpace(name) ? null : name.Trim() });
+        ChangeMark(sessionId, mark => WithName(mark, name));
+
+    /// <summary>
+    /// The name set by the owner. A name that differs from the one before makes it the owner's: the magic marks are cleared (magic rename, D6),
+    /// so the wand goes. The same name keeps them.
+    /// </summary>
+    private static LibraryEntry WithName(LibraryEntry mark, string? name)
+    {
+        var trimmed = string.IsNullOrWhiteSpace(name) ? null : name.Trim();
+        if (string.Equals(trimmed, mark.Name?.Trim(), StringComparison.Ordinal)) return mark with { Name = trimmed };
+        return mark with { Name = trimmed, MagicAt = null, MagicNamedAt = null };
+    }
 
     /// <summary>The tags typed in one box (D-L6).</summary>
     public void SetTags(string sessionId, string text) =>
@@ -139,9 +150,8 @@ public partial class SessionWindow
         ChangeMark(sessionId, mark => mark with { Colour = string.IsNullOrEmpty(colour) ? null : colour });
 
     /// <summary>The name, tags, note and colour from the edit dialog, in one write.</summary>
-    public void SetDetails(string sessionId, LibraryEntry details) => ChangeMark(sessionId, mark => mark with
+    public void SetDetails(string sessionId, LibraryEntry details) => ChangeMark(sessionId, mark => WithName(mark, details.Name) with
     {
-        Name = string.IsNullOrWhiteSpace(details.Name) ? null : details.Name.Trim(),
         Tags = details.Tags ?? [],
         Note = string.IsNullOrWhiteSpace(details.Note) ? null : details.Note.Trim(),
         Colour = string.IsNullOrEmpty(details.Colour) ? null : details.Colour,

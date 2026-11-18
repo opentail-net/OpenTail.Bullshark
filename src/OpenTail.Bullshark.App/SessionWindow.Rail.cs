@@ -361,6 +361,8 @@ public partial class SessionWindow
         reload.ToolTip = "Reload the history from the local transcripts (no model)";
         reload.MouseLeftButtonUp += async (_, _) => await LoadHistoryAsync();
         header.Children.Add(reload);
+        // The magic rename of the cold sessions: asks first, at most ten a run (SessionWindow.MagicRename.cs).
+        header.Children.Add(MagicHeaderMark());
 
         var section = NewItem(header, new RailTag(RailKind.HistorySection, HistoryKey));
         section.IsExpanded = _expanded.GetValueOrDefault(HistoryKey, true);

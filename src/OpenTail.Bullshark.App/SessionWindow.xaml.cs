@@ -111,6 +111,7 @@ public partial class SessionWindow : Window
         _store = new StateStore(options.StatePath, AppLog.Write);
         _runStore = new RunStore(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(options.StatePath))!, "runs.json"));
         InitLibrary(options.StatePath);
+        LoadMagicAuto();
         var runner = new SupervisorRunner(_cli, _store, TimeProvider.System, log: AppLog.Write) { Hold = _respawnHold };
         _loop = new SupervisorLoop(runner, _cli, _store, AppLog.Write);
         _runner = runner;
@@ -322,6 +323,8 @@ public partial class SessionWindow : Window
         {
             _passRunning = false;
             _storage.SetArchiveAvailable(ArchiveAllowed);
+            // Automatic magic naming (off by default) runs only once a pass has finished, so the window is idle (SessionWindow.MagicRename.cs).
+            MaybeAutoMagicRename();
         }
     }
 

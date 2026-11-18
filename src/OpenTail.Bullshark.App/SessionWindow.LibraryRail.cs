@@ -85,16 +85,18 @@ public partial class SessionWindow
         // The same title as the tab and the transcript heading, including the lineage rule (DisplayTitle).
         var title = DisplayTitle(digest);
         var row = NewItem(
-            ColourEdge(TwoLine(title + (digest.IsSubagent ? " · subagent" : string.Empty),
+            ColourEdge(TwoLine(MagicPrefix(mark) + title + (digest.IsSubagent ? " · subagent" : string.Empty),
                     ActivityLine(digest.SessionId, null, digest.LastActivity, running: false)
                         + $" · {digest.AssistantMessages} msgs" + TagsSuffix(mark),
                     string.Empty, resume, MatchBadge(match), leadSlot: true),
                 mark?.Colour),
             new RailTag(RailKind.History, digest.SessionId, digest),
-            SearchTip(match, NoteTip(mark) + ContinuesTip(digest) + FactsTip(digest)
+            SearchTip(match, MagicTip(mark) + NoteTip(mark) + ContinuesTip(digest) + FactsTip(digest)
                 + (cache.Full is null ? digest.FilePath : cache.Full + "\n" + digest.FilePath)));
         if (mark?.Archived == true) row.Opacity = 0.55;
-        row.ContextMenu = RowMenu(digest.SessionId, history: true, title);
+        var menu = RowMenu(digest.SessionId, history: true, title);
+        AddMagicItems(menu, digest, mark);
+        row.ContextMenu = menu;
         return row;
     }
 }

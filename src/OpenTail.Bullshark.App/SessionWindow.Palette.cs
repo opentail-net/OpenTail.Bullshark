@@ -116,6 +116,8 @@ public partial class SessionWindow
         if (_review.Count > 0)
             items.Add(ActionItem("review-all", "Mark all ready sessions reviewed", _review.Count == 1 ? "1 session" : $"{_review.Count} sessions",
                 MarkAllReviewed));
+        // The magic rename (magic-rename plan): Haiku names cold past sessions, after a confirm. Nothing is sent to a session.
+        items.AddRange(MagicPaletteItems());
         items.Add(ActionItem("notify", "Toggle sound and flash for new waits", null, ToggleNotify));
         items.Add(ActionItem("toast", "Toggle toasts", "when the window is in the background", ToggleToasts));
         // Quick capture (ideas #7, SessionWindow.Ideas.cs): an idea goes to ideas.md, never to a session.
