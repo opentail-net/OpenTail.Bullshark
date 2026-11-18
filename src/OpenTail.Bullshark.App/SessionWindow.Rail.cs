@@ -190,6 +190,7 @@ public partial class SessionWindow
         _changes.ApplyTheme(palette);
         _timeline.ApplyTheme(palette);
         _limits.ApplyTheme(palette);
+        _away.ApplyTheme(palette);
         FilterBox.Background = RailPalette.Brush(palette.Panel);
         FilterBox.BorderBrush = RailPalette.Brush(palette.Muted);
         UpdateFilterMark();
@@ -443,6 +444,12 @@ public partial class SessionWindow
             var facts = await Task.Run(() => ReadHistoryFacts(index.Sessions));
             _history = index.Sessions.ToList();
             _historyFacts = facts;
+            // A return that came before the index was read (the Away page, D2) asks again now that it is.
+            if (_awayWaitsForHistory)
+            {
+                _awayWaitsForHistory = false;
+                _ = RefreshAwayAsync(onReturn: true);
+            }
             AppLog.Write($"history read: {index.Sessions.Count} transcripts, {index.Totals.CountedMessages} messages counted once");
             if (index.Skipped.Count > 0)
                 AppLog.Write($"history: {index.Skipped.Count} transcript(s) could not be read and were left out");

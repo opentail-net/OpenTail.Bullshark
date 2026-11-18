@@ -36,6 +36,9 @@ public partial class SessionWindow
 
         /// <summary>The limit history (A4, read-only). One tab, with the key "limits".</summary>
         Limits,
+
+        /// <summary>"While you were away" (backlog D1, read-only). One tab, with the key "away".</summary>
+        Away,
     }
 
     private sealed class OpenTab(TabKind kind, string key, string title)
@@ -159,6 +162,11 @@ public partial class SessionWindow
             case TabKind.Limits:
                 ShowOnly(_limits);
                 _ = RefreshLimitsAsync();
+                break;
+
+            case TabKind.Away:
+                ShowOnly(_away);
+                _ = RefreshAwayAsync(onReturn: false);
                 break;
         }
     }

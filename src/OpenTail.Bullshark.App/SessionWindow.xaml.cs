@@ -134,6 +134,7 @@ public partial class SessionWindow : Window
         InitStorage();
         InitTimeline();
         InitLimits();
+        InitAway();
         InitTabDrag();
         InitZoom();
 

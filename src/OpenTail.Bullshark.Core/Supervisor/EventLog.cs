@@ -108,36 +108,73 @@ public sealed class EventLog : IEventSink
     {
         using var _ = FileLock.Hold(FilePath);
         var events = new List<SupervisorEvent>();
-        foreach (var file in new[] { RotatedFilePath, FilePath })
-        {
-            // Opened directly, not checked with File.Exists first: a file the user cannot open is an error, not an empty timeline.
-            StreamReader reader;
-            try
-            {
-                reader = new StreamReader(File.OpenRead(file));
-            }
-            catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
-            {
-                continue;
-            }
+        foreach (var file in new[] { RotatedFilePath, FilePath }) AddFile(file, events);
+        return events;
+    }
 
-            using (reader)
+    /// <summary>
+    /// The newest <paramref name="max"/> events from <paramref name="since"/> on, in the order they happened (the away digest, backlog D1). Read
+    /// as <see cref="Read"/> reads them: a bad line is skipped. Unlike <see cref="Read"/>, a file that cannot be read (denied, or cut short) gives
+    /// the lines it did give, and its failure is said through the log, so the digest still shows the other file. A lock that is not free in time
+    /// gives no events, and that is said through the log too.
+    /// </summary>
+    public IReadOnlyList<SupervisorEvent> ReadSince(DateTimeOffset since, int max)
+    {
+        var recent = new List<SupervisorEvent>();
+        try
+        {
+            using var _ = FileLock.Hold(FilePath);
+            foreach (var file in new[] { RotatedFilePath, FilePath })
             {
-                string? line;
-                while ((line = reader.ReadLine()) is not null)
+                var found = new List<SupervisorEvent>();
+                try
                 {
-                    if (string.IsNullOrWhiteSpace(line)) continue;
-                    try
-                    {
-                        if (JsonSerializer.Deserialize<SupervisorEvent>(line) is { } evt) events.Add(evt);
-                    }
-                    catch (JsonException)
-                    {
-                        // A line cut off at the end of a file that is still being written.
-                    }
+                    AddFile(file, found);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    _log?.Invoke($"events: {file} not read for the digest: {ex.Message}");
+                }
+                recent.AddRange(found.Where(evt => evt.At >= since));
+            }
+        }
+        catch (TimeoutException ex)
+        {
+            _log?.Invoke($"events: not read for the digest: {ex.Message}");
+            return [];
+        }
+        return recent.OrderBy(evt => evt.At).TakeLast(Math.Max(0, max)).ToList();
+    }
+
+    /// <summary>Adds the events of one file, in the order of its lines. A missing file adds none; a file that cannot be opened or read throws.</summary>
+    private static void AddFile(string file, List<SupervisorEvent> events)
+    {
+        // Opened directly, not checked with File.Exists first: a file the user cannot open is an error, not an empty timeline.
+        StreamReader reader;
+        try
+        {
+            reader = new StreamReader(File.OpenRead(file));
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return;
+        }
+
+        using (reader)
+        {
+            string? line;
+            while ((line = reader.ReadLine()) is not null)
+            {
+                if (string.IsNullOrWhiteSpace(line)) continue;
+                try
+                {
+                    if (JsonSerializer.Deserialize<SupervisorEvent>(line) is { } evt) events.Add(evt);
+                }
+                catch (JsonException)
+                {
+                    // A line cut off at the end of a file that is still being written.
                 }
             }
         }
-        return events;
     }
 }

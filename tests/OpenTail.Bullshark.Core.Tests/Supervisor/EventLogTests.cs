@@ -160,6 +160,31 @@ public sealed class EventLogTests : IDisposable
     }
 
     [Fact]
+    public void ReadSinceKeepsTheNewestEventsFromTheTimeOnAndSkipsBadLines()
+    {
+        // The away digest's reader (backlog D1): 250 events, two bad lines in the middle, and only the newest 200 from the start on.
+        var log = new EventLog(Path_());
+        for (var i = 1; i <= 250; i++)
+        {
+            if (i == 125) File.AppendAllText(Path_(), "not json at all\n42\n");
+            log.Write(Event(i));
+        }
+
+        var newest = log.ReadSince(At, 200);
+        var fromLater = log.ReadSince(At.AddSeconds(240), 200);
+
+        Assert.Equal(200, newest.Count);
+        Assert.Equal(Enumerable.Range(51, 200).Select(Event), newest);
+        Assert.Equal(Enumerable.Range(240, 11).Select(Event), fromLater);
+    }
+
+    [Fact]
+    public void ReadSinceOfAMissingLogIsEmpty()
+    {
+        Assert.Empty(new EventLog(Path_()).ReadSince(At, 200));
+    }
+
+    [Fact]
     public void AFolderTheUserCannotOpenIsAnErrorNotAnEmptyTimeline()
     {
         if (!OperatingSystem.IsWindows()) return;
