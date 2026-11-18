@@ -34,6 +34,7 @@ Decisions:
 - "While you were away" digest (backlog D1): built 2026-11-18, see `away-digest-2026-11-18.md`. Not checked in a running window.
 - Command palette, Ctrl+Shift+P or "Go to..." (backlog D3): built 2026-11-18, see `palette-2026-11-18.md`. Not checked in a running window (the chord, the button, the window, the focus return to a terminal).
 - Needs-you escalation, snooze and acknowledge (backlog D2): built 2026-11-18, see `escalation-2026-11-18.md`. Not checked in a running window (sound, flash, menu, tab acknowledgement).
+- "Ready for review" rail section for finished coders (backlog D4): built 2026-11-18, see `ready-for-review-2026-11-18.md`. Not checked in a running window (the section, its menu, the mark on Changes).
 - Should old transcripts ever be deleted (today: archive only)?
 - Should a `done` coder in a live run ever be woken? Today: no.
 - A sound when a session that is already waiting goes stale (daemon stopped)? Today: no new sound (round 8 B2.2).

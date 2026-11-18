@@ -258,6 +258,8 @@ public partial class SessionWindow
         foreach (var record in records.Where(r => !string.IsNullOrEmpty(r.SessionId) && !IsInOwnWindow(r.SessionId))) EnsureTerminal(record);
         _attention = AttentionList.From(records, _agents, _clashes, ConflictsOf(records));
         UpdateNeedsYouCount();
+        // The finished coders the owner has not looked at yet. Built from memory: the pass read their transcripts (ready-for-review D1).
+        _review = ReviewQueue.From(records, _allAgents, _reviewSources, _reviewed);
 
         var groups = new Dictionary<string, RailGroup>(StringComparer.OrdinalIgnoreCase);
         RailGroup Folder(string folder)
@@ -304,6 +306,8 @@ public partial class SessionWindow
             Rail.Items.Clear();
             // Needs you comes first: a session that waits for the owner is the first thing to see. Shown with the live sessions only.
             if (ShowsLive && (_attention.Count > 0 || _daemonNotice is not null)) Rail.Items.Add(NeedsYouSection(stored));
+            // Ready for review sits under Needs you. It is not counted there, and it plays no sound and flashes nothing (ready-for-review D2).
+            if (ShowsLive && _review.Count > 0) Rail.Items.Add(ReadySection(stored));
             foreach (var (key, step) in _trustSteps)
                 Rail.Items.Add(NewItem(Label($"Trust: {Path.GetFileName(step.Root)} · choose 'Yes, I trust this folder'", wrap: true),
                     new RailTag(RailKind.Trust, key), step.Root));

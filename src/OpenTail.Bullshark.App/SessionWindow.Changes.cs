@@ -31,6 +31,9 @@ public partial class SessionWindow
     {
         var tab = TabFor(TabKind.Changes, sessionId, () => "Changes: " + title);
         SetActive(tab);
+        // The owner looked at the changes, so the session leaves the Ready for review lane (ready-for-review D2). The tab is active first, so the
+        // rail's redraw does not move the pane away from it.
+        MarkReviewed(sessionId);
         _ = ShowChangesAsync(sessionId);
     }
 

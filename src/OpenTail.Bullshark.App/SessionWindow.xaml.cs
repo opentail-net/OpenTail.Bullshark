@@ -131,6 +131,7 @@ public partial class SessionWindow : Window
         Pane.Children.Add(_search);
         InitSearch();
         InitChanges();
+        InitReview();
         InitStorage();
         InitTimeline();
         InitLimits();
@@ -297,6 +298,8 @@ public partial class SessionWindow : Window
             if (runsProblem is not null) _storeProblem = runsProblem;
             // A coder that has just entered done gets its merge check, on a pool thread; its result shows on a later pass (gems item 2).
             UpdateMergeChecks(records, RunStore.SpecsOf(runs));
+            // The finished coders' transcripts are read here too, for the Ready for review lane (ready-for-review D1), off the UI thread.
+            _reviewSources = await Task.Run(() => ReviewSourcesOf(records, paths, read.PassAgents));
             RefreshRail(records, runs);
             AnnounceAttention();
 

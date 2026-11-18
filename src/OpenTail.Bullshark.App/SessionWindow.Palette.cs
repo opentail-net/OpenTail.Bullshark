@@ -112,6 +112,10 @@ public partial class SessionWindow
                 foreach (var name in needing) SnoozeNeed(name, TimeSpan.FromHours(1));
             }));
         }
+        // Marking is a note in ui.json only: nothing is sent to a session (ready-for-review D4).
+        if (_review.Count > 0)
+            items.Add(ActionItem("review-all", "Mark all ready sessions reviewed", _review.Count == 1 ? "1 session" : $"{_review.Count} sessions",
+                MarkAllReviewed));
         items.Add(ActionItem("notify", "Toggle sound and flash for new waits", null, ToggleNotify));
         return items;
     }
