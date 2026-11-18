@@ -282,6 +282,8 @@ public partial class SessionWindow
         var now = DateTimeOffset.UtcNow;
         foreach (var run in runs.Where(r => RunStore.IsWaiting(r, now))) Folder(run.WorkingDirectory).Waiting.Add(run);
 
+        // The folder's name of each live session, for the palette's keywords (SessionWindow.Palette.cs), taken from the runs read above.
+        var folderNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var record in records)
         {
             var spec = specs.FirstOrDefault(s => string.Equals(s.Name, record.Name, StringComparison.Ordinal));
@@ -297,8 +299,11 @@ public partial class SessionWindow
             else
             {
                 Folder(spec.WorkingDirectory).Sessions.Add((record, state));
+                if (!string.IsNullOrEmpty(record.SessionId))
+                    folderNames[record.SessionId] = Path.GetFileName(FolderKey.Normalise(spec.WorkingDirectory));
             }
         }
+        _railFolders = folderNames;
 
         _rebuilding = true;
         try

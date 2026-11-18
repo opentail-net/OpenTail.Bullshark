@@ -24,6 +24,12 @@ public partial class SessionWindow
     private IReadOnlyDictionary<string, SessionRecord> _railRecords = new Dictionary<string, SessionRecord>(StringComparer.Ordinal);
 
     /// <summary>
+    /// The project folder's name of each live session, by session id, as the last rail refresh drew it. The palette matches it as a keyword.
+    /// Replaced on the UI thread only, by <see cref="RefreshRail"/>, together with <see cref="_railRecords"/>.
+    /// </summary>
+    private IReadOnlyDictionary<string, string> _railFolders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
     /// One entry and what it runs. <paramref name="ReturnsKeyboard"/> is set for an action that leaves the pane as it is: after it runs, the
     /// keyboard goes back to the control that had it. A navigation sets its own focus, so it is not set for those.
     /// </summary>
@@ -83,8 +89,9 @@ public partial class SessionWindow
         {
             var sessionId = record.SessionId;
             var listed = _agents.FirstOrDefault(agent => SameId(agent.SessionId, sessionId));
-            var entry = new PaletteEntry("session:" + sessionId, "Go to session " + LiveTitle(record), StateWithWaiting(listed),
-                waiting.Contains(record.Name) ? 0 : 1);
+            var hint = StateWithWaiting(listed);
+            var entry = new PaletteEntry("session:" + sessionId, "Go to session " + LiveTitle(record), hint,
+                waiting.Contains(record.Name) ? 0 : 1, KeywordsOf(sessionId, hint));
             items.Add(new PaletteItem(entry, () => GoToSession(sessionId, LiveTitle(record))));
         }
 
@@ -97,6 +104,12 @@ public partial class SessionWindow
         items.Add(PageItem("search", "Search what was said", null, SearchFromPalette));
         items.Add(PageItem("new-session", "New session setup", null, () => OpenSetupTab(null)));
 
+        // The next waiting session (Ctrl+Shift+N), counted from the session that is active as the palette opens. Hidden when no other session
+        // waits. It navigates, so it does not return the keyboard.
+        var from = ActiveSessionId();
+        if (NextWaitingId(from) is not null)
+            items.Add(new PaletteItem(new PaletteEntry("action:next-waiting", "Go to next waiting session", "Ctrl+Shift+N", 3),
+                () => GoToNextWaitingFrom(from)));
         items.Add(ActionItem("refresh", "Refresh now", "the pass that runs every 15 seconds", () => _ = PassAndRefreshAsync()));
         // The re-alerts are only silenced, never answered: nothing is typed into a session (escalation D3, D4).
         var needing = _attention.Where(AttentionEscalation.Escalates).Select(item => item.Name).Distinct(StringComparer.Ordinal).ToList();
@@ -141,6 +154,60 @@ public partial class SessionWindow
         _hiddenSessions.Remove(sessionId);
         var tab = TabFor(TabKind.Session, sessionId, () => title);
         ActivateTab(tab);
+    }
+
+    /// <summary>
+    /// Shows the session that waits next, after the active one: Ctrl+Shift+N and its palette entry. It goes through <see cref="GoToSession"/>, so the
+    /// wait is acknowledged as a click acknowledges it. Nothing is sent to any session. With no other session waiting, the status line says so.
+    /// </summary>
+    private void GoToNextWaiting() => GoToNextWaitingFrom(ActiveSessionId());
+
+    /// <summary>The same step, counted from the session that was active when the step was offered (the palette takes it as it opens).</summary>
+    private void GoToNextWaitingFrom(string? from)
+    {
+        var next = NextWaitingId(from);
+        if (next is null)
+        {
+            SetStatus("No other session is waiting.");
+            return;
+        }
+        var record = _railRecords.Values.FirstOrDefault(r => SameId(r.SessionId, next));
+        GoToSession(next, record is null ? $"Session {ShortId(next)}" : LiveTitle(record));
+    }
+
+    /// <summary>
+    /// The session that the next-waiting step goes to, or null. A session in a window of its own is left out, as the palette leaves it out, since
+    /// its terminal is not in this window.
+    /// </summary>
+    private string? NextWaitingId(string? from)
+    {
+        var reachable = _attention.Where(item => string.IsNullOrEmpty(item.SessionId) || !IsInOwnWindow(item.SessionId)).ToList();
+        return AttentionList.NextWaiting(reachable, from);
+    }
+
+    /// <summary>
+    /// The session the owner is on: the active tab of the right pane when the keyboard is in that pane, else the active tab of the left pane.
+    /// Null when that tab is not a session (the setup, a transcript or a page), so the next-waiting step starts from the first waiting session.
+    /// </summary>
+    private string? ActiveSessionId()
+    {
+        var inRight = KeyboardTarget() is { } focused && focused.IsDescendantOf(PaneB) && _activeTabRight is not null;
+        var tab = inRight ? _activeTabRight : _activeTab;
+        return tab is { Kind: TabKind.Session } ? tab.Key : null;
+    }
+
+    /// <summary>
+    /// The text a session entry matches besides its title: its project folder's name, its tags (the library's, as the rail row shows them) and
+    /// its state. Empty words are left out. The palette ranks a keyword match below any title match.
+    /// </summary>
+    private string? KeywordsOf(string sessionId, string state)
+    {
+        var parts = new List<string>();
+        if (_railFolders.TryGetValue(sessionId, out var folder)) parts.Add(folder);
+        if (MarkOf(sessionId)?.Tags is { } tags) parts.AddRange(tags);
+        parts.Add(state);
+        var keywords = string.Join(' ', parts.Where(part => !string.IsNullOrWhiteSpace(part)));
+        return keywords.Length == 0 ? null : keywords;
     }
 
     /// <summary>Puts the search box in front of the owner, opening the rail first when it is hidden.</summary>

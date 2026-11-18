@@ -530,6 +530,15 @@ public partial class SessionWindow : Window
             return;
         }
 
+        // Ctrl+Shift+N goes to the session that waits next, after the active one (keys-and-find plan, step 6). It is handled here like Ctrl+Shift+P,
+        // so a terminal with the keyboard does not get it. It only shows a tab (GoToSession): nothing is sent to a session.
+        if (e.Key == System.Windows.Input.Key.N && modifiers == (System.Windows.Input.ModifierKeys.Control | System.Windows.Input.ModifierKeys.Shift))
+        {
+            e.Handled = true;
+            Dispatcher.BeginInvoke(new Action(GoToNextWaiting), System.Windows.Threading.DispatcherPriority.Input);
+            return;
+        }
+
         // Ctrl+plus, Ctrl+minus and Ctrl+0 change the zoom of the transcripts (zoom.md). The window gets them even while a
         // terminal has the keyboard (checked 2026-11-16).
         var zoom = OpenTail.Bullshark.Core.Zoom.ZoomKeys.FromVirtualKey(System.Windows.Input.KeyInterop.VirtualKeyFromKey(e.Key),

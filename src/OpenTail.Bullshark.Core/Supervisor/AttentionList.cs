@@ -162,6 +162,31 @@ public static class AttentionList
             .ToList();
     }
 
+    /// <summary>
+    /// The session the owner goes to next: the session after <paramref name="currentSessionId"/> in <paramref name="items"/>, wrapping at the end,
+    /// or the first when the current session is null or not in the list. The items are taken in the order given (<see cref="From"/> gives oldest
+    /// first), and a session with several items counts once. An item with no session id (a start that failed) is skipped. Any item counts as
+    /// waiting, a notice or a limit too, so the caller passes what the Needs-you group lists. A lone waiting session that is the current one gives
+    /// null: there is nothing else to go to. Nothing here sends anything to a session.
+    /// </summary>
+    public static string? NextWaiting(IReadOnlyList<AttentionItem> items, string? currentSessionId)
+    {
+        ArgumentNullException.ThrowIfNull(items);
+        var sessions = items
+            .Where(item => !string.IsNullOrEmpty(item.SessionId))
+            .Select(item => item.SessionId!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (sessions.Count == 0) return null;
+
+        var at = currentSessionId is null
+            ? -1
+            : sessions.FindIndex(id => string.Equals(id, currentSessionId, StringComparison.OrdinalIgnoreCase));
+        if (at < 0) return sessions[0];
+        if (sessions.Count == 1) return null;
+        return sessions[(at + 1) % sessions.Count];
+    }
+
     /// <summary>The keys of the conflicts in <paramref name="items"/>, for the caller to remember once they have been announced.</summary>
     public static IReadOnlySet<string> ConflictKeys(IEnumerable<AttentionItem> items) =>
         items.Where(item => item.Reason == AttentionReason.Conflict).Select(NoticeKey).ToHashSet(StringComparer.Ordinal);

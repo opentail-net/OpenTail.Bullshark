@@ -177,6 +177,67 @@ public sealed class CommandPaletteTests
     }
 
     [Fact]
+    public void AKeywordFindsAnEntryTheTitleDoesNot()
+    {
+        var entries = new[] { new PaletteEntry("session", "Go to session coder-1", null, 0, Keywords: "billing-api tagged") };
+
+        Assert.Equal(new[] { "session" }, IdsOf(CommandPalette.Filter(entries, "billing")));
+        Assert.Equal(new[] { "session" }, IdsOf(CommandPalette.Filter(entries, "api")));
+        Assert.Equal(new[] { "session" }, IdsOf(CommandPalette.Filter(entries, "tagg")));
+    }
+
+    [Fact]
+    public void ATitleMatchOutranksAKeywordOnlyMatchEvenWhenTheKeywordEntryIsFirst()
+    {
+        var entries = new[]
+        {
+            new PaletteEntry("keyword", "Open limits", null, 0, Keywords: "planner"),
+            new PaletteEntry("title", "Planner notes", null, 5),
+        };
+
+        Assert.Equal(new[] { "title", "keyword" }, IdsOf(CommandPalette.Filter(entries, "planner")));
+    }
+
+    [Fact]
+    public void AKeywordIsNeverMatchedAsASubsequence()
+    {
+        var entries = new[] { new PaletteEntry("session", "Go to session", null, 0, Keywords: "planner") };
+
+        Assert.Empty(CommandPalette.Filter(entries, "pnr"));
+        Assert.Empty(CommandPalette.Filter(entries, "lnr"));
+        Assert.Single(CommandPalette.Filter(entries, "plan"));
+    }
+
+    [Fact]
+    public void NullOrEmptyKeywordsGiveTheSameMatchesAsNoKeywords()
+    {
+        var plain = new[] { Entry("Open Storage", id: "storage"), Entry("Timeline", id: "timeline") };
+        var empty = plain.Select(entry => entry with { Keywords = string.Empty }).ToList();
+
+        foreach (var query in new[] { "sto", "tml", "open", "zzz", "" })
+        {
+            Assert.Equal(IdsOf(CommandPalette.Filter(plain, query)), IdsOf(CommandPalette.Filter(empty, query)));
+        }
+        Assert.Empty(CommandPalette.Filter(plain, "planner"));
+    }
+
+    [Fact]
+    public void EveryWordMustMatchTheTitleOrTheKeywordsTogether()
+    {
+        var entries = new[]
+        {
+            new PaletteEntry("session", "Go to session", null, 0, Keywords: "billing"),
+            new PaletteEntry("plain", "Go to session", null, 1),
+        };
+
+        // One word in the title and one in the keywords: the entry matches. The entry without keywords does not.
+        Assert.Equal(new[] { "session" }, IdsOf(CommandPalette.Filter(entries, "session billing")));
+        Assert.Equal(new[] { "session" }, IdsOf(CommandPalette.Filter(entries, "billing ses")));
+        // A word in neither the title nor the keywords leaves the entry out.
+        Assert.Empty(CommandPalette.Filter(entries, "session zzz"));
+    }
+
+    [Fact]
     public void ANullListIsAnArgumentError()
     {
         Assert.Throws<ArgumentNullException>(() => CommandPalette.Filter(null!, "x"));
