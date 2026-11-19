@@ -30,25 +30,33 @@ public sealed class ClaudeTrust
     /// but cannot be read is a problem. The file is opened rather than checked with File.Exists first, because that check is false for a file
     /// the user cannot reach, and such a file would then read as missing (round 5 item 17).
     /// </summary>
-    public static ClaudeTrust Read(string claudeJsonPath)
+    public static ClaudeTrust Read(string claudeJsonPath) => Read(claudeJsonPath, RetryDelay);
+
+    /// <summary>The pause before the one retry of a read that failed (F10): Claude may have been writing the file at that moment.</summary>
+    public static readonly TimeSpan RetryDelay = TimeSpan.FromMilliseconds(100);
+
+    /// <summary>
+    /// Reads the file. A read that fails (a torn read while Claude writes it, or a file that does not parse yet) is tried once more after
+    /// <paramref name="retryDelay"/>, and only a second failure is reported as a problem (F10). A missing file is not retried.
+    /// </summary>
+    public static ClaudeTrust Read(string claudeJsonPath, TimeSpan retryDelay)
     {
-        JsonDocument document;
-        try
+        var attempt = OpenOnce(claudeJsonPath);
+        if (attempt.Failure is not null && retryDelay > TimeSpan.Zero)
         {
-            document = JsonDocument.Parse(File.ReadAllText(claudeJsonPath));
+            Thread.Sleep(retryDelay);
+            attempt = OpenOnce(claudeJsonPath);
         }
-        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
-        {
-            return new ClaudeTrust(null, new Dictionary<string, bool>(StringComparer.Ordinal));
-        }
-        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
+
+        if (attempt.Missing) return new ClaudeTrust(null, new Dictionary<string, bool>(StringComparer.Ordinal));
+        if (attempt.Failure is { } failure)
         {
             return new ClaudeTrust(
-                $"{claudeJsonPath} cannot be read ({ex.GetType().Name}): no session starts or restarts until it can.",
+                $"{claudeJsonPath} cannot be read ({failure.GetType().Name}): no session starts or restarts until it can.",
                 new Dictionary<string, bool>(StringComparer.Ordinal));
         }
 
-        using (document)
+        using (var document = attempt.Document!)
         {
             var trusted = new Dictionary<string, bool>(StringComparer.Ordinal);
             var root = document.RootElement;
@@ -61,6 +69,23 @@ public sealed class ClaudeTrust
                     trusted.TryAdd(TrustCheck.Normalise(project.Name), IsAccepted(project.Value));
             }
             return new ClaudeTrust(null, trusted);
+        }
+    }
+
+    /// <summary>One open of the file: the parsed document, or that it is missing, or why it could not be read.</summary>
+    private static (JsonDocument? Document, bool Missing, Exception? Failure) OpenOnce(string claudeJsonPath)
+    {
+        try
+        {
+            return (JsonDocument.Parse(File.ReadAllText(claudeJsonPath)), false, null);
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return (null, true, null);
+        }
+        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
+        {
+            return (null, false, ex);
         }
     }
 

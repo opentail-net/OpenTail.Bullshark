@@ -124,6 +124,13 @@ public sealed class StateStore
 
         foreach (var record in records ?? [])
         {
+            // A record with no name (null, empty, or a null entry) is damaged: it is skipped and logged, not a crash (F9).
+            if (record is null || string.IsNullOrEmpty(record.Name))
+            {
+                _log("state: a record with no name was skipped");
+                continue;
+            }
+
             if (!byName.TryGetValue(record.Name, out var kept))
             {
                 byName[record.Name] = record;

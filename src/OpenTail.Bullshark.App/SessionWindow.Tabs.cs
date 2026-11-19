@@ -224,6 +224,22 @@ public partial class SessionWindow
     /// </summary>
     private async Task CloseSessionAndTabAsync(OpenTab tab, string name)
     {
+        // A pass that is running holds the specs it read before this close, so it could resume the session the owner has just closed, and its
+        // merge would then drop the record (F6). The close waits for that pass to end, and no pass starts until the close is done.
+        _sessionsClosing++;
+        try
+        {
+            while (_passRunning) await Task.Delay(100);
+            await CloseSessionCoreAsync(tab, name);
+        }
+        finally
+        {
+            _sessionsClosing--;
+        }
+    }
+
+    private async Task CloseSessionCoreAsync(OpenTab tab, string name)
+    {
         var sessionId = tab.Key;
 
         // Whether the session still runs is read now, not from the last pass. If the sessions cannot be read, nothing is changed:

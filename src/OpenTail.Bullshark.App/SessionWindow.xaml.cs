@@ -30,6 +30,8 @@ public partial class SessionWindow : Window
     private readonly RunStore _runStore;
     private readonly SupervisorLoop _loop;
     private readonly Dictionary<string, ExtendedTerminalControl> _terminals = new();
+    /// <summary>Session ids that are not valid short ids, each logged once (F4).</summary>
+    private readonly HashSet<string> _badSessionIds = new(StringComparer.Ordinal);
 
     /// <summary>The transcript file of each session, once found. A session with no file yet is looked for again.</summary>
     private readonly Dictionary<string, string> _transcriptPaths = new(StringComparer.Ordinal);
@@ -70,6 +72,12 @@ public partial class SessionWindow : Window
     private readonly TranscriptView _transcript = new() { Visibility = Visibility.Hidden };
     private readonly SetupView _setup;
     private bool _passRunning;
+    /// <summary>Cancels the pass that is running when the window closes (F5). Null when no pass runs.</summary>
+    private CancellationTokenSource? _passCancel;
+    /// <summary>True once the window is closing: the supervisor is then released by the pass that is still running, if there is one (F5).</summary>
+    private bool _windowClosing;
+    /// <summary>The session closes in progress: no pass starts while one runs, so a closed session is not resumed (F6).</summary>
+    private int _sessionsClosing;
 
     /// <summary>
     /// The supervisor name of this state (reliability batch R1), held by this window while it runs the supervisor pass. Null when another window
@@ -197,7 +205,13 @@ public partial class SessionWindow : Window
         Closing += (_, _) =>
         {
             DetachAll();
-            ReleaseSupervisor();
+            // A closed window starts no more passes. A pass that is running is cancelled, and it gives the supervisor lock back when it ends,
+            // so no pass writes after another window has taken the lock (F5).
+            _windowClosing = true;
+            _timer.Stop();
+            _trustTimer.Stop();
+            _passCancel?.Cancel();
+            if (!_passRunning) ReleaseSupervisor();
         };
         // The embedded terminal does not handle paste itself, so the window does: Ctrl+V and Shift+Insert.
         PreviewKeyDown += OnPanePreviewKeyDown;
@@ -322,8 +336,10 @@ public partial class SessionWindow : Window
     {
         // The status-bar limit is drawn and, at most once a minute, scanned here too (A2). It does not wait for the pass.
         RefreshLimitStatus();
-        if (_passRunning) return;
+        if (_passRunning || _windowClosing || _sessionsClosing > 0) return;
         _passRunning = true;
+        var pass = _passCancel = new CancellationTokenSource();
+        var passToken = pass.Token;
         _lastPassStarted = DateTimeOffset.UtcNow;
         TakeOverIfFree();
         try
@@ -369,7 +385,7 @@ public partial class SessionWindow : Window
             if (_supervisor is not null && plan.Problem is null)
             {
                 // The records the pass leaves are read on the pool thread too, so the rail is drawn from that one read.
-                (actions, records, afterProblem) = await Task.Run(() => RunPassAndReadAsync(read));
+                (actions, records, afterProblem) = await Task.Run(() => RunPassAndReadAsync(read, passToken));
                 _storeProblem = afterProblem ?? _storeProblem;
                 _login = _loop.LastLogin;
                 passRan = true;
@@ -403,6 +419,10 @@ public partial class SessionWindow : Window
                 if (ReadBusy.TakeNotice()) SetStatus(ReadBusy.Notice);
             }
         }
+        catch (OperationCanceledException) when (_windowClosing)
+        {
+            // The window closed during the pass and cancelled it (F5): nothing is reported, and the lock is given back below.
+        }
         catch (Exception ex)
         {
             // A pass that failed may not have read the session list, so the archive waits for the next pass that does (round 5 item 4).
@@ -414,10 +434,14 @@ public partial class SessionWindow : Window
         finally
         {
             _passRunning = false;
+            pass.Dispose();
+            _passCancel = null;
+            // A window that closed while this pass ran gives the supervisor lock back now, after the pass has stopped (F5).
+            if (_windowClosing) ReleaseSupervisor();
             _storage.SetArchiveAvailable(ArchiveAllowed);
             // Automatic magic naming (off by default) runs only once a pass has finished, so the window is idle (SessionWindow.MagicRename.cs).
             // Automatic naming calls claude, so only the supervising window runs it.
-            if (!_watching) MaybeAutoMagicRename();
+            if (!_watching && !_windowClosing) MaybeAutoMagicRename();
         }
     }
 
@@ -522,9 +546,10 @@ public partial class SessionWindow : Window
     /// The pass itself, then the records it left, on a pool thread. A failed start is recorded by the runner, and the window
     /// counts the failed starts from these records.
     /// </summary>
-    private async Task<(int Actions, IReadOnlyDictionary<string, SessionRecord> Records, string? Problem)> RunPassAndReadAsync(PassReads read)
+    private async Task<(int Actions, IReadOnlyDictionary<string, SessionRecord> Records, string? Problem)> RunPassAndReadAsync(
+        PassReads read, CancellationToken cancellationToken)
     {
-        var actions = await _loop.RunPassAsync(read.Trust.Runnable, read.PassAgents);
+        var actions = await _loop.RunPassAsync(read.Trust.Runnable, read.PassAgents, cancellationToken);
         var (records, problem) = LoadRecords(_store);
         return (actions, records, problem);
     }
@@ -533,14 +558,22 @@ public partial class SessionWindow : Window
     /// Makes sure a terminal exists for a recorded session that has one. Terminals are created once and added to the left pane.
     /// A terminal moves only between the left and the right pane (T2, F55). Which one is visible is decided by <see cref="ShowOnly"/>.
     /// </summary>
-    private ExtendedTerminalControl EnsureTerminal(SessionRecord record)
+    private ExtendedTerminalControl? EnsureTerminal(SessionRecord record)
     {
         if (_terminals.TryGetValue(record.SessionId, out var existing)) return existing;
 
+        // The split self-test runs a counter in place of each session, so it needs no Claude session. Otherwise the id must be a valid short
+        // id, or no terminal is made for the session (F4): the line is not built from a bad id, and the message is logged once per id.
+        var attach = SelfTestCommand ?? ClaudeCli.AttachCommandLineOf(record.SessionId);
+        if (attach is null)
+        {
+            if (_badSessionIds.Add(record.SessionId)) AppLog.Write("bad session id: no terminal is started for a session whose id is not 8 hex characters");
+            return null;
+        }
+
         var terminal = new ExtendedTerminalControl
         {
-            // The split self-test runs a counter in place of each session, so it needs no Claude session.
-            StartupCommandLine = SelfTestCommand ?? $"claude attach {ClaudeCli.ShortIdOf(record.SessionId)}",
+            StartupCommandLine = attach,
             WorkingDirectory = _options.WorkDir,
             LogConPTYOutput = SelfTestCommand is not null,
             Visibility = Visibility.Hidden,
@@ -699,7 +732,8 @@ public partial class SessionWindow : Window
         var term = PasteTarget()?.ConPTYTerm;
         if (term is null) return;
 
-        var text = System.Windows.Clipboard.GetText().Replace("\r\n", "\r").Replace('\n', '\r');
+        // ESC and the other control characters go, so the clipboard cannot end the bracketed paste early (PasteText, F1).
+        var text = OpenTail.Bullshark.Core.Terminal.PasteText.Clean(System.Windows.Clipboard.GetText());
         try
         {
             term.WriteToTerm("\u001b[200~" + text + "\u001b[201~");

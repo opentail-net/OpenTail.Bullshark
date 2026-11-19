@@ -246,10 +246,14 @@ Set-Content -LiteralPath "$repo\retired.md" -Value "retired`n" -Encoding UTF8
 Set-Content -LiteralPath "$repo\README.md" -Value "# Scratch repo`nNothing here is real. Edited for the screenshot.`n" -Encoding UTF8
 Set-Content -LiteralPath "$repo\old-notes.md" -Value ((1..5 | ForEach-Object { "kept line $_" }) -join "`n") -Encoding UTF8
 Remove-Item -LiteralPath "$repo\retired.md"
+# notes.md is edited and staged (git add), and README.md stays unstaged: the Changes tab must show the staged hunks next to the unstaged
+# ones (review F2, git diff HEAD).
+Set-Content -LiteralPath "$repo\notes.md" -Value "draft`nstaged for the screenshot`n" -Encoding UTF8
+& git -C $repo add notes.md
 
 # The viewed ticks of the coder's Changes tab (features batch G1), written into ui.json for the two Changes screens only: README.md is ticked
 # with its current stamp (viewed); retired.md is ticked as deleted (viewed); old-notes.md has a stale stamp, so its tick does not count (it
-# changed after the tick). The stamp is "length:last-write ticks", as the app reads it. Changed: 3, 2 of 3 viewed.
+# changed after the tick). The stamp is "length:last-write ticks", as the app reads it. Changed: 4, 2 of 4 viewed (notes.md is staged and not ticked).
 $coderSession = '5e4f3a21-0000-4000-8000-00000000c0d1'
 $readme = Get-Item -LiteralPath "$repo\README.md"
 $ticks = [ordered]@{

@@ -183,8 +183,21 @@ public sealed class ClaudeCli
         RequireCarriable(launch, args);
         var result = await RunAsync(args, launch.WorkingDirectory, cancellationToken);
         return ParseBackgroundId(result.StdOut)
-            ?? throw new ClaudeCliException($"`claude --bg` did not print an id: {result.StdOut.Trim()}");
+            ?? throw new ClaudeCliException($"`claude --bg` did not print an id: {FirstLineOf(result.StdOut)}");
     }
+
+    /// <summary>
+    /// The first line of a command's output, cut to <see cref="MaxMessageCharacters"/>, for an exception message (F8). Such a message goes to
+    /// app.log and events.jsonl, and a failed `claude --bg` can echo the brief, so no more than that line is kept.
+    /// </summary>
+    public static string FirstLineOf(string output)
+    {
+        var line = output.Trim().Split(['\r', '\n'], 2)[0].Trim();
+        return line.Length <= MaxMessageCharacters ? line : line[..MaxMessageCharacters] + "...";
+    }
+
+    /// <summary>The longest part of a command's output that an exception message keeps (F8).</summary>
+    public const int MaxMessageCharacters = 200;
 
     /// <summary>The arguments a launch passes to `claude --bg`, in order. The prompt, when there is one, is the last.</summary>
     private static List<string> ArgumentsOf(BackgroundLaunch launch)
@@ -248,6 +261,22 @@ public sealed class ClaudeCli
     public static string ShortIdOf(string sessionId) =>
         sessionId.Length >= 8 ? sessionId[..8] : sessionId;
 
+    /// <summary>True for exactly 8 hexadecimal characters: the only form of a short id that goes on a command line (F4).</summary>
+    public static bool IsShortId(string? id) => id is { Length: 8 } && id.All(char.IsAsciiHexDigit);
+
+    /// <summary>
+    /// The command line that attaches a terminal to a session, or null when the session's short id is not 8 hex characters (F4). Nothing else
+    /// from a session record is put on a command line.
+    /// </summary>
+    public static string? AttachCommandLineOf(string sessionId)
+    {
+        var shortId = ShortIdOf(sessionId);
+        return IsShortId(shortId) ? "claude attach " + shortId : null;
+    }
+
+    /// <summary>An id that is empty or starts with '-' would be read by `claude` as an option (F4), so it is never sent.</summary>
+    private static bool IsRefusedId(string id) => string.IsNullOrEmpty(id) || id[0] == '-';
+
     public static string? ParseBackgroundId(string output)
     {
         var match = BackgroundIdPattern.Match(output);
@@ -257,16 +286,26 @@ public sealed class ClaudeCli
     /// <summary>Prints recent terminal output of a background session (escape codes included).</summary>
     public async Task<string> LogsAsync(string idOrName, CancellationToken cancellationToken = default)
     {
+        if (IsRefusedId(idOrName))
+            throw new ClaudeCliException("the session id starts with '-' or is empty, so `claude logs` was not run");
         var result = await RunAsync(["logs", idOrName], null, cancellationToken);
         return result.StdOut;
     }
 
     /// <summary>Stops a session. stop and rm take the id, not the name (finding F14).</summary>
     public Task<CliResult> StopAsync(string id, CancellationToken cancellationToken = default) =>
-        RunAsync(["stop", id], null, cancellationToken, requireSuccess: false);
+        IsRefusedId(id)
+            ? Task.FromResult(RefusedResult("stop"))
+            : RunAsync(["stop", id], null, cancellationToken, requireSuccess: false);
 
     public Task<CliResult> RemoveAsync(string id, CancellationToken cancellationToken = default) =>
-        RunAsync(["rm", id], null, cancellationToken, requireSuccess: false);
+        IsRefusedId(id)
+            ? Task.FromResult(RefusedResult("rm"))
+            : RunAsync(["rm", id], null, cancellationToken, requireSuccess: false);
+
+    /// <summary>The result of a command that was not run, because its id would have been read as an option (F4).</summary>
+    private static CliResult RefusedResult(string command) =>
+        new(-1, string.Empty, $"the session id starts with '-' or is empty, so `claude {command}` was not run", TimedOut: false);
 
     /// <summary>
     /// Asks the model for a summary of a transcript. The transcript goes in on standard input, because a long session does not
@@ -282,7 +321,7 @@ public sealed class ClaudeCli
             cancellationToken,
             transcript);
         if (result.TimedOut) throw new ClaudeCliException("the summary timed out after five minutes");
-        if (result.ExitCode != 0) throw new ClaudeCliException($"the summary failed (exit {result.ExitCode}): {result.StdErr.Trim()}");
+        if (result.ExitCode != 0) throw new ClaudeCliException($"the summary failed (exit {result.ExitCode}): {FirstLineOf(result.StdErr)}");
         var text = result.StdOut.Trim();
         if (text.Length == 0) throw new ClaudeCliException("the summary came back empty");
         return text;
@@ -298,7 +337,7 @@ public sealed class ClaudeCli
         if (requireSuccess && !result.Succeeded)
         {
             var reason = result.TimedOut ? "timed out" : $"exit {result.ExitCode}";
-            throw new ClaudeCliException($"`claude {string.Join(' ', args.Take(2))}` failed ({reason}): {result.StdErr.Trim()} {result.StdOut.Trim()}");
+            throw new ClaudeCliException($"`claude {string.Join(' ', args.Take(2))}` failed ({reason}): {FirstLineOf(result.StdErr)} {FirstLineOf(result.StdOut)}");
         }
         return result;
     }

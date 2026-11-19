@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using OpenTail.Bullshark.Core.Claude;
 using OpenTail.Bullshark.Core.Zoom;
 
 namespace OpenTail.Bullshark.App;
@@ -25,6 +26,12 @@ public partial class SessionWindow
         }
 
         var sessionId = tab.Key;
+        // A session id that is not a valid short id is never attached, so the window is not opened and nothing is closed (F4).
+        if (ClaudeCli.AttachCommandLineOf(sessionId) is null)
+        {
+            SetStatus("Not opened: the session id is not a valid id, so it cannot be attached.");
+            return;
+        }
         if (_terminals.TryGetValue(sessionId, out var terminal) && terminal.ConPTYTerm is { } connection)
         {
             // Ctrl+Z drops "claude attach" back to its shell, which detaches it cleanly; the session keeps running. Wait for that before

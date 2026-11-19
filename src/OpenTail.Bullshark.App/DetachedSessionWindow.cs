@@ -25,7 +25,9 @@ public sealed class DetachedSessionWindow : Window
         Width = 900;
         Height = 560;
         Background = RailPalette.Brush(palette.Background);
-        _terminal.StartupCommandLine = $"claude attach {ClaudeCli.ShortIdOf(sessionId)}";
+        // The caller checks the id first (SessionWindow.PopOut); a bad id never reaches a command line (F4).
+        _terminal.StartupCommandLine = ClaudeCli.AttachCommandLineOf(sessionId)
+            ?? throw new ArgumentException("The session id is not 8 hex characters, so it cannot be attached.", nameof(sessionId));
         _terminal.WorkingDirectory = workDir;
         SessionWindow.ApplyZoomTo(_terminal, zoomScale);
         Content = _terminal;

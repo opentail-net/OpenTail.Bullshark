@@ -155,3 +155,11 @@ Method: the built App launched with `--state <scratch>` `--no-pass` (no claude c
   was NOT tested (it would start a real session).
 - Not done (needs real sessions or a hand): everything under Phase 3, the tag/auto-naming steps, the toasts, the viewed ticks, the gates (`respawn --all` would restart the owner's real background sessions: not run).
 - Owner decisions recorded 2026-11-19: coders run in `auto`; old transcripts are never deleted by the app (archive only), no further work on deletion.
+
+## Review fixes, 2026-11-19 (docs/plans/review-fixes-2026-11-19.md; a hand is needed)
+- [ ] F1 paste: copy text that contains an escape character (for example in PowerShell: `Set-Clipboard "a`e[201~b"`), paste it into a session. The session gets `a[201~b` with no escape: nothing after the text runs as typed input.
+- [ ] F2 Changes: stage one changed file (`git add <file>`) and leave a second change unstaged. The Changes tab lists both files, and the staged one shows its hunks and its counts. The deletion label still shows for a file that lost most of its lines.
+- [ ] F3 git config: set `core.fsmonitor` in a session folder's repository to a script that writes a marker file, then open the Changes tab. The marker is not written.
+- [ ] F4 attach: a session with a normal id still attaches; no `claude attach` line is built from a bad id (the session shows no terminal and the log says "bad session id").
+- [ ] F5 close: close a session window while a pass runs; the window closes, and no second window takes the lock until the pass has ended.
+- [ ] F6 close: close a session while the rail is busy; it is not resumed after the close.

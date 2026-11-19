@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using OpenTail.Bullshark.Core.Supervisor;
@@ -7,7 +8,7 @@ namespace OpenTail.Bullshark.Core.Ui;
 /// <summary>
 /// ui.json, beside the state file: the rail theme and the zoom of the session text (zoom.md). Each save changes one key and keeps the
 /// others. Every read and write takes the file's lock and writes atomically (<see cref="FileLock"/>), so two windows never lose each
-/// other's key. A file that is not a JSON object (truncated or damaged) is moved aside to <c>ui.json.bad</c>, logged, and read as
+/// other's key. A file that is not a JSON object (truncated or damaged) is moved aside to <c>ui.json.bad-yyyyMMdd-HHmmss</c>, logged, and read as
 /// missing, so the next save starts a new file; without that, every later save would fail. A file that cannot be read because
 /// another process holds it is left as it is: it is damaged only when it does not parse.
 /// </summary>
@@ -131,14 +132,66 @@ public static class UiSettingsFile
         }
     }
 
+    /// <summary>The most damaged copies kept beside the file. The oldest go first.</summary>
+    public const int MaxDamagedCopies = 5;
+
     /// <summary>
-    /// Moves a damaged file to <c>ui.json.bad</c>, replacing an older one there, and logs it once. If the move fails, the error goes to the
-    /// caller, which logs it and changes nothing: the damaged file is never overwritten.
+    /// Moves a damaged file to <c>ui.json.bad-yyyyMMdd-HHmmss</c> (F7): an earlier damaged copy is kept, not replaced, and only the
+    /// newest <see cref="MaxDamagedCopies"/> are kept. Logs it once. If the move fails, the error goes to the caller, which logs it and
+    /// changes nothing: the damaged file is never overwritten.
     /// </summary>
     private static void MoveAside(string path, Action<string> log, string reason)
     {
-        var bad = path + ".bad";
-        File.Move(path, bad, overwrite: true);
+        var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
+        var bad = NextDamagedName(path, stamp);
+        File.Move(path, bad, overwrite: false);
+        PruneDamagedCopies(path);
         log($"ui.json cannot be read ({reason}); it was moved to {bad}, and a new one is started.");
+    }
+
+    /// <summary>
+    /// The name for a new damaged copy: the base name, or with the next counter after the highest one already used in that second. A
+    /// counter is never reused, even when pruning has removed a lower one, so the names keep their order (F7).
+    /// </summary>
+    private static string NextDamagedName(string path, string stamp)
+    {
+        var directory = Path.GetDirectoryName(path);
+        var prefix = Path.GetFileName(path) + ".bad-";
+        var used = string.IsNullOrEmpty(directory)
+            ? new List<int>()
+            : Directory.GetFiles(directory, prefix + stamp + "*")
+                .Select(file => OrderOf(Path.GetFileName(file), prefix))
+                .Where(order => order.Stamp == stamp)
+                .Select(order => order.Counter)
+                .ToList();
+        var counter = used.Count == 0 ? 1 : used.Max() + 1;
+        return counter == 1 ? path + ".bad-" + stamp : path + ".bad-" + stamp + "-" + counter;
+    }
+
+    /// <summary>Deletes the damaged copies beyond <see cref="MaxDamagedCopies"/>, oldest first by the time in the name, then by its counter.</summary>
+    private static void PruneDamagedCopies(string path)
+    {
+        var directory = Path.GetDirectoryName(path);
+        if (string.IsNullOrEmpty(directory)) return;
+        var prefix = Path.GetFileName(path) + ".bad-";
+        var copies = Directory.GetFiles(directory, prefix + "*")
+            .OrderBy(file => OrderOf(Path.GetFileName(file), prefix).Stamp, StringComparer.Ordinal)
+            .ThenBy(file => OrderOf(Path.GetFileName(file), prefix).Counter)
+            .ToList();
+        foreach (var old in copies.Take(Math.Max(0, copies.Count - MaxDamagedCopies)))
+        {
+            try { File.Delete(old); }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    /// <summary>The time part and the counter of a damaged copy's name: "yyyyMMdd-HHmmss" and an optional "-n" (1 when there is none).</summary>
+    private static (string Stamp, int Counter) OrderOf(string fileName, string prefix)
+    {
+        var rest = fileName[prefix.Length..];
+        var stamp = rest.Length >= 15 ? rest[..15] : rest;
+        var counter = rest.Length > 16 && rest[15] == '-' && int.TryParse(rest[16..], NumberStyles.None, CultureInfo.InvariantCulture, out var n) ? n : 1;
+        return (stamp, counter);
     }
 }

@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 
 namespace OpenTail.Bullshark.Core.Git;
 
@@ -50,8 +51,8 @@ public sealed record GitChangesReport(
     bool DiffTruncated);
 
 /// <summary>
-/// Reads what a session's folder has changed, through git, read-only (the Changes tab, item 2 of the additions plan). Three commands:
-/// `status` for the list, `diff --numstat` for the counts and `diff` for the text. A folder that is not a repository is a plain
+/// Reads what a session's folder has changed, through git, read-only (the Changes tab, item 2 of the additions plan). `status` for the list,
+/// `diff --numstat` for the counts and `diff` for the text, against HEAD (staged and unstaged together); `rev-parse` tells an unborn HEAD apart. A folder that is not a repository is a plain
 /// message, not an error. The output of each command is capped at 2 MB and each command runs for at most 10 seconds.
 /// </summary>
 public static class GitChanges
@@ -110,13 +111,35 @@ public static class GitChanges
                 "This folder is not in a git repository, so there are no changes to show.", [], false, string.Empty, false);
         if (!Usable(status)) return Problem(folder, Describe("status", status));
 
-        var numstat = await git.RunAsync(["diff", "--numstat", "-z"], folder, CommandTimeout, MaxOutputBytes, cancellationToken);
-        if (!Usable(numstat)) return Problem(folder, Describe("diff --numstat", numstat));
+        // The staged and the unstaged changes are read together (F2): `diff HEAD` compares the working tree with HEAD, so a file staged in the
+        // index shows its hunks and counts as well as its unstaged ones. With no commit yet there is no HEAD: then the unstaged part (`diff`)
+        // and the staged part (`diff --cached`, against the empty tree) are read separately and put together.
+        var head = await git.RunAsync(["rev-parse", "--verify", "--quiet", "HEAD"], folder, CommandTimeout, MaxOutputBytes, cancellationToken);
+        if (head.TimedOut) return Problem(folder, Describe("rev-parse", head));
+        var numstatCommands = head.Succeeded
+            ? new[] { (Label: "diff --numstat", Args: NumstatHead) }
+            : new[] { (Label: "diff --numstat", Args: NumstatWorktree), (Label: "diff --cached --numstat", Args: NumstatCached) };
+        var diffCommands = head.Succeeded
+            ? new[] { (Label: "diff", Args: DiffHead) }
+            : new[] { (Label: "diff", Args: DiffWorktree), (Label: "diff --cached", Args: DiffCached) };
 
-        var diff = await git.RunAsync(["diff", "--no-color", "--no-ext-diff"], folder, CommandTimeout, MaxOutputBytes, cancellationToken);
-        if (!Usable(diff)) return Problem(folder, Describe("diff", diff));
+        var numstats = new List<GitOutput>();
+        foreach (var (label, args) in numstatCommands)
+        {
+            var numstat = await git.RunAsync(args, folder, CommandTimeout, MaxOutputBytes, cancellationToken);
+            if (!Usable(numstat)) return Problem(folder, Describe(label, numstat));
+            numstats.Add(numstat);
+        }
 
-        var counts = ParseNumstat(numstat.OutputTruncated ? CutAtLastNul(numstat.StdOut) : numstat.StdOut);
+        var diffs = new List<GitOutput>();
+        foreach (var (label, args) in diffCommands)
+        {
+            var diff = await git.RunAsync(args, folder, CommandTimeout, MaxOutputBytes, cancellationToken);
+            if (!Usable(diff)) return Problem(folder, Describe(label, diff));
+            diffs.Add(diff);
+        }
+
+        var counts = CountsOf(numstats);
         var files = ParseStatus(status.OutputTruncated ? CutAtLastNul(status.StdOut) : status.StdOut)
             .Select(file => counts.TryGetValue(file.Path, out var count)
                 ? file with { Added = count.Added, Deleted = count.Deleted, Binary = count.Binary }
@@ -124,13 +147,49 @@ public static class GitChanges
             .OrderBy(file => file.Path, StringComparer.Ordinal)
             .ToList();
 
-        var text = diff.StdOut;
-        if (diff.OutputTruncated) text = text.TrimEnd('\n') + "\n" + DiffTruncatedNote;
+        // The parts are joined in order. A part cut at the limit ends the text, so the total is never more than one part past 2 MB.
+        var text = new StringBuilder();
+        var diffTruncated = false;
+        foreach (var diff in diffs)
+        {
+            text.Append(diff.StdOut);
+            if (!diff.OutputTruncated) continue;
+            diffTruncated = true;
+            break;
+        }
+        var diffText = diffTruncated ? text.ToString().TrimEnd('\n') + "\n" + DiffTruncatedNote : text.ToString();
 
         var message = status.OutputTruncated
             ? "The file list is longer than 2 MB, so the rest is not shown."
             : files.Count == 0 ? "No changes: git sees nothing new or modified here." : string.Empty;
-        return new GitChangesReport(GitChangesKind.Changes, folder, message, files, status.OutputTruncated, text, diff.OutputTruncated);
+        return new GitChangesReport(GitChangesKind.Changes, folder, message, files, status.OutputTruncated, diffText, diffTruncated);
+    }
+
+    // The arguments of the diff commands. --no-textconv and --no-ext-diff keep a repository's own diff drivers from running (F3).
+    private static readonly string[] NumstatHead = ["diff", "--numstat", "-z", "--no-textconv", "HEAD"];
+    private static readonly string[] DiffHead = ["diff", "--no-color", "--no-ext-diff", "--no-textconv", "HEAD"];
+    private static readonly string[] NumstatWorktree = ["diff", "--numstat", "-z", "--no-textconv"];
+    private static readonly string[] DiffWorktree = ["diff", "--no-color", "--no-ext-diff", "--no-textconv"];
+    private static readonly string[] NumstatCached = ["diff", "--cached", "--numstat", "-z", "--no-textconv"];
+    private static readonly string[] DiffCached = ["diff", "--cached", "--no-color", "--no-ext-diff", "--no-textconv"];
+
+    /// <summary>
+    /// The counts of one or more `diff --numstat -z` outputs, keyed by path. A path in two outputs (staged and unstaged, with no HEAD) gets the
+    /// sum of its counts; a binary count in either makes the sum binary with no counts.
+    /// </summary>
+    private static IReadOnlyDictionary<string, NumstatCount> CountsOf(IEnumerable<GitOutput> outputs)
+    {
+        var counts = new Dictionary<string, NumstatCount>(StringComparer.Ordinal);
+        foreach (var output in outputs)
+        {
+            foreach (var (path, count) in ParseNumstat(output.OutputTruncated ? CutAtLastNul(output.StdOut) : output.StdOut))
+            {
+                counts[path] = counts.TryGetValue(path, out var sum)
+                    ? new NumstatCount(sum.Added + count.Added, sum.Deleted + count.Deleted, sum.Binary || count.Binary)
+                    : count;
+            }
+        }
+        return counts;
     }
 
     /// <summary>

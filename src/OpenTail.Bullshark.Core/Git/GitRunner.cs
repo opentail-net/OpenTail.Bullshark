@@ -55,6 +55,12 @@ public sealed class ProcessGitRunner : IGitRunner
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
+        // The repository's own config must not run programs here (F3): core.fsmonitor is a program that status runs, and core.hooksPath
+        // is pointed at the null device so no hook is found. --no-textconv and --no-ext-diff are passed by the callers.
+        info.ArgumentList.Add("-c");
+        info.ArgumentList.Add("core.fsmonitor=false");
+        info.ArgumentList.Add("-c");
+        info.ArgumentList.Add("core.hooksPath=NUL");
         info.ArgumentList.Add("-C");
         info.ArgumentList.Add(folder);
         foreach (var argument in arguments) info.ArgumentList.Add(argument);

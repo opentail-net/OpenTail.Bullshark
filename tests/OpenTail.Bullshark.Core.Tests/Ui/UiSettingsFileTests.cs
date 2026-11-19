@@ -50,13 +50,47 @@ public sealed class UiSettingsFileTests : IDisposable
         Assert.Null(UiSettingsFile.Read(_path, "zoomPercent", Log));
 
         Assert.False(File.Exists(_path));
-        Assert.Equal("{\"zoomPercent\": 1", File.ReadAllText(_path + ".bad"));
+        Assert.Equal("{\"zoomPercent\": 1", File.ReadAllText(Assert.Single(DamagedCopies())));
         Assert.Single(_log);
 
         UiSettingsFile.Set(_path, "zoomPercent", JsonValue.Create(125)!, Log);
 
         Assert.Equal(125, (int)UiSettingsFile.Read(_path, "zoomPercent", Log)!);
         Assert.Single(_log);
+    }
+
+    private string[] DamagedCopies() => Directory.GetFiles(_dir, "ui.json.bad-*");
+
+    [Fact]
+    public void ASecondDamagedFileDoesNotReplaceTheFirstCopy()
+    {
+        // Two damage events in the same second: the second copy gets a counter, so neither copy is overwritten (F7).
+        File.WriteAllText(_path, "{\"first\": 1");
+        Assert.Null(UiSettingsFile.Read(_path, "zoomPercent", Log));
+        File.WriteAllText(_path, "{\"second\": 2");
+        Assert.Null(UiSettingsFile.Read(_path, "zoomPercent", Log));
+
+        var contents = DamagedCopies().OrderBy(f => f, StringComparer.Ordinal).Select(File.ReadAllText).ToList();
+        Assert.Equal(2, contents.Count);
+        Assert.Contains("{\"first\": 1", contents);
+        Assert.Contains("{\"second\": 2", contents);
+    }
+
+    [Fact]
+    public void OnlyTheNewestFiveDamagedCopiesAreKept()
+    {
+        for (var i = 1; i <= 7; i++)
+        {
+            File.WriteAllText(_path, "{\"copy\": " + i);
+            Assert.Null(UiSettingsFile.Read(_path, "zoomPercent", Log));
+        }
+
+        Assert.Equal(UiSettingsFile.MaxDamagedCopies, DamagedCopies().Length);
+        // The two oldest (copies 1 and 2) are the ones that went.
+        var kept = DamagedCopies().Select(File.ReadAllText).ToHashSet();
+        Assert.DoesNotContain("{\"copy\": 1", kept);
+        Assert.DoesNotContain("{\"copy\": 2", kept);
+        Assert.Contains("{\"copy\": 7", kept);
     }
 
     [Fact]
@@ -84,7 +118,7 @@ public sealed class UiSettingsFileTests : IDisposable
             UiSettingsFile.Set(_path, "railTheme", JsonValue.Create("Light")!, Log);
         }
 
-        Assert.False(File.Exists(_path + ".bad"));
+        Assert.Empty(DamagedCopies());
         Assert.Equal("{\"zoomPercent\":110}", File.ReadAllText(_path));
         Assert.Equal(2, _log.Count);
     }
