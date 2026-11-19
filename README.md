@@ -174,7 +174,7 @@ Not needed for the core. It is useful for recovery when a restart is not enough,
 |---|---|---|
 | D1 | Planner model: Fable, Opus or Sonnet? | Opus by default; switch per project. Fable for the hardest planning. |
 | D2 | Visibility | **Decided (2026-11-14):** tabs inside OpenTail.Bullshark. Activity panel later (P6). |
-| D3 | Coder permission mode: `acceptEdits` with an allowlist, or `bypassPermissions`? | `acceptEdits` plus an allowlist. Bypass only in a sandbox with no internet. *Superseded in code (2026-11-18): the default is `auto` (`SetupPlan.PermissionMode`, `RunPlan` default; D-S14 in `docs/plans/setup-and-sessions.md`). This row is kept as the record of the first recommendation.* |
+| D3 | Coder permission mode: `acceptEdits` with an allowlist, or `bypassPermissions`? | `acceptEdits` plus an allowlist. Bypass only in a sandbox with no internet. **Decided by the owner, 2026-11-19: coders (and planners) run in `auto`.** The code already does this (`SetupPlan.PermissionMode`, `RunPlan` default; D-S14 in `docs/plans/setup-and-sessions.md`). The first recommendation above is kept as the record. Not yet checked live: whether `--bg` sessions accept `--permission-mode auto` as documented (the desktop research could not confirm it, `ideas-desktop-codex-2026-11-18.md` A3). |
 | D4 | Budget: own spend check (the `--print` cap is ruled out). | Own spend check, in P7. |
 | D5 | How long must a tab be idle before OpenTail.Bullshark may type into it? | Ten minutes, set by the owner. Check the typing behaviour in P1. |
 | D6 | Startup: log-on only, or also auto-logon? | Log-on only. Auto-logon is a security trade-off for the owner to decide. |
