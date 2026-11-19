@@ -19,7 +19,7 @@ public sealed class IndexCacheFieldTests
     [
         "Records", "UserMessages", "AssistantMessages", "ToolCalls", "CompletedTurns", "LastAssistantText", "LastTimestamp", "LastModel",
         "FirstTimestamp", "ToolNames", "FilesWritten", "ContextTokensAtLastTurn", "FirstUserText", "AiTitle", "CustomTitle", "LastRecap",
-        "LastRecapAt", "Compactions", "ContinuesSessionId", "FailedToolCalls",
+        "LastRecapAt", "Compactions", "ContinuesSessionId", "FailedToolCalls", "LatestCwd",
     ];
 
     /// <summary>The TranscriptSummary properties the cache does not carry. Each one has its reason; nothing else may be left out.</summary>
@@ -28,7 +28,6 @@ public sealed class IndexCacheFieldTests
         "UsageByModel",   // rebuilt from the ledger by the index: Restore leaves it empty and the index sets it from the restored ledger.
         "TotalUsage",     // computed from UsageByModel.
         "FileLastWrites", // not read by DigestOf, so a cached session gives the same digest without it.
-        "LatestCwd",      // not read by DigestOf.
         "FileFolders",    // not read by DigestOf.
     ];
 
@@ -43,7 +42,7 @@ public sealed class IndexCacheFieldTests
     [
         "FirstActivity", "LastActivity", "Turns", "UserMessages", "AssistantMessages", "ToolCalls", "ToolNames", "FilesWritten",
         "LastAssistantText", "LastModel", "ContextTokensAtLastTurn", "Usage", "FirstUserText", "AiTitle", "CustomTitle", "LastRecap",
-        "LastRecapAt", "Compactions", "ContinuesSessionId", "FailedToolCalls",
+        "LastRecapAt", "Compactions", "ContinuesSessionId", "FailedToolCalls", "Cwd",
     ];
 
     /// <summary>SessionDigest properties computed from the others. Span is computed from FirstActivity and LastActivity.</summary>
@@ -96,7 +95,8 @@ public sealed class IndexCacheFieldTests
             LastRecapAt: new DateTimeOffset(2026, 11, 2, 9, 31, 0, offset),
             Compactions: 2,
             ContinuesSessionId: "11111111-2222-3333-4444-555555555555",
-            FailedToolCalls: 3);
+            FailedToolCalls: 3,
+            LatestCwd: @"C:\Git\split\OpenTail.Bullshark");
 
         var cache = typeof(TranscriptIndex).Assembly.GetType("OpenTail.Bullshark.Core.Activity.IndexCache", throwOnError: true)!;
         var entryOf = cache.GetMethod("EntryOf", BindingFlags.Static | BindingFlags.Public)!;

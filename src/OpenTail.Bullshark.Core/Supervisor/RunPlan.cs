@@ -14,9 +14,9 @@ public sealed record PatternSpec(PatternKind Kind, string Key, string Title, str
     public static IReadOnlyList<PatternSpec> Shipped { get; } =
     [
         new(PatternKind.PlanAndCode, "plan-code", "plan > code > review",
-            "One planner and one coder. The planner reviews every coder report (D-S10)."),
+            "One planner and one coder. The planner reviews every coder report."),
         new(PatternKind.PlanAndManyCoders, "plan-many", "plan > many coders > review",
-            "One planner and several coders. The planner reviews every report (D-S10)."),
+            "One planner and several coders. The planner reviews every report."),
         new(PatternKind.Solo, "solo", "solo",
             "One session plans and implements. No peer, and no self-planning is promised."),
     ];

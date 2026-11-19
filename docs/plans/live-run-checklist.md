@@ -58,6 +58,19 @@ Pass when: no name appears twice at any step, each step has its line, and F20 is
 - [ ] N5 cleanup: a file in `reports\` that is not named `away-yyyy-MM-dd-HHmm.md` (or with `-n`) is never deleted, even with more than 60 reports.
 - [ ] N3/N6 palette: "Open Night (preflight)" in the command palette opens the Night sub-tab; `--open-tab night` (the screenshot option) does the same.
 
+## UI polish batch (docs/plans/ui-polish-batch-2026-11-19.md)
+
+- [ ] P1 check boxes: on Changes (a session with changed files) the "viewed" box is a small rounded box; ticked, it is filled blue with a white or dark check mark. The Setup box "Start when the usage limit resets" and the Storage transcript boxes look the same. Clicking each still works (the tick stays, the box follows the setting).
+- [ ] P2 text boxes, lists and the zoom slider: a text box has a rounded edge that turns blue when it has the keyboard. The zoom slider in the status bar is a thin track with a round thumb; the zoom still steps in the same places.
+- [ ] P3 scroll bars and tooltips: a dialog (Edit session, Instructions, Go to) has the same thin scroll bar as the window. A tooltip is a rounded box in the menu colour, wraps past about 420 px, and has no internal id in it.
+- [ ] P4 combo boxes: Setup's Pattern, Coders, Folder (type a path: it still takes the typing), Planner, Reviewer and Assistant boxes, and the Timeline's Run and Session boxes open the same rounded list in both themes. The colour box in Edit session follows the theme.
+- [ ] P5 keyboard: on the setup page, Tab goes through Task, Folder, Browse, Pattern, Coders and the models, and reaches Start last. On Insights and Settings, Tab reaches only the chosen pill; Left and Right move along the row.
+- [ ] P6 Resume: the Resume button in the resume prompt is the same green as Start, not grey (the resume prompt was not in the screenshots: check it by hand).
+- [ ] P7 contrast: in the light theme the "check:" labels on Changes are a dark amber that reads on the grey panels; in the dark theme the control edges (buttons, boxes, combo boxes) are visible without being bright. Numbers are in the plan.
+- [ ] P8 tooltips: hover the Setup Reviewer box and its footnote mark. Each is one or two lines, with no "(S9c)" or "(D-S10)" in the text.
+- [ ] P9 folder names on real data: the History folder header shows the folder's name (for example `Git` or `OpenTail.Bullshark`), not `C--Git-...`; its tooltip shows the full path. The Storage page's project rows show the same names. A group names a folder only from sessions whose working folder encodes to the group's own key: a group whose sessions all moved to a sub-folder keeps its raw key (for example `C--Git-Public`). The groups themselves are unchanged: each folder's sessions are under the same header as before.
+- [ ] P9 cache: the first start after this build reads every transcript again (the cache from before is not used). The second start is quick and the names are the same.
+
 ## Insights and Settings (docs/plans/insights-and-settings-2026-11-18.md)
 
 - [ ] Insights: the four sub-tabs (Away, Usage, Timeline, Storage) switch with the mouse and with Left and Right; the window reads the

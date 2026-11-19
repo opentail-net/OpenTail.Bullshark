@@ -149,9 +149,5 @@ public sealed class LibraryEditDialog : Window
     {
         Text = text,
         Padding = new Thickness(6, 4, 6, 4),
-        Background = RailPalette.Brush(palette.Background),
-        Foreground = RailPalette.Brush(palette.Text),
-        CaretBrush = RailPalette.Brush(palette.Text),
-        BorderBrush = RailPalette.Brush(palette.Muted),
     };
 }

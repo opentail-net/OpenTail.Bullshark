@@ -90,9 +90,6 @@ public sealed class InstructionsDialog : Window
         _editor.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
         _editor.FontFamily = new FontFamily("Consolas");
         _editor.FontSize = 13;
-        _editor.Background = RailPalette.Brush(palette.Panel);
-        _editor.Foreground = RailPalette.Brush(palette.Text);
-        _editor.CaretBrush = RailPalette.Brush(palette.Text);
         editing.Children.Add(_editor);
         body.Children.Add(editing);
         root.Children.Add(body);

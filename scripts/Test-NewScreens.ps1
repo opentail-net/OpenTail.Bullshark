@@ -28,7 +28,7 @@ $tools = Join-Path $Out 'tools'
 $shots = Join-Path $Out 'shots'
 # Only the folders this script makes are cleared; -Out itself is kept.
 foreach ($folder in @($state, $claudeHome, $repo, $tools, $shots)) { if (Test-Path $folder) { Remove-Item -Recurse -Force -LiteralPath $folder } }
-New-Item -ItemType Directory -Force -Path $state, $repo, $shots, "$tools\gen", "$tools\fakeclaude", (Join-Path $claudeHome 'projects\scratch-repo') | Out-Null
+New-Item -ItemType Directory -Force -Path $state, $repo, $shots, "$tools\gen", "$tools\fakeclaude" | Out-Null
 
 # The fixture generator (the Core library writes the state files, so their format is the app's own) and the stand-in for claude.
 @"
@@ -99,12 +99,15 @@ Event(20, coders[1].Name, "state", "working -> stopped");
 Event(8, coders[0].Name, "alert:RestartLoop", "restarted 3 times in 25 minutes");
 
 // The coder's transcript, in the shapes the effort and export tests write.
+// A working folder outside the Windows temp folder, which the History section hides under its temporary rule (owner, 2026-11-15). Only a label.
+var fixtureFolder = @"C:\Git\scratch-repo";
 var lines = new List<object>();
 var at = now.AddMinutes(-88);
 string Stamp(int seconds) => at.AddSeconds(seconds).ToString("O");
 object Usage(long input, long output) => new { input_tokens = input, output_tokens = output, cache_creation_input_tokens = 500L, cache_read_input_tokens = 2000L };
 lines.Add(new { type = "permission-mode", permissionMode = "auto", sessionId = coder1Id });
-lines.Add(new { type = "user", timestamp = Stamp(0), message = new { role = "user", content = "Write the notes for the batch in notes.md, then run the build." } });
+// The first prompt names the working folder (cwd), as Claude Code writes it: the rail and the Storage page show the folder's leaf (P9), not the folder key.
+lines.Add(new { type = "user", timestamp = Stamp(0), cwd = fixtureFolder, message = new { role = "user", content = "Write the notes for the batch in notes.md, then run the build." } });
 var callNo = 0;
 object Call(string name, object input)
 {
@@ -139,7 +142,7 @@ lines.Add(new { type = "assistant", timestamp = Stamp(90), requestId = "r-text",
 // The last request carries 170,003 tokens (ctx 170k): at the assumed 200k window that is 85 %, so the warning mark shows (ctx meter, Part 1).
 lines.Add(new { type = "assistant", timestamp = Stamp(91), requestId = "r-big", message = new { id = "m-big", model = "claude-opus-5-5", content = new object[] { new { type = "text", text = "The context is large now." } }, usage = new { input_tokens = 3L, output_tokens = 40L, cache_creation_input_tokens = 0L, cache_read_input_tokens = 170000L } } });
 lines.Add(new { type = "system", subtype = "turn_duration", durationMs = 92000, timestamp = Stamp(92) });
-var projectFolder = Path.Combine(claudeHome, "projects", "scratch-repo");
+var projectFolder = Path.Combine(claudeHome, "projects", OpenTail.Bullshark.Core.Folders.FolderKey.From(fixtureFolder));
 Directory.CreateDirectory(projectFolder);
 File.WriteAllText(Path.Combine(projectFolder, coder1Id + ".jsonl"), string.Join("\n", lines.Select(line => JsonSerializer.Serialize(line))) + "\n");
 

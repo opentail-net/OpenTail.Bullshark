@@ -43,7 +43,15 @@ public sealed record RailPalette(string Panel, string Background, string Text, s
 
     public string FacePressed => IsLight ? "#DCE4F1" : "#15181D";
 
-    public string BorderHover => IsLight ? "#9FB0C8" : "#4A5566";
+    /// <summary>
+    /// The edge of a control (the buttons, the boxes, the combo boxes, the checks): UiBorder. Separate from <see cref="Border"/>, which draws the
+    /// rail's lines and the setup page's rules. Contrast against the background (P7, computed in docs/plans/ui-polish-batch-2026-11-19.md):
+    /// light 3.19:1 (the 3:1 of a component's boundary), dark 2.47:1 (raised from 1.38:1, held modest so the dark theme stays quiet).
+    /// </summary>
+    public string Edge => IsLight ? "#7F8B9D" : "#4A5566";
+
+    /// <summary>The edge under the pointer. Dark 3.26:1 against the background, so the hover still shows against the raised edge.</summary>
+    public string BorderHover => IsLight ? "#5E6B80" : "#5D6779";
 
     public string Accent => IsLight ? "#2563EB" : "#5B9DF5";
 
@@ -56,7 +64,8 @@ public sealed record RailPalette(string Panel, string Background, string Text, s
     public string MenuBg => IsLight ? "#FFFFFF" : "#171A20";
 
     /// <summary>The warning colour: a label to check (the Changes tab's big-deletion flags, features batch G2). The setup check's warning colours.</summary>
-    public string Warn => IsLight ? "#9A6B00" : "#E0B341";
+    /// <summary>Light 4.85:1 on the light panels (was 4.34:1 at #9A6B00, under the 4.5:1 for small text). Dark 9.5:1 on the background.</summary>
+    public string Warn => IsLight ? "#8A5F00" : "#E0B341";
 
     /// <summary>
     /// The eight colours a session may have (session library, D-L11): a name, a shade for the dark theme and one for the light.
@@ -148,7 +157,7 @@ public static class UiTheme
         resources["UiFace"] = RailPalette.Brush(palette.Face);
         resources["UiFaceHover"] = RailPalette.Brush(palette.FaceHover);
         resources["UiFacePressed"] = RailPalette.Brush(palette.FacePressed);
-        resources["UiBorder"] = RailPalette.Brush(palette.Border);
+        resources["UiBorder"] = RailPalette.Brush(palette.Edge);
         resources["UiBorderHover"] = RailPalette.Brush(palette.BorderHover);
         resources["UiAccent"] = RailPalette.Brush(palette.Accent);
         resources["UiAccentSoft"] = RailPalette.Brush(palette.Selection);
@@ -160,6 +169,9 @@ public static class UiTheme
         resources["UiGoPressed"] = RailPalette.Brush(palette.GoPressed);
         resources["UiGoText"] = RailPalette.Brush(palette.GoText);
         resources["UiMenuBg"] = RailPalette.Brush(palette.MenuBg);
+        // The scroll bar's thumb is the muted colour, faint at rest and stronger under the pointer (it was set per window before P3).
+        resources["ScrollThumb"] = RailPalette.Brush("#55" + palette.Muted.TrimStart('#'));
+        resources["ScrollThumbHover"] = RailPalette.Brush("#99" + palette.Muted.TrimStart('#'));
     }
 }
 

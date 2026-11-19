@@ -1,6 +1,7 @@
 using System.IO;
 using System.Windows;
 using OpenTail.Bullshark.Core.Activity;
+using OpenTail.Bullshark.Core.Folders;
 using OpenTail.Bullshark.Core.Storage;
 using OpenTail.Bullshark.Core.Supervisor;
 
@@ -54,7 +55,9 @@ public partial class SessionWindow
                 (StorageReport.Read(_options.ProjectsRoot), TranscriptArchive.List(_options.ArchiveRoot),
                  TranscriptRetention.ReadDays(TranscriptRetention.SettingsBeside(_options.ProjectsRoot))));
             _storage.SetRetention(retention.Days ?? TranscriptRetention.DefaultDays, retention.Days is not null, retention.Problem);
-            _storage.ShowProjects(projects, archived);
+            _storageProjects = projects;
+            _storageArchived = archived;
+            _storage.ShowProjects(projects, archived, ProjectNames(projects));
             await RefreshChosenProjectAsync();
         }
         catch (Exception ex) when (StoreErrors.IsExpected(ex))
@@ -70,13 +73,44 @@ public partial class SessionWindow
         try
         {
             var files = await Task.Run(() => StorageReport.FilesOf(folder));
-            _storage.ShowTranscripts(Path.GetFileName(folder), files);
+            _storage.ShowTranscripts(StorageNameOf(folder), files);
         }
         catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
             AppLog.Write($"storage project not read: {ex.Message}");
-            _storage.SetResult($"The transcripts of {Path.GetFileName(folder)} cannot be read: {ex.Message}");
+            _storage.SetResult($"The transcripts of {StorageNameOf(folder)} cannot be read: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// The last listing the Storage page drew, so its names can be drawn again when the history is read (P9). The listing can be read before the
+    /// history, and the names need the history's working folders; without this the page keeps Claude's names until the next Refresh.
+    /// </summary>
+    private IReadOnlyList<ProjectStorage>? _storageProjects;
+    private IReadOnlyList<TranscriptFileInfo>? _storageArchived;
+
+    /// <summary>Draws the last listing again with the names the history gives now. Nothing is read from disk for the list itself.</summary>
+    private void RedrawStorageNames()
+    {
+        if (_storageProjects is not { } projects || _storageArchived is not { } archived) return;
+        _storage.ShowProjects(projects, archived, ProjectNames(projects));
+        _ = RefreshChosenProjectAsync();
+    }
+
+    /// <summary>The name each project folder is shown by on the Storage page, by its folder (P9).</summary>
+    private Dictionary<string, string> ProjectNames(IEnumerable<ProjectStorage> projects) =>
+        projects.ToDictionary(project => project.Folder, project => StorageNameOf(project.Folder), StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The name a project folder has on the Storage page (P9): the leaf of the working folder its transcripts name, read from the history the rail
+    /// has read. Before the history is read, or when no transcript of the folder names one, it is Claude's own name. The folder is still found by its key.
+    /// </summary>
+    private string StorageNameOf(string folder)
+    {
+        var key = Path.GetFileName(folder);
+        var history = _history ?? new List<SessionDigest>();
+        var cwds = history.Where(digest => string.Equals(digest.ProjectFolder, key, StringComparison.OrdinalIgnoreCase)).Select(digest => digest.Cwd);
+        return FolderDisplay.Of(key, cwds).Name;
     }
 
     /// <summary>

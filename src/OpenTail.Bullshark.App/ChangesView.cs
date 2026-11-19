@@ -170,10 +170,6 @@ public sealed class ChangesView : UserControl
         _writtenCaption.Foreground = RailPalette.Brush(palette.Muted);
         _reviewLabel.Foreground = RailPalette.Brush(palette.Muted);
         _flagged.Foreground = RailPalette.Brush(palette.Warn);
-        _reviewNote.Background = RailPalette.Brush(palette.Background);
-        _reviewNote.Foreground = RailPalette.Brush(palette.Text);
-        _reviewNote.CaretBrush = RailPalette.Brush(palette.Text);
-        _reviewNote.BorderBrush = RailPalette.Brush(palette.Muted);
         _diff.Background = RailPalette.Brush(palette.Background);
         _diff.Foreground = RailPalette.Brush(palette.Text);
         if (_report is not null) Draw();

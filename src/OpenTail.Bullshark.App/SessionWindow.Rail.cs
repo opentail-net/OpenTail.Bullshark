@@ -288,17 +288,12 @@ public partial class SessionWindow
         ThemeMark.Text = _theme == RailTheme.Dark ? "☀ light" : "☾ dark";
         ThemeMark.Foreground = RailPalette.Brush(palette.Muted);
         FilterMark.Foreground = RailPalette.Brush(palette.Text);
-        Resources["ScrollThumb"] = RailPalette.Brush("#55" + palette.Muted.TrimStart('#'));
-        Resources["ScrollThumbHover"] = RailPalette.Brush("#99" + palette.Muted.TrimStart('#'));
         TabBar.Background = RailPalette.Brush(palette.Panel);
         TabBarB.Background = RailPalette.Brush(palette.Panel);
         PaneB.Background = RailPalette.Brush(palette.Background);
         PaneSplitter.Background = RailPalette.Brush(palette.Muted);
         RailToggle.Foreground = RailPalette.Brush(palette.Muted);
-        SearchBox.Background = RailPalette.Brush(palette.Panel);
-        SearchBox.Foreground = RailPalette.Brush(palette.Text);
-        SearchBox.CaretBrush = RailPalette.Brush(palette.Text);
-        SearchBox.BorderBrush = RailPalette.Brush(palette.Muted);
+        // The search box takes the app's text box style (its face and edge come from UiTheme), as the other text boxes do.
         SearchHint.Foreground = RailPalette.Brush(palette.Muted);
         UpdateRailToggle();
         Background = RailPalette.Brush(palette.Background);
@@ -479,7 +474,7 @@ public partial class SessionWindow
             }
 
             // The names of the live folders, so the History section uses the same name for the same folder.
-            var liveNames = groups.Values.ToDictionary(g => g.Key, g => g.Header, StringComparer.OrdinalIgnoreCase);
+            var liveNames = groups.Values.ToDictionary(g => g.Key, g => new FolderLabel(g.Header, g.Tooltip), StringComparer.OrdinalIgnoreCase);
             if (ShowsHistory) Rail.Items.Add(HistorySection(liveNames, stored));
 
             RestoreSelection();
@@ -495,7 +490,7 @@ public partial class SessionWindow
     /// The History section: one label at its top, with the 🔄 mark that reloads it, and past sessions grouped by folder below.
     /// The folder name is the live folder's name when the folder is one of this window's, and the name Claude gave it otherwise.
     /// </summary>
-    private TreeViewItem HistorySection(IReadOnlyDictionary<string, string> liveNames, IReadOnlyDictionary<string, SessionRecord> records)
+    private TreeViewItem HistorySection(IReadOnlyDictionary<string, FolderLabel> liveNames, IReadOnlyDictionary<string, SessionRecord> records)
     {
         var header = new StackPanel { Orientation = Orientation.Horizontal };
         header.Children.Add(Label("History", bold: true));
@@ -588,7 +583,7 @@ public partial class SessionWindow
     /// </summary>
     private TreeViewItem HistoryFolderItem(
         HistoryGroup group,
-        IReadOnlyDictionary<string, string> liveNames,
+        IReadOnlyDictionary<string, FolderLabel> liveNames,
         ISet<string> openIds,
         bool expandByDefault = false)
     {
@@ -604,8 +599,16 @@ public partial class SessionWindow
         }
         else
         {
-            header = liveNames.TryGetValue(group.Key, out var live) ? live : group.Key;
-            tooltip = "Folder: " + group.Key + "\n(the name Claude gave the transcripts, F44)";
+            // The name is the live folder's when this window has the folder. Otherwise it is the leaf of the working folder the transcripts name
+            // (P9): Claude's own name, C--Git, is only the key. The group is still the key; the name is only the words on the row.
+            var label = liveNames.TryGetValue(group.Key, out var live)
+                ? live
+                : FolderDisplay.Of(group.Key, group.Sessions.Select(digest => digest.Cwd));
+            header = label.Name;
+            // The tooltip gives the whole folder, or says that the transcripts do not name it. No internal ids (P8).
+            tooltip = label.FullPath is null
+                ? $"Folder: {group.Key}\nThe transcripts do not name the working folder."
+                : $"Folder: {label.FullPath}";
         }
         var folderItem = NewItem(Label(header), new RailTag(RailKind.Heading, key), tooltip);
         // OPENTAIL_BULLSHARK_EXPAND=1 expands the history folders, for screenshots only. Normally they start collapsed.
@@ -641,6 +644,8 @@ public partial class SessionWindow
             var facts = await Task.Run(() => ReadHistoryFacts(index.Sessions));
             _history = index.Sessions.ToList();
             _historyFacts = facts;
+            // The Storage page's names come from the working folders read here (P9), so its last listing is drawn again with them.
+            RedrawStorageNames();
             // A return that came before the index was read (the Away page, D2) asks again now that it is.
             if (_awayWaitsForHistory)
             {

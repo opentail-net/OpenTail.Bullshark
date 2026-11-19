@@ -27,7 +27,12 @@ public sealed record SessionDigest(
     DateTimeOffset? LastRecapAt = null,
     int Compactions = 0,
     string? ContinuesSessionId = null,
-    int FailedToolCalls = 0)
+    int FailedToolCalls = 0,
+    /// <summary>
+    /// The working folder the transcript names last (its records' cwd), or null when none is named. Claude's folder name is lossy, so the rail
+    /// and the Storage page name a folder by this (FolderDisplay). The folder's key is still the group's identity.
+    /// </summary>
+    string? Cwd = null)
 {
     /// <summary>
     /// The title (D-L1; the owner's own name comes in L3). Claude Code's title when the transcript has one, else the first
@@ -303,6 +308,7 @@ public sealed class TranscriptIndex
             LastModel: summary.LastModel,
             ContextTokensAtLastTurn: summary.ContextTokensAtLastTurn,
             Usage: summary.TotalUsage,
-            FailedToolCalls: summary.FailedToolCalls);
+            FailedToolCalls: summary.FailedToolCalls,
+            Cwd: summary.LatestCwd);
     }
 }

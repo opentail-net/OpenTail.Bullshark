@@ -44,9 +44,6 @@ public sealed class TimelineView : UserControl
 
     public TimelineView()
     {
-        // The two choosers take the palette's drop-down style (Styles/Controls.xaml), which follows the theme.
-        _runs.Style = (Style)FindResource("UiComboBox");
-        _sessions.Style = (Style)FindResource("UiComboBox");
         var refresh = new Button { Content = UiIcon.Label(UiIcon.Refresh, "Refresh"), Padding = new Thickness(12, 4, 12, 4) };
         refresh.Click += (_, _) => RefreshRequested?.Invoke();
 

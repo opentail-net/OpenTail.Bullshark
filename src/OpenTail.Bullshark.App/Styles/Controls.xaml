@@ -1,17 +1,18 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <!-- The look of the app's buttons and menus, in one place (2026-11-18). Every colour is a DynamicResource set from the rail palette by
-         UiTheme.Apply, so the dark and the light theme change all of them at once. The defaults below are the dark theme, for the moment
-         before the first Apply. Windows 95 square chrome is gone: the controls draw themselves, with rounded corners, a raised face, a
-         clear hover, and an accent ring for keyboard focus. -->
+    <!-- The look of the app's buttons, boxes and menus, in one place (2026-11-18; the controls of 2026-11-19 are polish batch P1-P4). Every colour
+         is a DynamicResource set from the rail palette by UiTheme.Apply, so the dark and the light theme change all of them at once. The defaults
+         below are the dark theme, for the moment before the first Apply. Windows 95 square chrome is gone: the controls draw themselves, with
+         rounded corners, a raised face, a clear hover, and an accent ring for keyboard focus. Implicit styles here apply to every window of the app,
+         so a dialog gets the same controls as the rail; a local style in a window or view overrides them, so keep those for a real difference. -->
 
     <SolidColorBrush x:Key="UiText" Color="#E6E6E6" />
     <SolidColorBrush x:Key="UiMuted" Color="#9AA3AE" />
     <SolidColorBrush x:Key="UiFace" Color="#1C2027" />
     <SolidColorBrush x:Key="UiFaceHover" Color="#262C36" />
     <SolidColorBrush x:Key="UiFacePressed" Color="#171A20" />
-    <SolidColorBrush x:Key="UiBorder" Color="#2F3640" />
-    <SolidColorBrush x:Key="UiBorderHover" Color="#4A5566" />
+    <SolidColorBrush x:Key="UiBorder" Color="#4A5566" />
+    <SolidColorBrush x:Key="UiBorderHover" Color="#5D6779" />
     <SolidColorBrush x:Key="UiAccent" Color="#5B9DF5" />
     <SolidColorBrush x:Key="UiAccentSoft" Color="#2B3A4F" />
     <SolidColorBrush x:Key="UiAccentText" Color="#08111F" />
@@ -24,6 +25,8 @@
     <SolidColorBrush x:Key="UiDanger" Color="#C0453D" />
     <SolidColorBrush x:Key="UiDangerHover" Color="#D2564D" />
     <SolidColorBrush x:Key="UiMenuBg" Color="#171A20" />
+    <SolidColorBrush x:Key="ScrollThumb" Color="#559AA3AE" />
+    <SolidColorBrush x:Key="ScrollThumbHover" Color="#999AA3AE" />
 
     <CornerRadius x:Key="UiRadius">8</CornerRadius>
 
@@ -46,7 +49,8 @@
                         <Border x:Name="Frame" Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
                                 CornerRadius="{DynamicResource UiRadius}" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
                                               TextElement.Foreground="{TemplateBinding Foreground}" />
                         </Border>
                     </Grid>
@@ -150,10 +154,173 @@
         </Setter>
     </Style>
 
+    <!-- A check box: a 16 px rounded box with the control edge. Checked, the box is filled in the accent with a check mark. The label is the
+         content. Keyboard focus draws the accent ring round the box, as the buttons do. Disabled is dimmed. Binding is unchanged: IsChecked,
+         Click and Checked/Unchecked work as before. -->
+    <Style TargetType="CheckBox">
+        <Setter Property="Foreground" Value="{DynamicResource UiText}" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="CheckBox">
+                    <StackPanel Orientation="Horizontal" Background="Transparent">
+                        <Grid Width="16" Height="16" VerticalAlignment="Center">
+                            <Border x:Name="Ring" CornerRadius="6" BorderThickness="2" BorderBrush="Transparent" Margin="-3" />
+                            <Border x:Name="Box" CornerRadius="4" Background="{DynamicResource UiFace}"
+                                    BorderBrush="{DynamicResource UiBorder}" BorderThickness="1">
+                                <Path x:Name="Mark" Width="9" Height="7" Stretch="Fill" Data="M 0.5,3.6 L 3.3,6.4 L 8.5,0.6"
+                                      Stroke="{DynamicResource UiAccentText}" StrokeThickness="1.8" StrokeStartLineCap="Round"
+                                      StrokeEndLineCap="Round" StrokeLineJoin="Round" HorizontalAlignment="Center"
+                                      VerticalAlignment="Center" Visibility="Collapsed" />
+                            </Border>
+                        </Grid>
+                        <ContentPresenter Margin="8,0,0,0" VerticalAlignment="Center" RecognizesAccessKey="True" />
+                    </StackPanel>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource UiBorderHover}" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Ring" Property="BorderBrush" Value="{DynamicResource UiAccent}" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Box" Property="Background" Value="{DynamicResource UiAccent}" />
+                            <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource UiAccent}" />
+                            <Setter TargetName="Mark" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.45" />
+                            <Setter Property="Cursor" Value="Arrow" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- A text box: a raised face with the control edge, rounded. The edge brightens under the pointer and takes the accent when the box has the
+         keyboard. The caret and the selection use the palette's text and selection colours. Padding is set where the box is used. -->
+    <Style TargetType="TextBox">
+        <Setter Property="Background" Value="{DynamicResource UiFace}" />
+        <Setter Property="Foreground" Value="{DynamicResource UiText}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource UiBorder}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="7,4" />
+        <Setter Property="CaretBrush" Value="{DynamicResource UiText}" />
+        <Setter Property="SelectionBrush" Value="{DynamicResource UiAccentSoft}" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TextBox">
+                    <Border x:Name="Frame" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6">
+                        <ScrollViewer x:Name="PART_ContentHost" Focusable="False" Padding="{TemplateBinding Padding}"
+                                      HorizontalScrollBarVisibility="{TemplateBinding ScrollViewer.HorizontalScrollBarVisibility}"
+                                      VerticalScrollBarVisibility="{TemplateBinding ScrollViewer.VerticalScrollBarVisibility}" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource UiBorderHover}" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource UiAccent}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.45" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- The text box inside an editable combo box: no edge and no face of its own, so the combo box's face shows through. -->
+    <Style x:Key="ComboEditText" TargetType="TextBox">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource UiText}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="CaretBrush" Value="{DynamicResource UiText}" />
+        <Setter Property="SelectionBrush" Value="{DynamicResource UiAccentSoft}" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TextBox">
+                    <ScrollViewer x:Name="PART_ContentHost" Focusable="False" Background="Transparent"
+                                  HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- A list: the same face and edge as a text box, rounded. Its rows are ListBoxItem below. -->
+    <Style TargetType="ListBox">
+        <Setter Property="Background" Value="{DynamicResource UiFace}" />
+        <Setter Property="Foreground" Value="{DynamicResource UiText}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource UiBorder}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="3" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListBox">
+                    <Border x:Name="Frame" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                        <ScrollViewer Focusable="False"
+                                      HorizontalScrollBarVisibility="{TemplateBinding ScrollViewer.HorizontalScrollBarVisibility}"
+                                      VerticalScrollBarVisibility="{TemplateBinding ScrollViewer.VerticalScrollBarVisibility}">
+                            <ItemsPresenter />
+                        </ScrollViewer>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                            <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource UiAccent}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.45" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- One row of a list: a quiet row, with the quiet tint under the pointer and the accent tint when it is chosen. Not the system's highlight. -->
+    <Style TargetType="ListBoxItem">
+        <Setter Property="Foreground" Value="{DynamicResource UiText}" />
+        <Setter Property="Padding" Value="8,4" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListBoxItem">
+                    <Border x:Name="Frame" Background="Transparent" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter TextElement.Foreground="{TemplateBinding Foreground}" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Frame" Property="Background" Value="{DynamicResource UiFaceHover}" />
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Frame" Property="Background" Value="{DynamicResource UiAccentSoft}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.45" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- One item of a drop-down list: a quiet row, with the accent tint when it is under the pointer or chosen. -->
-    <Style x:Key="UiComboItem" TargetType="ComboBoxItem">
+    <Style TargetType="ComboBoxItem">
         <Setter Property="Foreground" Value="{DynamicResource UiText}" />
         <Setter Property="Padding" Value="8,4,8,4" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ComboBoxItem">
@@ -173,9 +340,11 @@
         </Setter>
     </Style>
 
-    <!-- A drop-down choice (the Timeline's run and session): the same face, border and radius as the buttons, with a small chevron. The system's
-         template draws its own colours, which stayed light on the dark theme, so the template is replaced here. The list is the palette's menu colour. -->
-    <Style x:Key="UiComboBox" TargetType="ComboBox">
+    <!-- A drop-down choice, for every combo box: the same face, edge and radius as the buttons, a small chevron, the hover edge and the keyboard
+         ring. The whole box opens the list when it is clicked. An editable box (the folder) keeps just the chevron as its toggle, so its text can
+         be typed in. The system's template draws its own colours, which stayed light on the dark theme, so the template is replaced here. The list
+         is the palette's menu colour. -->
+    <Style TargetType="ComboBox">
         <Setter Property="Background" Value="{DynamicResource UiFace}" />
         <Setter Property="Foreground" Value="{DynamicResource UiText}" />
         <Setter Property="BorderBrush" Value="{DynamicResource UiBorder}" />
@@ -184,37 +353,34 @@
         <Setter Property="MinHeight" Value="26" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-        <Setter Property="ItemContainerStyle" Value="{StaticResource UiComboItem}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ComboBox">
                     <Grid x:Name="Root">
-                        <ToggleButton x:Name="Toggle" Focusable="False" ClickMode="Press"
-                                      Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                                      BorderThickness="{TemplateBinding BorderThickness}"
+                        <Border x:Name="Ring" CornerRadius="9" BorderThickness="2" BorderBrush="Transparent" Margin="-2" />
+                        <Border x:Name="Frame" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="8" />
+                        <Grid Margin="{TemplateBinding Padding}">
+                            <ContentPresenter x:Name="ContentSite" VerticalAlignment="Center" HorizontalAlignment="Left"
+                                              IsHitTestVisible="False" Content="{TemplateBinding SelectionBoxItem}"
+                                              ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                              ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}"
+                                              TextElement.Foreground="{TemplateBinding Foreground}" />
+                            <TextBox x:Name="PART_EditableTextBox" Visibility="Collapsed" Style="{StaticResource ComboEditText}"
+                                     VerticalAlignment="Center" Margin="0,0,24,0" />
+                        </Grid>
+                        <ToggleButton x:Name="ToggleButton" Focusable="False" ClickMode="Press" Background="Transparent"
+                                      BorderThickness="0" Cursor="Hand"
                                       IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
                             <ToggleButton.Template>
                                 <ControlTemplate TargetType="ToggleButton">
-                                    <Border x:Name="Frame" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="8">
+                                    <Border Background="Transparent">
                                         <Path Data="M 0 0 L 4 4 L 8 0" Stroke="{DynamicResource UiMuted}" StrokeThickness="1.5"
                                               HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,10,0" />
                                     </Border>
-                                    <ControlTemplate.Triggers>
-                                        <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource UiBorderHover}" />
-                                        </Trigger>
-                                        <Trigger Property="IsChecked" Value="True">
-                                            <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource UiAccent}" />
-                                        </Trigger>
-                                    </ControlTemplate.Triggers>
                                 </ControlTemplate>
                             </ToggleButton.Template>
                         </ToggleButton>
-                        <ContentPresenter IsHitTestVisible="False" Margin="{TemplateBinding Padding}" VerticalAlignment="Center"
-                                          HorizontalAlignment="Left" Content="{TemplateBinding SelectionBoxItem}"
-                                          ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
-                                          TextElement.Foreground="{TemplateBinding Foreground}" />
                         <Popup x:Name="PART_Popup" IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Bottom" AllowsTransparency="True"
                                Focusable="False" PopupAnimation="Fade" MinWidth="{Binding ActualWidth, ElementName=Root}">
                             <Border Margin="0,2,0,0" Padding="3" MaxHeight="320" Background="{DynamicResource UiMenuBg}"
@@ -226,6 +392,21 @@
                         </Popup>
                     </Grid>
                     <ControlTemplate.Triggers>
+                        <Trigger Property="IsEditable" Value="True">
+                            <Setter TargetName="ContentSite" Property="Visibility" Value="Collapsed" />
+                            <Setter TargetName="PART_EditableTextBox" Property="Visibility" Value="Visible" />
+                            <Setter TargetName="ToggleButton" Property="HorizontalAlignment" Value="Right" />
+                            <Setter TargetName="ToggleButton" Property="Width" Value="32" />
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource UiBorderHover}" />
+                        </Trigger>
+                        <Trigger Property="IsDropDownOpen" Value="True">
+                            <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource UiAccent}" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                            <Setter TargetName="Ring" Property="BorderBrush" Value="{DynamicResource UiAccent}" />
+                        </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.45" />
                         </Trigger>
@@ -235,20 +416,134 @@
         </Setter>
     </Style>
 
-    <!-- A call-to-action in the accent colour, for the main safe action of a page. -->
-    <Style x:Key="AccentButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-        <Setter Property="Background" Value="{DynamicResource UiAccent}" />
-        <Setter Property="Foreground" Value="{DynamicResource UiAccentText}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource UiAccent}" />
-        <Setter Property="FontWeight" Value="SemiBold" />
+    <!-- A slider, for the zoom in the status bar: a thin rounded track, filled in the accent up to the thumb, and a round thumb. The width and the
+         tick frequency and the snap are set where the slider is used; this template only draws. Horizontal only, which is all the app uses. -->
+    <Style TargetType="Slider">
+        <Setter Property="Foreground" Value="{DynamicResource UiAccent}" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Slider">
+                    <Track x:Name="PART_Track" VerticalAlignment="Center">
+                        <Track.DecreaseRepeatButton>
+                            <RepeatButton Command="Slider.DecreaseLarge" Focusable="False" IsTabStop="False">
+                                <RepeatButton.Template>
+                                    <ControlTemplate TargetType="RepeatButton">
+                                        <Border Height="4" CornerRadius="2" Background="{DynamicResource UiAccent}" VerticalAlignment="Center" />
+                                    </ControlTemplate>
+                                </RepeatButton.Template>
+                            </RepeatButton>
+                        </Track.DecreaseRepeatButton>
+                        <Track.IncreaseRepeatButton>
+                            <RepeatButton Command="Slider.IncreaseLarge" Focusable="False" IsTabStop="False">
+                                <RepeatButton.Template>
+                                    <ControlTemplate TargetType="RepeatButton">
+                                        <Border Height="4" CornerRadius="2" Background="{DynamicResource UiBorder}" VerticalAlignment="Center" />
+                                    </ControlTemplate>
+                                </RepeatButton.Template>
+                            </RepeatButton>
+                        </Track.IncreaseRepeatButton>
+                        <Track.Thumb>
+                            <Thumb Focusable="False">
+                                <Thumb.Template>
+                                    <ControlTemplate TargetType="Thumb">
+                                        <Ellipse Width="12" Height="12" Fill="{DynamicResource UiAccent}" Stroke="{DynamicResource UiFace}" StrokeThickness="1.5" />
+                                    </ControlTemplate>
+                                </Thumb.Template>
+                            </Thumb>
+                        </Track.Thumb>
+                    </Track>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.45" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- One thin scrollbar for every window: no arrows, and a rounded thumb in the palette's muted colour (ScrollThumb and ScrollThumbHover are set by
+         UiTheme.Apply). The default Windows 11 bar is light and has arrows, which looked unfinished. -->
+    <Style TargetType="ScrollBar">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ScrollBar">
+                    <Track x:Name="PART_Track" IsDirectionReversed="True" Orientation="{TemplateBinding Orientation}">
+                        <Track.DecreaseRepeatButton>
+                            <RepeatButton Command="ScrollBar.PageUpCommand" Opacity="0" Focusable="False" />
+                        </Track.DecreaseRepeatButton>
+                        <Track.IncreaseRepeatButton>
+                            <RepeatButton Command="ScrollBar.PageDownCommand" Opacity="0" Focusable="False" />
+                        </Track.IncreaseRepeatButton>
+                        <Track.Thumb>
+                            <Thumb>
+                                <Thumb.Template>
+                                    <ControlTemplate TargetType="Thumb">
+                                        <Border x:Name="Bar" Background="{DynamicResource ScrollThumb}" CornerRadius="4" Margin="2" />
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="Bar" Property="Background" Value="{DynamicResource ScrollThumbHover}" />
+                                            </Trigger>
+                                            <Trigger Property="IsDragging" Value="True">
+                                                <Setter TargetName="Bar" Property="Background" Value="{DynamicResource ScrollThumbHover}" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Thumb.Template>
+                            </Thumb>
+                        </Track.Thumb>
+                    </Track>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="Orientation" Value="Horizontal">
+                            <Setter TargetName="PART_Track" Property="IsDirectionReversed" Value="False" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
         <Style.Triggers>
-            <Trigger Property="IsMouseOver" Value="True">
-                <Setter Property="Opacity" Value="0.88" />
+            <Trigger Property="Orientation" Value="Vertical">
+                <Setter Property="Width" Value="10" />
+            </Trigger>
+            <Trigger Property="Orientation" Value="Horizontal">
+                <Setter Property="Height" Value="10" />
             </Trigger>
         </Style.Triggers>
     </Style>
 
-    <!-- A segment of a row of choices (the sub-tabs of Insights and Settings, a Settings choice): text only, no border until it is chosen.
+    <!-- The tooltip of every control: a rounded panel in the palette's menu colour, with the control edge and the text colour. Long text wraps
+         at about 420 px. The popup has no drop shadow, so its corners can be rounded. -->
+    <Style TargetType="ToolTip">
+        <Setter Property="OverridesDefaultStyle" Value="True" />
+        <Setter Property="HasDropShadow" Value="False" />
+        <Setter Property="Background" Value="{DynamicResource UiMenuBg}" />
+        <Setter Property="Foreground" Value="{DynamicResource UiText}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource UiBorder}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="9,6" />
+        <Setter Property="MaxWidth" Value="420" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToolTip">
+                    <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter TextElement.Foreground="{TemplateBinding Foreground}" />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Setter Property="ContentTemplate">
+            <Setter.Value>
+                <DataTemplate>
+                    <TextBlock Text="{Binding}" TextWrapping="Wrap" />
+                </DataTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- A segment of a row of choices, for the sub-tabs of Insights and Settings: text only, no border until it is chosen.
          The chosen one is filled in the accent tint with an accent border; the pointer gives the quiet hover tint; keyboard focus draws the ring. -->
     <Style x:Key="PillToggle" TargetType="ToggleButton">
         <Setter Property="Background" Value="Transparent" />
@@ -400,5 +695,18 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+    </Style>
+
+    <!-- A call-to-action in the accent colour, for the main safe action of a page. -->
+    <Style x:Key="AccentButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="Background" Value="{DynamicResource UiAccent}" />
+        <Setter Property="Foreground" Value="{DynamicResource UiAccentText}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource UiAccent}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Opacity" Value="0.88" />
+            </Trigger>
+        </Style.Triggers>
     </Style>
 </ResourceDictionary>

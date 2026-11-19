@@ -64,7 +64,13 @@ public sealed class PillTabs : UserControl
     public void Select(int index)
     {
         _selected = index >= 0 && index < _pills.Count ? index : -1;
-        for (var i = 0; i < _pills.Count; i++) _pills[i].IsChecked = i == _selected;
+        // One tab stop for the row: the chosen pill, or the first when none is chosen. Left and Right reach the others (P5, 2026-11-19).
+        var stop = _selected >= 0 ? _selected : 0;
+        for (var i = 0; i < _pills.Count; i++)
+        {
+            _pills[i].IsChecked = i == _selected;
+            _pills[i].IsTabStop = i == stop;
+        }
     }
 
     private void Choose(int index)

@@ -114,7 +114,9 @@ public sealed class StorageView : UserControl
     public event Action<IReadOnlyList<string>>? RestoreRequested;
 
     /// <summary>Shows the projects and the archive. The transcripts pane keeps what it shows until a project is chosen.</summary>
-    public void ShowProjects(IReadOnlyList<ProjectStorage> projects, IReadOnlyList<TranscriptFileInfo> archived)
+    /// <param name="names">The name each project is shown by, by its folder (P9: the working folder's leaf). A folder not in it keeps Claude's name.</param>
+    public void ShowProjects(IReadOnlyList<ProjectStorage> projects, IReadOnlyList<TranscriptFileInfo> archived,
+        IReadOnlyDictionary<string, string>? names = null)
     {
         _projects.Children.Clear();
         foreach (var project in projects)
@@ -122,9 +124,10 @@ public sealed class StorageView : UserControl
             var span = project.Oldest is { } oldest && project.Newest is { } newest
                 ? $"{oldest.ToLocalTime():yyyy-MM-dd} to {newest.ToLocalTime():yyyy-MM-dd}"
                 : "no transcripts";
+            var name = names is not null && names.TryGetValue(project.Folder, out var shown) ? shown : project.Name;
             var row = new Button
             {
-                Content = $"{project.Name}\n{project.Transcripts} transcripts · {Size(project.Bytes)} · {span}",
+                Content = $"{name}\n{project.Transcripts} transcripts · {Size(project.Bytes)} · {span}",
                 HorizontalContentAlignment = HorizontalAlignment.Left,
                 Padding = new Thickness(8, 4, 8, 4),
                 Margin = new Thickness(0, 0, 0, 4),

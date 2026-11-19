@@ -10,17 +10,11 @@
             <Setter Property="Padding" Value="14,7" />
             <Setter Property="Margin" Value="0,0,8,0" />
         </Style>
-        <Style x:Key="GoButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <!-- Resume is the app's green launch button (P6, 2026-11-19). This style keeps only the size: it is based on the app's GoButton, and the
+             window's own Button style below is not in its chain, so the colours are the green, not the grey of the Button style. -->
+        <Style x:Key="ResumeGo" TargetType="Button" BasedOn="{StaticResource GoButton}">
             <Setter Property="Padding" Value="20,7" />
             <Setter Property="Margin" Value="0,0,8,0" />
-        </Style>
-
-        <Style TargetType="TextBox">
-            <Setter Property="Background" Value="{DynamicResource PromptPanel}" />
-            <Setter Property="Foreground" Value="{DynamicResource PromptText}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource PromptBorder}" />
-            <Setter Property="CaretBrush" Value="{DynamicResource PromptText}" />
-            <Setter Property="BorderThickness" Value="1" />
         </Style>
 
         <Style TargetType="RadioButton">
@@ -125,7 +119,7 @@
         <TextBlock x:Name="CostText" Style="{StaticResource Muted}" Margin="0,16,0,0" />
 
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
-            <Button Content="Resume" Click="Resume_Click" Style="{StaticResource GoButton}" />
+            <Button Content="Resume" Click="Resume_Click" Style="{StaticResource ResumeGo}" />
             <Button Content="Cancel" IsCancel="True" IsDefault="True" Click="Cancel_Click" Margin="0" />
         </StackPanel>
     </StackPanel>

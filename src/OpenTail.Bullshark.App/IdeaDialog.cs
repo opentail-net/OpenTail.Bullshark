@@ -36,10 +36,6 @@ public sealed class IdeaDialog : Window
         {
             Padding = new Thickness(6, 4, 6, 4),
             MaxLength = IdeaNotes.MaxLength,
-            Background = RailPalette.Brush(palette.Background),
-            Foreground = RailPalette.Brush(palette.Text),
-            CaretBrush = RailPalette.Brush(palette.Text),
-            BorderBrush = RailPalette.Brush(palette.Muted),
         };
         panel.Children.Add(_box);
 

@@ -2,7 +2,8 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              Background="{DynamicResource SetupBg}" Foreground="{DynamicResource SetupText}">
-    <!-- The colours come from the rail's palette (ApplyTheme). Replacing a brush updates every control that uses it. -->
+    <!-- The colours come from the rail's palette (ApplyTheme). Replacing a brush updates every control that uses it. The text boxes, the combo
+         boxes and the tooltips are the app's own styles (Styles/Controls.xaml, P2-P4); this page keeps only what differs: its labels and its tabs. -->
     <UserControl.Resources>
         <SolidColorBrush x:Key="SetupBg" Color="#111316" />
         <SolidColorBrush x:Key="SetupPanel" Color="#0C0D10" />
@@ -13,90 +14,6 @@
 
         <Style TargetType="TextBlock">
             <Setter Property="Foreground" Value="{DynamicResource SetupText}" />
-        </Style>
-
-        <Style TargetType="TextBox">
-            <Setter Property="Background" Value="{DynamicResource SetupPanel}" />
-            <Setter Property="Foreground" Value="{DynamicResource SetupText}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource SetupBorder}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Padding" Value="8,6" />
-            <Setter Property="CaretBrush" Value="{DynamicResource SetupText}" />
-            <Setter Property="SelectionBrush" Value="{DynamicResource SetupSelection}" />
-        </Style>
-
-
-
-        <!-- A combo box template drawn with the setup's own brushes. The default Windows 11 template takes its colours from the
-             system theme, so it stays light in dark mode. The whole box opens the list when clicked, not only the arrow. An
-             editable box (the folder) keeps just the arrow as its toggle, so its text can be typed in. -->
-        <ControlTemplate x:Key="SetupComboTemplate" TargetType="ComboBox">
-            <Grid>
-                <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                        BorderThickness="1" CornerRadius="4" />
-                <Grid Margin="{TemplateBinding Padding}">
-                    <ContentPresenter x:Name="ContentSite" VerticalAlignment="Center" HorizontalAlignment="Left"
-                                      IsHitTestVisible="False" Content="{TemplateBinding SelectionBoxItem}"
-                                      ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
-                                      ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}" />
-                    <TextBox x:Name="PART_EditableTextBox" Visibility="Collapsed" Background="Transparent"
-                             BorderThickness="0" Padding="0" VerticalAlignment="Center" Foreground="{DynamicResource SetupText}"
-                             CaretBrush="{DynamicResource SetupText}" />
-                </Grid>
-                <ToggleButton x:Name="ToggleButton" Focusable="False" ClickMode="Press" Cursor="Hand"
-                              Background="Transparent" BorderThickness="0"
-                              IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
-                    <ToggleButton.Template>
-                        <ControlTemplate TargetType="ToggleButton">
-                            <Border Background="Transparent">
-                                <Path Data="M0,0 L4,4 L8,0" Stroke="{DynamicResource SetupMuted}" StrokeThickness="1.4"
-                                      Width="8" Height="5" Stretch="Fill" Margin="0,0,10,0"
-                                      HorizontalAlignment="Right" VerticalAlignment="Center" />
-                            </Border>
-                        </ControlTemplate>
-                    </ToggleButton.Template>
-                </ToggleButton>
-                <Popup x:Name="PART_Popup" Placement="Bottom" AllowsTransparency="True" Focusable="False" PopupAnimation="Fade"
-                       IsOpen="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}}"
-                       MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}" MaxHeight="300">
-                    <Border Background="{DynamicResource SetupPanel}" BorderBrush="{DynamicResource SetupBorder}"
-                            BorderThickness="1" CornerRadius="4" Padding="2" Margin="0,2,0,0">
-                        <ScrollViewer SnapsToDevicePixels="True">
-                            <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained" />
-                        </ScrollViewer>
-                    </Border>
-                </Popup>
-            </Grid>
-            <ControlTemplate.Triggers>
-                <Trigger Property="IsEditable" Value="True">
-                    <Setter TargetName="ContentSite" Property="Visibility" Value="Collapsed" />
-                    <Setter TargetName="PART_EditableTextBox" Property="Visibility" Value="Visible" />
-                    <Setter TargetName="ToggleButton" Property="HorizontalAlignment" Value="Right" />
-                    <Setter TargetName="ToggleButton" Property="Width" Value="32" />
-                </Trigger>
-            </ControlTemplate.Triggers>
-        </ControlTemplate>
-
-        <Style TargetType="ComboBox">
-            <Setter Property="Background" Value="{DynamicResource SetupPanel}" />
-            <Setter Property="Foreground" Value="{DynamicResource SetupText}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource SetupBorder}" />
-            <Setter Property="Padding" Value="8,4" />
-            <Setter Property="Template" Value="{StaticResource SetupComboTemplate}" />
-        </Style>
-
-        <Style TargetType="ComboBoxItem">
-            <Setter Property="Background" Value="{DynamicResource SetupPanel}" />
-            <Setter Property="Foreground" Value="{DynamicResource SetupText}" />
-            <Setter Property="Padding" Value="8,5" />
-            <Style.Triggers>
-                <Trigger Property="IsHighlighted" Value="True">
-                    <Setter Property="Background" Value="{DynamicResource SetupSelection}" />
-                </Trigger>
-                <Trigger Property="IsSelected" Value="True">
-                    <Setter Property="Background" Value="{DynamicResource SetupSelection}" />
-                </Trigger>
-            </Style.Triggers>
         </Style>
 
         <!-- A tab of the details area (Models, Preview): quiet text, with a line under the chosen one. -->
@@ -140,22 +57,6 @@
             <Setter Property="ToolTipService.ShowDuration" Value="60000" />
         </Style>
 
-        <!-- Hover texts in the page's colours, wrapped, so a long explanation is readable. -->
-        <Style TargetType="ToolTip">
-            <Setter Property="Background" Value="{DynamicResource SetupPanel}" />
-            <Setter Property="Foreground" Value="{DynamicResource SetupText}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource SetupBorder}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Padding" Value="10,7" />
-            <Setter Property="ContentTemplate">
-                <Setter.Value>
-                    <DataTemplate>
-                        <TextBlock Text="{Binding}" TextWrapping="Wrap" MaxWidth="380" />
-                    </DataTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
         <Style x:Key="FieldLabel" TargetType="TextBlock">
             <Setter Property="Foreground" Value="{DynamicResource SetupText}" />
             <Setter Property="FontWeight" Value="SemiBold" />
@@ -172,54 +73,19 @@
 
     <!-- The page fits one screen (owner, 2026-11-16). The top holds what every run needs: the task, the folder and the pattern.
          The details below show models or an editable preview. Start is in a footer that never scrolls, with one line that says what
-         would start. Explanations are hover texts on the small marks. -->
-    <DockPanel Background="{DynamicResource SetupBg}">
-
-        <!-- The footer: always on screen. -->
-        <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource SetupBorder}" BorderThickness="0,1,0,0"
-                Background="{DynamicResource SetupPanel}" Padding="20,10">
-            <DockPanel>
-                <Button x:Name="StartButton" DockPanel.Dock="Left" Padding="22,7" FontWeight="SemiBold"
-                        Style="{StaticResource GoButton}" VerticalAlignment="Center"
-                        ToolTip="Checks the run and saves the pattern and model settings for the next launch. Save briefs separately in Preview. Nothing starts until you press Start; the sessions then start on the next pass, within about 15 seconds. A running session keeps the brief it started with."
-                        Click="Start_Click">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="&#xE768;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" Margin="0,1,8,0" VerticalAlignment="Center" />
-                        <TextBlock Text="Start" VerticalAlignment="Center" />
-                    </StackPanel>
-                </Button>
-                <StackPanel DockPanel.Dock="Right" VerticalAlignment="Center" Margin="14,0,0,0">
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                        <TextBlock Text="Limit: tokens" VerticalAlignment="Center" Foreground="{DynamicResource SetupMuted}" Margin="0,0,6,0" />
-                        <TextBox x:Name="LimitTokensBox" Width="84" ToolTip="Optional. The most output tokens this run may write. Blank is no limit." />
-                        <TextBlock Text="minutes" VerticalAlignment="Center" Foreground="{DynamicResource SetupMuted}" Margin="8,0,6,0" />
-                        <TextBox x:Name="LimitMinutesBox" Width="64" ToolTip="Optional. The most minutes this run may run. Blank is no limit." />
-                    </StackPanel>
-                    <TextBlock Text="At 80 % you are told; at the limit nothing new starts." FontSize="11" HorizontalAlignment="Right"
-                               Foreground="{DynamicResource SetupMuted}" />
-                </StackPanel>
-                <StackPanel DockPanel.Dock="Right" VerticalAlignment="Center" Margin="14,0,0,0">
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                        <TextBlock Text="Start at" VerticalAlignment="Center" Foreground="{DynamicResource SetupMuted}" Margin="0,0,6,0" />
-                        <TextBox x:Name="StartAtBox" Width="64" MaxLength="5"
-                                 ToolTip="Optional. A 24-hour time, HH:mm, on this computer's clock. The run waits until then. Blank starts it at once." />
-                    </StackPanel>
-                    <CheckBox x:Name="WaitForLimitBox" Content="Start when the usage limit resets" FontSize="11" HorizontalAlignment="Right"
-                              Margin="0,2,0,0" Foreground="{DynamicResource SetupMuted}"
-                              ToolTip="The run waits until the reset time of the last usage limit Claude Code reported on this computer (plus 2 minutes). If no limit is active, it starts at once."
-                              Checked="WaitForLimit_Changed" Unchecked="WaitForLimit_Changed" />
-                    <TextBlock Text="Starts only while this window is open." FontSize="11" HorizontalAlignment="Right"
-                               Foreground="{DynamicResource SetupMuted}" />
-                </StackPanel>
-                <StackPanel VerticalAlignment="Center" Margin="14,0,0,0">
-                    <TextBlock x:Name="SummaryText" Foreground="{DynamicResource SetupMuted}" TextTrimming="CharacterEllipsis" />
-                    <TextBlock x:Name="StartStatus" TextWrapping="Wrap" Visibility="Collapsed" Margin="0,2,0,0" />
-                </StackPanel>
-            </DockPanel>
-        </Border>
+         would start. Explanations are hover texts on the small marks.
+         The rows are in the order the page is read and Tabbed (P5, 2026-11-19): the top, the details, the models or the preview, and the footer
+         last, so Tab goes through the fields and then to Start. Each row lists its controls left to right in the order they are declared. -->
+    <Grid Background="{DynamicResource SetupBg}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
 
         <!-- What every run needs. -->
-        <Grid DockPanel.Dock="Top" Margin="20,14,20,0" MaxWidth="900" HorizontalAlignment="Left">
+        <Grid Grid.Row="0" Margin="20,14,20,0" MaxWidth="900" HorizontalAlignment="Left">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="70" />
                 <ColumnDefinition Width="*" />
@@ -240,12 +106,16 @@
             <TextBlock Grid.Row="1" Text="Folder" Style="{StaticResource FieldLabel}"
                        ToolTip="The folder the sessions work in. A folder must be trusted in Claude before its sessions can start." />
             <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,0,0,10">
-                <DockPanel>
-                    <Button x:Name="BrowseButton" DockPanel.Dock="Right" Content="Browse…" Margin="8,0,0,0"
-                            ToolTip="Pick the folder from disk." Click="Browse_Click" />
-                    <ComboBox x:Name="FolderBox" IsEditable="True"
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <ComboBox x:Name="FolderBox" Grid.Column="0" IsEditable="True"
                               ToolTip="Trusted folders first, most recently used first. You can type a path." />
-                </DockPanel>
+                    <Button x:Name="BrowseButton" Grid.Column="1" Content="Browse…" Margin="8,0,0,0"
+                            ToolTip="Pick the folder from disk." Click="Browse_Click" />
+                </Grid>
                 <TextBlock x:Name="FolderMessage" TextWrapping="Wrap" Foreground="{DynamicResource SetupMuted}" FontSize="12"
                            Margin="0,3,0,0" />
             </StackPanel>
@@ -273,7 +143,7 @@
         </Grid>
 
         <!-- The details: models and an editable preview of the generated briefs. -->
-        <Border DockPanel.Dock="Top" Margin="20,8,20,0" BorderBrush="{DynamicResource SetupBorder}" BorderThickness="0,0,0,1">
+        <Border Grid.Row="1" Margin="20,8,20,0" BorderBrush="{DynamicResource SetupBorder}" BorderThickness="0,0,0,1">
             <StackPanel Orientation="Horizontal">
                 <RadioButton x:Name="ModelsTab" GroupName="SetupDetails" Content="Models" Style="{StaticResource DetailTab}" IsChecked="True"
                              ToolTip="The model and the effort of each role." Checked="DetailTab_Checked" />
@@ -282,7 +152,7 @@
             </StackPanel>
         </Border>
 
-        <Grid Margin="20,10,8,8">
+        <Grid Grid.Row="2" Margin="20,10,8,8">
             <!-- Models: one line per role, and the helper of each role beside it. The lines wrap in a narrow pane. -->
             <ScrollViewer x:Name="ModelsPanel" VerticalScrollBarVisibility="Auto">
                 <StackPanel MaxWidth="900" HorizontalAlignment="Left">
@@ -298,7 +168,7 @@
                             <TextBlock Text="↪ Reviewer" Style="{StaticResource RoleLabel}"
                                        ToolTip="Who reviews each coder report: the planner itself, or a subagent on the chosen model." />
                             <ComboBox x:Name="ReviewerBox" Width="110"
-                                      ToolTip="self: the planner reviews in its own session, and its context grows with each review. A model: a subagent reviews each report, so the planner's own context stays small."
+                                      ToolTip="self: the planner reviews, and its context grows with each review. A model: a subagent reviews, so the planner's context stays small."
                                       SelectionChanged="OnSelectionChanged">
                                 <ComboBox.ItemTemplate>
                                     <DataTemplate>
@@ -307,7 +177,7 @@
                                 </ComboBox.ItemTemplate>
                             </ComboBox>
                             <TextBlock x:Name="ReviewerFootnote" Style="{StaticResource Info}"
-                                       ToolTip="* self: the planner reviews in its own session, and its context grows with every review, so it costs the most. Sonnet, the default, runs each review in a subagent, so the planner's own context stays small. For a one-batch task, self is enough." />
+                                       ToolTip="* self costs the most: the planner's context grows with every review. Sonnet, the default, reviews in a subagent. For a one-batch task, self is enough." />
                         </StackPanel>
                     </WrapPanel>
 
@@ -336,7 +206,7 @@
                         <TextBlock Foreground="{DynamicResource SetupMuted}" FontSize="12"
                                    Text="Permission mode: auto, the same for every session in a run." />
                         <TextBlock Style="{StaticResource Info}"
-                                   ToolTip="Fable is the most expensive model. Whether every model accepts every effort level is not verified yet (S9c)." />
+                                   ToolTip="Fable is the most expensive model. Not every model is verified with every effort level yet." />
                     </StackPanel>
                 </StackPanel>
             </ScrollViewer>
@@ -369,5 +239,54 @@
                 </StackPanel>
             </ScrollViewer>
         </Grid>
-    </DockPanel>
+
+        <!-- The footer: always on screen. Its columns are in reading order: Start, the one-line summary, the start time, the limits. -->
+        <Border Grid.Row="3" BorderBrush="{DynamicResource SetupBorder}" BorderThickness="0,1,0,0"
+                Background="{DynamicResource SetupPanel}" Padding="20,10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Button x:Name="StartButton" Grid.Column="0" Padding="22,7" FontWeight="SemiBold"
+                        Style="{StaticResource GoButton}" VerticalAlignment="Center"
+                        ToolTip="Checks the run and saves the settings for the next launch. The sessions start on the next pass, within about 15 seconds. A running session keeps its brief."
+                        Click="Start_Click">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE768;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" Margin="0,1,8,0" VerticalAlignment="Center" />
+                        <TextBlock Text="Start" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="14,0,0,0">
+                    <TextBlock x:Name="SummaryText" Foreground="{DynamicResource SetupMuted}" TextTrimming="CharacterEllipsis" />
+                    <TextBlock x:Name="StartStatus" TextWrapping="Wrap" Visibility="Collapsed" Margin="0,2,0,0" />
+                </StackPanel>
+                <StackPanel Grid.Column="2" VerticalAlignment="Center" Margin="14,0,0,0">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <TextBlock Text="Start at" VerticalAlignment="Center" Foreground="{DynamicResource SetupMuted}" Margin="0,0,6,0" />
+                        <TextBox x:Name="StartAtBox" Width="64" MaxLength="5"
+                                 ToolTip="Optional. A 24-hour time, HH:mm, on this computer's clock. The run waits until then. Blank starts it at once." />
+                    </StackPanel>
+                    <CheckBox x:Name="WaitForLimitBox" Content="Start when the usage limit resets" FontSize="11" HorizontalAlignment="Right"
+                              Margin="0,2,0,0" Foreground="{DynamicResource SetupMuted}"
+                              ToolTip="The run waits until the reset time of the last usage limit Claude Code reported on this computer (plus 2 minutes). If no limit is active, it starts at once."
+                              Checked="WaitForLimit_Changed" Unchecked="WaitForLimit_Changed" />
+                    <TextBlock Text="Starts only while this window is open." FontSize="11" HorizontalAlignment="Right"
+                               Foreground="{DynamicResource SetupMuted}" />
+                </StackPanel>
+                <StackPanel Grid.Column="3" VerticalAlignment="Center" Margin="14,0,0,0">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <TextBlock Text="Limit: tokens" VerticalAlignment="Center" Foreground="{DynamicResource SetupMuted}" Margin="0,0,6,0" />
+                        <TextBox x:Name="LimitTokensBox" Width="84" ToolTip="Optional. The most output tokens this run may write. Blank is no limit." />
+                        <TextBlock Text="minutes" VerticalAlignment="Center" Foreground="{DynamicResource SetupMuted}" Margin="8,0,6,0" />
+                        <TextBox x:Name="LimitMinutesBox" Width="64" ToolTip="Optional. The most minutes this run may run. Blank is no limit." />
+                    </StackPanel>
+                    <TextBlock Text="At 80 % you are told; at the limit nothing new starts." FontSize="11" HorizontalAlignment="Right"
+                               Foreground="{DynamicResource SetupMuted}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
 </UserControl>

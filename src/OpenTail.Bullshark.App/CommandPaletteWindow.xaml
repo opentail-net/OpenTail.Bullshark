@@ -38,7 +38,7 @@
                      TextChanged="QueryBox_TextChanged" ToolTip="Type to filter. Up and Down move, Enter goes, Esc closes." />
             <TextBlock x:Name="NoMatch" Text="Nothing matches. Esc closes." Foreground="{DynamicResource PalMuted}"
                        Margin="4,10,4,4" Visibility="Collapsed" />
-            <ListBox x:Name="Results" Margin="0,8,0,0" Background="Transparent" BorderThickness="0" MaxHeight="400"
+            <ListBox x:Name="Results" Margin="0,8,0,0" Background="Transparent" BorderThickness="0" Padding="0" MaxHeight="400"
                      IsTabStop="False" Focusable="False" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                      MouseDoubleClick="Results_MouseDoubleClick">
                 <ListBox.ItemTemplate>

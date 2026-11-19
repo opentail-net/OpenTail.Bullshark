@@ -112,6 +112,10 @@ internal static class IndexCache
 
         [JsonPropertyName("failed")]
         public int Failed { get; set; }
+
+        /// <summary>The working folder the transcript names last (the summary's LatestCwd), so a cached session names its folder too.</summary>
+        [JsonPropertyName("cwd")]
+        public string? Cwd { get; set; }
     }
 
     public sealed class NameCountDto
@@ -238,6 +242,7 @@ internal static class IndexCache
             Compactions = summary.Compactions,
             Continues = summary.ContinuesSessionId,
             Failed = summary.FailedToolCalls,
+            Cwd = summary.LatestCwd,
         },
         Messages = messages.Select(pair => new MessageDto
         {
@@ -287,7 +292,8 @@ internal static class IndexCache
             LastRecapAt: ParseTime(s.RecapAt),
             Compactions: s.Compactions,
             ContinuesSessionId: s.Continues,
-            FailedToolCalls: s.Failed);
+            FailedToolCalls: s.Failed,
+            LatestCwd: s.Cwd);
         return (summary, ledger);
     }
 
