@@ -43,6 +43,46 @@ public static class FolderDisplay
         return new FolderLabel(leaf.Length == 0 ? full : leaf, full);
     }
 
+    /// <summary>
+    /// The labels of several groups at once, by key (case-insensitive), from the sessions of all of them: each key takes <see cref="Of"/> over the
+    /// working folders of the sessions that carry that key. Two keys that get the same name are told apart: each gets its parent folder in
+    /// brackets, <c>repo (Git)</c>, and if those still match, the key, <c>repo (C--Git-repo)</c>. Only names change; the keys are the groups.
+    /// </summary>
+    public static IReadOnlyDictionary<string, FolderLabel> LabelsFor(IEnumerable<string> keys, IEnumerable<(string Key, string? Cwd)> sessions)
+    {
+        var cwds = new Dictionary<string, List<string?>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, cwd) in sessions)
+        {
+            if (!cwds.TryGetValue(key, out var list)) cwds[key] = list = [];
+            list.Add(cwd);
+        }
+
+        var labels = new Dictionary<string, FolderLabel>(StringComparer.OrdinalIgnoreCase);
+        foreach (var key in keys)
+        {
+            if (string.IsNullOrEmpty(key) || labels.ContainsKey(key)) continue;
+            labels[key] = Of(key, cwds.TryGetValue(key, out var known) ? known : []);
+        }
+
+        // A name shared by two keys gets the parent folder; a name still shared gets the key. Both are read from the base names.
+        var baseNames = labels.ToDictionary(pair => pair.Key, pair => pair.Value.Name, StringComparer.OrdinalIgnoreCase);
+        var shown = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var group in labels.GroupBy(pair => baseNames[pair.Key], StringComparer.OrdinalIgnoreCase).ToList())
+        {
+            var shared = group.Count() > 1;
+            foreach (var pair in group)
+            {
+                var parent = pair.Value.FullPath is null ? null : Path.GetFileName(Path.GetDirectoryName(pair.Value.FullPath));
+                shown[pair.Key] = shared && !string.IsNullOrEmpty(parent) ? $"{group.Key} ({parent})" : group.Key;
+            }
+        }
+        var finalNames = shown.GroupBy(pair => pair.Value, StringComparer.OrdinalIgnoreCase).Where(g => g.Count() > 1).SelectMany(g => g.Select(p => p.Key)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var key in finalNames) shown[key] = $"{baseNames[key]} ({key})";
+
+        foreach (var key in labels.Keys.ToList()) labels[key] = labels[key] with { Name = shown[key] };
+        return labels;
+    }
+
     /// <summary>The folder as written, without a trailing separator (a drive root keeps its own), or null when it is not an absolute path.</summary>
     private static string? Full(string? folder)
     {

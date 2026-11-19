@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using OpenTail.Bullshark.Core.Activity;
+using OpenTail.Bullshark.Core.Folders;
 using OpenTail.Bullshark.Core.Setup;
 
 namespace OpenTail.Bullshark.App;
@@ -47,6 +48,11 @@ public sealed class LimitsView : UserControl
 
     /// <summary>The bars of the usage-per-day table, kept so that a theme change can recolour them.</summary>
     private readonly List<Rectangle> _bars = [];
+
+    /// <summary>The names of the folders, by key, as the window gives them (FolderDisplay). A key with no name shows as the key.</summary>
+    private static readonly IReadOnlyDictionary<string, FolderLabel> NoLabels = new Dictionary<string, FolderLabel>();
+
+    private IReadOnlyDictionary<string, FolderLabel> _labels = NoLabels;
 
     private SolidColorBrush _barFill = RailPalette.Brush(RailPalette.DarkPalette.Text);
 
@@ -110,8 +116,9 @@ public sealed class LimitsView : UserControl
     /// Shows the hits (newest first) with their days, then the usage per day and the top projects. With no hit, the empty-state line is shown in place
     /// of the hits; the usage tables are shown either way.
     /// </summary>
-    public void Show(LimitsReport report)
+    public void Show(LimitsReport report, IReadOnlyDictionary<string, FolderLabel>? labels = null)
     {
+        _labels = labels ?? NoLabels;
         var window = LimitHistory.DefaultDays;
         if (report.Hits.Count == 0)
         {
@@ -180,7 +187,7 @@ public sealed class LimitsView : UserControl
                 Cell(Count(newTokens), right: true, tip: Breakdown(day.Total)),
                 Cell(Count(day.Total.CacheRead), right: true),
                 Bar(newTokens, busiest),
-                Cell(day.TopProject ?? "-"),
+                day.TopProject is null ? Cell("-") : Cell(NameOf(day.TopProject), tip: TipOf(day.TopProject)),
             ]);
         }
     }
@@ -209,12 +216,13 @@ public sealed class LimitsView : UserControl
         {
             var project = usage.Projects[i];
             var isOther = usage.OtherProjects > 0 && i == usage.Projects.Count - 1;
-            var name = isOther ? $"{UsageReport.OtherName} ({ProjectCount(usage.OtherProjects)})" : project.Project;
             var newTokens = project.Total.NewTokens();
             var share = totalNew == 0 ? 0.0 : 100.0 * newTokens / totalNew;
             AddRow(_projectTable, i + 1,
             [
-                Cell(name),
+                isOther
+                    ? Cell($"{UsageReport.OtherName} ({ProjectCount(usage.OtherProjects)})")
+                    : Cell(NameOf(project.Project), tip: TipOf(project.Project)),
                 Cell(Count(newTokens), right: true, tip: Breakdown(project.Total)),
                 Cell(Count(project.Total.CacheRead), right: true),
                 Cell($"{share.ToString("0.0", CultureInfo.CurrentCulture)}%", right: true),
@@ -301,6 +309,12 @@ public sealed class LimitsView : UserControl
     private static string Count(long value) => value.ToString("N0", CultureInfo.CurrentCulture);
 
     private static string ProjectCount(int projects) => projects == 1 ? "1 project" : $"{projects} projects";
+
+    /// <summary>The name a project shows: the folder's name (FolderDisplay), or the key when no name is known. The key still groups the usage.</summary>
+    private string NameOf(string key) => _labels.TryGetValue(key, out var label) ? label.Name : key;
+
+    /// <summary>The whole folder for the tooltip, or null when no folder is known.</summary>
+    private string? TipOf(string key) => _labels.TryGetValue(key, out var label) ? label.FullPath : null;
 
     private static TextBlock DayLine(LimitDay day)
     {

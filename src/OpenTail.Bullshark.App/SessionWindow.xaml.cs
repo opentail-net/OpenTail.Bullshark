@@ -197,6 +197,10 @@ public partial class SessionWindow : Window
             else await LoadHistoryAsync();
             await PassAndRefreshAsync();
             if (_options.OpenSessionId is { } openId) await OpenHistorySessionAsync(openId);
+            // --find (test only): the shown transcript opens with its find bar on the query, as a search result does (find and jump batch, T4).
+            if (_options.FindText is { } findText) _transcript.OpenFind(findText);
+            // --search (test only): the rail's search box starts a search with this text, so the results can be shown for the screenshots.
+            if (_options.SearchText is { } searchText) SearchBox.Text = searchText;
             OpenTestScreen();
             StartSelfTestOrScreenshot();
         };
@@ -875,7 +879,11 @@ public sealed record LaunchOptions(
     string? ClaudeHome = null,
     TestScreenRequest? OpenTab = null,
     /// <summary>--effort-open: the transcript's "Where the effort went" panel starts expanded, for the screenshots (round 5 item 16).</summary>
-    bool EffortOpen = false)
+    bool EffortOpen = false,
+    /// <summary>--find (test only): the shown transcript opens its find bar with this query, for the screenshots (find and jump batch, T4).</summary>
+    string? FindText = null,
+    /// <summary>--search (test only): the rail's search box starts a search with this text, for the screenshots (keyboard batch T1 and T2).</summary>
+    string? SearchText = null)
 {
     /// <summary>The folder of the transcripts: the owner's, unless a test home is given (--claude-home).</summary>
     public string ProjectsRoot => ClaudeHome is null ? TranscriptReader.DefaultProjectsRoot : TestHome.ProjectsRootUnder(ClaudeHome);
@@ -894,7 +902,7 @@ public sealed record LaunchOptions(
 
     public static LaunchOptions Parse(string[] args)
     {
-        string? workdir = null, task = null, state = null, shot = null, selfTest = null, filterName = null, filterTag = null, groupName = null, selfTestMode = null, setupDetail = null, openSession = null, claudeHome = null, openTab = null;
+        string? workdir = null, task = null, state = null, shot = null, selfTest = null, filterName = null, filterTag = null, groupName = null, selfTestMode = null, setupDetail = null, openSession = null, claudeHome = null, openTab = null, findText = null, searchText = null;
         double shotAfter = 8;
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         if (args.Length > 0 && args[^1] == "--state") throw new ArgumentException("--state needs the path of a state file.");
@@ -916,6 +924,8 @@ public sealed record LaunchOptions(
                 case "--open-transcript": openSession = args[++i]; break;
                 case "--claude-home": claudeHome = args[++i]; break;
                 case "--open-tab": openTab = args[++i]; break;
+                case "--find": findText = args[++i]; break;
+                case "--search": searchText = args[++i]; break;
             }
         }
         var defaultState = Path.Combine(
@@ -936,6 +946,8 @@ public sealed record LaunchOptions(
             OpenSessionId: openSession,
             ClaudeHome: claudeHome,
             OpenTab: TestScreenRequest.Parse(openTab),
-            EffortOpen: args.Contains("--effort-open"));
+            EffortOpen: args.Contains("--effort-open"),
+            FindText: findText,
+            SearchText: searchText);
     }
 }

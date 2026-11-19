@@ -293,6 +293,8 @@ $screens = @(
     # Storage page (it had none). Each opens its own sub-tab; the status bar is in every screen.
     @{ Name = 'insights-away-dark'; Theme = 'Dark'; Options = @('--open-tab', 'away') },
     @{ Name = 'insights-usage-dark'; Theme = 'Dark'; Options = @('--open-tab', 'usage') },
+    # Keyboard batch T1: the Usage page names each folder (scratch-repo) and keeps the key for the tooltip; the light one is checked too.
+    @{ Name = 'insights-usage-light'; Theme = 'Light'; Options = @('--open-tab', 'usage') },
     @{ Name = 'insights-timeline-dark'; Theme = 'Dark'; Options = @('--open-tab', 'timeline') },
     @{ Name = 'insights-storage-dark'; Theme = 'Dark'; Options = @('--open-tab', 'storage') },
     @{ Name = 'insights-storage-light'; Theme = 'Light'; Options = @('--open-tab', 'storage') },
@@ -309,6 +311,13 @@ $screens = @(
     @{ Name = 'settings-naming-light'; Theme = 'Light'; Options = @('--open-tab', 'settings-naming') },
     @{ Name = 'settings-claude-dark'; Theme = 'Dark'; Options = @('--open-tab', 'settings-claude') },
     @{ Name = 'transcript-dark'; Theme = 'Dark'; Options = @('--open-transcript', '5e4f3a21-0000-4000-8000-00000000c0d1') },
+    @{ Name = 'transcript-light'; Theme = 'Light'; Options = @('--open-transcript', '5e4f3a21-0000-4000-8000-00000000c0d1') },
+    # Find in this session (find and jump batch, T4): the bar is open with "build" and the hits are highlighted, in both themes.
+    @{ Name = 'transcript-find-dark'; Theme = 'Dark'; Options = @('--open-transcript', '5e4f3a21-0000-4000-8000-00000000c0d1', '--find', 'build') },
+    @{ Name = 'transcript-find-light'; Theme = 'Light'; Options = @('--open-transcript', '5e4f3a21-0000-4000-8000-00000000c0d1', '--find', 'build') },
+    # Search results (keyboard batch T1 and T2): the folder name on each result, and the rows that take the keyboard, in both themes.
+    @{ Name = 'search-results-dark'; Theme = 'Dark'; Options = @('--search', 'build') },
+    @{ Name = 'search-results-light'; Theme = 'Light'; Options = @('--search', 'build') },
     # The effort panel open (--effort-open), in both themes: its contents are what the screens check (round 5 item 16).
     @{ Name = 'effort-dark'; Theme = 'Dark'; Options = @('--open-transcript', '5e4f3a21-0000-4000-8000-00000000c0d1', '--effort-open') },
     @{ Name = 'effort-light'; Theme = 'Light'; Options = @('--open-transcript', '5e4f3a21-0000-4000-8000-00000000c0d1', '--effort-open') },

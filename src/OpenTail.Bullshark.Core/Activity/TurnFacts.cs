@@ -33,9 +33,23 @@ public static class TurnFacts
 
     public static IReadOnlyList<TurnFact> ReadFile(string path) => Read(TranscriptFile.ReadLines(path));
 
-    public static IReadOnlyList<TurnFact> Read(IEnumerable<string> lines)
+    public static IReadOnlyList<TurnFact> Read(IEnumerable<string> lines) => ReadWithMarks(lines).Turns;
+
+    /// <summary>The turns of a file and its jump marks, read in one pass (T5 batch).</summary>
+    public static (IReadOnlyList<TurnFact> Turns, TranscriptMarks Marks) ReadFileWithMarks(string path) => ReadWithMarks(TranscriptFile.ReadLines(path));
+
+    /// <summary>
+    /// The turns and the jump marks of the lines, in one pass. The marks are the lines a jump key goes to: the typed prompts, the failed tool results
+    /// (the line the view shows in red), the first call of each file-writing tool, and the compactions. A line that cannot be read is in neither.
+    /// </summary>
+    public static (IReadOnlyList<TurnFact> Turns, TranscriptMarks Marks) ReadWithMarks(IEnumerable<string> lines)
     {
         var turns = new List<TurnFact>();
+        var prompts = new List<int>();
+        var failures = new List<int>();
+        var writes = new List<int>();
+        var compactions = new List<int>();
+        var writeIds = new HashSet<string>(StringComparer.Ordinal);
         Turn? open = null;
         var number = 0;
         var lastRecord = 0;
@@ -66,6 +80,7 @@ public static class TurnFacts
                 // A typed prompt starts a turn. The previous turn, if it never got a turn_duration, ends at its last record.
                 if (open is not null) turns.Add(open.Close(lastRecord, lastTime, null));
                 open = new Turn(number, time, Clip(promptText));
+                prompts.Add(number);
             }
             else if (facts.Type == "system" && facts.Subtype == "turn_duration")
             {
@@ -79,6 +94,7 @@ public static class TurnFacts
             {
                 open ??= new Turn(number, time, string.Empty);
                 open.Compactions++;
+                compactions.Add(number);
             }
             else if (facts.Type == "assistant" && facts.ContentIsArray)
             {
@@ -86,6 +102,8 @@ public static class TurnFacts
                 {
                     // A call is counted once per id: the same message can be written in more than one record.
                     if (block.Id is not { } id) continue;
+                    // The first record of each file write is a mark, whether or not a turn is open (T5 batch).
+                    if (block.Name is { } written && TranscriptReader.FileWritingTools.Contains(written) && writeIds.Add(id)) writes.Add(number);
                     open ??= new Turn(number, time, string.Empty);
                     if (!open.ToolIds.Add(id)) continue;
                     open.ToolCalls++;
@@ -102,12 +120,15 @@ public static class TurnFacts
                 }
             }
 
+            // The failed result the view shows in red: the first tool result of the record is the one it shows (see TranscriptLine).
+            if (facts.Type == "user" && facts.FirstResultFailed) failures.Add(number);
+
             lastRecord = number;
             if (time is { } at) lastTime = at;
         }
 
         if (open is not null) turns.Add(open.Close(lastRecord, lastTime, null));
-        return turns;
+        return (turns, new TranscriptMarks(prompts, failures, writes, compactions));
     }
 
     /// <summary>A turn while it is open. Its counts are kept here until it closes.</summary>
@@ -176,6 +197,9 @@ public static class TurnFacts
         public long? DurationMs { get; private set; }
         public string? PromptText { get; private set; }
         public bool ContentIsArray { get; private set; }
+
+        /// <summary>Whether the record's first tool result failed: the one the view shows for the record (T5 batch).</summary>
+        public bool FirstResultFailed { get; private set; }
         public IReadOnlyList<ToolBlock> Blocks => _blocks;
         public IReadOnlyList<string?> FailedResultIds => _failedResultIds;
 
@@ -190,9 +214,11 @@ public static class TurnFacts
             _blocks.Clear();
             _failedResultIds.Clear();
             ContentIsArray = false;
+            FirstResultFailed = false;
             if (ContentOf(root) is not { ValueKind: JsonValueKind.Array } content) return;
             ContentIsArray = true;
 
+            var sawResult = false;
             foreach (var block in content.EnumerateArray())
             {
                 var blockType = TranscriptJson.Str(block, "type");
@@ -204,9 +230,15 @@ public static class TurnFacts
                         filePath = TranscriptJson.Str(input, "file_path");
                     _blocks.Add(new ToolBlock(TranscriptJson.Str(block, "id"), name, filePath));
                 }
-                else if (blockType == "tool_result" && TranscriptLine.IsFailedResult(block))
+                else if (blockType == "tool_result")
                 {
-                    _failedResultIds.Add(TranscriptJson.Str(block, "tool_use_id"));
+                    var failed = TranscriptLine.IsFailedResult(block);
+                    if (!sawResult)
+                    {
+                        sawResult = true;
+                        FirstResultFailed = failed;
+                    }
+                    if (failed) _failedResultIds.Add(TranscriptJson.Str(block, "tool_use_id"));
                 }
             }
         }

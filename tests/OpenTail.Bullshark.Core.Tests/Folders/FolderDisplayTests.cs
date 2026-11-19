@@ -126,4 +126,66 @@ public sealed class FolderDisplayTests
         Assert.Equal(new FolderLabel(Key, null), FolderDisplay.Of(Key, []));
         Assert.Equal(new FolderLabel(Key, null), FolderDisplay.Of(Key, [null, " "]));
     }
+
+    [Fact]
+    public void LabelsForGivesEachKeyItsOwnFolderName()
+    {
+        var labels = FolderDisplay.LabelsFor(
+            ["C--Git-repo", "C--Other-tool"],
+            [("C--Git-repo", @"C:\Git\repo"), ("C--Other-tool", @"C:\Other\tool")]);
+
+        Assert.Equal("repo", labels["C--Git-repo"].Name);
+        Assert.Equal("tool", labels["C--Other-tool"].Name);
+        Assert.Equal(@"C:\Git\repo", labels["C--Git-repo"].FullPath);
+    }
+
+    [Fact]
+    public void TwoKeysWithOneLeafNameGetTheParentFolderInBrackets()
+    {
+        var labels = FolderDisplay.LabelsFor(
+            ["C--Git-work", "C--Other-work"],
+            [("C--Git-work", @"C:\Git\work"), ("C--Other-work", @"C:\Other\work")]);
+
+        Assert.Equal("work (Git)", labels["C--Git-work"].Name);
+        Assert.Equal("work (Other)", labels["C--Other-work"].Name);
+    }
+
+    [Fact]
+    public void AStillSharedNameGetsTheKeyInBrackets()
+    {
+        // Same leaf and same parent folder name on two drives: the parent does not tell them apart, so the key does.
+        var labels = FolderDisplay.LabelsFor(
+            ["C--x-repo", "D--x-repo"],
+            [("C--x-repo", @"C:\x\repo"), ("D--x-repo", @"D:\x\repo")]);
+
+        Assert.Equal("repo (C--x-repo)", labels["C--x-repo"].Name);
+        Assert.Equal("repo (D--x-repo)", labels["D--x-repo"].Name);
+    }
+
+    [Fact]
+    public void AKeyWithNoKnownFolderKeepsItsKeyAsTheName()
+    {
+        var labels = FolderDisplay.LabelsFor(["(root)", "C--Old-gone"], [("C--Old-gone", null)]);
+
+        Assert.Equal(new FolderLabel("(root)", null), labels["(root)"]);
+        Assert.Equal(new FolderLabel("C--Old-gone", null), labels["C--Old-gone"]);
+    }
+
+    [Fact]
+    public void KeysAreMatchedWithoutCase()
+    {
+        var labels = FolderDisplay.LabelsFor(["c--git-repo"], [("C--Git-repo", @"C:\Git\repo")]);
+
+        Assert.Equal("repo", labels["C--GIT-REPO"].Name);
+        Assert.Single(labels);
+    }
+
+    [Fact]
+    public void ARepeatedKeyIsOneLabel()
+    {
+        var labels = FolderDisplay.LabelsFor(["C--Git-repo", "C--Git-repo"], [("C--Git-repo", @"C:\Git\repo")]);
+
+        Assert.Single(labels);
+        Assert.Equal("repo", labels["C--Git-repo"].Name);
+    }
 }

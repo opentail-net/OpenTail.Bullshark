@@ -155,6 +155,23 @@ public sealed record TranscriptLine(int Number, string Kind, DateTimeOffset? Tim
         block.ValueKind == JsonValueKind.Object &&
         block.TryGetProperty("is_error", out var error) && error.ValueKind == JsonValueKind.True;
 
+    /// <summary>
+    /// The whole text of a tool result block, not cut: its string content, or each text part of its content list, joined by new lines.
+    /// Used by find and by the full-result view; the line's own text is the cut preview (<see cref="ResultText"/>).
+    /// </summary>
+    internal static string FullResultText(JsonElement block)
+    {
+        if (!block.TryGetProperty("content", out var content)) return string.Empty;
+        if (content.ValueKind == JsonValueKind.String) return content.GetString() ?? string.Empty;
+        if (content.ValueKind != JsonValueKind.Array) return string.Empty;
+        var parts = new List<string>();
+        foreach (var part in content.EnumerateArray())
+        {
+            if (TranscriptJson.Str(part, "type") == "text") parts.Add(TranscriptJson.Str(part, "text") ?? string.Empty);
+        }
+        return string.Join('\n', parts);
+    }
+
     private static string Short(string value) => value.Length > 100 ? "…" + value[CutAfter(value, value.Length - 99)..] : value;
 
     /// <summary>A cut at <paramref name="index"/> that does not split a surrogate pair (an emoji would show as a broken glyph).</summary>
@@ -175,7 +192,7 @@ public sealed class TranscriptPager
     private readonly string _path;
     private readonly long[] _lineStarts;
 
-    private TranscriptPager(string path, long[] lineStarts)
+    internal TranscriptPager(string path, long[] lineStarts)
     {
         _path = path;
         _lineStarts = lineStarts;
@@ -184,7 +201,23 @@ public sealed class TranscriptPager
     /// <summary>Number of lines (records, including ones that are not shown).</summary>
     public int LineCount => _lineStarts.Length;
 
-    public static TranscriptPager Open(string path)
+    /// <summary>The line starts of the transcripts this process opens, kept per file (T5 batch). The views share it.</summary>
+    private static readonly TranscriptPagerCache Shared = new();
+
+    /// <summary>
+    /// How many times the file was scanned for its line starts while the shared cache kept them. A pager opened on an unchanged file reuses the
+    /// starts, so this does not move (see <see cref="TranscriptPagerCache.ScansOf"/>).
+    /// </summary>
+    public static int ScansOf(string path) => Shared.ScansOf(path);
+
+    /// <summary>
+    /// Opens a transcript for paging. The line starts are kept per file, with the file's length and write time: a file that has not changed since
+    /// its last open is not scanned again, so a jump in a long transcript is quick. A changed file is scanned again (T5 batch).
+    /// </summary>
+    public static TranscriptPager Open(string path) => Shared.Open(path);
+
+    /// <summary>Scans a file once for the offset of each line (a few bytes per line).</summary>
+    internal static long[] Scan(string path)
     {
         var starts = new List<long> { 0 };
         long position = 0;
@@ -203,7 +236,22 @@ public sealed class TranscriptPager
         }
         // A trailing newline does not start another line.
         if (starts.Count > 1 && starts[^1] == position) starts.RemoveAt(starts.Count - 1);
-        return new TranscriptPager(path, starts.ToArray());
+        return starts.ToArray();
+    }
+
+    /// <summary>
+    /// The raw text of one line, as the file holds it (its JSON), or null when the line is past the end. <paramref name="number"/> is the line's
+    /// number as the view shows it (one-based). Read on demand, for the full result and the copy of a command.
+    /// </summary>
+    public string? ReadRaw(int number)
+    {
+        var index = number - 1;
+        if (index < 0 || index >= LineCount) return null;
+
+        using var stream = TranscriptFile.Open(_path);
+        stream.Seek(_lineStarts[index], SeekOrigin.Begin);
+        using var reader = new StreamReader(stream, new UTF8Encoding(false), detectEncodingFromByteOrderMarks: false, bufferSize: 1 << 16, leaveOpen: true);
+        return reader.ReadLine();
     }
 
     /// <summary>Reads lines [start, start + count), clipped to the file. Records that are not shown are dropped.</summary>
@@ -229,4 +277,52 @@ public sealed class TranscriptPager
 
     /// <summary>The first line to show when a transcript opens: the start of its last page.</summary>
     public int LastPageStart(int pageSize) => Math.Max(0, LineCount - pageSize);
+}
+
+/// <summary>
+/// The line starts of transcripts, kept per file with the file's key (path, length, write time): a file that has not changed since its last open is
+/// not scanned again, and a changed file is scanned again (T5 batch). At most <see cref="MaxFiles"/> files are kept. An instance is one cache: the
+/// pager's <see cref="TranscriptPager.Open"/> uses one shared instance, and a test makes its own so that no other reader can change its counts.
+/// </summary>
+public sealed class TranscriptPagerCache(int maxFiles = 8)
+{
+    private readonly Dictionary<string, (TranscriptFileKey Key, long[] Starts, int Scans)> _startsByPath = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _gate = new();
+
+    /// <summary>The most files whose line starts are kept. Past it, one other file is dropped (which one is not promised; it starts again when opened).</summary>
+    public int MaxFiles { get; } = maxFiles > 0 ? maxFiles : throw new ArgumentOutOfRangeException(nameof(maxFiles));
+
+    /// <summary>
+    /// How many times the file was scanned while its starts were kept in this cache. A file dropped from the cache starts again at 0, and the count
+    /// carries over when a changed file is scanned again.
+    /// </summary>
+    public int ScansOf(string path)
+    {
+        lock (_gate) return _startsByPath.TryGetValue(path, out var known) ? known.Scans : 0;
+    }
+
+    /// <summary>Opens a transcript for paging through this cache.</summary>
+    public TranscriptPager Open(string path)
+    {
+        var key = TranscriptFileKey.Of(path);
+        var scans = 0;
+        lock (_gate)
+        {
+            if (_startsByPath.TryGetValue(path, out var known))
+            {
+                if (known.Key == key) return new TranscriptPager(path, known.Starts);
+                scans = known.Scans;
+            }
+        }
+
+        var starts = TranscriptPager.Scan(path);
+        lock (_gate)
+        {
+            _startsByPath[path] = (key, starts, scans + 1);
+            // The file just opened is kept: another one is dropped. (The dictionary may reuse a freed slot, so the new entry can come first.)
+            while (_startsByPath.Count > MaxFiles)
+                _startsByPath.Remove(_startsByPath.Keys.First(known => !StringComparer.OrdinalIgnoreCase.Equals(known, path)));
+        }
+        return new TranscriptPager(path, starts);
+    }
 }

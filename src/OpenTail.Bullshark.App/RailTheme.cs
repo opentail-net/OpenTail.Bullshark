@@ -63,6 +63,11 @@ public sealed record RailPalette(string Panel, string Background, string Text, s
 
     public string MenuBg => IsLight ? "#FFFFFF" : "#171A20";
 
+    /// <summary>The background of the text a find matched (the transcript's find bar, keyboard batch T4). Its text is <see cref="HighlightText"/>.</summary>
+    public string Highlight => IsLight ? "#FFE08A" : "#6B5410";
+
+    public string HighlightText => IsLight ? "#101418" : "#FFFFFF";
+
     /// <summary>The warning colour: a label to check (the Changes tab's big-deletion flags, features batch G2). The setup check's warning colours.</summary>
     /// <summary>Light 4.85:1 on the light panels (was 4.34:1 at #9A6B00, under the 4.5:1 for small text). Dark 9.5:1 on the background.</summary>
     public string Warn => IsLight ? "#8A5F00" : "#E0B341";

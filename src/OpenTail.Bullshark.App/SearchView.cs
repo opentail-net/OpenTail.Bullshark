@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using OpenTail.Bullshark.Core.Activity;
+using OpenTail.Bullshark.Core.Folders;
 using OpenTail.Bullshark.Core.Search;
 
 namespace OpenTail.Bullshark.App;
@@ -26,6 +27,9 @@ public sealed class SearchView : UserControl
 
     /// <summary>The title of a result as the rail shows it, when the window gives one.</summary>
     private Func<SessionDigest, string>? _titleOf;
+
+    /// <summary>The folder name of a result as the window gives it (the group's label, the same one the rail and Usage use). Null means FolderDisplay alone.</summary>
+    private Func<SessionDigest, FolderLabel>? _folderOf;
     private RailPalette _palette = RailPalette.DarkPalette;
     private Mode _mode = Mode.Searching;
     private string _query = string.Empty;
@@ -76,12 +80,13 @@ public sealed class SearchView : UserControl
     /// Shows the matching sessions. <paramref name="titleOf"/> gives each one's title as the rail shows it (the owner's name, when there is one);
     /// without it, the transcript's own title is shown.
     /// </summary>
-    public void ShowResults(string query, IReadOnlyList<SessionMatch> matches, Func<SessionDigest, string>? titleOf = null)
+    public void ShowResults(string query, IReadOnlyList<SessionMatch> matches, Func<SessionDigest, string>? titleOf = null, Func<SessionDigest, FolderLabel>? folderOf = null)
     {
         _mode = Mode.Results;
         _query = query;
         _matches = matches;
         _titleOf = titleOf;
+        _folderOf = folderOf;
         Render();
     }
 
@@ -114,10 +119,15 @@ public sealed class SearchView : UserControl
     {
         var digest = match.Session;
         var stack = new StackPanel();
+        var folder = _folderOf?.Invoke(digest) ?? FolderDisplay.Of(digest.ProjectFolder, [digest.Cwd]);
+        var title = _titleOf?.Invoke(digest) ?? digest.Title;
+        var newest = match.Hits.LastOrDefault()?.LineNumber ?? 1;
 
-        var title = new TextBlock
+        // The session's head (its title and its folder line) takes the keyboard too: Enter opens it at the newest match, as a click does.
+        var head = new StackPanel();
+        var titleText = new TextBlock
         {
-            Text = _titleOf?.Invoke(digest) ?? digest.Title,
+            Text = title,
             FontWeight = FontWeights.SemiBold,
             FontSize = 13,
             TextWrapping = TextWrapping.Wrap,
@@ -125,28 +135,32 @@ public sealed class SearchView : UserControl
             Foreground = RailPalette.Brush(_palette.Text),
             ToolTip = "Open the transcript at its newest matching message",
         };
-        var newest = match.Hits.LastOrDefault()?.LineNumber ?? 1;
-        title.MouseLeftButtonUp += (_, _) => OpenRequested?.Invoke(digest, newest);
-        stack.Children.Add(title);
+        titleText.MouseLeftButtonUp += (_, _) => OpenRequested?.Invoke(digest, newest);
+        head.Children.Add(titleText);
 
-        stack.Children.Add(new TextBlock
+        head.Children.Add(new TextBlock
         {
-            // A word found only in the owner's name, tags or note matches with no message (D-L7).
+            // The folder is the group's name (FolderDisplay, as the rail shows it); its whole path is on the tooltip. A word found only in the owner's
+            // name, tags or note matches with no message (D-L7).
             Text = match.MatchingMessages == 0
-                ? $"{digest.ProjectFolder} · {AgeText(digest.LastActivity)} · matched its name, tags or note"
-                : $"{digest.ProjectFolder} · {AgeText(digest.LastActivity)} · {match.MatchingMessages} message(s) match",
+                ? $"{folder.Name} · {AgeText(digest.LastActivity)} · matched its name, tags or note"
+                : $"{folder.Name} · {AgeText(digest.LastActivity)} · {match.MatchingMessages} message(s) match",
+            ToolTip = FolderTip(folder, digest),
             FontSize = 11,
             Foreground = RailPalette.Brush(_palette.Muted),
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 2, 0, 6),
         });
+        stack.Children.Add(KeyboardRow.Wrap(head, _palette, $"{title}, {folder.Name}. Open at the newest matching message.",
+            () => OpenRequested?.Invoke(digest, newest)));
 
         // The newest matching messages first. The owner's messages are a blue that reads on both themes; Claude's take the text colour.
         foreach (var hit in match.Hits.Reverse())
         {
+            var who = hit.Kind == "you" ? "you" : "claude";
             var line = new TextBlock
             {
-                Text = $"{hit.LineNumber,5}  {(hit.Kind == "you" ? "you" : "claude")}: {hit.Snippet}",
+                Text = $"{hit.LineNumber,5}  {who}: {hit.Snippet}",
                 FontSize = 12,
                 TextWrapping = TextWrapping.Wrap,
                 Cursor = Cursors.Hand,
@@ -155,7 +169,7 @@ public sealed class SearchView : UserControl
             };
             var number = hit.LineNumber;
             line.MouseLeftButtonUp += (_, _) => OpenRequested?.Invoke(digest, number);
-            stack.Children.Add(line);
+            stack.Children.Add(KeyboardRow.Wrap(line, _palette, $"Line {number}, {who}: {hit.Snippet}", () => OpenRequested?.Invoke(digest, number)));
         }
 
         return new Border
@@ -174,6 +188,12 @@ public sealed class SearchView : UserControl
         Foreground = RailPalette.Brush(_palette.Muted),
         TextWrapping = TextWrapping.Wrap,
     };
+
+    /// <summary>The folder's whole path for the tooltip, or a line that says the transcripts do not name it (as the rail's tooltip does).</summary>
+    private static string FolderTip(FolderLabel folder, SessionDigest digest) =>
+        folder.FullPath is null
+            ? $"Folder: {digest.ProjectFolder}\nThe transcripts do not name the working folder."
+            : $"Folder: {folder.FullPath}";
 
     /// <summary>A short age for a result: "3d ago", "5h ago", "12m ago". "time unknown" when there is no time.</summary>
     private static string AgeText(DateTimeOffset? at)

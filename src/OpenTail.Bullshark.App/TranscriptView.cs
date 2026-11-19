@@ -16,7 +16,7 @@ namespace OpenTail.Bullshark.App;
 /// pages on request. Resume asks first (the resume prompt shows what would be sent), then starts the session (D14, D-S11).
 /// The transcript rendering is the History tab's, moved here unchanged. The colours follow the rail's theme (owner, 2026-11-16).
 /// </summary>
-public sealed class TranscriptView : UserControl
+public sealed partial class TranscriptView : UserControl
 {
     private const int PageSize = 200;
 
@@ -65,13 +65,17 @@ public sealed class TranscriptView : UserControl
     /// The turn facts last read, with the file they came from: its path, length and last write time (UTC). A jump to a line on the same file
     /// reuses them, since the file has not changed (round 12 B6).
     /// </summary>
-    private sealed record TurnFactsRead(string Path, long Length, DateTime Stamp, IReadOnlyList<TurnFact> Facts);
+    private sealed record TurnFactsRead(string Path, long Length, DateTime Stamp, IReadOnlyList<TurnFact> Facts, TranscriptMarks Marks);
 
     private TurnFactsRead? _turnFactsRead;
 
+    /// <summary>The jump marks of the file last read, and that file's path: a jump uses them only for the file shown (T5 batch).</summary>
+    private TranscriptMarks _marks = TranscriptMarks.None;
+    private string? _marksPath;
+
     /// <summary>
-    /// The turn facts of a transcript, or <paramref name="known"/> when the file is still the one it was read from (round 12 B6). Runs on a pool
-    /// thread: it reads the file's size and write time, and the file only when they changed.
+    /// The turn facts and jump marks of a transcript, or <paramref name="known"/> when the file is still the one it was read from (round 12 B6). Runs on
+    /// a pool thread: it reads the file's size and write time, and the file only when they changed.
     /// </summary>
     private static TurnFactsRead ReadTurnFacts(string path, TurnFactsRead? known)
     {
@@ -79,7 +83,8 @@ public sealed class TranscriptView : UserControl
         var length = info.Length;
         var stamp = info.LastWriteTimeUtc;
         if (known is { } kept && kept.Path == path && kept.Length == length && kept.Stamp == stamp) return kept;
-        return new TurnFactsRead(path, length, stamp, TurnFacts.ReadFile(path));
+        var (facts, marks) = TurnFacts.ReadFileWithMarks(path);
+        return new TurnFactsRead(path, length, stamp, facts, marks);
     }
     private RailPalette _palette = RailPalette.DarkPalette;
 
@@ -94,6 +99,9 @@ public sealed class TranscriptView : UserControl
 
     /// <summary>The transcript the effort panel was read for, so a jump to a line does not read it again.</summary>
     private string? _effortPath;
+
+    /// <summary>The effort report shown, so the panel can be drawn again when the colours change.</summary>
+    private EffortReport? _effortReport;
 
     /// <summary>
     /// Whether the effort panel starts expanded: the test option --effort-open, for the screenshots (round 5 item 16). The owner's own
@@ -115,7 +123,10 @@ public sealed class TranscriptView : UserControl
 
     public TranscriptView()
     {
+        // The view takes the keyboard for its own keys (find, the jump keys, copy) when it has the focus; a text box in it keeps its own keys.
+        Focusable = true;
         Content = BuildContent();
+        KeyDown += OnViewKeyDown;
         ApplyTheme(_palette);
     }
 
@@ -133,6 +144,9 @@ public sealed class TranscriptView : UserControl
         _resumeHint.Foreground = Brush(palette.Muted);
         // The effort header takes the text colour: the default one is unreadable on the dark panel ("Files written" is coloured when it fills).
         _effort.Foreground = Brush(palette.Text);
+        ApplyPanelTheme(palette);
+        // The effort items take the focus ring of the palette they were drawn with, so a shown panel is drawn again with the new one.
+        if (_effortReport is not null) ShowEffort(_effortReport);
         if (_digest is not null) ShowStats(_digest);
     }
 
@@ -140,9 +154,16 @@ public sealed class TranscriptView : UserControl
     /// Shows a session's headline numbers at once, and a page of its transcript: the last page, or with a focus line (a search result)
     /// the page around that line, with the line marked and brought into view. Nothing else is loaded.
     /// </summary>
-    public async Task ShowAsync(SessionDigest digest, int? focusLine = null, string? title = null)
+    public async Task ShowAsync(SessionDigest digest, int? focusLine = null, string? title = null, string? findQuery = null)
     {
         var call = ++_showCalls;
+        // A new file starts its find again, and closes a full result of the old one. The same file keeps its find (a jump calls this again).
+        if (_findPath != digest.FilePath)
+        {
+            ResetFindForFile(digest.FilePath);
+            _fullPanel.Visibility = Visibility.Collapsed;
+        }
+        if (findQuery is not null) ShowFindBar(findQuery);
         _digest = digest;
         _resume.IsEnabled = !_resumeBusy;
         _resumeHint.Text = ResumeHint(digest);
@@ -160,6 +181,7 @@ public sealed class TranscriptView : UserControl
         if (_effortPath != digest.FilePath)
         {
             _effortPath = digest.FilePath;
+            _effortReport = null;
             _effort.IsExpanded = ExpandEffort;
             ShowEffortPending();
             _ = LoadEffortAsync(digest.FilePath);
@@ -181,17 +203,21 @@ public sealed class TranscriptView : UserControl
         foreach (var line in pager.ReadPage(_firstShown, PageSize))
         {
             var block = Render(line);
-            if (focusLine == line.Number)
-            {
-                block.Background = Brush(_palette.IsLight ? "#CFE0F5" : "#2D3E50");
-                _focus = block;
-            }
+            if (focusLine == line.Number) _focus = block;
             _transcript.Children.Add(block);
         }
+        if (_focus is not null) RefreshBackground(_focus);
         _earlier.IsEnabled = _firstShown > 0;
         if (_focus is null) _transcriptScroll.ScrollToBottom();
         else _ = Dispatcher.BeginInvoke(new Action(() => _focus?.BringIntoView()), System.Windows.Threading.DispatcherPriority.Loaded);
+        // The find bar, when it is open, finds the query in this file: once the page is drawn, so the current hit is the one at the focus line.
+        if (_findBarOpen && _findHits is null && _findCancel is null) _ = StartFindAsync(_findBox.Text, jump: false);
     }
+
+    /// <summary>
+    /// Gives the keyboard to the transcript, so its keys work (find, jumps, copy). Used after a search result opens a transcript from the keyboard.
+    /// </summary>
+    public void FocusBody() => Focus();
 
     /// <summary>True when the view shows this session: no later <see cref="ShowAsync"/> has replaced it. Callers draw its lineage only then.</summary>
     public bool IsShowing(SessionDigest digest) => ReferenceEquals(_digest, digest);
@@ -276,6 +302,14 @@ public sealed class TranscriptView : UserControl
         DockPanel.SetDock(_earlier, Dock.Top);
         right.Children.Add(_earlier);
 
+        // The keys that work here (the hint), the find bar (closed until Ctrl+F), and the full result of a line (closed until asked for). Each
+        // is a row at the top, above the transcript, so the lines keep the rest of the pane.
+        _hint.Margin = new Thickness(0, 0, 0, 4);
+        DockPanel.SetDock(_hint, Dock.Top);
+        right.Children.Add(_hint);
+        right.Children.Add(BuildFindBar());
+        right.Children.Add(BuildFullResult());
+
         // The one way to resume sits at the bottom, centred under the transcript and large enough not to be missed. The hint under it
         // says what is recommended; the choices open from the button.
         var bottom = new StackPanel { Margin = new Thickness(0, 10, 0, 0), HorizontalAlignment = HorizontalAlignment.Center };
@@ -300,6 +334,7 @@ public sealed class TranscriptView : UserControl
         right.Children.Add(bottom);
 
         _transcript.Margin = new Thickness(0, 0, 12, 0);
+        _transcript.ContextMenu = BuildLineMenu();
         _transcriptScroll.Content = _transcript;
         _transcriptScroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
         right.Children.Add(_transcriptScroll);
@@ -525,7 +560,6 @@ public sealed class TranscriptView : UserControl
         };
         var block = new TextBlock
         {
-            Text = LineText(line),
             Foreground = Brush(color),
             // Every line of the session is in the terminal's font and size (owner, 2026-11-16), so a past session reads like
             // a live one. The colour still tells the kinds apart.
@@ -533,16 +567,40 @@ public sealed class TranscriptView : UserControl
             FontSize = TerminalFont.Size * _zoomScale,
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 2, 0, 2),
+            // A line takes the keyboard when it is clicked: Ctrl+C copies it, and the jump keys and find work from it (keyboard batch T3, T5).
+            Focusable = true,
+            Tag = line,
         };
+        block.IsKeyboardFocusedChanged += (_, _) => RefreshBackground(block);
+        ApplyLine(block, line);
         if (line.Kind == "compact") block.FontStyle = FontStyles.Italic;
         if (line.Kind == "turn") _turnLines[line.Number] = (block, line);
         return block;
     }
 
-    /// <summary>A line's text: its number and text, and for a turn's end the facts of the turn once they are read (D-A2).</summary>
-    private string LineText(TranscriptLine line) =>
-        $"{line.Number,5}  {line.Text}" +
-        (line.Kind == "turn" && _turnFacts.TryGetValue(line.Number, out var fact) ? FactsSuffix(fact) : string.Empty);
+    /// <summary>
+    /// Writes a line's text into its block: its number, its text with the find query highlighted, and for a turn's end the facts of the turn once they
+    /// are read (D-A2). The highlight is the query the find applied to this file (find and jump batch, T4).
+    /// </summary>
+    private void ApplyLine(TextBlock block, TranscriptLine line)
+    {
+        block.Inlines.Clear();
+        block.Inlines.Add(new Run($"{line.Number,5}  "));
+        var at = 0;
+        var text = line.Text;
+        foreach (var (start, length) in TranscriptFind.Ranges(text, _findApplied))
+        {
+            if (start > at) block.Inlines.Add(new Run(text[at..start]));
+            block.Inlines.Add(new Run(text.Substring(start, length))
+            {
+                Background = Brush(_palette.Highlight),
+                Foreground = Brush(_palette.HighlightText),
+            });
+            at = start + length;
+        }
+        if (at < text.Length) block.Inlines.Add(new Run(text[at..]));
+        if (line.Kind == "turn" && _turnFacts.TryGetValue(line.Number, out var fact)) block.Inlines.Add(new Run(FactsSuffix(fact)));
+    }
 
     /// <summary>" · 4 tools, 1 failed · wrote 2 files". A zero count is left out; with no counts at all, nothing is added.</summary>
     private static string FactsSuffix(TurnFact fact)
@@ -575,13 +633,15 @@ public sealed class TranscriptView : UserControl
         }
         // Kept even when the session is no longer shown: the next jump on this file reuses it (round 12 B6).
         _turnFactsRead = read;
+        _marks = read.Marks;
+        _marksPath = path;
         if (_digest?.FilePath != path) return;
 
         var facts = read.Facts;
         foreach (var fact in facts) _turnFacts[fact.EndLine] = fact;
         _activeText = ActiveTimeText(facts);
         if (_activeValue is not null) _activeValue.Text = _activeText;
-        foreach (var (block, line) in _turnLines.Values) block.Text = LineText(line);
+        foreach (var (block, line) in _turnLines.Values) ApplyLine(block, line);
     }
 
     /// <summary>
@@ -643,6 +703,7 @@ public sealed class TranscriptView : UserControl
     /// <summary>The panel: failed calls by tool, files read again, commands run again, and the turns that gave no output.</summary>
     private void ShowEffort(EffortReport report)
     {
+        _effortReport = report;
         var panel = new StackPanel();
         panel.Children.Add(EffortCaption($"Failed tool calls: {report.FailedCalls:N0}"));
         foreach (var item in report.FailedByTool)
@@ -689,13 +750,14 @@ public sealed class TranscriptView : UserControl
 
     /// <summary>
     /// One file in the panel. Its path is trimmed to the width when the panel is laid out: the file name always shows, and as much of the
-    /// folder as fits, from the start trimmed (<c>…\folder\name.ext</c>). The full path is in the tooltip (round 6 item 10).
+    /// folder as fits, from the start trimmed (<c>…\folder\name.ext</c>). The full path is in the tooltip (round 6 item 10). The row is the
+    /// keyboard row of the item (its text is the <see cref="TextBlock"/> inside it).
     /// </summary>
-    private TextBlock EffortPathJump(string full, string suffix, int line)
+    private UIElement EffortPathJump(string full, string suffix, int line)
     {
-        var block = EffortJump(full + suffix, line, full);
-        block.Tag = new EffortPathText(full, suffix);
-        return block;
+        var row = EffortJump(full + suffix, line, full);
+        row.Tag = new EffortPathText(full, suffix);
+        return row;
     }
 
     /// <summary>The panel whose paths are fitted next, and the timer that fits them once the width has settled (round 8 item 10).</summary>
@@ -729,8 +791,9 @@ public sealed class TranscriptView : UserControl
         // The width is the scroll area's without the scrollbar, whether or not one is shown: the text must not change with the scrollbar, which
         // the text's own height decides. The item is indented by its left margin of 10, and the text keeps a little room at its right edge.
         var width = scroll.ActualWidth - SystemParameters.VerticalScrollBarWidth - 10 - 4;
-        var blocks = panel.Children.OfType<TextBlock>().Where(block => block.Tag is EffortPathText).ToList();
-        var items = blocks.Select(block => (EffortPathText)block.Tag!).Select(text => (text.Full, text.Suffix)).ToList();
+        var rows = panel.Children.OfType<Border>().Where(row => row.Tag is EffortPathText).ToList();
+        var blocks = rows.Select(row => (TextBlock)row.Child).ToList();
+        var items = rows.Select(row => (EffortPathText)row.Tag!).Select(text => (text.Full, text.Suffix)).ToList();
         // Only the first EffortReport.MaxFittedPaths are measured; the rest are shown whole, with the full path in the tooltip (round 8 item 10).
         var texts = EffortReport.FitPaths(items, (index, candidate) => TextWidth(candidate, blocks[index]) <= width);
         for (var i = 0; i < blocks.Count; i++) blocks[i].Text = texts[i];
@@ -754,8 +817,11 @@ public sealed class TranscriptView : UserControl
         Margin = new Thickness(0, 6, 0, 2),
     };
 
-    /// <summary>One item of the panel. A click shows the transcript at its first line.</summary>
-    private TextBlock EffortJump(string text, int line, string? tooltip)
+    /// <summary>
+    /// One item of the panel. A click shows the transcript at its first line; so does Enter or Space on the item, which takes the keyboard in the
+    /// order the panel lays it out (keyboard batch T2). The item is a keyboard row around its text.
+    /// </summary>
+    private Border EffortJump(string text, int line, string? tooltip)
     {
         var block = new TextBlock
         {
@@ -764,13 +830,15 @@ public sealed class TranscriptView : UserControl
             ToolTip = tooltip ?? $"Show line {line}",
             Foreground = Brush(_palette.Muted),
             Cursor = Cursors.Hand,
-            Margin = new Thickness(10, 1, 0, 1),
         };
-        block.MouseLeftButtonUp += (_, _) =>
+        void Show()
         {
             if (_digest is { } digest) _ = ShowAsync(digest, line, _shownTitle);
-        };
-        return block;
+        }
+        block.MouseLeftButtonUp += (_, _) => Show();
+        var row = KeyboardRow.Wrap(block, _palette, $"{text}, line {line}", Show);
+        row.Margin = new Thickness(10, 1, 0, 1);
+        return row;
     }
 
     /// <summary>Tokens for display: input, output and cache writes (cache reads are left out, see the panel's tooltip).</summary>

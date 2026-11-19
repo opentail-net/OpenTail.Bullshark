@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
 using OpenTail.Bullshark.Core.Activity;
+using OpenTail.Bullshark.Core.Folders;
 using OpenTail.Bullshark.Core.Library;
 using OpenTail.Bullshark.Core.Search;
 
@@ -21,6 +22,9 @@ public partial class SessionWindow
     private readonly DispatcherTimer _searchDelay = new() { Interval = TimeSpan.FromMilliseconds(400) };
     private CancellationTokenSource? _searchCancel;
 
+    /// <summary>The query of the results on screen, so a result that opens its transcript can pass it on.</summary>
+    private string _searchQuery = string.Empty;
+
     /// <summary>The sessions the last search found, by session id. Null when the history is not filtered.</summary>
     private Dictionary<string, SessionMatch>? _searchMatches;
 
@@ -31,7 +35,8 @@ public partial class SessionWindow
             _searchDelay.Stop();
             StartSearch(SearchBox.Text);
         };
-        _search.OpenRequested += (digest, line) => _ = OpenTranscriptAtAsync(digest, line);
+        // The query of the shown results goes with the line: the transcript opens with it in its find bar (find and jump batch, T4).
+        _search.OpenRequested += (digest, line) => _ = OpenTranscriptAtAsync(digest, line, _searchQuery);
     }
 
     /// <summary>Typing waits for a pause. A cleared box closes the results tab.</summary>
@@ -117,9 +122,14 @@ public partial class SessionWindow
             var matches = new Dictionary<string, SessionMatch>(StringComparer.OrdinalIgnoreCase);
             foreach (var match in results) matches[match.Session.SessionId] = match;
             _searchMatches = matches;
+            _searchQuery = query;
             SetBusy(false);
 
-            _search.ShowResults(query, results, DisplayTitle);
+            // A folder shows its name as the rail and the Usage page name it (FolderDisplay); its path is on the tooltip (keyboard batch T1).
+            var labels = FolderLabelsFor(Array.Empty<string>());
+            FolderLabel FolderOf(SessionDigest digest) =>
+                labels.TryGetValue(digest.ProjectFolder, out var known) ? known : FolderDisplay.Of(digest.ProjectFolder, [digest.Cwd]);
+            _search.ShowResults(query, results, DisplayTitle, FolderOf);
             RefreshRail();
             var total = sessions.Count(s => !s.IsSubagent);
             var skipped = outcome.Unreadable > 0 ? $" {outcome.Unreadable} session(s) could not be read and are left out." : string.Empty;
@@ -170,14 +180,17 @@ public partial class SessionWindow
     }
 
     /// <summary>A result opens its session's transcript at the matching line, in the transcript tab. The session's row is selected in the rail too.</summary>
-    private async Task OpenTranscriptAtAsync(SessionDigest digest, int line)
+    private async Task OpenTranscriptAtAsync(SessionDigest digest, int line, string? findQuery = null)
     {
         var tab = TabFor(TabKind.Transcript, digest.SessionId, () => $"Session {ShortId(digest.SessionId)}");
         SetActive(tab);
+        // A result opened from the keyboard keeps the keyboard: the transcript takes it, so its keys (find, jumps) work at once.
+        var fromSearch = _search.IsKeyboardFocusWithin;
         ShowOnly(_transcript);
         SelectHistoryRow(digest);
-        await _transcript.ShowAsync(digest, line, DisplayTitle(digest));
+        await _transcript.ShowAsync(digest, line, DisplayTitle(digest), findQuery);
         if (_transcript.IsShowing(digest)) ShowLineageFor(digest);
+        if (fromSearch) _transcript.FocusBody();
     }
 
     /// <summary>
