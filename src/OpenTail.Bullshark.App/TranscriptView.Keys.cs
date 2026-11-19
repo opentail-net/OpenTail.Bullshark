@@ -121,6 +121,9 @@ public sealed partial class TranscriptView
         {
             if (block.Tag is not TranscriptLine line) continue;
             last = line;
+            // A block that is not under the scroll area in the visual tree (the view is not shown yet, or its template is not applied) has no place on
+            // the screen to read: TransformToAncestor throws for it. Such a block is skipped, and the first line on screen is the one given.
+            if (!_transcriptScroll.IsAncestorOf(block)) continue;
             var top = block.TransformToAncestor(_transcriptScroll).Transform(new Point(0, 0)).Y;
             if (top >= 0) return line.Number;
         }

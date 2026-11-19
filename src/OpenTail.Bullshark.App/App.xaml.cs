@@ -13,6 +13,14 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        // A test host never opens the window: the window starts the owner's sessions (the Q7 incident, 2026-11-19). This is the only place the
+        // window is made, so refusing here keeps every test run away from real sessions, whatever the test code does.
+        if (RunningUnderTest.Is)
+        {
+            Shutdown(0);
+            return;
+        }
+
         // A run with --state keeps its log beside its state file, so it never writes into the default folder.
         var stateAt = Array.IndexOf(e.Args, "--state");
         if (stateAt >= 0 && stateAt + 1 < e.Args.Length) AppLog.FollowStateFile(e.Args[stateAt + 1]);

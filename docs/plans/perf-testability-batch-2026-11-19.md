@@ -11,7 +11,7 @@ Queued behind `firstrun-diagnostics-batch-2026-11-19.md` (done; shared files: `S
 - Q4 closed with no code change (measured: 2.5 ms per read).
 - Q5 done: the rail is rebuilt only when its signature changes. Numbers below.
 - Q6 done in Core and wired in the App, except (e) (not done: nothing to extract).
-- Q7 BLOCKED. The test project is written, but it is NOT in the solution and has not run stably. See Incident.
+- Q7 done after the incident fixes: the App test project is in the solution; 16 of 16 in 10 runs; the claude.exe count did not change (see Q7).
 - Q8 done: README, live-run checklist, this plan.
 - Nothing committed or pushed.
 - Core tests: 2045 passed, 0 failed, in 10 of 10 runs (baseline 1981; +64). App build: 0 errors.
@@ -83,18 +83,23 @@ Needed from the owner: stop pids 13780, 29480, 36852 and 19184 (or allow it); de
   - (d) `AnnouncePolicy` (Core `Ui/AnnouncePolicy.cs`): `ForWaits`, `SilentToastShown`, `ProblemToastShown`, `WaitToastAllowed`, used by `AnnounceWaits`, `AnnounceQuiet`, `AnnounceProblem` and the toast filter. Tests: `AnnouncePolicyTests` (7 methods).
   - (e) Not done: the Night page's Settings link always opens General (`SessionWindow.Night.cs` line 62). There is no decision to extract, so no test.
 
-- [ ] Q7. Headless WPF test project: BLOCKED (see Incident).
-  - Written: `tests/OpenTail.Bullshark.App.Tests` (csproj, `UiThread`, `LogicalTree`, `TranscriptFixture`; `TranscriptViewTests` (4 methods), `SearchViewTests` (3), `KeyboardRowTests` (3, four cases), `PillTabsTests` (3)). Internals: `InternalsVisibleTo` in `AssemblyInfo.cs`; `TranscriptView` hooks (`BlockCount`, `WindowNoteText`, `FindCountText`, `FocusLineNumber`, `EarlierEnabled`, `LoadEarlierForTest`).
-  - Last run before the incident: 13 of 14 cases passed. The failing one (the find count stayed "Searching…") is an unobserved `InvalidOperationException` in `PickHitIndex` → `CurrentLine` → `TransformToAncestor`: the view was not in a window. Open question whether the real app can reach it.
-  - Not in `OpenTail.Bullshark.slnx` (removed after the incident). Not run 10 times. No picture taken.
+- [x] Q7. Headless WPF test project `tests/OpenTail.Bullshark.App.Tests`: done after the incident fixes (2026-11-19, late).
+  - Fix (product code, `TranscriptView.Keys.cs` `CurrentLine`): a block that is not under the scroll area in the visual tree is skipped, instead of `TransformToAncestor` throwing. The find count case now passes; in the real app the blocks are always under the scroll area, so nothing changes there.
+  - Safety, provable by reading: (1) `TestGuard` sets `OPENTAIL_BULLSHARK_UNDER_TEST=1` in a module initializer, before any test code, and `UiThread` sets it again before the WPF thread starts; (2) `App.OnStartup` returns at once (Shutdown) when `RunningUnderTest.Is`, the only place the window is made; (3) no test makes an `App`, a `SessionWindow`, calls `Run`, or runs claude code (grep); the pill test loads `Styles/Controls.xaml` itself; (4) `RunGuard`, a collection fixture, counts claude.exe before the run (module initializer) and after it (disposal) and fails if it grew; `RunGuardTests` checks the flag and the count mid-run. Counting only; nothing is stopped.
+  - Tests: 16 cases (TranscriptViewTests 4, SearchViewTests 3, KeyboardRowTests 3 methods (4 cases), PillTabsTests 3, RunGuardTests 2).
+  - 10 runs: 16 of 16 passed in each (`dotnet test tests/OpenTail.Bullshark.App.Tests --no-build`, 1 s each). The log of each run had no unobserved exception and no window line.
+  - claude.exe count: 4 before the first run (pids 13780, 23220, 29480, 36852, the four from the incident plus the owner's); 4 after the 10 runs; the same four pids. Nothing was started or stopped.
+  - Solution: `OpenTail.Bullshark.slnx` now includes the App test project. `dotnet test OpenTail.Bullshark.slnx -nodeReuse:false`: Core 2045 passed, App 16 passed, 0 failed, exit 0.
+  - Not done: no picture (the released-lines note still needs more than five Load-earlier clicks; no UI automation). The test logs go to one `%TEMP%\bullshark-app-tests-<guid>` folder per run (11 so far); the tests do not delete them.
 
 - [x] Q8. Docs: README "Soak log" section; `live-run-checklist.md` "Perf and testability batch" (Q1, Q3, Q5, Q6 checks); this plan.
 
 ## Checks
-- Core tests: 2045 passed, 0 failed, 10 of 10 runs (`dotnet test tests/OpenTail.Bullshark.Core.Tests`). `OpenTail.Bullshark.slnx` now runs the Core tests only.
+- Core tests: 2045 passed, 0 failed, 10 of 10 runs (`dotnet test tests/OpenTail.Bullshark.Core.Tests`).
+- Whole solution (`dotnet test OpenTail.Bullshark.slnx -nodeReuse:false`): Core 2045 passed, App 16 passed, 0 failed, exit 0.
 - App build (`dotnet build src/OpenTail.Bullshark.App -nodeReuse:false`): 0 errors.
 - Pictures: none taken. The only visible change is the released-lines note (Q3), which needs more than five Load-earlier clicks.
-- Scratch: `%TEMP%\bullshark-perf-f347fe943eef4b75832215afbb9a53fe` (soak states, logs, binary copies). Kept as evidence for the numbers above.
+- Scratch: `%TEMP%\bullshark-perf-f347fe943eef4b75832215afbb9a53fe` (soak states, logs, binary copies, index caches built from the owner's transcripts) was deleted on 2026-11-19 after its text files were read. The numbers above are the record. The incident folder `%TEMP%\bullshark-app-tests` was deleted the same way. Each test run leaves one `%TEMP%\bullshark-app-tests-<guid>` log folder (no content, no window lines); the owner may delete them.
 
 ## Orchestrator review
 Contracts: behaviours unchanged (selection, panes, tab close, announce gates), checked by reading old against new, not by a UI test. Q2 changes take effect on the next pass; a Settings change on a refresh reads the file at once. Q3 keeps jump and find correctness outside the window (existing path). Q5 skips only on the pass path and only when the signature is equal; the minute bucket refreshes the clock text. Numbers are present for each performance step. The new test project is NOT stable (Q7).

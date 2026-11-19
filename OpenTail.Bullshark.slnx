@@ -5,6 +5,7 @@
     <Project Path="src/OpenTail.Bullshark.Supervisor/OpenTail.Bullshark.Supervisor.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/OpenTail.Bullshark.App.Tests/OpenTail.Bullshark.App.Tests.csproj" />
     <Project Path="tests/OpenTail.Bullshark.Core.Tests/OpenTail.Bullshark.Core.Tests.csproj" />
   </Folder>
   <Folder Name="/tools/">
