@@ -743,7 +743,11 @@ public partial class SessionWindow
             return;
         }
         AppLog.Write($"open transcript: {digest.SessionId}");
-        await ShowRailItemAsync(new RailTag(RailKind.History, digest.SessionId, digest));
+        var tag = new RailTag(RailKind.History, digest.SessionId, digest);
+        // As a click on the row does: the transcript's tab becomes the active one, so a later rail refresh keeps the pane (found 2026-11-19: this hook
+        // showed the transcript without a tab, and the refresh with no live session then put the setup page over it after about 45 seconds).
+        NoteRailSelection(tag);
+        await ShowRailItemAsync(tag);
     }
 
     private async Task ShowRailItemAsync(RailTag tag)

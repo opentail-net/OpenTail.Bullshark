@@ -176,3 +176,7 @@ Method: the built App launched with `--state <scratch>` `--no-pass` (no claude c
 - [ ] T3 copy: right-click a Bash call line, "Copy command", and paste it into a text file: the full command. Right-click a long tool result, "Show full result": the box shows the text with its length; a result over 200,000 characters shows the cut note. Ctrl+C on a focused message copies it. Nothing is sent to a session (a terminal with the keyboard gets no paste).
 - [ ] T1 folder names: search for a word that several sessions say. Each result's folder line shows the folder's name (for example `OpenTail.Bullshark`), and its tooltip shows the whole path. Settings, General is unchanged. Usage (Insights): "Top project" and the project table show the same names.
 - [ ] T2 keyboard: in a search result, Tab moves from session to session and to each matching line; Enter opens it at that line (the transcript then has the keyboard, so `Ctrl+F` works at once). The effort panel's items take Tab and open with Enter or Space.
+
+### Found 2026-11-19 (after the transcript batch)
+- The `--open-transcript` test hook showed the transcript without making its tab active, so with no live session the rail refresh put the New-session page over it after about 45 s. A real click on a history row sets the tab (`NoteRailSelection`) and was never affected.
+  The hook now does the same; checked on the owner's real data: the transcript is still shown at 62 s, in its own tab.
