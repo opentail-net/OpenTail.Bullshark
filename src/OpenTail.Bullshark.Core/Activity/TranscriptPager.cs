@@ -288,15 +288,23 @@ public sealed class TranscriptPager
 
 /// <summary>
 /// The line starts of transcripts, kept per file with the file's key (path, length, write time): a file that has not changed since its last open is
-/// not scanned again, and a changed file is scanned again (T5 batch). At most <see cref="MaxFiles"/> files are kept. An instance is one cache: the
-/// pager's <see cref="TranscriptPager.Open"/> uses one shared instance, and a test makes its own so that no other reader can change its counts.
+/// not scanned again, and a changed file is scanned again (T5 batch). At most <see cref="MaxFiles"/> files are kept, and the one dropped is the least
+/// recently used (review R11): the file just opened is never the one dropped. Two opens of one file at once scan it once: the second waits for the
+/// first, then finds its starts. An instance is one cache: the pager's <see cref="TranscriptPager.Open"/> uses one shared instance, and a test makes
+/// its own so that no other reader can change its counts. <paramref name="scan"/> is the seam the tests use to make a scan slow or count it.
 /// </summary>
-public sealed class TranscriptPagerCache(int maxFiles = 8)
+public sealed class TranscriptPagerCache(int maxFiles = 8, Func<string, long[]>? scan = null)
 {
-    private readonly Dictionary<string, (TranscriptFileKey Key, long[] Starts, int Scans)> _startsByPath = new(StringComparer.OrdinalIgnoreCase);
-    private readonly object _gate = new();
+    /// <summary>One file's kept starts: its key, how many times it was scanned, and the last time it was used (a counter, so the order is exact).</summary>
+    private sealed record Entry(TranscriptFileKey Key, long[] Starts, int Scans, long LastUse);
 
-    /// <summary>The most files whose line starts are kept. Past it, one other file is dropped (which one is not promised; it starts again when opened).</summary>
+    private readonly Dictionary<string, Entry> _startsByPath = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, object> _opening = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Func<string, long[]> _scan = scan ?? new Func<string, long[]>(TranscriptPager.Scan);
+    private readonly object _gate = new();
+    private long _clock;
+
+    /// <summary>The most files whose line starts are kept. Past it, the least recently used other file is dropped; it starts again when opened.</summary>
     public int MaxFiles { get; } = maxFiles > 0 ? maxFiles : throw new ArgumentOutOfRangeException(nameof(maxFiles));
 
     /// <summary>
@@ -312,24 +320,48 @@ public sealed class TranscriptPagerCache(int maxFiles = 8)
     public TranscriptPager Open(string path)
     {
         var key = TranscriptFileKey.Of(path);
-        var scans = 0;
+        object opening;
         lock (_gate)
         {
-            if (_startsByPath.TryGetValue(path, out var known))
-            {
-                if (known.Key == key) return new TranscriptPager(path, known.Starts);
-                scans = known.Scans;
-            }
+            if (!_opening.TryGetValue(path, out var existing)) _opening[path] = existing = new object();
+            opening = existing;
         }
 
-        var starts = TranscriptPager.Scan(path);
-        lock (_gate)
+        // One open of a file at a time: the scan runs under the file's own lock, so a second open of it waits and then reads the starts (review R11).
+        lock (opening)
         {
-            _startsByPath[path] = (key, starts, scans + 1);
-            // The file just opened is kept: another one is dropped. (The dictionary may reuse a freed slot, so the new entry can come first.)
-            while (_startsByPath.Count > MaxFiles)
-                _startsByPath.Remove(_startsByPath.Keys.First(known => !StringComparer.OrdinalIgnoreCase.Equals(known, path)));
+            int scans;
+            lock (_gate)
+            {
+                if (_startsByPath.TryGetValue(path, out var known))
+                {
+                    if (known.Key == key)
+                    {
+                        _startsByPath[path] = known with { LastUse = ++_clock };
+                        return new TranscriptPager(path, known.Starts);
+                    }
+                    scans = known.Scans;
+                }
+                else
+                {
+                    scans = 0;
+                }
+            }
+
+            var starts = _scan(path);
+            lock (_gate)
+            {
+                _startsByPath[path] = new Entry(key, starts, scans + 1, ++_clock);
+                while (_startsByPath.Count > MaxFiles)
+                {
+                    var least = _startsByPath
+                        .Where(pair => !StringComparer.OrdinalIgnoreCase.Equals(pair.Key, path))
+                        .OrderBy(pair => pair.Value.LastUse)
+                        .First().Key;
+                    _startsByPath.Remove(least);
+                }
+            }
+            return new TranscriptPager(path, starts);
         }
-        return new TranscriptPager(path, starts);
     }
 }

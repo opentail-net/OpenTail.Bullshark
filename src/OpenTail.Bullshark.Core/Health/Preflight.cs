@@ -31,7 +31,8 @@ public sealed record QuietState(string? Window, bool Now);
 /// <summary>
 /// What the preflight reads, filled in by the window (night batch N2). A plain record, so the rules are tested without a window or a disk.
 /// <see cref="Runs"/> is null when runs.json cannot be read, and <see cref="SleepMinutes"/> is null when the power setting cannot be read
-/// (0 means "never"). <see cref="SetupProblems"/> is null when the setup check has not run.
+/// (0 means "never"). <see cref="SetupProblems"/> is null when the setup check has not run. <see cref="Sessions"/> is the state file's records,
+/// by session name, or null when it cannot be read: then every session of a run counts as live, as it did before (review R5).
 /// </summary>
 public sealed record PreflightInput(
     DateTimeOffset Now,
@@ -45,7 +46,8 @@ public sealed record PreflightInput(
     int TrustWaiting,
     int? SleepMinutes,
     int NeedsYou,
-    QuietState Quiet);
+    QuietState Quiet,
+    IReadOnlyDictionary<string, SessionRecord>? Sessions = null);
 
 /// <summary>
 /// The bedtime preflight (night batch N2): whether tonight will work, as ten rows. Pure: the window fills a <see cref="PreflightInput"/>.
@@ -141,7 +143,9 @@ public static class Preflight
         var governing = inForce[0];
         var more = inForce.Count > 1 ? $" (and {inForce.Count - 1} more)" : string.Empty;
         var label = $"{LimitStatus.LabelOf(governing.Type)} limit until {Clock(governing.ResetsAt, input.Now)}{more}";
-        var due = input.Runs.Count(run => run.Specs.Count > 0 && StartOf(run, input.Now) < governing.ResetsAt);
+        var due = input.Runs.Count(run => run.Specs.Count > 0 && (RunStore.IsWaiting(run, input.Now)
+            ? run.StartAt!.Value < governing.ResetsAt
+            : HasLiveSession(run, input.Sessions)));
         return due > 0
             ? new(name, PreflightStatus.Check, $"{label}: {Plural(due, "run")} due before it resets")
             : new(name, PreflightStatus.Ok, $"{label}; no run due before it resets");
@@ -174,15 +178,17 @@ public static class Preflight
     private static PreflightRow SleepRow(PreflightInput input)
     {
         const string name = "Sleep";
-        if (input.SleepMinutes is not { } minutes) return new(name, PreflightStatus.Unknown, "the power setting could not be read");
-        if (minutes == 0) return new(name, PreflightStatus.Ok, "never sleeps on AC power");
+        // The text names only the standby timeout on AC power: hibernate and modern standby are not read (review R12).
+        if (input.SleepMinutes is not { } minutes) return new(name, PreflightStatus.Unknown, "the standby timeout on AC power could not be read");
+        if (minutes == 0) return new(name, PreflightStatus.Ok, "standby timeout on AC power: never");
 
-        var live = input.Runs is not null && input.Runs.Any(run => run.Specs.Count > 0 && !RunStore.IsWaiting(run, input.Now));
+        var live = input.Runs is not null && input.Runs.Any(run => run.Specs.Count > 0 && !RunStore.IsWaiting(run, input.Now)
+            && HasLiveSession(run, input.Sessions));
         var due = input.Runs is not null && input.Runs.Any(run => run.Specs.Count > 0 && RunStore.IsWaiting(run, input.Now)
             && run.StartAt <= input.Now + RunHorizon);
         return live || due
-            ? new(name, PreflightStatus.Check, $"sleeps after {minutes} min on AC power while a run is due or live")
-            : new(name, PreflightStatus.Ok, $"sleeps after {minutes} min on AC power; no run is due in the next 12 h");
+            ? new(name, PreflightStatus.Check, $"standby timeout on AC power: {minutes} min, while a run is due or live")
+            : new(name, PreflightStatus.Ok, $"standby timeout on AC power: {minutes} min; no run is due in the next 12 h");
     }
 
     private static PreflightRow NeedsRow(PreflightInput input) => input.NeedsYou > 0
@@ -198,9 +204,17 @@ public static class Preflight
             : new(name, PreflightStatus.Ok, $"{window}: not quiet now");
     }
 
-    /// <summary>When a run starts: its start time while it waits, else now (it is due or running).</summary>
-    private static DateTimeOffset StartOf(RunRecord run, DateTimeOffset now) =>
-        RunStore.IsWaiting(run, now) ? run.StartAt!.Value : now;
+    /// <summary>
+    /// Whether a run that is not waiting has a session still to finish (review R5). runs.json keeps a run until its sessions are closed, so a
+    /// finished run is in it too. A session with no record has not started yet, so it counts; one whose record says stopped, failed or done does
+    /// not. With no records read (<paramref name="sessions"/> is null) every session counts, as before.
+    /// </summary>
+    private static bool HasLiveSession(RunRecord run, IReadOnlyDictionary<string, SessionRecord>? sessions) =>
+        sessions is null || run.Specs.Any(spec => !sessions.TryGetValue(spec.Name, out var record) || !Finished(record.LastState));
+
+    /// <summary>A session's last state as the supervisor wrote it: stopped, failed or done are finished.</summary>
+    private static bool Finished(string? state) =>
+        SupervisorPolicy.IsStoppedOrFailed(state) || string.Equals(state, "done", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>"1 day", "2 days": the count and the noun.</summary>
     private static string Plural(int count, string noun) => $"{count} {noun}{(count == 1 ? string.Empty : "s")}";

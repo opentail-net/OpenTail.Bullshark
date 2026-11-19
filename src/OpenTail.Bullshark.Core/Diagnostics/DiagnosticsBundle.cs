@@ -75,20 +75,44 @@ public static class DiagnosticsBundle
         var name = KeptFiles.UniqueName(folder, $"diagnostics-{now.ToLocalTime().ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture)}.zip");
         var path = Path.Combine(folder, name);
         WriteZip(path, Entries(input, userProfile));
-        KeptFiles.KeepNewest(folder, Pattern, KeepNewest, log);
+        KeptFiles.KeepNewest(folder, Pattern, KeepNewest, log, keepFile: name);
         return path;
     }
 
-    /// <summary>Writes the entries as a zip file, UTF-8 text, that must not exist yet.</summary>
-    public static void WriteZip(string path, IReadOnlyList<BundleEntry> entries)
+    /// <summary>
+    /// Writes the entries as a zip file, UTF-8 text, that must not exist yet. The zip is written to <c>path.tmp</c> and moved into place only when it is
+    /// complete: a write that fails (a full disk) deletes the partial file, so no half zip counts toward the kept five (review R4).
+    /// </summary>
+    public static void WriteZip(string path, IReadOnlyList<BundleEntry> entries) => WriteZip(path, entries, OpenTemp);
+
+    /// <summary>The temporary file a zip is written to, created or replaced.</summary>
+    private static Stream OpenTemp(string temp) => new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None);
+
+    /// <summary>
+    /// <see cref="WriteZip(string, IReadOnlyList{BundleEntry})"/> with the stream of the temporary file given: the seam the tests use to make a write
+    /// fail midway. The move at the end throws when <paramref name="path"/> exists, as before.
+    /// </summary>
+    public static void WriteZip(string path, IReadOnlyList<BundleEntry> entries, Func<string, Stream> openTemp)
     {
-        using var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
-        using var zip = new ZipArchive(stream, ZipArchiveMode.Create);
-        foreach (var entry in entries)
+        var temp = path + ".tmp";
+        try
         {
-            var archived = zip.CreateEntry(entry.Name, CompressionLevel.Optimal);
-            using var writer = new StreamWriter(archived.Open(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-            writer.Write(entry.Text);
+            using (var stream = openTemp(temp))
+            using (var zip = new ZipArchive(stream, ZipArchiveMode.Create))
+            {
+                foreach (var entry in entries)
+                {
+                    var archived = zip.CreateEntry(entry.Name, CompressionLevel.Optimal);
+                    using var writer = new StreamWriter(archived.Open(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+                    writer.Write(entry.Text);
+                }
+            }
+            File.Move(temp, path);
+        }
+        catch
+        {
+            try { File.Delete(temp); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            throw;
         }
     }
 
@@ -142,6 +166,17 @@ public static class DiagnosticsSources
         {
             return [$"(could not be read: {ex.GetType().Name})"];
         }
+    }
+
+    /// <summary>
+    /// The last <paramref name="count"/> lines of a log. When the log holds fewer, the end of its rotated copy (<c>path.1</c>, which the app keeps when it
+    /// moves the log) comes first, so a log that has just been rotated still shows the lines before the rotation (review R14).
+    /// </summary>
+    public static IReadOnlyList<string> LogTail(string path, int count)
+    {
+        var own = LastLines(path, count);
+        if (own.Count >= count) return own;
+        return [.. LastLines(path + ".1", count - own.Count), .. own];
     }
 
     /// <summary>The last <paramref name="count"/> events, one line each: time, event, session and detail.</summary>

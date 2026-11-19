@@ -100,4 +100,41 @@ public sealed class PassHealthTests
     {
         Assert.Equal("a b c", PassHealth.Short("a   b\r\n c"));
     }
+
+    [Theory]
+    [InlineData(@"could not read D:\Client Work\Acme\x.cs today", "could not read x.cs today")]
+    [InlineData(@"D:\Client Work\Acme Ltd\state.json cannot be read", "state.json cannot be read")]
+    [InlineData(@"gone: C:\Users\Dmitri\My Documents\runs.json:12", "gone: runs.json:12")]
+    [InlineData(@"share \\server\Client Share\state.json is gone", "share state.json is gone")]
+    public void APathWithSpacesInItsFoldersIsCutToItsFileName(string text, string expected)
+    {
+        var reason = PassHealth.Short(text);
+
+        Assert.Equal(expected, reason);
+        Assert.DoesNotContain("Client", reason);
+        Assert.DoesNotContain("Dmitri", reason);
+        Assert.DoesNotContain("Acme", reason);
+    }
+
+    [Theory]
+    [InlineData("failed at /c/Users/Dmitri/Client Work/x.cs now", "failed at x.cs now")]
+    [InlineData("failed at /mnt/c/Users/Dmitri/notes.md now", "failed at notes.md now")]
+    [InlineData("failed at /home/dmitri/Client Work/a.txt", "failed at a.txt")]
+    [InlineData("failed at /Users/dmitri/secret folder/a.txt", "failed at a.txt")]
+    public void AGitBashOrUnixPathIsCutToItsFileName(string text, string expected)
+    {
+        var reason = PassHealth.Short(text);
+
+        Assert.Equal(expected, reason);
+        Assert.DoesNotContain("Dmitri", reason, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Client", reason);
+        Assert.DoesNotContain("secret", reason);
+    }
+
+    [Fact]
+    public void ATextWithoutAPathIsUnchanged()
+    {
+        // A URL is not a path (its scheme's last letter is not a drive), and a word with a slash between words is not one either.
+        Assert.Equal("see https://mcp.example.invalid/x and/or a/b", PassHealth.Short("see https://mcp.example.invalid/x and/or a/b"));
+    }
 }

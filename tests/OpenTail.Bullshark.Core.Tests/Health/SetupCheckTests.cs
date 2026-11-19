@@ -192,6 +192,21 @@ public sealed class SetupCheckTests : IDisposable
     }
 
     [Fact]
+    public void ARemoteUrlsQueryUserinfoAndFragmentAreNotWrittenToTheRow()
+    {
+        WriteClaudeJson("{\"mcpServers\":{"
+            + "\"keyed\":{\"url\":\"https://mcp.example.invalid/sse?api_key=CANARYSETUPQUERY\"},"
+            + "\"login\":{\"url\":\"https://CANARYSETUPUSER:CANARYSETUPPASS@mcp.example.invalid/mcp\"},"
+            + "\"frag\":{\"url\":\"https://mcp.example.invalid/x#token=CANARYSETUPFRAG\"}}}");
+
+        var rows = Run().Where(i => i.Area == "MCP server (user)").ToList();
+
+        Assert.Equal(3, rows.Count);
+        Assert.All(rows, row => Assert.DoesNotContain("CANARY", row.Detail));
+        Assert.All(rows, row => Assert.Contains("https://mcp.example.invalid/", row.Detail));
+    }
+
+    [Fact]
     public void AProjectsServersAreCheckedToo()
     {
         WriteClaudeJson("{\"projects\":{\"C:/git/app\":{\"mcpServers\":{\"x\":{\"command\":\"missing-x\"}}}}}");

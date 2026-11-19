@@ -61,31 +61,46 @@ public static class CrashReport
 }
 
 /// <summary>
-/// Keeps the newest files of a folder that match a pattern, and deletes the rest. The file names carry their time (yyyyMMdd-HHmmss), so the newest
-/// is the last in name order. Only files that match are touched, and a file that cannot be deleted is left for the next time.
+/// Keeps the newest files of a folder that match a pattern, and deletes the rest. "Newest" is the last-write time in UTC (review R8): a name
+/// is not a reliable clock, since "-2" sorts before ".txt" and local-time names go backwards at the DST fall-back. The name is the tie-break.
+/// The file named <paramref name="keepFile"/> (the one written in this call) is always kept and counts toward <c>keep</c>. Only files that match
+/// are touched, and a file that cannot be deleted is left for the next time.
 /// </summary>
 public static class KeptFiles
 {
-    /// <summary>Deletes all but the newest <paramref name="keep"/> files matching <paramref name="pattern"/> in <paramref name="folder"/>.</summary>
-    public static void KeepNewest(string folder, string pattern, int keep, Action<string>? log = null)
+    /// <summary>
+    /// Deletes all but the newest <paramref name="keep"/> files matching <paramref name="pattern"/> in <paramref name="folder"/>. The file
+    /// <paramref name="keepFile"/> is never deleted, whatever its time.
+    /// </summary>
+    public static void KeepNewest(string folder, string pattern, int keep, Action<string>? log = null, string? keepFile = null)
     {
         log ??= _ => { };
         try
         {
             if (!Directory.Exists(folder)) return;
-            var newestFirst = Directory.EnumerateFiles(folder, pattern)
-                .Select(file => Path.GetFileName(file))
-                .OrderByDescending(name => name, StringComparer.Ordinal)
+            var newestFirst = new DirectoryInfo(folder).EnumerateFiles(pattern)
+                .OrderByDescending(file => file.LastWriteTimeUtc)
+                .ThenByDescending(file => file.Name, StringComparer.Ordinal)
                 .ToList();
-            foreach (var name in newestFirst.Skip(keep))
+
+            var kept = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (keepFile is not null && newestFirst.Any(file => string.Equals(file.Name, keepFile, StringComparison.OrdinalIgnoreCase)))
+                kept.Add(keepFile);
+            foreach (var file in newestFirst)
+            {
+                if (kept.Count >= keep) break;
+                kept.Add(file.Name);
+            }
+
+            foreach (var file in newestFirst.Where(file => !kept.Contains(file.Name)))
             {
                 try
                 {
-                    File.Delete(Path.Combine(folder, name));
+                    file.Delete();
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
-                    log($"old file kept, not deleted: {name}: {ex.Message}");
+                    log($"old file kept, not deleted: {file.Name}: {ex.Message}");
                 }
             }
         }

@@ -54,7 +54,8 @@ public partial class SessionWindow
         IReadOnlyList<RunRecord>? Runs,
         QuietWindow? Quiet,
         int? SleepMinutes,
-        int? SetupProblems);
+        int? SetupProblems,
+        IReadOnlyDictionary<string, SessionRecord>? Sessions);
 
     private void InitNight()
     {
@@ -130,7 +131,8 @@ public partial class SessionWindow
                 TrustWaiting: _trustSteps.Count,
                 SleepMinutes: _sleepMinutes,
                 NeedsYou: _attention.Select(item => item.Name).Distinct(StringComparer.Ordinal).Count(),
-                Quiet: new QuietState(reads.Quiet is { } window ? QuietHours.Label(window) : null, QuietHours.IsQuietAt(reads.Quiet, now)));
+                Quiet: new QuietState(reads.Quiet is { } window ? QuietHours.Label(window) : null, QuietHours.IsQuietAt(reads.Quiet, now)),
+                Sessions: reads.Sessions);
             var report = Preflight.Build(input);
             _lastPreflight = report; // the diagnostics zip reads the last one drawn (firstrun batch B4)
             var lastPass = reads.LastPass is { } last
@@ -154,18 +156,21 @@ public partial class SessionWindow
     {
         var statePath = _options.StatePath;
         var runStore = _runStore;
-        var (last, runs, quiet) = await Task.Run(() =>
+        var store = _store;
+        var (last, runs, quiet, sessions) = await Task.Run(() =>
         {
             var heartbeat = Heartbeat.Read(Heartbeat.PathFor(statePath));
             var (runsRead, runsProblem) = LoadRuns(runStore);
+            // The session records tell a finished run from a live one (review R5); a state file that cannot be read gives none, and every session counts.
+            var (recordsRead, recordsProblem) = LoadRecords(store);
             var quietWindow = QuietHours.Parse(UiFile.ReadInBackground(statePath, QuietHours.Key));
-            return (heartbeat, runsProblem is null ? runsRead : null, quietWindow);
+            return (heartbeat, runsProblem is null ? runsRead : null, quietWindow, recordsProblem is null ? recordsRead : null);
         });
-        if (!full) return new NightReads(last, runs, quiet, null, null);
+        if (!full) return new NightReads(last, runs, quiet, null, null, sessions);
 
         var sleep = await SleepMinutesAsync();
         var setup = await Task.Run(SetupProblemCount);
-        return new NightReads(last, runs, quiet, sleep, setup);
+        return new NightReads(last, runs, quiet, sleep, setup, sessions);
     }
 
     /// <summary>
@@ -176,7 +181,7 @@ public partial class SessionWindow
     {
         try
         {
-            var result = await new ProcessCliRunner("powercfg").RunAsync(PowerSettings.QueryArguments, null, TimeSpan.FromSeconds(5));
+            var result = await new ProcessCliRunner(PowerSettings.ProgramPath).RunAsync(PowerSettings.QueryArguments, null, TimeSpan.FromSeconds(5));
             return result.Succeeded ? PowerSettings.ParseSleepMinutes(result.StdOut) : null;
         }
         catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or IOException)

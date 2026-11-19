@@ -31,7 +31,8 @@ public sealed class PreflightTests
         int trust = 0,
         int? sleep = 0,
         int needsYou = 0,
-        QuietState? quiet = null) => new(
+        QuietState? quiet = null,
+        IReadOnlyDictionary<string, SessionRecord>? sessions = null) => new(
             Now,
             lastPass ?? Now.AddSeconds(-12),
             daemon,
@@ -43,7 +44,14 @@ public sealed class PreflightTests
             trust,
             sleep,
             needsYou,
-            quiet ?? new QuietState(null, false));
+            quiet ?? new QuietState(null, false),
+            sessions);
+
+    /// <summary>The state file's record of the one session the test runs use (<see cref="Spec"/>), in the given last state.</summary>
+    private static IReadOnlyDictionary<string, SessionRecord> RecordOf(string lastState) => new Dictionary<string, SessionRecord>(StringComparer.Ordinal)
+    {
+        [Spec.Name] = new(SessionRole.Coder, "sid-1", Spec.Name, Now.AddDays(-1), 0, [], lastState, null),
+    };
 
     private static PreflightRow RowOf(PreflightInput input, string name) =>
         RowOf(Preflight.Build(input).Rows, name);
@@ -230,21 +238,76 @@ public sealed class PreflightTests
     [Fact]
     public void SleepIsOkWhenNeverOrNoRunIsDueAndCheckWhenOneIs()
     {
-        Assert.Equal("never sleeps on AC power", RowOf(Healthy(sleep: 0), "Sleep").Text);
+        Assert.Equal("standby timeout on AC power: never", RowOf(Healthy(sleep: 0), "Sleep").Text);
         Assert.Equal(PreflightStatus.Ok, RowOf(Healthy(sleep: 0), "Sleep").Status);
 
         var quietNight = RowOf(Healthy(sleep: 10, runs: [Run("far", Now.AddHours(20))]), "Sleep");
         Assert.Equal(PreflightStatus.Ok, quietNight.Status);
-        Assert.Equal("sleeps after 10 min on AC power; no run is due in the next 12 h", quietNight.Text);
+        Assert.Equal("standby timeout on AC power: 10 min; no run is due in the next 12 h", quietNight.Text);
 
         var due = RowOf(Healthy(sleep: 30, runs: [Run("soon", Now.AddHours(6))]), "Sleep");
         Assert.Equal(PreflightStatus.Check, due.Status);
-        Assert.Equal("sleeps after 30 min on AC power while a run is due or live", due.Text);
+        Assert.Equal("standby timeout on AC power: 30 min, while a run is due or live", due.Text);
 
         var live = RowOf(Healthy(sleep: 30, runs: [Run("live")]), "Sleep");
         Assert.Equal(PreflightStatus.Check, live.Status);
 
         Assert.Equal(PreflightStatus.Unknown, RowOf(Healthy(sleep: null), "Sleep").Status);
+    }
+
+    [Theory]
+    [InlineData("done")]
+    [InlineData("stopped")]
+    [InlineData("failed")]
+    public void AFinishedRunLeftInRunsJsonIsNotLiveForTheSleepOrTheLimitRow(string lastState)
+    {
+        // runs.json keeps a run until its sessions are closed: a run whose only session finished must not give a permanent Check (review R5).
+        var finished = Healthy(sleep: 30, runs: [Run("finished")], sessions: RecordOf(lastState),
+            limits: [new ActiveLimit("five_hour", Now.AddHours(3))]);
+
+        Assert.Equal(PreflightStatus.Ok, RowOf(finished, "Sleep").Status);
+        Assert.Equal("standby timeout on AC power: 30 min; no run is due in the next 12 h", RowOf(finished, "Sleep").Text);
+        Assert.Equal(PreflightStatus.Ok, RowOf(finished, "Usage limit").Status);
+    }
+
+    [Theory]
+    [InlineData("working")]
+    [InlineData("blocked")]
+    [InlineData("idle")]
+    public void ARunWhoseSessionIsStillGoingIsLive(string lastState)
+    {
+        var running = Healthy(sleep: 30, runs: [Run("running")], sessions: RecordOf(lastState));
+
+        Assert.Equal(PreflightStatus.Check, RowOf(running, "Sleep").Status);
+    }
+
+    [Fact]
+    public void ARunWhoseSessionHasNoRecordYetIsLive()
+    {
+        // A session with no record has not started: the next pass starts it, so the run counts as live.
+        var notStarted = Healthy(sleep: 30, runs: [Run("new")], sessions: new Dictionary<string, SessionRecord>());
+
+        Assert.Equal(PreflightStatus.Check, RowOf(notStarted, "Sleep").Status);
+    }
+
+    [Fact]
+    public void AFinishedRunDoesNotCountAsDueBeforeALimitReset()
+    {
+        var limit = new ActiveLimit("five_hour", Now.AddHours(3));
+
+        var finished = RowOf(Healthy(limits: [limit], runs: [Run("done")], sessions: RecordOf("done")), "Usage limit");
+        Assert.Equal(PreflightStatus.Ok, finished.Status);
+
+        var running = RowOf(Healthy(limits: [limit], runs: [Run("live")], sessions: RecordOf("working")), "Usage limit");
+        Assert.Equal(PreflightStatus.Check, running.Status);
+    }
+
+    [Fact]
+    public void AnUnreadableStateFileCountsEverySessionAsLiveAsBefore()
+    {
+        var unread = RowOf(Healthy(sleep: 30, runs: [Run("maybe")], sessions: null), "Sleep");
+
+        Assert.Equal(PreflightStatus.Check, unread.Status);
     }
 
     [Fact]

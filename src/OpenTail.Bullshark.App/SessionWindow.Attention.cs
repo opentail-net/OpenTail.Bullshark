@@ -74,7 +74,7 @@ public partial class SessionWindow
     {
         var notes = new List<(string Tag, string Text)>();
         if (_daemonNotice is { } daemon) notes.Add(("daemon", daemon));
-        if (_watching) notes.Add(("watching", SessionWindow.WatchingNote));
+        if (_watching) notes.Add(("watching", _supervisorProblem is null ? SessionWindow.WatchingNote : "This window only watches: the supervisor name cannot be taken."));
         if (_passHealth.Problem is { } problem) notes.Add(("problem", "Supervisor problem: " + problem));
         return notes;
     }

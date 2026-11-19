@@ -262,4 +262,14 @@ public sealed class ProcessGitRunnerTests : IDisposable
 
         Assert.False(File.Exists(marker), "git ran the textconv driver from the repository's own config");
     }
+
+    [Fact]
+    public void GitIsAskedForItsEnglishMessages()
+    {
+        // The not-a-repository check reads git's text (review R10): with the locale C, a localised git still says the English words.
+        var info = ProcessGitRunner.StartInfo("git", _root, ["status"]);
+
+        Assert.Equal("C", info.Environment["LC_ALL"]);
+        Assert.Equal("C", info.Environment["LANGUAGE"]);
+    }
 }

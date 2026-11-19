@@ -27,22 +27,40 @@ public sealed class SingleInstance : IDisposable
         return "Local\\OpenTail.Bullshark.supervisor." + key;
     }
 
-    /// <summary>Takes the name without waiting. Null when another holder has it; the caller then only watches.</summary>
-    public static SingleInstance? TryAcquire(string name)
+    /// <summary>Takes the name without waiting. Null when another holder has it, or when the name cannot be used (see the other overload).</summary>
+    public static SingleInstance? TryAcquire(string name) => TryAcquire(name, out _);
+
+    /// <summary>
+    /// Takes the name without waiting. Null when another holder has it: <paramref name="problem"/> is then null. Null also when the name cannot be used at
+    /// all (a mutex of another user's privilege level, or one that cannot be waited on): <paramref name="problem"/> says why, and the caller only
+    /// watches. It never throws, so a window that cannot take the name still opens and draws (reliability review R2).
+    /// <paramref name="createMutex"/> is the seam the tests use; the window passes nothing.
+    /// </summary>
+    public static SingleInstance? TryAcquire(string name, out string? problem, Func<string, Mutex>? createMutex = null)
     {
-        var mutex = new Mutex(false, name);
+        problem = null;
+        Mutex? mutex = null;
         try
         {
+            mutex = (createMutex ?? CreateMutex)(name);
             if (mutex.WaitOne(0)) return new SingleInstance(mutex);
         }
-        catch (AbandonedMutexException)
+        catch (AbandonedMutexException) when (mutex is not null)
         {
             // The last holder ended without releasing: the name is ours now, and the pass reads the state before it writes.
             return new SingleInstance(mutex);
         }
-        mutex.Dispose();
+        catch (Exception ex) when (ex is UnauthorizedAccessException or WaitHandleCannotBeOpenedException or IOException)
+        {
+            mutex?.Dispose();
+            problem = $"the supervisor name cannot be taken ({ex.GetType().Name})";
+            return null;
+        }
+        mutex?.Dispose();
         return null;
     }
+
+    private static Mutex CreateMutex(string name) => new(false, name);
 
     /// <summary>Releases the name. Safe to call more than once.</summary>
     public void Dispose()

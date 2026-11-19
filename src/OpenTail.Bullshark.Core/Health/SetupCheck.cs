@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using OpenTail.Bullshark.Core.Diagnostics;
 
 namespace OpenTail.Bullshark.Core.Health;
 
@@ -165,7 +166,9 @@ public static class SetupCheck
             }
             else if (definition.TryGetProperty("url", out var url) && url.ValueKind == JsonValueKind.String)
             {
-                items.Add(new SetupItem(area, server.Name, SetupState.Ok, Clip($"remote, not contacted: {url.GetString()}")));
+                // The query, the fragment and the user name and password of the URL are not written: a key often sits there (review R1).
+                var shown = Redactor.UrlWithoutSecrets(url.GetString() ?? string.Empty);
+                items.Add(new SetupItem(area, server.Name, SetupState.Ok, Clip($"remote, not contacted: {shown}")));
             }
             else
             {

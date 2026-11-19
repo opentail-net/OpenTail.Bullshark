@@ -44,10 +44,10 @@ public static class CrashFiles
                 OperatingSystem: RuntimeInformation.OSDescription,
                 Runtime: RuntimeInformation.FrameworkDescription,
                 Exception: exception ?? new InvalidOperationException(where),
-                LogLines: DiagnosticsSources.LastLines(AppLog.FilePath, CrashReport.LogLinesKept),
+                LogLines: DiagnosticsSources.LogTail(AppLog.FilePath, CrashReport.LogLinesKept),
                 UserProfile: Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)));
             File.WriteAllText(Path.Combine(folder, name), text);
-            KeptFiles.KeepNewest(folder, CrashReport.Pattern, CrashReport.KeepNewest, AppLog.Write);
+            KeptFiles.KeepNewest(folder, CrashReport.Pattern, CrashReport.KeepNewest, AppLog.Write, keepFile: name);
             lock (Gate) _pending = $"The app hit an error and kept going: logs\\{name}";
             return name;
         }

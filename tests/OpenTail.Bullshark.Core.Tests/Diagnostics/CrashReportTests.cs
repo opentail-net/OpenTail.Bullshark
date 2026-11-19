@@ -63,6 +63,19 @@ public sealed class CrashReportTests : IDisposable
     }
 
     [Fact]
+    public void AUrlWithATokenInTheExceptionOrTheLogNeverReachesTheFile()
+    {
+        var ex = Thrown("connect failed: https://CANARYCRASHUSER:CANARYCRASHPASS@mcp.example.invalid/sse?api_key=CANARYCRASHURL");
+        var text = CrashReport.Build(Input(ex, [
+            "2026-11-19 10:00:01 remote https://mcp.example.invalid/mcp?key=CANARYCRASHLOG connected",
+        ]));
+
+        Assert.DoesNotContain("CANARY", text);
+        Assert.Contains("https://mcp.example.invalid/sse", text);
+        Assert.Contains("https://mcp.example.invalid/mcp connected", text);
+    }
+
+    [Fact]
     public void TheStackKeepsItsFileNameAndLineButNotItsFolders()
     {
         var text = CrashReport.Build(Input(Thrown("x"), []));
@@ -119,5 +132,54 @@ public sealed class CrashReportTests : IDisposable
 
         Assert.Equal("crash-20261119-031245-2.txt", KeptFiles.UniqueName(_folder, "crash-20261119-031245.txt"));
         Assert.Equal("crash-20261119-031246.txt", KeptFiles.UniqueName(_folder, "crash-20261119-031246.txt"));
+    }
+
+    private string WriteAt(string name, DateTime writtenUtc)
+    {
+        var path = Path.Combine(_folder, name);
+        File.WriteAllText(path, "x");
+        File.SetLastWriteTimeUtc(path, writtenUtc);
+        return name;
+    }
+
+    [Fact]
+    public void ASameSecondDuplicateIsNewerThanItsOriginal()
+    {
+        // "-2" sorts before ".txt" by name, so a name order would keep the original and delete the newer copy (review R8).
+        var first = DateTime.UtcNow.AddMinutes(-10);
+        WriteAt("crash-20261119-031245.txt", first);
+        WriteAt("crash-20261119-031245-2.txt", first.AddSeconds(1));
+
+        KeptFiles.KeepNewest(_folder, CrashReport.Pattern, 1);
+
+        Assert.Equal(new[] { "crash-20261119-031245-2.txt" }, Directory.GetFiles(_folder, CrashReport.Pattern).Select(Path.GetFileName).ToArray());
+    }
+
+    [Fact]
+    public void TheWriteTimeDecidesNotTheNameWhenTheTwoDisagree()
+    {
+        // A local-time name can go backwards at the DST fall-back: the file written later is the newer one, whatever its name says.
+        var now = DateTime.UtcNow;
+        WriteAt("crash-20261025-020000.txt", now.AddHours(-3));
+        WriteAt("crash-20261025-013000.txt", now.AddHours(-1));
+
+        KeptFiles.KeepNewest(_folder, CrashReport.Pattern, 1);
+
+        Assert.Equal(new[] { "crash-20261025-013000.txt" }, Directory.GetFiles(_folder, CrashReport.Pattern).Select(Path.GetFileName).ToArray());
+    }
+
+    [Fact]
+    public void TheFileWrittenInThisCallIsNeverDeleted()
+    {
+        // The file just written has the oldest time of the three and the lowest name: it is still kept, and it counts toward the limit.
+        var now = DateTime.UtcNow;
+        WriteAt("crash-20261119-030000.txt", now.AddHours(-3));
+        WriteAt("crash-20261119-040000.txt", now.AddHours(-2));
+        WriteAt("crash-19990101-000000.txt", now.AddHours(-5));
+
+        KeptFiles.KeepNewest(_folder, CrashReport.Pattern, 2, keepFile: "crash-19990101-000000.txt");
+
+        var kept = Directory.GetFiles(_folder, CrashReport.Pattern).Select(Path.GetFileName).OrderBy(n => n, StringComparer.Ordinal).ToArray();
+        Assert.Equal(new[] { "crash-19990101-000000.txt", "crash-20261119-040000.txt" }, kept);
     }
 }

@@ -134,4 +134,46 @@ public sealed class RedactorTests
         Assert.DoesNotContain("CANARYB", text);
         Assert.Contains(@"~\Desktop\project\file.txt", text);
     }
+
+    [Theory]
+    [InlineData("remote https://mcp.example.invalid/sse?api_key=CANARYQUERY123 is set")]
+    [InlineData("login https://CANARYUSER:CANARYPASS@mcp.example.invalid/mcp is set")]
+    [InlineData("see https://mcp.example.invalid/mcp#access_token=CANARYFRAGMENT")]
+    [InlineData("ends with https://mcp.example.invalid/sse?k=CANARYENDS")]
+    [InlineData("two https://a.example.invalid/x?t=CANARYONE and http://b.example.invalid/y?t=CANARYTWO")]
+    [InlineData("{\"type\":\"http\",\"url\":\"https://mcp.example.invalid/mcp?key=CANARYJSON\"}")]
+    [InlineData("pass https://mcp.example.invalid:8443/sse?token=CANARYPORT, next")]
+    public void ASecretInAUrlNeverSurvives(string line)
+    {
+        var text = Redactor.Line(line, Profile);
+
+        Assert.DoesNotContain("CANARY", text);
+        Assert.Contains("example.invalid", text);
+    }
+
+    [Fact]
+    public void AUrlKeepsItsSchemeHostAndPathAndLosesTheQueryUserinfoAndFragment()
+    {
+        Assert.Equal("remote https://mcp.example.invalid/sse is set",
+            Redactor.Line("remote https://mcp.example.invalid/sse?api_key=CANARYQUERY123 is set", Profile));
+        Assert.Equal("login https://mcp.example.invalid/mcp is set",
+            Redactor.Line("login https://CANARYUSER:CANARYPASS@mcp.example.invalid/mcp is set", Profile));
+        Assert.Equal("see https://mcp.example.invalid/mcp",
+            Redactor.Line("see https://mcp.example.invalid/mcp#access_token=CANARYFRAGMENT", Profile));
+        Assert.Equal("two https://a.example.invalid/x and http://b.example.invalid/y",
+            Redactor.Line("two https://a.example.invalid/x?t=CANARYONE and http://b.example.invalid/y?t=CANARYTWO", Profile));
+        Assert.Equal("{\"type\":\"http\",\"url\":\"https://mcp.example.invalid/mcp\"}",
+            Redactor.Line("{\"type\":\"http\",\"url\":\"https://mcp.example.invalid/mcp?key=CANARYJSON\"}", Profile));
+    }
+
+    [Theory]
+    [InlineData("https://mcp.example.invalid/mcp", "https://mcp.example.invalid/mcp")]
+    [InlineData("https://mcp.example.invalid:8443/sse?token=CANARYURL", "https://mcp.example.invalid:8443/sse")]
+    [InlineData("https://CANARYUSER:CANARYPASS@mcp.example.invalid/x", "https://mcp.example.invalid/x")]
+    [InlineData("https://mcp.example.invalid/x#frag=CANARYURL", "https://mcp.example.invalid/x")]
+    [InlineData("mcp.example.invalid/x?token=CANARYURL", "mcp.example.invalid/x")]
+    public void UrlWithoutSecretsKeepsTheSchemeHostAndPath(string url, string expected)
+    {
+        Assert.Equal(expected, Redactor.UrlWithoutSecrets(url));
+    }
 }

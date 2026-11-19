@@ -48,7 +48,7 @@ public partial class SessionWindow
                 PreflightText: _lastPreflight is { } report
                     ? DiagnosticsBundle.PreflightText(report)
                     : "not run in this session: open Insights, Night, then save again",
-                AppLogLines: DiagnosticsSources.LastLines(AppLog.FilePath, DiagnosticsBundle.AppLogLinesKept),
+                AppLogLines: DiagnosticsSources.LogTail(AppLog.FilePath, DiagnosticsBundle.AppLogLinesKept),
                 EventLines: DiagnosticsSources.EventLines(Path.Combine(stateFolder, "events.jsonl"), DiagnosticsBundle.EventsKept),
                 SettingsText: DiagnosticsSources.SettingsText(UiSettingsFile.PathFor(stateFile)));
             var path = DiagnosticsBundle.Save(stateFolder, DateTimeOffset.Now, input,

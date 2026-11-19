@@ -25,8 +25,10 @@ public sealed record GitFileChange(string Path, string? OldPath, string Code, in
         {
             if (Code is "UU" or "AA" or "DD" or "AU" or "UA" or "DU" or "UD") return "conflict";
             if (Code == "??") return "new, not in the diff";
-            // A rename staged in the index is a rename, even when the worktree has changed it since.
-            var letter = Code[0] is 'R' or 'C' ? Code[0] : Code[1] != ' ' ? Code[1] : Code[0];
+            // A rename staged in the index is a rename, even when the worktree has changed it since. A file added to the index is new against HEAD
+            // (the diff HEAD shows it whole), even when the worktree has changed it since (AM); AD is still deleted from the folder (review R9).
+            var keepsIndex = Code[0] is 'R' or 'C' || (Code[0] == 'A' && Code[1] != 'D');
+            var letter = keepsIndex ? Code[0] : Code[1] != ' ' ? Code[1] : Code[0];
             return letter switch
             {
                 'A' => "added",

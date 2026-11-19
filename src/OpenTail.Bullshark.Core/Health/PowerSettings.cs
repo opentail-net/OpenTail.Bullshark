@@ -12,6 +12,12 @@ public static class PowerSettings
     /// <summary>The arguments of the read-only query, in the order `powercfg` takes them.</summary>
     public static readonly IReadOnlyList<string> QueryArguments = ["/query", "SCHEME_CURRENT", "SUB_SLEEP", "STANDBYIDLE"];
 
+    /// <summary>
+    /// The program that is run: powercfg in the system folder. A bare name would be searched in the current folder first, so a program of that name
+    /// there would run instead (review R12).
+    /// </summary>
+    public static string ProgramPath => Path.Combine(Environment.SystemDirectory, "powercfg.exe");
+
     private static readonly Regex AcIndex = new(@"Current AC Power Setting Index:\s*0x([0-9a-fA-F]+)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     /// <summary>

@@ -11,6 +11,8 @@ namespace OpenTail.Bullshark.Core.Diagnostics;
 /// <c>"content"</c>, <c>"role"</c> or <c>"prompt"</c> key) is replaced by <see cref="PromptMark"/>. Output that a failed `claude` printed is cut
 /// after its "did not print an id:" words.</item>
 /// <item>The user's profile folder is written as <c>~</c>.</item>
+/// <item>A URL in any scheme (<c>https://…</c>) keeps its scheme, host, port and path; its user name and password, its query and its fragment
+/// are removed (<see cref="UrlWithoutSecrets"/>). A remote MCP server's URL often carries a key in its query.</item>
 /// <item>Every other full path (a drive or a share) is cut to its file name; a stack frame keeps its file name and line.</item>
 /// <item>A session id in GUID form is cut to its first 8 characters.</item>
 /// <item>A bearer token, a key with a known prefix (<c>sk-</c>, <c>ghp_</c>, <c>github_pat_</c>, <c>xox…-</c>), or a run of 32 or more letters,
@@ -43,6 +45,25 @@ public static class Redactor
     private static readonly Regex Bearer = new(@"\bBearer\s+\S+", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex KeyLike = new(@"\b(?:sk|ghp|gho|ghu|ghs|ghr|github_pat|xox[abprs])[-_][A-Za-z0-9_\-]{8,}", RegexOptions.Compiled);
     private static readonly Regex LongRun = new(@"[A-Za-z0-9+/]{32,}={0,2}", RegexOptions.Compiled);
+    private static readonly Regex AnyUrl = new(@"\b[A-Za-z][A-Za-z0-9+.\-]*://[^\s'""<>]*", RegexOptions.Compiled);
+    private static readonly Regex SchemePrefix = new(@"^[A-Za-z][A-Za-z0-9+.\-]*://", RegexOptions.Compiled);
+
+    /// <summary>
+    /// A URL with its userinfo, query and fragment taken out (rule 3a of the redactor): the scheme, the host (and port) and the path stay, so the owner
+    /// can still tell which server it was. A token in the query or the fragment, or a user name and password, never comes out of this method.
+    /// The userinfo is everything up to the last "@" before the query, so a password with a "/" in it is removed too.
+    /// </summary>
+    public static string UrlWithoutSecrets(string url)
+    {
+        ArgumentNullException.ThrowIfNull(url);
+        var scheme = SchemePrefix.Match(url).Value;
+        var rest = url[scheme.Length..];
+        var query = rest.IndexOfAny(['?', '#']);
+        if (query >= 0) rest = rest[..query];
+        var at = rest.LastIndexOf('@');
+        if (at >= 0) rest = rest[(at + 1)..];
+        return scheme + rest;
+    }
 
     /// <summary>Every line of a text, redacted; the lines are joined with the platform's line break.</summary>
     public static string Text(string text, string userProfile) =>
@@ -59,6 +80,7 @@ public static class Redactor
         if (PromptMarkers.Any(marker => line.Contains(marker, StringComparison.OrdinalIgnoreCase))) return PromptMark;
 
         var text = CliOutput.Replace(line, $"$1 {OutputMark}");
+        text = AnyUrl.Replace(text, match => UrlWithoutSecrets(match.Value));
         text = ReplaceProfile(text, userProfile);
         text = PassHealth.ReducePaths(text);
         text = Guid.Replace(text, "$1");

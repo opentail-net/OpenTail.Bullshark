@@ -71,6 +71,40 @@ public sealed class SingleInstanceTests
         Assert.NotNull(taken);
     }
 
+    [Theory]
+    [InlineData(typeof(UnauthorizedAccessException))]
+    [InlineData(typeof(WaitHandleCannotBeOpenedException))]
+    [InlineData(typeof(IOException))]
+    public void AnUnusableNameGivesNoWindowAndAReasonAndNeverThrows(Type failure)
+    {
+        // The seam throws the failure a name held by another privilege level gives. The window then only watches: null, with the reason.
+        Mutex Fails(string _) => throw (Exception)Activator.CreateInstance(failure)!;
+
+        var taken = SingleInstance.TryAcquire(RandomName(), out var problem, Fails);
+
+        Assert.Null(taken);
+        Assert.NotNull(problem);
+        Assert.Contains(failure.Name, problem);
+    }
+
+    [Fact]
+    public void AnUnusableNameIsNotAProblemWhenAnotherHolderHasIt()
+    {
+        var name = RandomName();
+        using var first = SingleInstance.TryAcquire(name);
+        Assert.NotNull(first);
+
+        // From another thread: the mutex is re-entrant on its own thread, so only another thread shows the name is taken.
+        SingleInstance? second = null;
+        string? problem = "not set";
+        var thread = new Thread(() => second = SingleInstance.TryAcquire(name, out problem));
+        thread.Start();
+        thread.Join();
+
+        Assert.Null(second);
+        Assert.Null(problem);
+    }
+
     [Fact]
     public void TheNameIsTheSameForTheSameStateInAnyCase()
     {

@@ -28,8 +28,17 @@ public sealed class PassHealth
     /// <summary>The longest reason shown, in characters.</summary>
     public const int MaxReason = 160;
 
-    /// <summary>A path written out in full: a drive or a server share, then the rest up to a space, a quote, a bracket or a comma.</summary>
-    private static readonly Regex PathLike = new(@"(?:[A-Za-z]:[\\/]|\\\\)[^\s'""()\[\],;]*", RegexOptions.Compiled);
+    /// <summary>
+    /// A path written out in full (review R3): a drive, a server share, or a Git Bash, WSL or Unix root (<c>/c/</c>, <c>/mnt/c/</c>, <c>/home/</c>,
+    /// <c>/Users/</c>). Its folders may hold spaces. It ends at a file name with an extension (<c>state.json</c>, followed by a space or a colon) or,
+    /// with no extension, at a quote, a bracket, a comma, a semicolon or the end of the line: when unsure, the rest of the line is part of the path,
+    /// so no folder name is left behind. A drive letter is not the last letter of a scheme: "https:/" is not the drive "s:/" (review R1).
+    /// </summary>
+    private static readonly Regex PathLike = new(
+        @"(?:(?<![A-Za-z])[A-Za-z]:[\\/]|\\\\|(?<![A-Za-z0-9_.~\\/-])/(?:mnt/[A-Za-z]/|[A-Za-z]/|home/|Users/))" +
+        @"(?:[^\\/\r\n'""()\[\],;<>|*?]*[\\/])*" +
+        @"(?:[^\s\\/\r\n'""()\[\],;<>|*?]*\.[A-Za-z0-9]{1,8}(?![A-Za-z0-9])|[^\\/\r\n'""()\[\],;<>|*?]*)",
+        RegexOptions.Compiled);
 
     /// <summary>The reason of the current failure, or null when the pass works.</summary>
     public string? Problem { get; private set; }

@@ -17,6 +17,9 @@ public partial class App : Application
         // window is made, so refusing here keeps every test run away from real sessions, whatever the test code does.
         if (RunningUnderTest.Is)
         {
+            // The flag left set in a normal run (review R13) would close the app with no word: the owner is told once. A test host stays silent.
+            if (!RunningUnderTest.IsTestHost)
+                MessageBox.Show("OPENTAIL_BULLSHARK_UNDER_TEST is set: the window is not opened.", "OpenTail.Bullshark", MessageBoxButton.OK, MessageBoxImage.Warning);
             Shutdown(0);
             return;
         }

@@ -48,24 +48,7 @@ public sealed class ProcessGitRunner : IGitRunner
         int maxOutputBytes,
         CancellationToken cancellationToken = default)
     {
-        var info = new ProcessStartInfo(_executable)
-        {
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-        };
-        // The repository's own config must not run programs here (F3): core.fsmonitor is a program that status runs, and core.hooksPath
-        // is pointed at the null device so no hook is found. --no-textconv and --no-ext-diff are passed by the callers.
-        info.ArgumentList.Add("-c");
-        info.ArgumentList.Add("core.fsmonitor=false");
-        info.ArgumentList.Add("-c");
-        info.ArgumentList.Add("core.hooksPath=NUL");
-        info.ArgumentList.Add("-C");
-        info.ArgumentList.Add(folder);
-        foreach (var argument in arguments) info.ArgumentList.Add(argument);
-        info.Environment["GIT_OPTIONAL_LOCKS"] = "0";
-        info.Environment["GIT_TERMINAL_PROMPT"] = "0";
+        var info = StartInfo(_executable, folder, arguments);
 
         Process? process;
         try
@@ -99,6 +82,35 @@ public sealed class ProcessGitRunner : IGitRunner
                 return new GitOutput(-1, string.Empty, string.Empty, TimedOut: true, OutputTruncated: false);
             }
         }
+    }
+
+    /// <summary>
+    /// The start information of one git command. The repository's own config must not run programs here (F3): core.fsmonitor is a program that
+    /// status runs, and core.hooksPath is pointed at the null device so no hook is found. Git is asked for English messages (LC_ALL and LANGUAGE
+    /// are C): the "not a git repository" check reads its text, and a localised git would hide the case (review R10).
+    /// </summary>
+    public static ProcessStartInfo StartInfo(string executable, string folder, IReadOnlyList<string> arguments)
+    {
+        var info = new ProcessStartInfo(executable)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        // --no-textconv and --no-ext-diff are passed by the callers.
+        info.ArgumentList.Add("-c");
+        info.ArgumentList.Add("core.fsmonitor=false");
+        info.ArgumentList.Add("-c");
+        info.ArgumentList.Add("core.hooksPath=NUL");
+        info.ArgumentList.Add("-C");
+        info.ArgumentList.Add(folder);
+        foreach (var argument in arguments) info.ArgumentList.Add(argument);
+        info.Environment["GIT_OPTIONAL_LOCKS"] = "0";
+        info.Environment["GIT_TERMINAL_PROMPT"] = "0";
+        info.Environment["LC_ALL"] = "C";
+        info.Environment["LANGUAGE"] = "C";
+        return info;
     }
 
     /// <summary>Reads up to <paramref name="limit"/> bytes. One byte past the limit is read, so output of exactly the limit is not "truncated".</summary>

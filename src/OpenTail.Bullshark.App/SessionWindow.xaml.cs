@@ -89,6 +89,9 @@ public partial class SessionWindow : Window
     /// <summary>True while another window supervises this state: this window reads and draws, and runs no pass (reliability batch R1).</summary>
     private bool _watching;
 
+    /// <summary>Why the supervisor name could not be taken (reliability review R2), or null when it was only held by another window.</summary>
+    private string? _supervisorProblem;
+
     /// <summary>When the last pass started. A trust-triggered pass waits 15 seconds after it (reliability batch R3).</summary>
     private DateTimeOffset _lastPassStarted = DateTimeOffset.MinValue;
 
@@ -156,8 +159,9 @@ public partial class SessionWindow : Window
         // The one supervisor of this state (reliability batch R1). A window that cannot take the name only watches: it reads and draws, and runs no pass.
         if (!options.NoPass)
         {
-            _supervisor = SingleInstance.TryAcquire(SingleInstance.NameFor(options.StatePath));
+            _supervisor = SingleInstance.TryAcquire(SingleInstance.NameFor(options.StatePath), out var problem);
             _watching = _supervisor is null;
+            NoteSupervisorProblem(problem);
         }
         InitLibrary(options.StatePath);
         LoadMagicAuto();
@@ -360,9 +364,10 @@ public partial class SessionWindow : Window
         var passToken = pass.Token;
         _lastPassStarted = DateTimeOffset.UtcNow;
         var passClock = System.Diagnostics.Stopwatch.StartNew();
-        TakeOverIfFree();
+        // Nothing between the flag and the try may throw: a flag left set stops every later pass without a word (review R2).
         try
         {
+            TakeOverIfFree();
             var known = new Dictionary<string, string>(_transcriptPaths, StringComparer.Ordinal);
             var read = await Task.Run(() => ReadForPassAsync(known));
 
@@ -438,7 +443,9 @@ public partial class SessionWindow : Window
             {
                 // A crash notice (firstrun batch B3) stays at the front of the line until the window closes.
                 _crashNotice ??= CrashFiles.TakeNotice();
-                var line = _watching ? WatchingStatus : string.Join("  ·  ", parts);
+                var line = _watching
+                    ? _supervisorProblem is null ? WatchingStatus : $"this window only watches: {_supervisorProblem}"
+                    : string.Join("  ·  ", parts);
                 SetStatus(_crashNotice is null ? line : $"{_crashNotice}  ·  {line}");
                 if (ReadBusy.TakeNotice()) SetStatus(ReadBusy.Notice);
             }
@@ -479,11 +486,23 @@ public partial class SessionWindow : Window
     private void TakeOverIfFree()
     {
         if (_supervisor is not null || _options.NoPass) return;
-        var taken = SingleInstance.TryAcquire(SingleInstance.NameFor(_options.StatePath));
+        var taken = SingleInstance.TryAcquire(SingleInstance.NameFor(_options.StatePath), out var problem);
+        NoteSupervisorProblem(problem);
         if (taken is null) return;
         _supervisor = taken;
         _watching = false;
         AppLog.Write("this window supervises the state now: the window that did before has closed");
+    }
+
+    /// <summary>
+    /// Keeps the reason the supervisor name could not be taken (reliability review R2). A window that only watches for that reason says so on its status
+    /// line, and the log has the reason once, not on every pass. Null means the name was only held by another window, which the status line says.
+    /// </summary>
+    private void NoteSupervisorProblem(string? problem)
+    {
+        if (problem == _supervisorProblem) return;
+        _supervisorProblem = problem;
+        if (problem is not null) AppLog.Write($"supervisor: {problem}; this window only watches");
     }
 
     /// <summary>Gives the supervisor name back when the window closes, so another window can take it (reliability batch R1).</summary>
@@ -994,8 +1013,15 @@ public sealed record LaunchOptions(
 /// <summary>True when the process is a test host (the test runner), so code that starts or resumes real sessions can refuse to run there.</summary>
 internal static class RunningUnderTest
 {
-    public static bool Is { get; } =
-        string.Equals(Environment.GetEnvironmentVariable("OPENTAIL_BULLSHARK_UNDER_TEST"), "1", StringComparison.Ordinal)
-        || System.Diagnostics.Process.GetCurrentProcess().ProcessName.StartsWith("testhost", StringComparison.OrdinalIgnoreCase)
+    /// <summary>True when this process is the test runner's own host (testhost), whether or not the flag is set.</summary>
+    public static bool IsTestHost { get; } =
+        System.Diagnostics.Process.GetCurrentProcess().ProcessName.StartsWith("testhost", StringComparison.OrdinalIgnoreCase)
         || (System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name?.StartsWith("testhost", StringComparison.OrdinalIgnoreCase) ?? false);
+
+    /// <summary>True when the OPENTAIL_BULLSHARK_UNDER_TEST flag is set to 1 in the environment (the test guard sets it).</summary>
+    public static bool FlagSet { get; } =
+        string.Equals(Environment.GetEnvironmentVariable("OPENTAIL_BULLSHARK_UNDER_TEST"), "1", StringComparison.Ordinal);
+
+    /// <summary>True in a test host, or when the flag is set. A window that would start sessions refuses to run then.</summary>
+    public static bool Is => FlagSet || IsTestHost;
 }

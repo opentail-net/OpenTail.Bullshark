@@ -65,6 +65,12 @@ public sealed class GitChangesTests : IDisposable
     [InlineData("RM", "renamed")]
     [InlineData("UU", "conflict")]
     [InlineData(" T", "type changed")]
+    [InlineData("AM", "added")]
+    [InlineData("AT", "added")]
+    [InlineData("AD", "deleted")]
+    [InlineData("MD", "deleted")]
+    [InlineData("RD", "renamed")]
+    [InlineData("MM", "modified")]
     public void EachStatusCodeHasItsWords(string code, string label)
     {
         Assert.Equal(label, new GitFileChange("p", null, code, null, null, false).Label);

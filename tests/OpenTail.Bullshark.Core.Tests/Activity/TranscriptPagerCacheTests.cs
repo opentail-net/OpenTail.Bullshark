@@ -106,6 +106,59 @@ public sealed class TranscriptPagerCacheTests : IDisposable
     }
 
     [Fact]
+    public void TheLeastRecentlyUsedFileIsDroppedNotTheOldestOpened()
+    {
+        // a was opened first, but it was used again after b: b is the least recently used, so b goes when c is opened (review R11).
+        var small = new TranscriptPagerCache(maxFiles: 2);
+        var a = NewFile(User);
+        var b = NewFile(User);
+        var c = NewFile(User);
+
+        small.Open(a);
+        small.Open(b);
+        small.Open(a);
+        small.Open(c);
+
+        Assert.Equal(1, small.ScansOf(a));
+        Assert.Equal(0, small.ScansOf(b));
+        Assert.Equal(1, small.ScansOf(c));
+    }
+
+    [Fact]
+    public void TheFileJustOpenedIsNeverTheOneDropped()
+    {
+        var one = new TranscriptPagerCache(maxFiles: 1);
+        var first = NewFile(User);
+        var second = NewFile(User);
+
+        one.Open(first);
+        one.Open(second);
+
+        Assert.Equal(0, one.ScansOf(first));
+        Assert.Equal(1, one.ScansOf(second));
+    }
+
+    [Fact]
+    public async Task TwoOpensOfOneFileAtTheSameTimeScanItOnce()
+    {
+        // The scan is slow and counted: a second open waits for the first one's scan, and finds its starts (review R11).
+        var scans = 0;
+        var cache = new TranscriptPagerCache(scan: _ =>
+        {
+            Interlocked.Increment(ref scans);
+            Thread.Sleep(200);
+            return [0L, 10L];
+        });
+        var path = NewFile(User, Reply);
+
+        var opened = await Task.WhenAll(Enumerable.Range(0, 4).Select(_ => Task.Run(() => cache.Open(path))));
+
+        Assert.Equal(1, scans);
+        Assert.Equal(1, cache.ScansOf(path));
+        Assert.All(opened, pager => Assert.Equal(2, pager.LineCount));
+    }
+
+    [Fact]
     public void TheSharedPagerOpenGivesTheSameLinesAsAnOwnCache()
     {
         var path = NewFile(User, Reply);

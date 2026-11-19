@@ -70,4 +70,12 @@ public sealed class PowerSettingsTests
     {
         Assert.Equal(["/query", "SCHEME_CURRENT", "SUB_SLEEP", "STANDBYIDLE"], PowerSettings.QueryArguments);
     }
+
+    [Fact]
+    public void PowercfgIsRunFromTheSystemFolderNotByItsBareName()
+    {
+        // A bare name is searched in the current folder first (review R12): the program is the one in the system folder.
+        Assert.Equal(Path.Combine(Environment.SystemDirectory, "powercfg.exe"), PowerSettings.ProgramPath);
+        Assert.True(Path.IsPathRooted(PowerSettings.ProgramPath));
+    }
 }

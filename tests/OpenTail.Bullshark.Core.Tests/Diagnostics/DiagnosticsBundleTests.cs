@@ -18,7 +18,7 @@ public sealed class DiagnosticsBundleTests : IDisposable
     private static readonly string[] Canaries =
     [
         "CANARYAPPLOG", "CANARYPROMPT", "CANARYEVENT", "CANARYUSER", "CANARYNOTE", "CANARYKEYREVIEW",
-        "CANARYLIBRARY", "CANARYRUNS", "CANARYCACHE", "CANARYTRANSCRIPT", "CANARYNOTEFILE",
+        "CANARYLIBRARY", "CANARYRUNS", "CANARYCACHE", "CANARYTRANSCRIPT", "CANARYNOTEFILE", "CANARYURL",
     ];
 
     private readonly string _root = Path.Combine(Path.GetTempPath(), "bullshark-fr-" + Guid.NewGuid().ToString("N")[..8]);
@@ -46,6 +46,7 @@ public sealed class DiagnosticsBundleTests : IDisposable
             "2026-11-19T10:00:01 token sk-ant-api03-CANARYAPPLOG0123456789 was used",
             "2026-11-19T10:00:02 prompt: CANARYPROMPT please refactor the whole repository",
             "2026-11-19T10:00:03 an ordinary line about the pass",
+            "2026-11-19T10:00:04 remote https://mcp.example.invalid/sse?api_key=CANARYURL connected",
         ]);
 
         var events = new EventLog(Path.Combine(_state, "events.jsonl"));
@@ -69,6 +70,8 @@ public sealed class DiagnosticsBundleTests : IDisposable
         SetupText: DiagnosticsBundle.SetupText([
             new SetupItem("Claude Code", "claude", SetupState.Ok, @"found: C:\Users\CANARYUSER\.local\bin\claude.exe"),
             new SetupItem("Settings", "settings.json", SetupState.Warning, "not found"),
+            new SetupItem("MCP server (user)", "remote", SetupState.Ok,
+                "remote, not contacted: https://CANARYUSER:CANARYURL@mcp.example.invalid/mcp?key=CANARYURL"),
         ]),
         PreflightText: DiagnosticsBundle.PreflightText(new PreflightReport(
             [new PreflightRow("Runs", PreflightStatus.Ok, "none waiting")], "Ready for the night")),
@@ -218,5 +221,94 @@ public sealed class DiagnosticsBundleTests : IDisposable
     public void AMissingInformationalVersionIsUnknown()
     {
         Assert.Equal(("unknown", null), AppVersion.Split(null));
+    }
+
+    /// <summary>A file stream that fails after <paramref name="failAfterBytes"/> bytes have been written, as a full disk does.</summary>
+    private sealed class FailingStream(Stream inner, int failAfterBytes) : Stream
+    {
+        private int _written;
+
+        public override bool CanRead => inner.CanRead;
+        public override bool CanSeek => inner.CanSeek;
+        public override bool CanWrite => inner.CanWrite;
+        public override long Length => inner.Length;
+        public override long Position { get => inner.Position; set => inner.Position = value; }
+        public override void Flush() => inner.Flush();
+        public override int Read(byte[] buffer, int offset, int count) => inner.Read(buffer, offset, count);
+        public override long Seek(long offset, SeekOrigin origin) => inner.Seek(offset, origin);
+        public override void SetLength(long value) => inner.SetLength(value);
+
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            if (_written + count > failAfterBytes) throw new IOException("There is not enough space on the disk.");
+            _written += count;
+            inner.Write(buffer, offset, count);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) inner.Dispose();
+            base.Dispose(disposing);
+        }
+    }
+
+    [Fact]
+    public void AZipThatFailsMidwayLeavesNoPartialFileBehind()
+    {
+        var folder = Path.Combine(_root, "partial");
+        Directory.CreateDirectory(folder);
+        var path = Path.Combine(folder, "diagnostics-20261119-100000.zip");
+
+        Assert.Throws<IOException>(() => DiagnosticsBundle.WriteZip(path, DiagnosticsBundle.Entries(Input(), Profile),
+            temp => new FailingStream(new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None), failAfterBytes: 100)));
+
+        // Neither the zip nor its temporary file: a partial zip would count toward the newest five.
+        Assert.Empty(Directory.GetFiles(folder));
+    }
+
+    [Fact]
+    public void ACompleteZipIsMovedIntoPlaceAndNoTemporaryFileIsLeft()
+    {
+        var folder = Path.Combine(_root, "complete");
+        Directory.CreateDirectory(folder);
+        var path = Path.Combine(folder, "diagnostics-20261119-100000.zip");
+
+        DiagnosticsBundle.WriteZip(path, DiagnosticsBundle.Entries(Input(), Profile));
+
+        Assert.Equal(new[] { path }, Directory.GetFiles(folder));
+        Assert.Equal(6, ReadZip(path).Count);
+    }
+
+    [Fact]
+    public void AfterARotationTheLogTailStillHasTheLinesBeforeIt()
+    {
+        // The log was moved to app.log.1 a moment ago: the tail takes the rotated copy's end first (review R14).
+        var logs = Path.Combine(_root, "rotated");
+        Directory.CreateDirectory(logs);
+        var current = Path.Combine(logs, "app.log");
+        File.WriteAllLines(current, Enumerable.Range(1, 10).Select(n => $"current {n:000}"));
+        File.WriteAllLines(current + ".1", Enumerable.Range(1, 600).Select(n => $"rotated {n:000}"));
+
+        var tail = DiagnosticsSources.LogTail(current, 500);
+
+        Assert.Equal(500, tail.Count);
+        Assert.Equal("rotated 111", tail[0]);
+        Assert.Equal("current 010", tail[^1]);
+    }
+
+    [Fact]
+    public void ALogWithEnoughLinesIsNotMixedWithItsRotatedCopy()
+    {
+        var logs = Path.Combine(_root, "full");
+        Directory.CreateDirectory(logs);
+        var current = Path.Combine(logs, "app.log");
+        File.WriteAllLines(current, Enumerable.Range(1, 600).Select(n => $"current {n:000}"));
+        File.WriteAllLines(current + ".1", Enumerable.Range(1, 600).Select(n => $"rotated {n:000}"));
+
+        var tail = DiagnosticsSources.LogTail(current, 500);
+
+        Assert.Equal(500, tail.Count);
+        Assert.Equal("current 101", tail[0]);
+        Assert.Equal("current 600", tail[^1]);
     }
 }
