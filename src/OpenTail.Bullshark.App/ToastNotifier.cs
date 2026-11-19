@@ -21,6 +21,9 @@ internal static class ToastNotifier
     /// <summary>The tag of the toast for a usage limit that reset.</summary>
     private const string LimitTag = "limit-reset";
 
+    /// <summary>The tag of the toast for a supervisor pass that failed (reliability batch R9).</summary>
+    private const string ProblemTag = "supervisor-problem";
+
     /// <summary>Set after the first failure: later failures are not logged, so a broken toast does not fill the log.</summary>
     private static bool _failureLogged;
 
@@ -33,6 +36,9 @@ internal static class ToastNotifier
 
     /// <summary>The silent toast for coders that newly joined the Ready-for-review list. Names only.</summary>
     public static void ShowReady(IReadOnlyList<string> names) => Post(() => ToastText.Ready(names), ReadyTag);
+
+    /// <summary>The toast for a supervisor pass that failed, once when it starts (reliability batch R9). Its category is the caller's to check.</summary>
+    public static void ShowProblem(string reason) => Post(() => ToastText.Problem(reason), ProblemTag);
 
     /// <summary>The silent toast for usage limits that reset: their labels, such as "5-hour".</summary>
     public static void ShowLimitReset(IReadOnlyList<string> labels) => Post(() => ToastText.LimitReset(labels), LimitTag);

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using OpenTail.Bullshark.Core.Health;
 
 namespace OpenTail.Bullshark.Core.Trust;
 
@@ -34,8 +35,8 @@ public sealed record TrustResult(TrustState State, string? RepositoryRoot)
 /// </summary>
 public static class TrustCheck
 {
-    public static string DefaultClaudeJsonPath =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude.json");
+    /// <summary>Claude's settings file for this user, from <see cref="ClaudePaths"/> (CLAUDE_CONFIG_DIR is honoured).</summary>
+    public static string DefaultClaudeJsonPath => ClaudePaths.ClaudeJson();
 
     /// <summary>Walks up from the folder to the nearest directory that holds a <c>.git</c> entry.</summary>
     public static string? FindRepositoryRoot(string folder)

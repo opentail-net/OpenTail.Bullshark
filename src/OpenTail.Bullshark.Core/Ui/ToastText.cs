@@ -55,6 +55,9 @@ public static class ToastText
     /// <summary>The title of the silent toast for a usage limit that reset (toasts by event).</summary>
     public const string LimitResetTitle = "Usage limit reset";
 
+    /// <summary>The title of the toast for a supervisor pass that failed (reliability batch R9).</summary>
+    public const string ProblemTitle = "Supervisor problem";
+
     /// <summary>
     /// The toast for coders that newly joined the Ready-for-review list: the first name, and "and N more" for the others (each name counted once).
     /// The names are the session names only, never a path or a detail. Null when there are none.
@@ -74,6 +77,13 @@ public static class ToastText
     /// The toast for usage limits that reset: the labels of the limits (for example "5-hour"), each once, joined with commas. The labels are
     /// those of <see cref="Setup.LimitStatus.LabelOf"/>. Null when there are none.
     /// </summary>
+    /// <summary>The toast for a supervisor pass that failed: its short reason, which names no folder (see <c>PassHealth.Short</c>).</summary>
+    public static ToastMessage? Problem(string reason)
+    {
+        ArgumentNullException.ThrowIfNull(reason);
+        return string.IsNullOrWhiteSpace(reason) ? null : new ToastMessage(ProblemTitle, reason.Trim());
+    }
+
     public static ToastMessage? LimitReset(IReadOnlyList<string> labels)
     {
         ArgumentNullException.ThrowIfNull(labels);

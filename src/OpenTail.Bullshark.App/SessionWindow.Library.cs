@@ -38,8 +38,14 @@ public partial class SessionWindow
     {
         try
         {
-            _marks = new Dictionary<string, LibraryEntry>(_library.Load(), StringComparer.Ordinal);
+            // The UI thread waits briefly for the lock (reliability batch R7). A busy file keeps the marks shown until the next read.
+            _marks = new Dictionary<string, LibraryEntry>(_library.Load(UiFile.UiWait), StringComparer.Ordinal);
             _libraryError = null;
+            ReadBusy.Note(false);
+        }
+        catch (TimeoutException)
+        {
+            ReadBusy.Note(true);
         }
         catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {

@@ -1,3 +1,5 @@
+using OpenTail.Bullshark.Core.Health;
+
 namespace OpenTail.Bullshark.Core.Storage;
 
 /// <summary>What happened to one file: moved, or refused with the reason.</summary>
@@ -11,8 +13,7 @@ public sealed record ArchiveOutcome(string Path, bool Moved, string Message);
 public static class TranscriptArchive
 {
     /// <summary>The archive under the owner's Claude folder. It is not under the projects folder, so Claude does not read it.</summary>
-    public static string DefaultRoot =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude", "bullshark-archive");
+    public static string DefaultRoot => ClaudePaths.ArchiveRoot();
 
     /// <summary>
     /// A transcript written this recently may belong to a session that is still running, so it is not archived (round 5 item 4).

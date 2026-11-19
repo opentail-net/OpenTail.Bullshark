@@ -43,6 +43,35 @@ public partial class SessionWindow
     /// <summary>The ui.json key for the re-alert interval, in minutes: 0 turns re-alerts off, and a missing value is 15.</summary>
     private const string EscalateKey = "escalateMinutes";
 
+    /// <summary>
+    /// The notes of the Needs-you group, one row each, in this order: the daemon note, the note of a window that only watches (reliability batch R1),
+    /// and a supervisor problem (reliability batch R9). Each is a tag and its text.
+    /// </summary>
+    private IReadOnlyList<(string Tag, string Text)> NeedsYouNotes()
+    {
+        var notes = new List<(string Tag, string Text)>();
+        if (_daemonNotice is { } daemon) notes.Add(("daemon", daemon));
+        if (_watching) notes.Add(("watching", SessionWindow.WatchingNote));
+        if (_passHealth.Problem is { } problem) notes.Add(("problem", "Supervisor problem: " + problem));
+        return notes;
+    }
+
+    /// <summary>
+    /// The Problems toast for a supervisor pass that started failing (reliability batch R9): one, when it starts, and a line in the log. It follows
+    /// the switches the Needs-you toast follows: quiet hours, "notify", "toast", and the Problems category. It is not shown while the window is in
+    /// front. The Needs-you row stays until the pass works again.
+    /// </summary>
+    private void AnnounceProblem(string reason)
+    {
+        AppLog.Write($"supervisor problem: {reason}");
+        if (IsActive) return;
+        if (QuietHours.IsQuietAt(QuietHours.Parse(UiFile.Read(_options.StatePath, QuietHours.Key)), DateTimeOffset.Now)) return;
+        if (!AttentionList.NotificationsOn(UiFile.Read(_options.StatePath, "notify"))) return;
+        if (!AttentionList.NotificationsOn(UiFile.Read(_options.StatePath, ToastKey))) return;
+        if (!ToastCategories.Enabled(UiFile.Read(_options.StatePath, ToastCategories.Key), ToastCategory.Problems)) return;
+        ToastNotifier.ShowProblem(reason);
+    }
+
     private void UpdateNeedsYouCount()
     {
         // A session can be waiting for more than one reason (gems item 1: a blocked session can also share a file), and it is one session.
@@ -58,18 +87,19 @@ public partial class SessionWindow
     private TreeViewItem NeedsYouSection(IReadOnlyDictionary<string, SessionRecord> records)
     {
         // The header counts the rows listed under it, the daemon note included, so it never says 0 with a row under it (round 8 item 5).
-        var rowCount = AttentionList.NeedsYouRowCount(_attention, records, _daemonNotice is not null);
+        var notes = NeedsYouNotes();
+        var rowCount = AttentionList.NeedsYouRowCount(_attention, records, daemonNote: false) + notes.Count;
         var section = NewItem(Label($"Needs you ({rowCount})", bold: true),
             new RailTag(RailKind.Heading, NeedsYouKey),
             "Sessions that wait for you: blocked on a permission or a question, stopped and not brought back, a start that failed, " +
             "or a file that another session of the run also wrote.");
         section.IsExpanded = _expanded.GetValueOrDefault(NeedsYouKey, true);
 
-        // The daemon note comes first: the daemon is not running, and listed sessions still claim working or blocked (round 7 item 1, revised).
-        // It says so, and blocks nothing.
-        if (_daemonNotice is { } daemonProblem)
-            section.Items.Add(NewItem(Label(daemonProblem, bold: true, wrap: true),
-                new RailTag(RailKind.Heading, NeedsYouKey + ":daemon"), daemonProblem));
+        // The notes come first, one row each. The daemon note: the daemon is not running and listed sessions still claim working or blocked (round 7
+        // item 1, revised). They say so, and block nothing.
+        foreach (var (tag, text) in notes)
+            section.Items.Add(NewItem(Label(text, bold: true, wrap: true),
+                new RailTag(RailKind.Heading, NeedsYouKey + ":" + tag), text));
 
         // One row per session: its first reason is the one the row is shown for. The other reasons are in the Changes tab and the announcement.
         foreach (var item in _attention.DistinctBy(i => i.Name, StringComparer.Ordinal))
@@ -164,6 +194,8 @@ public partial class SessionWindow
     /// </summary>
     private void AnnounceAttention()
     {
+        // A window that only watches does not announce: the supervising window's toasts and sounds are the ones the owner hears (reliability batch R1).
+        if (_watching) return;
         var previous = _announced;
         _announced = _attention;
         var now = DateTimeOffset.Now;

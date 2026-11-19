@@ -187,6 +187,11 @@ Not needed for the core. It is useful for recovery when a restart is not enough,
 | D9 | Orchestrator authority: which actions may it take without asking? | A fixed list only (continue, run tests, wait). Everything else is an alert to the owner. |
 | D10 | How do alerts reach the owner when AFK? | Partly done (2026-11-17): in the window, a "Needs you" rail group, taskbar flash and sound. A Windows toast was added on 2026-11-18 (not seen on screen yet). Still open for AFK: the Teams path in OpenTail.Orca (already used for approval cards; check its limits). |
 
+## Known limits
+
+- **One supervisor per state.** The window that holds the state's supervisor name runs the pass: starts, resumes, restarts and alerts. A second window on the same state only watches. It reads and draws, shows "Another OpenTail.Bullshark window supervises this state. This one only watches." under Needs you, and raises no toast and no sound. When the first window closes or is killed, the second takes over on a later pass. The sessions keep running in every case.
+- **Claude's folder.** Every path to a Claude file comes from one helper. With `CLAUDE_CONFIG_DIR` set, the app reads `.claude.json`, the transcripts and its archive from that folder, as Claude does (`.claude.json` tested with claude 2.1.328 on 2026-11-19). Without it, the app reads `~\.claude` and `~\.claude.json`. An archive made before the variable was set stays where it was, and is not listed.
+
 ## Repo
 
 Folder: `C:\Git\split\OpenTail.Bullshark` (next to the other `OpenTail.*` projects). Git repo with remote `origin` = `github.com/opentail-net/OpenTail.Bullshark`, branch `main`.

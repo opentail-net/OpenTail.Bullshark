@@ -57,9 +57,15 @@ public sealed class StateStore
     /// kept, and the other is logged and left out of the result. Ties keep the first record in the file.
     /// An unreadable file throws <see cref="StoreUnreadableException"/>.
     /// </summary>
-    public IReadOnlyDictionary<string, SessionRecord> Load()
+    public IReadOnlyDictionary<string, SessionRecord> Load() => Load(FileLock.DefaultWait);
+
+    /// <summary>
+    /// The same read, waiting at most <paramref name="wait"/> for the lock (reliability batch R7: the window's UI thread waits briefly).
+    /// A lock that is not free in time throws <see cref="TimeoutException"/>.
+    /// </summary>
+    public IReadOnlyDictionary<string, SessionRecord> Load(TimeSpan wait)
     {
-        using var _ = FileLock.Hold(_path);
+        using var _ = FileLock.Hold(_path, wait);
         return Read();
     }
 

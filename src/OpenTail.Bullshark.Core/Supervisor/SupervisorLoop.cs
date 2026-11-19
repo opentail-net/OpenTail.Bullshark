@@ -12,12 +12,18 @@ public sealed class SupervisorLoop
     /// <summary>The shortest time between two login alerts (round 12 item A5).</summary>
     public static readonly TimeSpan LoginAlertInterval = TimeSpan.FromHours(1);
 
+    /// <summary>The shortest time between two reads of the login, while it is not expiring soon (reliability batch R4).</summary>
+    public static readonly TimeSpan LoginReadInterval = TimeSpan.FromHours(1);
+
     private readonly SupervisorRunner _runner;
     private readonly ClaudeCli _cli;
     private readonly StateStore _store;
     private readonly Action<string> _log;
     private readonly TimeProvider _clock;
     private DateTimeOffset? _lastLoginAlert;
+    private DateTimeOffset? _lastLoginRead;
+    private bool _expiringSoon;
+    private LoginReading _lastReading = new(Readable: false, Remaining: null);
 
     /// <param name="clock">The time the login alert is limited by. The default is the system clock.</param>
     public SupervisorLoop(SupervisorRunner runner, ClaudeCli cli, StateStore store, Action<string> log, TimeProvider? clock = null)
@@ -50,52 +56,63 @@ public sealed class SupervisorLoop
     {
         var actions = await _runner.CheckOnceAsync(specs, agents, cancellationToken);
 
-        // What this pass read of the login (night batch N2): whether any live session could be read, and the warning it showed, if any.
-        var read = false;
-        TimeSpan? warning = null;
-        foreach (var record in _store.Load().Values)
+        // The login belongs to the account, so one live session tells us for all of them (reliability batch R4). It is read at most once an
+        // hour, and on every pass while the last reading showed the login expiring soon. A failed read counts as a read: it is not retried
+        // on the next pass. The reading the window shows is the last one made, so the passes between two reads show the same thing.
+        var now = _clock.GetUtcNow();
+        var session = _store.Load().Values.FirstOrDefault(record =>
+            !string.IsNullOrEmpty(record.SessionId) && IsLive(agents, record.SessionId));
+        if (session is null)
         {
-            // A failed start has no session to read yet.
-            if (string.IsNullOrEmpty(record.SessionId)) continue;
+            // Nothing live to read this pass: nothing is read, and the window shows that.
+            LastLogin = new LoginReading(Readable: false, Remaining: null);
+            return actions.Count;
+        }
 
-            // Only a live session is read (round 12 item A5). The login belongs to the account, so one live session tells us, and a
-            // finished, stopped or failed one is not launched for on every pass.
-            if (!IsLive(agents, record.SessionId)) continue;
-
+        if (LoginReadDue(now))
+        {
+            _lastLoginRead = now;
             string output;
             try
             {
-                output = await _cli.LogsAsync(ClaudeCli.ShortIdOf(record.SessionId), cancellationToken);
+                output = await _cli.LogsAsync(ClaudeCli.ShortIdOf(session.SessionId), cancellationToken);
             }
             catch (ClaudeCliException ex)
             {
-                // A session that has just gone cannot be read this pass. The runner handles the restart.
-                _log($"{record.Name}: output not readable this pass ({ex.Message})");
-                continue;
+                // A session that has just gone cannot be read. The runner handles the restart; the next read is an hour away.
+                _log($"{session.Name}: output not readable this pass ({ex.Message})");
+                _expiringSoon = false;
+                _lastReading = new LoginReading(Readable: false, Remaining: null);
+                LastLogin = _lastReading;
+                return actions.Count;
             }
 
-            read = true;
-            if (LoginExpiry.Find(output) is { } remaining)
-            {
-                warning = remaining;
-                if (LoginExpiry.IsExpiringSoon(remaining))
-                {
-                    AlertLogin(record.Name, remaining);
-                    // The first session that shows the expiry says it for the account, so the others are not read this pass.
-                    break;
-                }
-            }
+            var warning = LoginExpiry.Find(output);
+            _expiringSoon = warning is { } remaining && LoginExpiry.IsExpiringSoon(remaining);
+            _lastReading = new LoginReading(Readable: true, Remaining: warning);
+            // The first session that shows the expiry says it for the account (the alert is limited to once an hour, see AlertLogin).
+            if (_expiringSoon) AlertLogin(session.Name, warning!.Value);
         }
-        LastLogin = new LoginReading(read, warning);
+        LastLogin = _lastReading;
 
         return actions.Count;
     }
 
     /// <summary>
-    /// The login as the last pass that ran read it (night batch N2). Not readable until a pass has read a live session. Written by the pass,
+    /// The login as the last read of it made (night batch N2). Not readable until a pass has read a live session. Written by the pass,
     /// so the window reads it only when the pass has finished.
     /// </summary>
     public LoginReading LastLogin { get; private set; } = new(Readable: false, Remaining: null);
+
+    /// <summary>
+    /// Whether the login is read on this pass: no read yet, the last one is an hour old (or the clock went back), or the last reading showed the
+    /// login expiring soon and it has not cleared (reliability batch R4).
+    /// </summary>
+    private bool LoginReadDue(DateTimeOffset now) =>
+        _expiringSoon
+        || _lastLoginRead is not { } last
+        || now < last
+        || now - last >= LoginReadInterval;
 
     /// <summary>
     /// True when the listing shows the session and it is not finished: not done, stopped or failed (the states the supervisor's own rules

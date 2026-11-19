@@ -116,7 +116,18 @@ public partial class SessionWindow
     {
         var at = _reviewSources.TryGetValue(sessionId, out var source) ? source.LastActivity : DateTimeOffset.UtcNow;
         _reviewed[sessionId] = at;
-        UiFile.Set(_options.StatePath, ReviewedKey, ReviewedMarks.Write(_reviewed));
+        // The marks are read again under the lock and this one is added (reliability batch R5), so a mark another window made is kept. The
+        // marks the file holds then are kept here too, so the rail agrees with the file.
+        Dictionary<string, DateTimeOffset>? written = null;
+        UiFile.Update(_options.StatePath, ReviewedKey, node =>
+        {
+            var marks = ReviewedMarks.Parse(node);
+            marks[sessionId] = at;
+            written = marks;
+            return ReviewedMarks.Write(marks);
+        });
+        if (written is not null)
+            foreach (var pair in written) _reviewed[pair.Key] = pair.Value;
         AppLog.Write($"ready for review: {ClaudeCli.ShortIdOf(sessionId)} marked reviewed");
         if (redraw) RefreshRail();
     }

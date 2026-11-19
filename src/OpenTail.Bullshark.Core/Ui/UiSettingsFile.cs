@@ -19,19 +19,68 @@ public static class UiSettingsFile
     public static string PathFor(string stateFile) =>
         Path.Combine(Path.GetDirectoryName(Path.GetFullPath(stateFile))!, FileName);
 
+    /// <summary>How long a read or a write waits for the file's lock, as <see cref="FileLock.Hold(string)"/> does.</summary>
+    public static readonly TimeSpan DefaultWait = TimeSpan.FromSeconds(10);
+
     /// <summary>The value of one key, or null when the file or the key is missing, or the file cannot be read.</summary>
     public static JsonNode? Read(string path, string key, Action<string>? log = null)
     {
         log ??= _ => { };
+        return TryRead(path, key, DefaultWait, out var value, log) ? value : NotRead(log);
+    }
+
+    private static JsonNode? NotRead(Action<string> log)
+    {
+        log("ui.json not read: the file was held by another process for too long.");
+        return null;
+    }
+
+    /// <summary>
+    /// Reads one key, waiting at most <paramref name="wait"/> for the file's lock (reliability batch R7). Returns false when the lock was not free
+    /// in time: the file is busy, and <paramref name="value"/> is null. A file that cannot be read gives true with a null value, as <see cref="Read"/> does.
+    /// </summary>
+    public static bool TryRead(string path, string key, TimeSpan wait, out JsonNode? value, Action<string>? log = null)
+    {
+        log ??= _ => { };
+        value = null;
         try
         {
-            using var _ = FileLock.Hold(path);
-            return ReadRoot(path, log)?[key];
+            using var _ = FileLock.Hold(path, wait);
+            value = ReadRoot(path, log)?[key];
+            return true;
+        }
+        catch (TimeoutException)
+        {
+            return false;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            log($"ui.json not read: {ex.Message}");
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Changes one key inside one hold of the file's lock (reliability batch R5). The stored value is read, changed by <paramref name="change"/> and
+    /// written under the same hold, so a change another window made since this one last read the file is kept. <paramref name="change"/> gets a copy
+    /// of the stored value (null when the key is missing) and returns the value to store. Returns true when the file was written; a failure is
+    /// logged and gives false (nothing is thrown, and the file is not replaced).
+    /// </summary>
+    public static bool Update(string path, string key, Func<JsonNode?, JsonNode?> change, Action<string>? log = null, TimeSpan? wait = null)
+    {
+        log ??= _ => { };
+        try
+        {
+            using var _ = FileLock.Hold(path, wait ?? DefaultWait);
+            var root = ReadRoot(path, log) ?? new JsonObject();
+            root[key] = change(root[key]?.DeepClone());
+            FileLock.WriteAtomic(path, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+            return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or TimeoutException)
         {
-            log($"ui.json not read: {ex.Message}");
-            return null;
+            log($"ui.json not saved: {ex.Message}");
+            return false;
         }
     }
 

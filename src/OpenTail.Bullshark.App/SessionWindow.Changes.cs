@@ -112,7 +112,7 @@ public partial class SessionWindow
         var stamps = new Dictionary<string, string?>(StringComparer.Ordinal);
         if (report.Kind == GitChangesKind.Changes)
             foreach (var file in report.Files) stamps[file.Path] = ViewedFiles.CurrentStamp(folder, file.Path);
-        var marks = ViewedFiles.Parse(UiFile.Read(statePath, ViewedFiles.Key));
+        var marks = ViewedFiles.Parse(UiFile.ReadInBackground(statePath, ViewedFiles.Key));
         return (stamps, marks);
     }
 
@@ -122,10 +122,9 @@ public partial class SessionWindow
         if (_changesSession is not { } sessionId) return;
         if (!_changesStamps.TryGetValue(path, out var stamp) || stamp is null) return;
         var now = DateTimeOffset.UtcNow;
-        var marks = viewed
-            ? ViewedFiles.Mark(_viewedMarks, sessionId, path, stamp, now)
-            : ViewedFiles.Unmark(_viewedMarks, sessionId, path);
-        SaveViewed(sessionId, marks, now);
+        SaveViewed(sessionId, now, marks => viewed
+            ? ViewedFiles.Mark(marks, sessionId, path, stamp, now)
+            : ViewedFiles.Unmark(marks, sessionId, path));
     }
 
     /// <summary>"Mark all viewed" ticks every changed file of the tab with its stamp now; "Clear" removes the session's ticks (features batch G1).</summary>
@@ -133,20 +132,33 @@ public partial class SessionWindow
     {
         if (_changesSession is not { } sessionId) return;
         var now = DateTimeOffset.UtcNow;
-        var marks = viewed
-            ? ViewedFiles.MarkAll(_viewedMarks, sessionId, _changesStamps, now)
-            : ViewedFiles.Clear(_viewedMarks, sessionId);
-        SaveViewed(sessionId, marks, now);
+        SaveViewed(sessionId, now, marks => viewed
+            ? ViewedFiles.MarkAll(marks, sessionId, _changesStamps, now)
+            : ViewedFiles.Clear(marks, sessionId));
     }
 
     /// <summary>
     /// Keeps the ticks in memory, writes them to ui.json and draws the tab's ticks again. A write that fails is said on the status line: the ticks
     /// still show until the window closes, and a later read of the tab shows what the file holds.
     /// </summary>
-    private void SaveViewed(string sessionId, IReadOnlyDictionary<string, ViewedSession> marks, DateTimeOffset now)
+    /// <remarks>
+    /// The change is made to the marks as the file holds them under its lock (reliability batch R5), so the ticks another window made since this one
+    /// read the file are kept. The result is then kept here as well.
+    /// </remarks>
+    private void SaveViewed(
+        string sessionId,
+        DateTimeOffset now,
+        Func<IReadOnlyDictionary<string, ViewedSession>, IReadOnlyDictionary<string, ViewedSession>> change)
     {
-        _viewedMarks = ViewedFiles.Prune(marks, now);
-        if (!UiFile.Set(_options.StatePath, ViewedFiles.Key, ViewedFiles.ToJson(_viewedMarks)))
+        IReadOnlyDictionary<string, ViewedSession>? written = null;
+        var saved = UiFile.Update(_options.StatePath, ViewedFiles.Key, node =>
+        {
+            written = ViewedFiles.Prune(change(ViewedFiles.Parse(node)), now);
+            return ViewedFiles.ToJson(written);
+        });
+        // A file that could not be written (or locked) keeps the ticks in memory, as before: they show until the window closes.
+        _viewedMarks = written ?? ViewedFiles.Prune(change(_viewedMarks), now);
+        if (!saved)
             SetStatus("The viewed ticks are not saved: ui.json cannot be written. They show until the window closes.");
         _changes.SetViewed(ViewedFiles.ViewedAmong(_viewedMarks, sessionId, _changesStamps));
     }

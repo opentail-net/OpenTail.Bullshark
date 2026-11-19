@@ -21,11 +21,18 @@ public partial class SessionWindow
     private readonly HashSet<string> _mergeStarted = new(StringComparer.Ordinal);
 
     /// <summary>
+    /// The last attempt at a coder's check whose result was a problem, by session id (reliability batch R8). UI thread only: it gives when the
+    /// next attempt is due, and the HEAD the check ran on.
+    /// </summary>
+    private readonly Dictionary<string, ProblemMemory> _mergeProblems = new(StringComparer.Ordinal);
+
+    /// <summary>
     /// Starts a check for each coder that has just entered `done`, and forgets the result of one that has left it. The specs are the runs the
     /// pass read (round 12 B4), so a check does not read runs.json on the UI thread.
     /// </summary>
     private void UpdateMergeChecks(IReadOnlyDictionary<string, SessionRecord> records, IReadOnlyList<SessionSpec> specs)
     {
+        var now = DateTimeOffset.UtcNow;
         var stillDone = new HashSet<string>(StringComparer.Ordinal);
         foreach (var record in records.Values.Where(r => r.Role == SessionRole.Coder && r.SessionId.Length > 0))
         {
@@ -33,7 +40,13 @@ public partial class SessionWindow
             if (!string.Equals(state, "done", StringComparison.OrdinalIgnoreCase)) continue;
 
             stillDone.Add(record.SessionId);
-            if (_mergeStarted.Add(record.SessionId)) _ = CheckMergeAsync(record, specs);
+            // A check that is running is left alone. A coder whose last result was a problem is checked again only when that is due (reliability batch
+            // R8): until then it is not marked as started, so a later pass looks at it again.
+            if (_mergeStarted.Contains(record.SessionId)) continue;
+            var previous = _mergeProblems.TryGetValue(record.SessionId, out var memory) ? memory : null;
+            if (!MergeRecheck.MayTry(previous, now)) continue;
+            _mergeStarted.Add(record.SessionId);
+            _ = CheckMergeAsync(record, specs, previous);
         }
 
         foreach (var id in _mergeStarted.Where(id => !stillDone.Contains(id)).ToList())
@@ -41,13 +54,14 @@ public partial class SessionWindow
             _mergeStarted.Remove(id);
             _merges.Remove(id);
         }
+        foreach (var id in _mergeProblems.Keys.Where(id => !stillDone.Contains(id)).ToList()) _mergeProblems.Remove(id);
     }
 
     /// <summary>
     /// The check for one coder, on a pool thread. A coder with no known folder is not checked yet, and is tried again on the next pass.
     /// A result that arrives after the coder has left `done` is dropped.
     /// </summary>
-    private async Task CheckMergeAsync(SessionRecord record, IReadOnlyList<SessionSpec> specs)
+    private async Task CheckMergeAsync(SessionRecord record, IReadOnlyList<SessionSpec> specs, ProblemMemory? previous)
     {
         try
         {
@@ -65,18 +79,40 @@ public partial class SessionWindow
                 return;
             }
 
+            // HEAD is read first (reliability batch R8): a problem found on this HEAD is not checked again within 30 minutes of its run.
+            var head = await Task.Run(async () => await MergeCheck.HeadOfAsync(folder, new ProcessGitRunner()));
+            var now = DateTimeOffset.UtcNow;
+            if (previous is not null && MergeRecheck.SkipForSameHead(previous, head, now))
+            {
+                // The attempt is kept in mind, so the next one is five minutes from now; the time of the run does not move.
+                _mergeProblems[record.SessionId] = previous with { TriedAt = now };
+                _mergeStarted.Remove(record.SessionId);
+                return;
+            }
+
             var report = await Task.Run(() => MergeCheck.RunAsync(folder, new ProcessGitRunner()));
             if (!_mergeStarted.Contains(record.SessionId)) return;
             _merges[record.SessionId] = report;
-            // A problem is not a verdict: the coder leaves the started set, so the next pass checks it again while it stays done (round 8 item 6).
-            if (MergeCheck.ShouldRecheck(report)) _mergeStarted.Remove(record.SessionId);
+            // A problem is not a verdict: the coder leaves the started set, so it is checked again while it stays done (round 8 item 6), and not on
+            // every pass (reliability batch R8).
+            if (MergeCheck.ShouldRecheck(report))
+            {
+                _mergeStarted.Remove(record.SessionId);
+                _mergeProblems[record.SessionId] = new ProblemMemory(now, now, head);
+            }
+            else
+            {
+                _mergeProblems.Remove(record.SessionId);
+            }
             AppLog.Write($"merge check {record.Name}: {report.Kind} {report.Message}");
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             // The reads are inside the try (round 12 B2): a failure here was lost, since the task is not awaited. It is logged, and the
-            // coder leaves the started set, so the next pass checks it again.
+            // coder leaves the started set. Its next check is five minutes away, not the next pass (reliability batch R8).
             _mergeStarted.Remove(record.SessionId);
+            var at = DateTimeOffset.UtcNow;
+            _mergeProblems[record.SessionId] = new ProblemMemory(at, at, null);
             AppLog.Write($"merge check {record.Name} failed: {ex.GetType().Name}: {ex.Message}");
         }
     }

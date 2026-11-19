@@ -47,9 +47,12 @@ public sealed class RunStore
     /// <summary>
     /// All runs in the file. A missing file gives an empty list. An unreadable file throws <see cref="StoreUnreadableException"/>.
     /// </summary>
-    public IReadOnlyList<RunRecord> Load()
+    public IReadOnlyList<RunRecord> Load() => Load(FileLock.DefaultWait);
+
+    /// <summary>The same read, waiting at most <paramref name="wait"/> for the lock (reliability batch R7). A lock not free in time throws <see cref="TimeoutException"/>.</summary>
+    public IReadOnlyList<RunRecord> Load(TimeSpan wait)
     {
-        using var _ = FileLock.Hold(_path);
+        using var _ = FileLock.Hold(_path, wait);
         return Read();
     }
 
@@ -133,6 +136,53 @@ public sealed class RunStore
             });
         }
         return kept;
+    }
+
+    /// <summary>
+    /// Puts one session back after its close failed (reliability batch R6). Only that session changes: the run it was in is read as it is now, and
+    /// its spec is inserted again at the place it had. Another session of the run that was closed meanwhile stays closed; a run that was dropped
+    /// because its last session went comes back with this session alone. The closed start and output tokens that the close added to the run are
+    /// taken back, so the run's clock and spend are as they were.
+    /// </summary>
+    /// <param name="current">The runs as they are now.</param>
+    /// <param name="before">The runs as they were before the close (the ones that held the session).</param>
+    /// <param name="sessionName">The session that failed to close.</param>
+    /// <param name="closedStart">The start the close gave the run (null when the close gave none).</param>
+    /// <param name="closedOutput">The output tokens the close added to the run.</param>
+    public static IReadOnlyList<RunRecord> WithSessionRestored(
+        IReadOnlyList<RunRecord> current,
+        IReadOnlyList<RunRecord> before,
+        string sessionName,
+        DateTimeOffset? closedStart,
+        long closedOutput)
+    {
+        var runs = current.ToList();
+        foreach (var original in before)
+        {
+            var index = original.Specs.ToList().FindIndex(spec => spec.Name == sessionName);
+            if (index < 0) continue;
+            var spec = original.Specs[index];
+
+            var at = runs.FindIndex(run => string.Equals(run.RunId, original.RunId, StringComparison.Ordinal));
+            if (at < 0)
+            {
+                // The run was dropped: its other sessions had gone too. It comes back with this session only.
+                runs.Add(original with { Specs = [spec] });
+                continue;
+            }
+
+            var run = runs[at];
+            if (run.Specs.Any(s => s.Name == sessionName)) continue;
+            var specs = run.Specs.ToList();
+            specs.Insert(Math.Min(index, specs.Count), spec);
+            runs[at] = run with
+            {
+                Specs = specs,
+                ClosedOutputTokens = Math.Max(0, run.ClosedOutputTokens - Math.Max(0, closedOutput)),
+                FirstStartedAt = closedStart is { } start && run.FirstStartedAt == start ? original.FirstStartedAt : run.FirstStartedAt,
+            };
+        }
+        return runs;
     }
 
     /// <summary>The earlier of two optional times. Null is no time, so a missing one gives the other.</summary>

@@ -110,7 +110,10 @@ Pass when: no name appears twice at any step, each step has its line, and F20 is
 - [ ] **`--bg --session-id <uuid>`**: does the session keep that id now? (F18 said no on 2026-11-14.)
 - [ ] **A dead row's name**: does `claude --bg` accept a name that a dead listing row still holds? (round 8 B1.4)
 - [ ] **`claude respawn --all`**: does it restart stopped sessions, and does a blocked session lose its prompt? (round 8 B3.2)
-- [ ] **`CLAUDE_CONFIG_DIR`**: where does `.claude.json` live when it is set? (round 3)
+- [x] **`CLAUDE_CONFIG_DIR`**: where does `.claude.json` live when it is set? (round 3) Answered 2026-11-19 with claude 2.1.328: `claude mcp list` with the variable set wrote `.claude.json` inside that folder, so Claude keeps it there. The app now reads it there too (`ClaudePaths`, reliability batch R2). Still to check: one real session under the variable.
+- [ ] **Two windows on one state** (reliability batch R1): the second window says it only watches, under Needs you, and starts, resumes and alerts nothing. Close the first one: the second takes over on a later pass.
+- [ ] **A Trust step open for a minute** (reliability batch R3): `claude` is run about 4 times a minute for the passes, not 23 (screenshot fixture: 24 calls in 60 s, against 118 before).
+- [ ] **A broken `runs.json`** (reliability batch R9): a "Supervisor problem: runs.json cannot be read ..." row under Needs you and one Problems toast; the row clears when the file is good again.
 - [ ] **OpenTelemetry** (gems item 3): one session with telemetry to the console, to see the attribute names.
 
 ## Decisions still open (no run needed; answer when convenient)

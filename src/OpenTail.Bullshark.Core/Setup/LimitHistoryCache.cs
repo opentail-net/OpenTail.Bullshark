@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using OpenTail.Bullshark.Core.Activity;
+using OpenTail.Bullshark.Core.Cache;
 using OpenTail.Bullshark.Core.Supervisor;
 
 namespace OpenTail.Bullshark.Core.Setup;
@@ -117,8 +118,8 @@ internal static class LimitHistoryCache
         try
         {
             if (!File.Exists(path)) return null;
-            using var stream = File.OpenRead(path);
-            var document = JsonSerializer.Deserialize<Document>(stream);
+            // Read without the lock: a read that meets the replace is tried once more (reliability batch R11).
+            var document = CacheRead.Retry(() => ReadDocument(path));
             if (document is null || document.Reader != ReaderId) return null;
 
             var entries = new Dictionary<string, Entry>(StringComparer.Ordinal);
@@ -133,6 +134,13 @@ internal static class LimitHistoryCache
             log?.Invoke($"limit history cache not used ({ex.GetType().Name}): {ex.Message}");
             return null;
         }
+    }
+
+    /// <summary>The cache file as it is on disk (read without the lock, see <see cref="Load"/>).</summary>
+    private static Document? ReadDocument(string path)
+    {
+        using var stream = File.OpenRead(path);
+        return JsonSerializer.Deserialize<Document>(stream);
     }
 
     /// <summary>

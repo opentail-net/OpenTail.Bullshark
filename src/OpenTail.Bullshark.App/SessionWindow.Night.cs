@@ -157,7 +157,7 @@ public partial class SessionWindow
         {
             var heartbeat = Heartbeat.Read(Heartbeat.PathFor(statePath));
             var (runsRead, runsProblem) = LoadRuns(runStore);
-            var quietWindow = QuietHours.Parse(UiFile.Read(statePath, QuietHours.Key));
+            var quietWindow = QuietHours.Parse(UiFile.ReadInBackground(statePath, QuietHours.Key));
             return (heartbeat, runsProblem is null ? runsRead : null, quietWindow);
         });
         if (!full) return new NightReads(last, runs, quiet, null, null);

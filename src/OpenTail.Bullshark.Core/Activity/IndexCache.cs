@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using OpenTail.Bullshark.Core.Cache;
 using OpenTail.Bullshark.Core.Supervisor;
 
 namespace OpenTail.Bullshark.Core.Activity;
@@ -155,8 +156,8 @@ internal static class IndexCache
         try
         {
             if (!File.Exists(path)) return null;
-            using var stream = File.OpenRead(path);
-            var document = JsonSerializer.Deserialize<Document>(stream);
+            // Read without the lock: a read that meets the replace is tried once more (reliability batch R11).
+            var document = CacheRead.Retry(() => ReadDocument(path));
             if (document is null || document.Reader != ReaderId) return null;
 
             // A null list or a null entry or path is an entry that is not there, and an entry that does not restore is read again (FromCache).
@@ -172,6 +173,13 @@ internal static class IndexCache
             log?.Invoke($"transcript index cache not used ({ex.GetType().Name}): {ex.Message}");
             return null;
         }
+    }
+
+    /// <summary>The cache file as it is on disk (read without the lock, see <see cref="Load"/>).</summary>
+    private static Document? ReadDocument(string path)
+    {
+        using var stream = File.OpenRead(path);
+        return JsonSerializer.Deserialize<Document>(stream);
     }
 
     /// <summary>

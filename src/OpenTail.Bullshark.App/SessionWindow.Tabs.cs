@@ -283,7 +283,7 @@ public partial class SessionWindow
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            RestoreAfterFailedClose(affected, originals, name, recordBefore);
+            RestoreAfterFailedClose(originals, name, closedStart, closedOutput, recordBefore);
             AppLog.Write($"session not closed: {ex.Message}");
             SetStatus($"Not closed: {name} is still running. {ex.Message}");
             RefreshRail();
@@ -298,13 +298,22 @@ public partial class SessionWindow
             : $"Closed {name}. Nothing was stopped (it was idle or not running). It is no longer supervised; its conversation is kept.");
     }
 
-    /// <summary>Puts back what a failed close took out: the runs that held the session's spec, and its record.</summary>
-    private void RestoreAfterFailedClose(HashSet<string> affected, List<RunRecord> originals, string name, SessionRecord? recordBefore)
+    /// <summary>
+    /// Puts back what a failed close took out: this session's spec, in the run it belonged to, and its record (reliability batch R6). Only this
+    /// session is put back. The runs are read as they are now, so a session another close took out meanwhile stays out, and the other sessions of
+    /// the run are not put back as they were before.
+    /// </summary>
+    private void RestoreAfterFailedClose(
+        List<RunRecord> originals,
+        string name,
+        DateTimeOffset? closedStart,
+        long closedOutput,
+        SessionRecord? recordBefore)
     {
         try
         {
-            if (affected.Count > 0)
-                _runStore.Update(runs => runs.Where(run => !affected.Contains(run.RunId)).Concat(originals).ToList());
+            if (originals.Count > 0)
+                _runStore.Update(runs => RunStore.WithSessionRestored(runs, originals, name, closedStart, closedOutput));
             if (recordBefore is not null)
                 _store.Update(records => records[name] = recordBefore);
         }

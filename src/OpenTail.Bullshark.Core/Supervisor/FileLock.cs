@@ -28,6 +28,9 @@ public static class FileLock
 {
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(10);
 
+    /// <summary>How long a lock is waited for by default: ten seconds, the wait every writer and background read uses.</summary>
+    public static TimeSpan DefaultWait => Wait;
+
     /// <summary>Takes the lock for a file, waiting up to ten seconds. Dispose the result to release it.</summary>
     public static IDisposable Hold(string path) => Hold(path, Wait);
 

@@ -26,8 +26,11 @@ public interface IGitRunner
 }
 
 /// <summary>
-/// Runs the `git` on the PATH, for reading only. No index lock is taken (GIT_OPTIONAL_LOCKS=0), so `status` does not write the
-/// index that the coder session may be using at the same time. No credential prompt can appear (GIT_TERMINAL_PROMPT=0).
+/// Runs the `git` on the PATH, to read refs, the index and the working tree. No index lock is taken (GIT_OPTIONAL_LOCKS=0), so `status` does not
+/// write the index that the coder session may be using at the same time. No credential prompt can appear (GIT_TERMINAL_PROMPT=0).
+/// The one command that writes is `merge-tree --write-tree` (<see cref="MergeCheck"/>): it writes tree objects to the object database, and no ref,
+/// index or working-tree file. Git 2.53 has no read-only form of a full merge (`--trivial-merge` merges only trivially), so the claim is not
+/// "reading only" for that command.
 /// </summary>
 public sealed class ProcessGitRunner : IGitRunner
 {

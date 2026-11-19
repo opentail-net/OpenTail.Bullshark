@@ -54,9 +54,12 @@ public sealed class SessionLibrary
     public string FilePath => _path;
 
     /// <summary>All entries by session id. A missing file is empty. An unreadable file throws <see cref="StoreUnreadableException"/>.</summary>
-    public IReadOnlyDictionary<string, LibraryEntry> Load()
+    public IReadOnlyDictionary<string, LibraryEntry> Load() => Load(FileLock.DefaultWait);
+
+    /// <summary>The same read, waiting at most <paramref name="wait"/> for the lock (reliability batch R7). A lock not free in time throws <see cref="TimeoutException"/>.</summary>
+    public IReadOnlyDictionary<string, LibraryEntry> Load(TimeSpan wait)
     {
-        using var _ = FileLock.Hold(_path);
+        using var _ = FileLock.Hold(_path, wait);
         return Read();
     }
 

@@ -23,10 +23,9 @@ public static class SetupCheck
 {
     private const int MaxDetail = 160;
 
-    public static string DefaultClaudeDir => OpenTail.Bullshark.Core.Instructions.ClaudeConfig.Dir;
+    public static string DefaultClaudeDir => ClaudePaths.ConfigDir();
 
-    public static string DefaultClaudeJsonPath =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude.json");
+    public static string DefaultClaudeJsonPath => ClaudePaths.ClaudeJson();
 
     /// <summary>
     /// The checks, in the order they are made. <paramref name="pathVariable"/> is the PATH that program names are searched on; the

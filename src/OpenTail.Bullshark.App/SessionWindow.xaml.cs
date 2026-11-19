@@ -72,6 +72,35 @@ public partial class SessionWindow : Window
     private bool _passRunning;
 
     /// <summary>
+    /// The supervisor name of this state (reliability batch R1), held by this window while it runs the supervisor pass. Null when another window
+    /// holds it, or when this window was opened with --no-pass: then this window only watches (<see cref="_watching"/>).
+    /// </summary>
+    private SingleInstance? _supervisor;
+
+    /// <summary>True while another window supervises this state: this window reads and draws, and runs no pass (reliability batch R1).</summary>
+    private bool _watching;
+
+    /// <summary>When the last pass started. A trust-triggered pass waits 15 seconds after it (reliability batch R3).</summary>
+    private DateTimeOffset _lastPassStarted = DateTimeOffset.MinValue;
+
+    /// <summary>The problem state of the supervisor pass (reliability batch R9): the Needs-you row, and the one Problems toast when it starts.</summary>
+    private readonly PassHealth _passHealth = new();
+
+    /// <summary>The records and runs as the last UI-thread read got them: a read that finds the state busy keeps them (reliability batch R7).</summary>
+    private IReadOnlyDictionary<string, SessionRecord>? _lastRecords;
+    private IReadOnlyList<RunRecord>? _lastRuns;
+
+    /// <summary>The status line of a window that only watches (reliability batch R1).</summary>
+    private const string WatchingStatus =
+        "this window only watches: another OpenTail.Bullshark window supervises this state  ·  closing the window detaches the terminals; the sessions keep running";
+
+    /// <summary>The Needs-you note of a window that only watches (reliability batch R1).</summary>
+    internal const string WatchingNote = "Another OpenTail.Bullshark window supervises this state. This one only watches.";
+
+    /// <summary>The shortest time between two passes started by the Trust timer (reliability batch R3).</summary>
+    private static readonly TimeSpan PassEvery = TimeSpan.FromSeconds(15);
+
+    /// <summary>
     /// The hold on starts and resumes while Respawn all runs and for 20 seconds after it (round 8 item 3). The pass reads it on a pool thread.
     /// </summary>
     private readonly RespawnHold _respawnHold = new();
@@ -112,6 +141,12 @@ public partial class SessionWindow : Window
         InitRail();
         _store = new StateStore(options.StatePath, AppLog.Write);
         _runStore = new RunStore(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(options.StatePath))!, "runs.json"));
+        // The one supervisor of this state (reliability batch R1). A window that cannot take the name only watches: it reads and draws, and runs no pass.
+        if (!options.NoPass)
+        {
+            _supervisor = SingleInstance.TryAcquire(SingleInstance.NameFor(options.StatePath));
+            _watching = _supervisor is null;
+        }
         InitLibrary(options.StatePath);
         LoadMagicAuto();
         var runner = new SupervisorRunner(_cli, _store, TimeProvider.System, log: AppLog.Write) { Hold = _respawnHold };
@@ -159,11 +194,15 @@ public partial class SessionWindow : Window
         };
         _timer.Tick += async (_, _) => await PassAndRefreshAsync();
         _timer.Start();
-        Closing += (_, _) => DetachAll();
+        Closing += (_, _) =>
+        {
+            DetachAll();
+            ReleaseSupervisor();
+        };
         // The embedded terminal does not handle paste itself, so the window does: Ctrl+V and Shift+Insert.
         PreviewKeyDown += OnPanePreviewKeyDown;
         // While a Trust step is open, check again every few seconds, so the runs start as soon as trust is recorded.
-        _trustTimer.Tick += async (_, _) => await PassAndRefreshAsync();
+        _trustTimer.Tick += async (_, _) => await TrustStepTickAsync();
     }
 
     /// <summary>
@@ -178,17 +217,48 @@ public partial class SessionWindow : Window
     /// </summary>
     private IReadOnlyDictionary<string, SessionRecord> ReadRecords()
     {
-        var (records, problem) = LoadRecords(_store);
-        if (problem is not null) _storeProblem = problem;
-        return records;
+        try
+        {
+            // The UI thread waits briefly for the lock (reliability batch R7). A busy file gives the last read, and the status line says so once.
+            var records = _store.Load(UiFile.UiWait);
+            ReadBusy.Note(false);
+            _lastRecords = records;
+            return records;
+        }
+        catch (TimeoutException)
+        {
+            ReadBusy.Note(true);
+            return _lastRecords ?? new Dictionary<string, SessionRecord>(StringComparer.Ordinal);
+        }
+        catch (Exception ex) when (StoreErrors.IsExpected(ex))
+        {
+            AppLog.Write(ex.Message);
+            _storeProblem = ex.Message;
+            return new Dictionary<string, SessionRecord>(StringComparer.Ordinal);
+        }
     }
 
     /// <summary>The runs as they are on disk. An unreadable file shows as no runs, as ReadRecords does.</summary>
     private IReadOnlyList<RunRecord> ReadRuns()
     {
-        var (runs, problem) = LoadRuns(_runStore);
-        if (problem is not null) _storeProblem = problem;
-        return runs;
+        try
+        {
+            var runs = _runStore.Load(UiFile.UiWait);
+            ReadBusy.Note(false);
+            _lastRuns = runs;
+            return runs;
+        }
+        catch (TimeoutException)
+        {
+            ReadBusy.Note(true);
+            return _lastRuns ?? Array.Empty<RunRecord>();
+        }
+        catch (Exception ex) when (StoreErrors.IsExpected(ex))
+        {
+            AppLog.Write(ex.Message);
+            _storeProblem = ex.Message;
+            return Array.Empty<RunRecord>();
+        }
     }
 
     /// <summary>
@@ -254,6 +324,8 @@ public partial class SessionWindow : Window
         RefreshLimitStatus();
         if (_passRunning) return;
         _passRunning = true;
+        _lastPassStarted = DateTimeOffset.UtcNow;
+        TakeOverIfFree();
         try
         {
             var known = new Dictionary<string, string>(_transcriptPaths, StringComparer.Ordinal);
@@ -274,13 +346,15 @@ public partial class SessionWindow : Window
             _runner.Daemon = read.Daemon;
             // A daemon that runs another claude version gets the Respawn all button, and only the owner's confirmed click runs anything (round 7 item 2).
             _drift = read.Drift;
-            RespawnButton.Visibility = _drift is null ? Visibility.Collapsed : Visibility.Visible;
+            // A window that only watches does not offer the respawn: it restarts the sessions, which only the supervising window does.
+            RespawnButton.Visibility = _drift is null || _watching ? Visibility.Collapsed : Visibility.Visible;
             RespawnButton.ToolTip = _drift?.Message;
 
             // While ~/.claude.json cannot be read, trust is unknown: no root is judged untrusted, and no run starts or restarts.
             var plan = read.Trust;
             var needed = plan.UntrustedRoots.Select(FolderKey.From).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            foreach (var root in plan.UntrustedRoots) ShowTrustStep(root, select: false);
+            // A window that only watches opens no Trust step: an interactive claude there is the supervising window's to open.
+            if (!_watching) foreach (var root in plan.UntrustedRoots) ShowTrustStep(root, select: false);
             foreach (var key in _trustSteps.Keys.Where(k => !needed.Contains(k)).ToList()) HideTrustStep(key);
             TrustButton.Tag = _trustSteps.Values.FirstOrDefault()?.Root;
             TrustButton.Visibility = _trustSteps.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -291,14 +365,17 @@ public partial class SessionWindow : Window
             var records = read.Records;
             // True only when the supervisor really ran this pass: the heartbeat (night batch N1) says so and no other pass does.
             var passRan = false;
-            if (!_options.NoPass && plan.Problem is null)
+            string? afterProblem = null;
+            if (_supervisor is not null && plan.Problem is null)
             {
                 // The records the pass leaves are read on the pool thread too, so the rail is drawn from that one read.
-                (actions, records, var afterProblem) = await Task.Run(() => RunPassAndReadAsync(read));
+                (actions, records, afterProblem) = await Task.Run(() => RunPassAndReadAsync(read));
                 _storeProblem = afterProblem ?? _storeProblem;
                 _login = _loop.LastLogin;
                 passRan = true;
             }
+            // This window supervises: what its pass found is reported once (reliability batch R9). A window that only watches reports nothing.
+            if (_supervisor is not null) ReportPass(plan.Problem ?? read.StoreProblem ?? afterProblem);
             // The files two sessions of a run both wrote are read off the UI thread, from the transcripts this pass has seen (gems item 1).
             var paths = new Dictionary<string, string>(_transcriptPaths, StringComparer.Ordinal);
             // The budgets read after the pass are kept for the next one, and the clashes are drawn from them (round 6 item 1). The runs read here
@@ -320,7 +397,11 @@ public partial class SessionWindow : Window
             var parts = PassSnapshot.StatusParts(DateTime.Now, actions, plan.Waiting, failed, _storeProblem, plan.Problem, read.DaemonStatusNotice, _drift?.StatusText);
 
             // A search owns the status line while it runs or while its results are shown: the pass's summary waits for it to end.
-            if (_searchMatches is null && SearchBusy.Visibility != Visibility.Visible) SetStatus(string.Join("  ·  ", parts));
+            if (_searchMatches is null && SearchBusy.Visibility != Visibility.Visible)
+            {
+                SetStatus(_watching ? WatchingStatus : string.Join("  ·  ", parts));
+                if (ReadBusy.TakeNotice()) SetStatus(ReadBusy.Notice);
+            }
         }
         catch (Exception ex)
         {
@@ -328,14 +409,70 @@ public partial class SessionWindow : Window
             _listingKnown = false;
             AppLog.Write($"pass failed: {ex.Message}");
             SetStatus($"not running: {ex.Message}");
+            if (_supervisor is not null) ReportPass(ex.Message);
         }
         finally
         {
             _passRunning = false;
             _storage.SetArchiveAvailable(ArchiveAllowed);
             // Automatic magic naming (off by default) runs only once a pass has finished, so the window is idle (SessionWindow.MagicRename.cs).
-            MaybeAutoMagicRename();
+            // Automatic naming calls claude, so only the supervising window runs it.
+            if (!_watching) MaybeAutoMagicRename();
         }
+    }
+
+    /// <summary>
+    /// Takes the supervisor name when this window does not hold it and it is free now (reliability batch R1). A window that started while another
+    /// one supervised the state takes over when that one has closed, so nothing waits for a restart.
+    /// </summary>
+    private void TakeOverIfFree()
+    {
+        if (_supervisor is not null || _options.NoPass) return;
+        var taken = SingleInstance.TryAcquire(SingleInstance.NameFor(_options.StatePath));
+        if (taken is null) return;
+        _supervisor = taken;
+        _watching = false;
+        AppLog.Write("this window supervises the state now: the window that did before has closed");
+    }
+
+    /// <summary>Gives the supervisor name back when the window closes, so another window can take it (reliability batch R1).</summary>
+    private void ReleaseSupervisor()
+    {
+        _supervisor?.Dispose();
+        _supervisor = null;
+    }
+
+    /// <summary>
+    /// What a supervising window's pass found (reliability batch R9). A failure that starts raises the Needs-you row and one Problems toast; one that
+    /// goes on keeps the row only; a pass that works again clears it. <paramref name="problem"/> is null when the pass went well.
+    /// </summary>
+    private void ReportPass(string? problem)
+    {
+        switch (_passHealth.Observe(problem))
+        {
+            case PassHealthChange.Failed:
+                AnnounceProblem(_passHealth.Problem!);
+                break;
+            case PassHealthChange.Recovered:
+                AppLog.Write("supervisor problem cleared: the pass works again");
+                break;
+        }
+    }
+
+    /// <summary>
+    /// The timer of the open Trust steps (reliability batch R3). Every 3 seconds it reads Claude's trust file on a pool thread and runs no claude.
+    /// A full pass follows only when a root with a step is trusted now, and at least 15 seconds have passed since the last pass started. The
+    /// 15-second timer runs a pass in any case.
+    /// </summary>
+    private async Task TrustStepTickAsync()
+    {
+        if (_passRunning || _trustSteps.Count == 0) return;
+        var roots = _trustSteps.Values.Select(step => step.Root).ToList();
+        var path = TrustCheck.DefaultClaudeJsonPath;
+        var trust = await Task.Run(() => ClaudeTrust.Read(path));
+        if (trust.Problem is not null || !roots.Any(trust.IsTrusted)) return;
+        if (DateTimeOffset.UtcNow - _lastPassStarted < PassEvery) return;
+        await PassAndRefreshAsync();
     }
 
     /// <summary>
@@ -613,7 +750,7 @@ public partial class SessionWindow : Window
         var now = DateTimeOffset.UtcNow;
         var when = run.StartAt is { } startAt && RunStore.IsWaiting(run, now)
             ? $"They start at {StartTime.Describe(startAt, now)}."
-            : "They start on the next pass, within about 15 seconds.";
+            : _watching ? "The window that supervises this state starts them." : "They start on the next pass, within about 15 seconds.";
         _setup.ShowStarted($"Run {run.RunId} written: {run.Specs.Count} session(s). {when}");
         try
         {
@@ -631,7 +768,7 @@ public partial class SessionWindow : Window
     /// </summary>
     private async void RespawnButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_drift is not { } drift) return;
+        if (_drift is not { } drift || _watching) return;
         var answer = MessageBox.Show(this, RespawnHold.ConfirmationText(drift.CliVersion),
             "Respawn all background sessions", MessageBoxButton.YesNo, MessageBoxImage.Question);
         if (answer != MessageBoxResult.Yes) return;

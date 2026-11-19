@@ -7,16 +7,8 @@ namespace OpenTail.Bullshark.Core.Instructions;
 /// </summary>
 public static class ClaudeConfig
 {
-    public static string Dir
-    {
-        get
-        {
-            var set = Environment.GetEnvironmentVariable("CLAUDE_CONFIG_DIR");
-            return string.IsNullOrWhiteSpace(set)
-                ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude")
-                : set.Trim();
-        }
-    }
+    /// <summary>Claude's folder, from <see cref="OpenTail.Bullshark.Core.Health.ClaudePaths"/> (the one place that reads CLAUDE_CONFIG_DIR).</summary>
+    public static string Dir => OpenTail.Bullshark.Core.Health.ClaudePaths.ConfigDir();
 }
 
 /// <summary>What a file looked like when it was read: its length and last write time. A save compares it with the file before writing.</summary>

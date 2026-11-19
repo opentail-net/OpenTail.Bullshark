@@ -1,4 +1,5 @@
 using System.Text.Json;
+using OpenTail.Bullshark.Core.Health;
 
 namespace OpenTail.Bullshark.Core.Activity;
 
@@ -58,8 +59,8 @@ public static class TranscriptReader
         "Write", "Edit", "MultiEdit", "NotebookEdit",
     };
 
-    public static string DefaultProjectsRoot =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude", "projects");
+    /// <summary>The transcripts folder for this user, from <see cref="ClaudePaths"/> (CLAUDE_CONFIG_DIR is honoured).</summary>
+    public static string DefaultProjectsRoot => ClaudePaths.ProjectsRoot();
 
     /// <summary>Finds the transcript for a session id, or null if it does not exist yet.</summary>
     public static string? FindTranscript(string projectsRoot, string sessionId)

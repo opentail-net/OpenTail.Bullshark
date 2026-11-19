@@ -118,6 +118,17 @@ public static class MergeCheck
         return null;
     }
 
+    /// <summary>
+    /// The commit HEAD of a folder points to, or null when it cannot be read (no commit yet, or not a repository). Used by the schedule of
+    /// rechecks (<see cref="MergeRecheck"/>): a problem is rechecked after HEAD moves, and not more often than every 30 minutes while it stays put.
+    /// </summary>
+    public static async Task<string?> HeadOfAsync(string folder, IGitRunner git, CancellationToken cancellationToken = default)
+    {
+        var head = await git.RunAsync(["rev-parse", "--verify", "--quiet", "HEAD"], folder, CommandTimeout, MaxOutputBytes, cancellationToken);
+        var text = head.StdOut.Trim();
+        return head.Succeeded && IsObjectId(text) ? text : null;
+    }
+
     /// <summary>A tree or commit id: 40 hex digits (SHA-1) or 64 (SHA-256).</summary>
     private static bool IsObjectId(string text) =>
         text.Length is 40 or 64 && text.All(Uri.IsHexDigit);

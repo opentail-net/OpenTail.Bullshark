@@ -34,7 +34,7 @@ public partial class SessionWindow
         if (_limitScanStarted is { } started && now - started < LimitScanEvery) return;
         _limitScanRunning = true;
         _limitScanStarted = now;
-        _ = ScanLimitStatusAsync();
+        FireAndForget.Observe(ScanLimitStatusAsync(), "limit status scan");
     }
 
     /// <summary>Reads the limits in force on a pool thread. A read that fails keeps the last list, and the failure goes to the log.</summary>
@@ -48,6 +48,7 @@ public partial class SessionWindow
         {
             AppLog.Write($"limit status not read: {ex.Message}");
         }
+        // Any other failure is not caught here: FireAndForget logs its type and message (reliability batch R10).
         finally
         {
             _limitScanRunning = false;
