@@ -11,6 +11,9 @@ public enum TestScreen
     Changes,
     Setup,
 
+    /// <summary>Insights on the Night sub-tab (the bedtime preflight, night batch N6).</summary>
+    Night,
+
     /// <summary>Insights, on its first sub-tab (Away).</summary>
     Insights,
 
@@ -31,7 +34,7 @@ public enum TestScreen
 }
 
 /// <summary>
-/// What <c>--open-tab</c> asks for: <c>storage</c>, <c>timeline</c>, <c>setup</c>, <c>insights</c>, <c>away</c>, <c>usage</c>, <c>settings</c>,
+/// What <c>--open-tab</c> asks for: <c>storage</c>, <c>timeline</c>, <c>setup</c>, <c>insights</c>, <c>away</c>, <c>night</c>, <c>usage</c>, <c>settings</c>,
 /// <c>settings-naming</c>, <c>settings-claude</c>, or <c>changes:&lt;session name&gt;</c>. <see cref="SessionName"/> is set for the changes screen only.
 /// </summary>
 public sealed record TestScreenRequest(TestScreen Screen, string? SessionName)
@@ -53,6 +56,7 @@ public sealed record TestScreenRequest(TestScreen Screen, string? SessionName)
             "setup" when name is null => new TestScreenRequest(TestScreen.Setup, null),
             "insights" when name is null => new TestScreenRequest(TestScreen.Insights, null),
             "away" when name is null => new TestScreenRequest(TestScreen.Away, null),
+            "night" when name is null => new TestScreenRequest(TestScreen.Night, null),
             "usage" when name is null => new TestScreenRequest(TestScreen.Usage, null),
             "settings" when name is null => new TestScreenRequest(TestScreen.Settings, null),
             "settings-naming" when name is null => new TestScreenRequest(TestScreen.SettingsNaming, null),

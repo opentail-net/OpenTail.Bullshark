@@ -14,6 +14,7 @@ public sealed class TestScreensTests
     [InlineData("setup", TestScreen.Setup)]
     [InlineData("insights", TestScreen.Insights)]
     [InlineData("away", TestScreen.Away)]
+    [InlineData("night", TestScreen.Night)]
     [InlineData("usage", TestScreen.Usage)]
     [InlineData("settings", TestScreen.Settings)]
     [InlineData("settings-naming", TestScreen.SettingsNaming)]

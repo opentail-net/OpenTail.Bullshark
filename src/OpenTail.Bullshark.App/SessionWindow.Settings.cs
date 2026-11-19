@@ -29,6 +29,7 @@ public partial class SessionWindow
         _settings.ContextWindowChosen += SetContextWindow;
         _settings.MagicAutoChanged += SetMagicAuto;
         _settings.EscalateChosen += SetEscalation;
+        _settings.QuietChosen += SetQuiet;
         _settings.InstructionsRequested += OpenInstructions;
         _settings.SetupCheckRequested += OpenSetupCheck;
     }
@@ -59,7 +60,25 @@ public partial class SessionWindow
             MagicAuto: _magicAutoOn,
             Escalation: EscalationChoices.Of(UiFile.Read(_options.StatePath, EscalateKey)),
             ContextWindow: ContextMeter.ChoiceOf(UiFile.Read(_options.StatePath, ContextWindowKey)),
-            ToastEvents: Enum.GetValues<ToastCategory>().ToDictionary(category => category, category => ToastCategories.Enabled(events, category))));
+            ToastEvents: Enum.GetValues<ToastCategory>().ToDictionary(category => category, category => ToastCategories.Enabled(events, category)),
+            Quiet: QuietHours.Parse(UiFile.Read(_options.StatePath, QuietHours.Key))));
+    }
+
+    /// <summary>
+    /// Sets the quiet hours (night batch N4): a preset window, or null for Off. The key is written as an object, or as null for Off. The page then
+    /// draws what the file holds, so a file that cannot be written shows the old window and the status line says the change was not saved.
+    /// </summary>
+    private void SetQuiet(QuietWindow? window)
+    {
+        UiFile.Set(_options.StatePath, QuietHours.Key, QuietHours.ToNode(window));
+        var now = QuietHours.Parse(UiFile.Read(_options.StatePath, QuietHours.Key));
+        AppLog.Write($"quiet hours: {QuietHours.Label(now)} (the owner's choice in Settings)");
+        SetStatus(now == window
+            ? window is null
+                ? "Quiet hours: off. Sound, flash and toasts are on at all times."
+                : $"Quiet hours: {QuietHours.Label(window)}. Waits in those hours give no sound, flash or toast; the rail and the log still show them."
+            : "Not saved: ui.json cannot be written. See the log.");
+        RefreshSettingsPage();
     }
 
     /// <summary>

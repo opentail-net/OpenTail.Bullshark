@@ -4,10 +4,11 @@ using System.Windows.Media;
 
 namespace OpenTail.Bullshark.App;
 
-/// <summary>The four sub-tabs of Insights (Insights and Settings plan): Away, Usage (the Limits page), Timeline and Storage.</summary>
+/// <summary>The sub-tabs of Insights: Away, Night (the bedtime preflight, night batch N6), Usage (the Limits page), Timeline and Storage.</summary>
 public enum InsightsTab
 {
     Away,
+    Night,
     Usage,
     Timeline,
     Storage,
@@ -21,21 +22,23 @@ public enum InsightsTab
 /// </summary>
 public sealed class InsightsView : UserControl
 {
-    private static readonly string[] Headers = ["Away", "Usage", "Timeline", "Storage"];
+    private static readonly string[] Headers = ["Away", "Night", "Usage", "Timeline", "Storage"];
 
     private readonly PillTabs _tabs = new();
     private readonly Dictionary<InsightsTab, UIElement> _pages;
     private InsightsTab _current = InsightsTab.Away;
 
     /// <param name="away">The Away page (the digest of the period).</param>
+    /// <param name="night">The Night page (the bedtime preflight).</param>
     /// <param name="usage">The Limits page, shown as Usage.</param>
     /// <param name="timeline">The run timeline.</param>
     /// <param name="storage">The Storage page.</param>
-    public InsightsView(AwayView away, LimitsView limits, TimelineView timeline, StorageView storage)
+    public InsightsView(AwayView away, NightView night, LimitsView limits, TimelineView timeline, StorageView storage)
     {
         _pages = new Dictionary<InsightsTab, UIElement>
         {
             [InsightsTab.Away] = away,
+            [InsightsTab.Night] = night,
             [InsightsTab.Usage] = limits,
             [InsightsTab.Timeline] = timeline,
             [InsightsTab.Storage] = storage,

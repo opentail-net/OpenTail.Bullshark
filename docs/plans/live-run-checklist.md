@@ -45,6 +45,19 @@ Pass when: no name appears twice at any step, each step has its line, and F20 is
   session(s) that went cold". A session that was already ❄ when the window opened is not named.
 - [ ] Turn it off again: nothing that was waiting in the queue is named later.
 
+## Night batch (docs/plans/night-batch-2026-11-19.md)
+
+- [ ] N1 heartbeat: with the window open, `heartbeat.json` beside the state file changes about every 15 seconds (its "at" is recent). Close the window, wait two minutes, open it again: the Night page says "Last pass" with the age the file gives, and "Window/pass" is Check while the window was closed.
+- [ ] N2/N6 preflight: Insights > Night shows ten rows and a verdict. Refresh updates "Last pass". A check that says "check" is one the owner can act on; "unknown" means the value could not be read (for example the login, before a live session was read).
+- [ ] N2 Sleep row on this PC: the row reads "sleeps after N min on AC power" (or "never sleeps"), and N is the "Put the device to sleep" value under Windows Settings > System > Power & battery > Screen and sleep, on AC power. Compare, do not change it: keep-awake is not part of this batch.
+- [ ] N2 Runs row: with a run waiting for a start time within 12 hours, the row names it and its start time; with none, "none waiting to start in the next 12 h".
+- [ ] N4 quiet hours: in Settings, General, pick a window that contains now (for example one that starts an hour ago and ends an hour from now). Let a session start waiting: no sound, no flash, no toast; the rail's Needs you still lists it; the log says "needs you (quiet hours)". Pick Off: the next wait sounds again.
+- [ ] N4 quiet hours and escalation: during the window a re-alert that falls in it gives no sound (the log says "again ... quiet hours"); after it ends, the session still waiting sounds again at its next interval.
+- [ ] N4 Settings: the presets write `quietHours` in `ui.json` (an object, or null for Off); a window set by hand in `ui.json` shows as "Custom (HH:mm-HH:mm)" and is not rewritten by a click.
+- [ ] N5 report: return to the window after at least 30 minutes away with something to say. `reports\away-yyyy-MM-dd-HHmm.md` appears beside the state file; the Away page says "Saved to reports\..." and "Open reports folder" opens it in Explorer. The file has the digest, a "Plans" section for sessions with a plan file, and a "Tokens in this period" line. A second return within the same minute gets a `-2` name, and nothing is overwritten.
+- [ ] N5 cleanup: a file in `reports\` that is not named `away-yyyy-MM-dd-HHmm.md` (or with `-n`) is never deleted, even with more than 60 reports.
+- [ ] N3/N6 palette: "Open Night (preflight)" in the command palette opens the Night sub-tab; `--open-tab night` (the screenshot option) does the same.
+
 ## Insights and Settings (docs/plans/insights-and-settings-2026-11-18.md)
 
 - [ ] Insights: the four sub-tabs (Away, Usage, Timeline, Storage) switch with the mouse and with Left and Right; the window reads the

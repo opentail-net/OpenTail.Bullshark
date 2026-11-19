@@ -37,7 +37,7 @@ public static class UiSettingsFile
 
     /// <summary>Sets one key and writes the file, keeping the other keys. The change is not made when the file cannot be written.</summary>
     /// <summary>Sets one key and writes the file. Returns true when it was written; a failure is logged and gives false (nothing is thrown).</summary>
-    public static bool Set(string path, string key, JsonNode value, Action<string>? log = null)
+    public static bool Set(string path, string key, JsonNode? value, Action<string>? log = null)
     {
         log ??= _ => { };
         try

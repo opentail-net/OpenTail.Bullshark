@@ -41,6 +41,27 @@ public sealed class AwayView : UserControl
 
     private readonly TextBlock _copyStatus = new() { TextWrapping = TextWrapping.Wrap, FontSize = 11, Margin = new Thickness(0, 4, 0, 0) };
 
+    /// <summary>
+    /// The night report (night batch N5): "Saved to reports\away-....md", or why it was not saved. Shown after a return with news; cleared when the
+    /// page is drawn again.
+    /// </summary>
+    private readonly TextBlock _saved = new()
+    {
+        TextWrapping = TextWrapping.Wrap,
+        FontSize = 11,
+        Margin = new Thickness(0, 2, 0, 0),
+        Visibility = Visibility.Collapsed,
+    };
+
+    /// <summary>"Open reports folder": shown only once a report is saved, so the folder exists.</summary>
+    private readonly Button _openReports = new()
+    {
+        Content = UiIcon.Label(UiIcon.Folder, "Open reports folder"),
+        Padding = new Thickness(12, 4, 12, 4),
+        Margin = new Thickness(8, 0, 0, 0),
+        Visibility = Visibility.Collapsed,
+    };
+
     /// <summary>The digest on the page, kept so that Copy as Markdown copies what is shown. Null when the page shows a problem.</summary>
     private AwayDigest? _digest;
 
@@ -49,16 +70,19 @@ public sealed class AwayView : UserControl
         var gotIt = new Button { Content = UiIcon.Label(UiIcon.Check, "Got it"), Padding = new Thickness(12, 4, 12, 4) };
         gotIt.Click += (_, _) => DismissRequested?.Invoke();
         _copy.Click += (_, _) => CopyMarkdown();
+        _openReports.Click += (_, _) => OpenReportsRequested?.Invoke();
 
         var actions = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Left };
         actions.Children.Add(gotIt);
         actions.Children.Add(_copy);
+        actions.Children.Add(_openReports);
 
         var root = new StackPanel { Margin = new Thickness(12, 8, 12, 8) };
         // No page title here: the Insights tab's sub-tab row names the page (2026-11-18).
         root.Children.Add(_caption);
         root.Children.Add(actions);
         root.Children.Add(_copyStatus);
+        root.Children.Add(_saved);
         root.Children.Add(_body);
         root.Children.Add(_footer);
         Content = new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
@@ -86,6 +110,9 @@ public sealed class AwayView : UserControl
     /// <summary>The Got it button was pressed. The window records that the period was seen, and closes the page.</summary>
     public event Action? DismissRequested;
 
+    /// <summary>"Open reports folder" was pressed (night batch N5). The window opens the folder in Explorer.</summary>
+    public event Action? OpenReportsRequested;
+
     /// <summary>Takes the rail's palette, as the other pages do: the text and the muted lines follow the theme.</summary>
     public void ApplyTheme(RailPalette palette)
     {
@@ -93,6 +120,23 @@ public sealed class AwayView : UserControl
         Foreground = RailPalette.Brush(palette.Text);
         _footer.Foreground = RailPalette.Brush(palette.Muted);
         _copyStatus.Foreground = RailPalette.Brush(palette.Muted);
+        _saved.Foreground = RailPalette.Brush(palette.Muted);
+    }
+
+    /// <summary>The night report was saved: its file name in the reports folder, and the button that opens the folder.</summary>
+    public void ShowSaved(string fileName)
+    {
+        _saved.Text = $"Saved to reports\\{fileName}";
+        _saved.Visibility = Visibility.Visible;
+        _openReports.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>The night report was not saved: the reason, in the same muted line. The page itself is unchanged.</summary>
+    public void ShowSaveFailed(string reason)
+    {
+        _saved.Text = $"The report was not saved to reports: {reason}";
+        _saved.Visibility = Visibility.Visible;
+        _openReports.Visibility = Visibility.Collapsed;
     }
 
     /// <summary>Draws the period: the sessions with activity, the supervisor's events, the limit hits, then the quiet sessions by name.</summary>
@@ -101,6 +145,9 @@ public sealed class AwayView : UserControl
         _digest = digest;
         _copy.IsEnabled = true;
         _copyStatus.Text = string.Empty;
+        _saved.Text = string.Empty;
+        _saved.Visibility = Visibility.Collapsed;
+        _openReports.Visibility = Visibility.Collapsed;
         _body.Children.Clear();
         _caption.Text = $"From {LocalTime(digest.Since)} to {LocalTime(digest.Now)}.";
 

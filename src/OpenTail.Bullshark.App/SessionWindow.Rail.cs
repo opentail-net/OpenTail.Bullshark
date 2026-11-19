@@ -318,6 +318,7 @@ public partial class SessionWindow
         _timeline.ApplyTheme(palette);
         _limits.ApplyTheme(palette);
         _away.ApplyTheme(palette);
+        _night.ApplyTheme(palette);
         _storage.ApplyTheme(palette);
         _insights.ApplyTheme(palette);
         _settings.ApplyTheme(palette);

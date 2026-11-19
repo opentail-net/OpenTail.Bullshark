@@ -108,7 +108,7 @@ public partial class SessionWindow : Window
         _options = options;
         InitializeComponent();
         // The Insights page hosts the four views that were tabs of their own (2026-11-18). It is made before InitRail, which draws the theme into it.
-        _insights = new InsightsView(_away, _limits, _timeline, _storage) { Visibility = Visibility.Hidden };
+        _insights = new InsightsView(_away, _night, _limits, _timeline, _storage) { Visibility = Visibility.Hidden };
         InitRail();
         _store = new StateStore(options.StatePath, AppLog.Write);
         _runStore = new RunStore(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(options.StatePath))!, "runs.json"));
@@ -140,6 +140,7 @@ public partial class SessionWindow : Window
         InitLimits();
         InitAway();
         InitInsights();
+        InitNight();
         InitSettings();
         InitToasts();
         InitTabDrag();
@@ -288,11 +289,15 @@ public partial class SessionWindow : Window
 
             var actions = 0;
             var records = read.Records;
+            // True only when the supervisor really ran this pass: the heartbeat (night batch N1) says so and no other pass does.
+            var passRan = false;
             if (!_options.NoPass && plan.Problem is null)
             {
                 // The records the pass leaves are read on the pool thread too, so the rail is drawn from that one read.
                 (actions, records, var afterProblem) = await Task.Run(() => RunPassAndReadAsync(read));
                 _storeProblem = afterProblem ?? _storeProblem;
+                _login = _loop.LastLogin;
+                passRan = true;
             }
             // The files two sessions of a run both wrote are read off the UI thread, from the transcripts this pass has seen (gems item 1).
             var paths = new Dictionary<string, string>(_transcriptPaths, StringComparer.Ordinal);
@@ -308,6 +313,7 @@ public partial class SessionWindow : Window
             _reviewSources = await Task.Run(() => ReviewSourcesOf(records, paths, read.PassAgents));
             RefreshRail(records, runs);
             AnnounceAttention();
+            if (passRan) WriteHeartbeat(DateTimeOffset.Now);
 
             var failed = PassSnapshot.FailedStarts(records.Values);
             RetryButton.Visibility = failed > 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -427,6 +433,8 @@ public partial class SessionWindow : Window
             terminal.Visibility = ReferenceEquals(terminal, element) ? Visibility.Visible : Visibility.Hidden;
         }
         _transcript.Visibility = ReferenceEquals(_transcript, element) ? Visibility.Visible : Visibility.Hidden;
+        // The Night page refreshes itself only while it is the page shown (night batch N6).
+        if (!ReferenceEquals(_insights, element)) SetNightLive(false);
         _setup.Visibility = ReferenceEquals(_setup, element) ? Visibility.Visible : Visibility.Hidden;
         _search.Visibility = ReferenceEquals(_search, element) ? Visibility.Visible : Visibility.Hidden;
         _changes.Visibility = ReferenceEquals(_changes, element) ? Visibility.Visible : Visibility.Hidden;

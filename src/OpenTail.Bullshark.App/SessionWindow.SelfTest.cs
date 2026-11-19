@@ -50,6 +50,9 @@ public partial class SessionWindow
             case TestScreen.Away:
                 OpenInsights(InsightsTab.Away);
                 break;
+            case TestScreen.Night:
+                OpenInsights(InsightsTab.Night);
+                break;
             case TestScreen.Usage:
                 OpenInsights(InsightsTab.Usage);
                 break;

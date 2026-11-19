@@ -61,7 +61,12 @@ const string runId = "r4a1";
 var pattern = PatternSpec.Find("plan-many")!;
 var specs = RunPlan.Build(pattern, repo, "Scratch task for the screenshots: nothing runs.", runId, 2);
 var run = new RunRecord(runId, "plan-many", repo, "auto", now.AddMinutes(-95), specs);
-new RunStore(Path.Combine(stateFolder, "runs.json")).Save([run]);
+// A second run that waits for its start time, seven hours from now (night batch N6): the Night page's Runs row and the Sleep row count it.
+// It is created before the first run, so the window still opens on the first one.
+const string waitingRunId = "r4w2";
+var waitingSpecs = RunPlan.Build(pattern, repo, "Scratch waiting run: nothing runs until its start time.", waitingRunId, 2);
+var waitingRun = new RunRecord(waitingRunId, "plan-many", repo, "auto", now.AddHours(-3), waitingSpecs, StartAt: now.AddHours(7));
+new RunStore(Path.Combine(stateFolder, "runs.json")).Save([run, waitingRun]);
 
 var planner = specs.First(s => s.Role == SessionRole.Planner);
 var coders = specs.Where(s => s.Role == SessionRole.Coder).ToList();
@@ -281,6 +286,12 @@ $screens = @(
     @{ Name = 'insights-storage-dark'; Theme = 'Dark'; Options = @('--open-tab', 'storage') },
     @{ Name = 'insights-storage-light'; Theme = 'Light'; Options = @('--open-tab', 'storage') },
     @{ Name = 'settings-general-dark'; Theme = 'Dark'; Options = @('--open-tab', 'settings') },
+    # The Night page (night batch N6): the bedtime preflight. The light one has quiet hours on, so its quiet line says so.
+    @{ Name = 'insights-night-dark'; Theme = 'Dark'; Options = @('--open-tab', 'night') },
+    @{ Name = 'insights-night-light'; Theme = 'Light'; Options = @('--open-tab', 'night'); UiExtra = ', "quietHours": { "from": "22:00", "to": "07:00" }' },
+    # Quiet hours in Settings, General (night batch N4): a preset on the dark one, and a window set by hand, shown as Custom, on the light one.
+    @{ Name = 'settings-quiet-dark'; Theme = 'Dark'; Options = @('--open-tab', 'settings'); UiExtra = ', "quietHours": { "from": "22:00", "to": "07:00" }' },
+    @{ Name = 'settings-quiet-custom-light'; Theme = 'Light'; Options = @('--open-tab', 'settings'); UiExtra = ', "quietHours": { "from": "21:30", "to": "06:30" }' },
     @{ Name = 'settings-general-light'; Theme = 'Light'; Options = @('--open-tab', 'settings') },
     @{ Name = 'settings-naming-dark'; Theme = 'Dark'; Options = @('--open-tab', 'settings-naming') },
     @{ Name = 'settings-claude-dark'; Theme = 'Dark'; Options = @('--open-tab', 'settings-claude') },
@@ -324,6 +335,8 @@ foreach ($screen in $screens) {
     if ($screen.Settings) { Set-Content -LiteralPath $settingsPath -Value $screen.Settings -Encoding UTF8 } else { Remove-Item -LiteralPath $settingsPath -ErrorAction SilentlyContinue }
     # ui.json: the theme, and any extra keys the screen names (UiExtra, a JSON fragment that starts with a comma).
     Set-Content -LiteralPath "$state\ui.json" -Value ('{"railTheme": "' + $screen.Theme + '"' + $screen.UiExtra + '}') -Encoding UTF8
+    # The heartbeat of the last supervisor pass (night batch N1), written as just now, so the Night page shows a fresh pass on every screen.
+    Set-Content -LiteralPath "$state\heartbeat.json" -Value ('{"at": "' + (Get-Date).ToUniversalTime().ToString('o') + '", "pass": 7}') -Encoding UTF8
     $png = Join-Path $shots "$name.png"
     $argList = @('--state', "$state\state.json", '--no-pass', '--workdir', $repo, '--claude-home', $claudeHome,
         '--shot', $png, '--shot-after', '9') + $screen.Options

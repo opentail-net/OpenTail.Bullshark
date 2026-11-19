@@ -47,10 +47,15 @@ public partial class SessionWindow
     private void RefreshInsightsPage(InsightsTab tab)
     {
         _insightsForDigest = false;
+        // The Night page refreshes every 30 seconds while it is the one shown; every other sub-tab stops that (night batch N6).
+        SetNightLive(tab == InsightsTab.Night);
         switch (tab)
         {
             case InsightsTab.Away:
                 _ = RefreshAwayAsync(onReturn: false);
+                break;
+            case InsightsTab.Night:
+                _ = RefreshNightAsync(full: true);
                 break;
             case InsightsTab.Usage:
                 _ = RefreshLimitsAsync();

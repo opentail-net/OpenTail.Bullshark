@@ -184,17 +184,27 @@ public partial class SessionWindow
         // A notice is remembered once it has been in view, so a session that leaves done, or drops out of one listing, and returns with the same
         // files does not sound again.
         _announcedNotices.UnionWith(AttentionList.NoticeKeys(_attention));
-        if (gained.Count > 0 || due.Count > 0) AnnounceWaits(gained, due);
-        AnnounceQuiet(readyNew, limitsReset);
+        // Quiet hours (night batch N4) silence the sound, the flash and the toasts only. The list, the escalation and the notices above still ran.
+        var quiet = QuietHours.IsQuietAt(QuietHours.Parse(UiFile.Read(_options.StatePath, QuietHours.Key)), now);
+        if (gained.Count > 0 || due.Count > 0) AnnounceWaits(gained, due, quiet);
+        AnnounceQuiet(readyNew, limitsReset, quiet);
     }
 
     /// <summary>
     /// The sound, the flash and the Needs-you toast for the waits and re-alerts of a pass. The sound and the flash are as they were before toasts
     /// by event; the toast is filtered by the switches for its kinds.
     /// </summary>
-    private void AnnounceWaits(IReadOnlyList<AttentionItem> gained, IReadOnlyList<ReAlert> due)
+    private void AnnounceWaits(IReadOnlyList<AttentionItem> gained, IReadOnlyList<ReAlert> due, bool quiet)
     {
         if (!AttentionList.NotificationsOn(UiFile.Read(_options.StatePath, "notify"))) return;
+
+        if (quiet)
+        {
+            // In quiet hours the waits are logged, and nothing sounds, flashes or pops up. The rail still lists them.
+            foreach (var waiting in gained) AppLog.Write($"needs you (quiet hours): {waiting.Name}");
+            foreach (var again in due) AppLog.Write($"needs you (again, {again.Again}, quiet hours): {again.Item.Name}");
+            return;
+        }
 
         if (gained.Count > 0) AppLog.Write($"needs you: {string.Join(", ", gained.Select(g => g.Name))}");
         foreach (var again in due) AppLog.Write($"needs you (again, {again.Again}): {again.Item.Name}");
@@ -219,12 +229,20 @@ public partial class SessionWindow
     /// The silent toasts of a pass: a coder newly ready for review, and a usage limit that reset (toasts by event, 2026-11-18). No sound and no flash.
     /// Each is shown only when "notify" and "toast" are on, its own switch is on, and the window is not in front, as the Needs-you toast is.
     /// </summary>
-    private void AnnounceQuiet(IReadOnlyList<ReviewItem> readyNew, IReadOnlyList<string> limitsReset)
+    private void AnnounceQuiet(IReadOnlyList<ReviewItem> readyNew, IReadOnlyList<string> limitsReset, bool quiet)
     {
         if (readyNew.Count == 0 && limitsReset.Count == 0) return;
         if (IsActive) return;
         if (!AttentionList.NotificationsOn(UiFile.Read(_options.StatePath, "notify"))) return;
         if (!AttentionList.NotificationsOn(UiFile.Read(_options.StatePath, ToastKey))) return;
+
+        // Quiet hours (night batch N4): no toast for these either. The ready and limit lines still go to the log, marked as quiet.
+        if (quiet)
+        {
+            if (readyNew.Count > 0) AppLog.Write($"ready for review (quiet hours): {string.Join(", ", readyNew.Select(item => item.Name))}");
+            if (limitsReset.Count > 0) AppLog.Write($"usage limit reset (quiet hours): {string.Join(", ", limitsReset)}");
+            return;
+        }
 
         var events = UiFile.Read(_options.StatePath, ToastCategories.Key);
         if (readyNew.Count > 0 && ToastCategories.Enabled(events, ToastCategory.Ready))

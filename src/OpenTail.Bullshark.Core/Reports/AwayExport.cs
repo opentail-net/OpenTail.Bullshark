@@ -63,7 +63,7 @@ public static class AwayExport
     private static string QuietLine(QuietSession quiet) => Clean(quiet.Name) + (quiet.NeedsYou ? " (needs you)" : string.Empty);
 
     /// <summary>The text on one line, with its white space collapsed, and its Markdown characters escaped.</summary>
-    private static string Clean(string text) => Escape(string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)));
+    internal static string Clean(string text) => Escape(string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)));
 
     /// <summary>
     /// A backslash before each character that Markdown reads as markup (emphasis, code, links, HTML, tables, strikethrough, entities), so the

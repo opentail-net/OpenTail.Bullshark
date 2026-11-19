@@ -27,7 +27,9 @@ public sealed record SettingsState(
     bool MagicAuto,
     EscalationChoice Escalation,
     ContextWindowChoice ContextWindow,
-    IReadOnlyDictionary<ToastCategory, bool> ToastEvents);
+    IReadOnlyDictionary<ToastCategory, bool> ToastEvents,
+    /// <summary>The quiet hours in ui.json (night batch N4); null when they are off.</summary>
+    QuietWindow? Quiet = null);
 
 /// <summary>
 /// The Settings page (Insights and Settings plan). A tab with pill sub-tabs: General (theme and notifications), Naming (automatic magic
@@ -44,6 +46,7 @@ public sealed class SettingsView : UserControl
     private readonly PillTabs _theme = new();
     private readonly PillTabs _escalate = new();
     private readonly PillTabs _contextWindow = new();
+    private readonly PillTabs _quiet = new();
     private readonly CheckBox _notify;
     private readonly CheckBox _toast;
     private readonly CheckBox _magic;
@@ -78,6 +81,13 @@ public sealed class SettingsView : UserControl
         {
             if (index < ContextMeter.Presets.Count) ContextWindowChosen?.Invoke(ContextMeter.Presets[index]);
         };
+        // Off is the first pill; then the presets. A custom value (set by hand in ui.json) is the last pill, and choosing it changes nothing.
+        _quiet.SetItems(QuietLabels(null), 0);
+        _quiet.Chosen += index =>
+        {
+            if (index == 0) QuietChosen?.Invoke(null);
+            else if (index <= QuietHours.Presets.Count) QuietChosen?.Invoke(QuietHours.Presets[index - 1]);
+        };
 
         _notify.Click += (_, _) => NotifyChanged?.Invoke(_notify.IsChecked == true);
         _toast.Click += (_, _) => ToastChanged?.Invoke(_toast.IsChecked == true);
@@ -100,6 +110,11 @@ public sealed class SettingsView : UserControl
             _toastEvents[ToastCategory.Ready],
             _toastEvents[ToastCategory.LimitReset],
             Note("A kind that is off gives no toast. Its sound and flash are unchanged. The switches are dimmed while the toast switch above is off."),
+            Lead("Quiet hours (local time)"),
+            Note("Off by default. In these hours a new wait or a re-alert gives no sound, flash or toast. It still shows in Needs you, the rail, " +
+                 "the log and the Away digest, and the re-alert count still runs."),
+            _quiet,
+            Note("A window that crosses midnight is fine. A window set by hand in ui.json is shown as Custom and is not rewritten here."),
             Heading("Context window for the ctx meter"),
             Note("The window of the model is not read from Claude; this is your choice. The warning mark shows at 80 %."),
             _contextWindow);
@@ -160,6 +175,9 @@ public sealed class SettingsView : UserControl
     /// <summary>A re-alert interval chosen from the presets, in minutes (0 is Off).</summary>
     public event Action<int>? EscalateChosen;
 
+    /// <summary>Quiet hours chosen: a preset window, or null for Off (night batch N4).</summary>
+    public event Action<QuietWindow?>? QuietChosen;
+
     /// <summary>Edit standing instructions… was pressed.</summary>
     public event Action? InstructionsRequested;
 
@@ -204,6 +222,9 @@ public sealed class SettingsView : UserControl
             windowIndex = windowLabels.Count - 1;
         }
         _contextWindow.SetItems(windowLabels, windowIndex);
+
+        // The quiet hours: Off, the presets, and a window in the file that is not a preset, shown selected and not rewritten.
+        _quiet.SetItems(QuietLabels(state.Quiet), QuietIndexOf(state.Quiet));
 
         // The kinds of toast are dimmed while the toast switch is off: they have no effect then (toasts by event).
         foreach (var (category, box) in _toastEvents)
@@ -257,6 +278,26 @@ public sealed class SettingsView : UserControl
         FontWeight = FontWeights.SemiBold,
         Margin = new Thickness(0, 10, 0, 2),
     };
+
+    /// <summary>
+    /// The quiet-hours pills: Off, the presets, and then the window in the file when it is not a preset (as "Custom (21:30-06:30)"). The labels
+    /// are the same for every call with the same window, so the row is rebuilt only when they change.
+    /// </summary>
+    private static List<string> QuietLabels(QuietWindow? window)
+    {
+        var labels = new List<string> { "Off" };
+        labels.AddRange(QuietHours.Presets.Select(QuietHours.Label));
+        if (window is { } current && !QuietHours.Presets.Contains(current)) labels.Add($"Custom ({QuietHours.Label(current)})");
+        return labels;
+    }
+
+    /// <summary>The pill chosen for the quiet hours: Off is 0, a preset is its place after Off, and a custom window is the last pill.</summary>
+    private static int QuietIndexOf(QuietWindow? window)
+    {
+        if (window is null) return 0;
+        var preset = QuietHours.Presets.ToList().IndexOf(window);
+        return preset >= 0 ? preset + 1 : QuietHours.Presets.Count + 1;
+    }
 
     /// <summary>The name of a kind of toast, as its switch shows it: what triggers it, in a few words.</summary>
     private static string EventLabel(ToastCategory category) => category switch

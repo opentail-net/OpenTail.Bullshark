@@ -50,6 +50,9 @@ public sealed class SupervisorLoop
     {
         var actions = await _runner.CheckOnceAsync(specs, agents, cancellationToken);
 
+        // What this pass read of the login (night batch N2): whether any live session could be read, and the warning it showed, if any.
+        var read = false;
+        TimeSpan? warning = null;
         foreach (var record in _store.Load().Values)
         {
             // A failed start has no session to read yet.
@@ -71,16 +74,28 @@ public sealed class SupervisorLoop
                 continue;
             }
 
-            if (LoginExpiry.Find(output) is { } remaining && LoginExpiry.IsExpiringSoon(remaining))
+            read = true;
+            if (LoginExpiry.Find(output) is { } remaining)
             {
-                AlertLogin(record.Name, remaining);
-                // The first session that shows the expiry says it for the account, so the others are not read this pass.
-                break;
+                warning = remaining;
+                if (LoginExpiry.IsExpiringSoon(remaining))
+                {
+                    AlertLogin(record.Name, remaining);
+                    // The first session that shows the expiry says it for the account, so the others are not read this pass.
+                    break;
+                }
             }
         }
+        LastLogin = new LoginReading(read, warning);
 
         return actions.Count;
     }
+
+    /// <summary>
+    /// The login as the last pass that ran read it (night batch N2). Not readable until a pass has read a live session. Written by the pass,
+    /// so the window reads it only when the pass has finished.
+    /// </summary>
+    public LoginReading LastLogin { get; private set; } = new(Readable: false, Remaining: null);
 
     /// <summary>
     /// True when the listing shows the session and it is not finished: not done, stopped or failed (the states the supervisor's own rules

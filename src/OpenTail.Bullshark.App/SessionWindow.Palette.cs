@@ -101,6 +101,7 @@ public partial class SessionWindow
         items.Add(PageItem("storage", "Open Storage", null, () => OpenInsights(InsightsTab.Storage)));
         items.Add(PageItem("limits", "Open Limits", null, () => OpenInsights(InsightsTab.Usage)));
         items.Add(PageItem("away", "Open Away", null, () => OpenInsights(InsightsTab.Away)));
+        items.Add(PageItem("night", "Open Night (preflight)", "the bedtime checks", () => OpenInsights(InsightsTab.Night)));
         items.Add(PageItem("insights", "Open Insights", "the sub-tab shown last", () => OpenInsights(_insights.Current)));
         items.Add(PageItem("settings", "Open Settings", null, () => OpenSettings(_settings.Current)));
         // The window has no Library page: its past sessions are listed under the rail's Archived filter, so the entry sets that filter.
