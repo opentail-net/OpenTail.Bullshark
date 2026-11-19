@@ -87,13 +87,16 @@ public partial class SessionWindow
     private void AnnounceProblem(string reason)
     {
         AppLog.Write($"supervisor problem: {reason}");
-        if (IsActive) return;
-        if (QuietHours.IsQuietAt(QuietHours.Parse(UiFile.Read(_options.StatePath, QuietHours.Key)), DateTimeOffset.Now)) return;
-        if (!AttentionList.NotificationsOn(UiFile.Read(_options.StatePath, "notify"))) return;
-        if (!AttentionList.NotificationsOn(UiFile.Read(_options.StatePath, ToastKey))) return;
-        if (!ToastCategories.Enabled(UiFile.Read(_options.StatePath, ToastCategories.Key), ToastCategory.Problems)) return;
-        ToastNotifier.ShowProblem(reason);
+        // The rule is AnnouncePolicy's (perf and testability batch, Q6 d): the switches, quiet hours and the window in front.
+        if (AnnouncePolicy.ProblemToastShown(_passSettings, IsActive, _passSettings.IsQuietAt(DateTimeOffset.Now)))
+            ToastNotifier.ShowProblem(reason);
     }
+
+    /// <summary>
+    /// The ui.json values as the file holds them now, read on the UI thread (a change made in Settings shows at once: the rail draws it on the next build).
+    /// A busy file keeps the values of the last pass (perf and testability batch, Q2).
+    /// </summary>
+    private PassSettings SettingsNow() => UiFile.TryReadAll(_options.StatePath, out var root) ? PassSettings.From(root) : _passSettings;
 
     private void UpdateNeedsYouCount()
     {
@@ -231,7 +234,7 @@ public partial class SessionWindow
         var now = DateTimeOffset.Now;
         // Every pass updates the escalation, so a session that was already waiting when the window opened is counted from the first pass.
         // A re-alert that falls while "notify" is false is used up without a sound: the owner chose silence.
-        var due = _escalation.Update(_attention, now, AttentionEscalation.IntervalOf(UiFile.Read(_options.StatePath, EscalateKey)));
+        var due = _escalation.Update(_attention, now, _passSettings.EscalateEvery);
         // The ready and limit states are read on every pass, shown or not, so each pass is compared with the one before it.
         var readyNew = ReadyGained();
         var limitsReset = LimitsReset(now);
@@ -247,7 +250,7 @@ public partial class SessionWindow
         // files does not sound again.
         _announcedNotices.UnionWith(AttentionList.NoticeKeys(_attention));
         // Quiet hours (night batch N4) silence the sound, the flash and the toasts only. The list, the escalation and the notices above still ran.
-        var quiet = QuietHours.IsQuietAt(QuietHours.Parse(UiFile.Read(_options.StatePath, QuietHours.Key)), now);
+        var quiet = _passSettings.IsQuietAt(now);
         if (gained.Count > 0 || due.Count > 0) AnnounceWaits(gained, due, quiet);
         AnnounceQuiet(readyNew, limitsReset, quiet);
     }
@@ -258,9 +261,11 @@ public partial class SessionWindow
     /// </summary>
     private void AnnounceWaits(IReadOnlyList<AttentionItem> gained, IReadOnlyList<ReAlert> due, bool quiet)
     {
-        if (!AttentionList.NotificationsOn(UiFile.Read(_options.StatePath, "notify"))) return;
+        // What sounds, flashes and pops up is AnnouncePolicy's rule (perf and testability batch, Q6 d). "notify" off silences all three.
+        var plan = AnnouncePolicy.ForWaits(_passSettings, IsActive, quiet);
+        if (!plan.Sounds && !plan.LogsOnly) return;
 
-        if (quiet)
+        if (plan.LogsOnly)
         {
             // In quiet hours the waits are logged, and nothing sounds, flashes or pops up. The rail still lists them.
             foreach (var waiting in gained) AppLog.Write($"needs you (quiet hours): {waiting.Name}");
@@ -272,19 +277,18 @@ public partial class SessionWindow
         foreach (var again in due) AppLog.Write($"needs you (again, {again.Again}): {again.Item.Name}");
         SystemSounds.Asterisk.Play();
         var handle = new WindowInteropHelper(this).Handle;
-        if (handle != IntPtr.Zero) TaskbarFlash.UntilFocused(handle);
+        if (handle != IntPtr.Zero && plan.Flashes) TaskbarFlash.UntilFocused(handle);
 
         // A toast only when the window is not in front (toasts D2): minimised, or behind other windows.
-        // "notify": false returned above, so it silences toasts too.
-        if (!IsActive && AttentionList.NotificationsOn(UiFile.Read(_options.StatePath, ToastKey)))
+        if (plan.Toasts)
             ToastNotifier.Show(gained, due, ToastAllowed());
     }
 
-    /// <summary>The reasons whose toast the owner has switched on (toasts by event), read from ui.json now.</summary>
+    /// <summary>The reasons whose toast the owner has switched on (toasts by event), as the pass read them.</summary>
     private Func<AttentionReason, bool> ToastAllowed()
     {
-        var events = UiFile.Read(_options.StatePath, ToastCategories.Key);
-        return reason => ToastCategories.Enabled(events, ToastCategories.Of(reason));
+        var settings = _passSettings;
+        return reason => AnnouncePolicy.WaitToastAllowed(settings, reason);
     }
 
     /// <summary>
@@ -295,8 +299,8 @@ public partial class SessionWindow
     {
         if (readyNew.Count == 0 && limitsReset.Count == 0) return;
         if (IsActive) return;
-        if (!AttentionList.NotificationsOn(UiFile.Read(_options.StatePath, "notify"))) return;
-        if (!AttentionList.NotificationsOn(UiFile.Read(_options.StatePath, ToastKey))) return;
+        if (!_passSettings.Notify) return;
+        if (!_passSettings.Toast) return;
 
         // Quiet hours (night batch N4): no toast for these either. The ready and limit lines still go to the log, marked as quiet.
         if (quiet)
@@ -306,14 +310,13 @@ public partial class SessionWindow
             return;
         }
 
-        var events = UiFile.Read(_options.StatePath, ToastCategories.Key);
-        if (readyNew.Count > 0 && ToastCategories.Enabled(events, ToastCategory.Ready))
+        if (readyNew.Count > 0 && AnnouncePolicy.SilentToastShown(_passSettings, ToastCategory.Ready, IsActive, quiet))
         {
             var names = readyNew.Select(item => item.Name).ToList();
             AppLog.Write($"ready for review: {string.Join(", ", names)}");
             ToastNotifier.ShowReady(names);
         }
-        if (limitsReset.Count > 0 && ToastCategories.Enabled(events, ToastCategory.LimitReset))
+        if (limitsReset.Count > 0 && AnnouncePolicy.SilentToastShown(_passSettings, ToastCategory.LimitReset, IsActive, quiet))
         {
             AppLog.Write($"usage limit reset: {string.Join(", ", limitsReset)}");
             ToastNotifier.ShowLimitReset(limitsReset);

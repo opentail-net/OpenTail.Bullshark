@@ -44,6 +44,18 @@ public sealed partial class TranscriptView : UserControl
     /// <summary>"Continued from" and "Continued in" links, under the stats (session library, L5). Empty when there are none.</summary>
     private readonly WrapPanel _lineage = new() { Margin = new Thickness(0, 0, 0, 6) };
     private readonly Button _earlier = new();
+
+    /// <summary>The one muted line that says lines were released from the far end (perf and testability batch, Q3). Collapsed when none were.</summary>
+    private readonly TextBlock _windowNote = new() { FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6), Visibility = Visibility.Collapsed };
+
+    /// <summary>The lines released from the far end of the view since its transcript was shown.</summary>
+    private int _releasedLines;
+
+    /// <summary>The cancel of the page reads of the transcript shown. A newer ShowAsync cancels them.</summary>
+    private CancellationTokenSource? _showCancel;
+
+    /// <summary>True while an earlier page is read, so a second click waits for it.</summary>
+    private bool _loadingEarlier;
     private readonly StackPanel _transcript = new();
     private readonly ScrollViewer _transcriptScroll = new();
     private TranscriptPager? _pager;
@@ -54,6 +66,24 @@ public sealed partial class TranscriptView : UserControl
 
     /// <summary>The zoom of the transcript text as a factor (1 at 100%), set by the window (zoom.md).</summary>
     private double _zoomScale = 1;
+
+    /// <summary>The number of transcript lines drawn in the view now (the soak log's count, perf batch Q1). No text is given.</summary>
+    public int BlockCount => _transcript.Children.Count;
+
+    /// <summary>The note about released lines while it is shown, else null (perf and testability batch, Q3; read by the headless tests).</summary>
+    internal string? WindowNoteText => _windowNote.Visibility == Visibility.Visible ? _windowNote.Text : null;
+
+    /// <summary>The count beside the find box, as the view shows it ("3 of 17"; read by the headless tests).</summary>
+    internal string FindCountText => _findCount.Text;
+
+    /// <summary>The number of the line that is the focus, or null when none is (read by the headless tests).</summary>
+    internal int? FocusLineNumber => _focus?.Tag is TranscriptLine line ? line.Number : null;
+
+    /// <summary>Adds the earlier page, as the Load earlier button does (read by the headless tests).</summary>
+    internal void LoadEarlierForTest() => LoadEarlier();
+
+    /// <summary>Whether the Load earlier button is enabled: false while an earlier page is read (read by the headless tests).</summary>
+    internal bool EarlierEnabled => _earlier.IsEnabled;
 
     /// <summary>The turn facts of the transcript shown, by the line of each turn's end (TA4). Empty until they are read.</summary>
     private readonly Dictionary<int, TurnFact> _turnFacts = new();
@@ -140,6 +170,7 @@ public sealed partial class TranscriptView : UserControl
         _card.Background = Brush(palette.Panel);
         _card.BorderBrush = Brush(palette.Border);
         _historyInfo.Foreground = Brush(palette.Muted);
+        _windowNote.Foreground = Brush(palette.Muted);
         _usageCaption.Foreground = Brush(palette.Muted);
         _resumeHint.Foreground = Brush(palette.Muted);
         // The effort header takes the text colour: the default one is unreadable on the dark panel ("Files written" is coloured when it fills).
@@ -188,24 +219,47 @@ public sealed partial class TranscriptView : UserControl
         }
         ShowStats(digest);
 
-        var pager = await Task.Run(() => TranscriptPager.Open(digest.FilePath));
-        // A newer call started while this file was read (the rail and the search both call this). The newer one owns the view now.
+        // A newer call cancels the reads of this one (perf and testability batch, Q3): the pages are read on a pool thread, and only the drawing is here.
+        _showCancel?.Cancel();
+        var cancel = _showCancel = new CancellationTokenSource();
+        CancellationToken token = cancel.Token;
+        IReadOnlyList<TranscriptLine> page;
+        TranscriptPager pager;
+        double readMs;
+        try
+        {
+            pager = await Task.Run(() => TranscriptPager.Open(digest.FilePath), token);
+            // A newer call started while this file was read (the rail and the search both call this). The newer one owns the view now.
+            if (call != _showCalls) return;
+            _pager = pager;
+            _firstShown = TranscriptWindow.StartFor(pager.LineCount, PageSize, focusLine);
+            // Timing only: the page's read on the pool thread, in ms. No text.
+            var readClock = System.Diagnostics.Stopwatch.StartNew();
+            var first = _firstShown;
+            page = await Task.Run(() => pager.ReadPage(first, PageSize, token), token);
+            readMs = readClock.Elapsed.TotalMilliseconds;
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
         if (call != _showCalls) return;
-        _pager = pager;
-        _firstShown = focusLine is { } wanted
-            ? Math.Max(0, Math.Clamp(wanted - 1, 0, Math.Max(0, pager.LineCount - 1)) - PageSize / 2)
-            : pager.LastPageStart(PageSize);
         _transcript.Children.Clear();
         _focus = null;
         _turnFacts.Clear();
         _turnLines.Clear();
+        _releasedLines = 0;
+        _windowNote.Visibility = Visibility.Collapsed;
         _ = LoadTurnFactsAsync(digest.FilePath);
-        foreach (var line in pager.ReadPage(_firstShown, PageSize))
+        var drawClock = System.Diagnostics.Stopwatch.StartNew();
+        foreach (var line in page)
         {
             var block = Render(line);
             if (focusLine == line.Number) _focus = block;
             _transcript.Children.Add(block);
         }
+        // Timing only: the drawing of the page on the UI thread, in ms, and the page's read. No text.
+        AppLog.Write($"transcript page: {page.Count} lines read in {readMs:0.0} ms (pool thread), drawn in {drawClock.Elapsed.TotalMilliseconds:0.0} ms (of {pager.LineCount} records)");
         if (_focus is not null) RefreshBackground(_focus);
         _earlier.IsEnabled = _firstShown > 0;
         if (_focus is null) _transcriptScroll.ScrollToBottom();
@@ -301,6 +355,8 @@ public sealed partial class TranscriptView : UserControl
         _earlier.Click += (_, _) => LoadEarlier();
         DockPanel.SetDock(_earlier, Dock.Top);
         right.Children.Add(_earlier);
+        DockPanel.SetDock(_windowNote, Dock.Top);
+        right.Children.Add(_windowNote);
 
         // The keys that work here (the hint), the find bar (closed until Ctrl+F), and the full result of a line (closed until asked for). Each
         // is a row at the top, above the transcript, so the lines keep the rest of the pane.
@@ -396,15 +452,75 @@ public sealed partial class TranscriptView : UserControl
             ? $"Recommended: in full · context {digest.ContextTokensAtLastTurn:N0} tokens"
             : $"Recommended: from a summary · context {digest.ContextTokensAtLastTurn:N0} tokens";
 
-    private void LoadEarlier()
+    /// <summary>
+    /// Adds the page before the first one shown (perf and testability batch, Q3). The page is read on a pool thread; only its drawing is on the UI
+    /// thread. Past <see cref="TranscriptWindow.DefaultCap"/> lines, the lines at the far end are released, and the view says so in one muted line.
+    /// A second click while one page is read, or a new transcript shown meanwhile, is ignored.
+    /// </summary>
+    private async void LoadEarlier()
     {
-        if (_pager is null || _firstShown <= 0) return;
+        if (_pager is null || _firstShown <= 0 || _loadingEarlier) return;
+        var pager = _pager;
+        var start = TranscriptWindow.EarlierStart(_firstShown, PageSize);
+        var count = _firstShown - start;
+        var token = _showCancel?.Token ?? CancellationToken.None;
+        _loadingEarlier = true;
+        _earlier.IsEnabled = false;
+        IReadOnlyList<TranscriptLine> earlier;
+        double readMs;
+        try
+        {
+            var readClock = System.Diagnostics.Stopwatch.StartNew();
+            earlier = await Task.Run(() => pager.ReadPage(start, count, token), token);
+            readMs = readClock.Elapsed.TotalMilliseconds;
+        }
+        catch (OperationCanceledException)
+        {
+            // A transcript shown meanwhile owns the view; its own controls are set by ShowAsync.
+            _loadingEarlier = false;
+            return;
+        }
+        _loadingEarlier = false;
+        // The view moved on while the page was read (another transcript, or a jump that drew another window): the page is not drawn.
+        if (!ReferenceEquals(_pager, pager) || _firstShown != start + count)
+        {
+            _earlier.IsEnabled = _pager is not null && _firstShown > 0;
+            return;
+        }
 
-        int start = Math.Max(0, _firstShown - PageSize);
-        var earlier = _pager.ReadPage(start, _firstShown - start);
+        var drawClock = System.Diagnostics.Stopwatch.StartNew();
         for (int i = 0; i < earlier.Count; i++) _transcript.Children.Insert(i, Render(earlier[i]));
         _firstShown = start;
+        ReleaseFarLines();
+        // Timing only: the earlier page's read on the pool thread and its drawing on the UI thread, in ms and in lines. No text.
+        AppLog.Write($"transcript earlier page: {earlier.Count} lines read in {readMs:0.0} ms (pool thread), drawn in {drawClock.Elapsed.TotalMilliseconds:0.0} ms, {_transcript.Children.Count} blocks now, {_releasedLines} released");
         _earlier.IsEnabled = _firstShown > 0;
+    }
+
+    /// <summary>
+    /// Releases the lines at the far end of the view while it holds more than <see cref="TranscriptWindow.DefaultCap"/> (perf and testability batch, Q3).
+    /// A released line is read again by a find, a jump or a search result, which show the page around the line. The note above the transcript says
+    /// which lines are shown.
+    /// </summary>
+    private void ReleaseFarLines()
+    {
+        var extra = TranscriptWindow.LinesToRelease(_transcript.Children.Count, TranscriptWindow.DefaultCap);
+        for (var i = 0; i < extra; i++)
+        {
+            var last = _transcript.Children.Count - 1;
+            if (_transcript.Children[last] is TextBlock { Tag: TranscriptLine released })
+            {
+                if (released.Kind == "turn") _turnLines.Remove(released.Number);
+                if (ReferenceEquals(_focus, _transcript.Children[last])) _focus = null;
+            }
+            _transcript.Children.RemoveAt(last);
+            _releasedLines++;
+        }
+        var first = _transcript.Children.Count > 0 && _transcript.Children[0] is TextBlock { Tag: TranscriptLine top } ? top.Number : 0;
+        var lastShown = _transcript.Children.Count > 0 && _transcript.Children[^1] is TextBlock { Tag: TranscriptLine bottom } ? bottom.Number : 0;
+        var note = TranscriptWindow.ReleasedNote(_releasedLines, first, lastShown);
+        _windowNote.Text = note ?? string.Empty;
+        _windowNote.Visibility = note is null ? Visibility.Collapsed : Visibility.Visible;
     }
 
     /// <summary>

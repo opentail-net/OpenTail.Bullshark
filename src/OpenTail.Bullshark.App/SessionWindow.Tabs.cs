@@ -170,7 +170,9 @@ public partial class SessionWindow
         // A tab of the right pane goes back to the left first, hidden, so its terminal is never left in a pane that closes.
         if (IsRight(tab)) MoveToLeft(tab, activate: false);
 
+        // The neighbour rule is Core's (perf and testability batch, Q6 b), worked out on the strip as it stood before the close.
         var index = _tabs.IndexOf(tab);
+        var next = TabPolicy.ActiveAfterClose(_tabs.ToList(), index, IsRight);
         _tabs.Remove(tab);
         if (tab.Kind == TabKind.Session) _hiddenSessions.Add(tab.Key);
         if (tab.Kind == TabKind.Search) ClearSearchFilter();
@@ -181,14 +183,12 @@ public partial class SessionWindow
         }
 
         // The neighbour in the same (left) pane takes over. With none there, the setup opens, so the left pane is never empty.
-        var left = _tabs.Where(t => !IsRight(t)).ToList();
-        if (left.Count == 0)
+        if (next is not { } at)
         {
             OpenSetupTab(null);
             return;
         }
-        var after = _tabs.Skip(Math.Min(index, _tabs.Count)).FirstOrDefault(t => !IsRight(t));
-        ActivateTab(after ?? left[^1]);
+        ActivateTab(_tabs[at]);
     }
 
     /// <summary>

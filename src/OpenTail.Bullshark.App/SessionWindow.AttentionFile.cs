@@ -35,7 +35,8 @@ public partial class SessionWindow
     private void WriteAttentionFile()
     {
         if (_watching || _supervisor is null) return;
-        if (!AttentionFile.Enabled(UiFile.Read(_options.StatePath, AttentionFile.Key)))
+        // The switch is the pass's copy of ui.json (perf and testability batch, Q2): no read on the UI thread here.
+        if (!_passSettings.AttentionFile)
         {
             DeleteAttentionFile();
             return;

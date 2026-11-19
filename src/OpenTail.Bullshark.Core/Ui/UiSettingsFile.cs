@@ -62,6 +62,32 @@ public static class UiSettingsFile
     }
 
     /// <summary>
+    /// Reads the whole file as an object in one hold of the lock (perf and testability batch, Q2), so a pass reads its keys together. Returns false
+    /// when the lock was not free within <paramref name="wait"/>: the file is busy, and <paramref name="root"/> is null. Otherwise it returns true, with
+    /// null when the file is missing, is not an object (then it is moved aside, as <see cref="Read"/> does) or cannot be read.
+    /// </summary>
+    public static bool TryReadAll(string path, TimeSpan wait, out JsonObject? root, Action<string>? log = null)
+    {
+        log ??= _ => { };
+        root = null;
+        try
+        {
+            using var _ = FileLock.Hold(path, wait);
+            root = ReadRoot(path, log);
+            return true;
+        }
+        catch (TimeoutException)
+        {
+            return false;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            log($"ui.json not read: {ex.Message}");
+            return true;
+        }
+    }
+
+    /// <summary>
     /// Changes one key inside one hold of the file's lock (reliability batch R5). The stored value is read, changed by <paramref name="change"/> and
     /// written under the same hold, so a change another window made since this one last read the file is kept. <paramref name="change"/> gets a copy
     /// of the stored value (null when the key is missing) and returns the value to store. Returns true when the file was written; a failure is

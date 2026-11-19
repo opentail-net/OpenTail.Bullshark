@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.Json.Nodes;
+using System.Threading;
 using OpenTail.Bullshark.Core.Ui;
 
 namespace OpenTail.Bullshark.App;
@@ -20,11 +21,22 @@ public static class UiFile
     /// <summary>The last value read for each file and key, so a busy read can give it (R7).</summary>
     private static readonly ConcurrentDictionary<string, JsonNode?> LastGood = new(StringComparer.Ordinal);
 
+    private static long _uiThreadReads;
+    private static long _backgroundReads;
+
+    /// <summary>
+    /// How many reads of ui.json the process made: on the UI thread (<see cref="Read"/>) and on a pool thread (<see cref="ReadInBackground"/>). Counted
+    /// only, for the soak log (perf batch Q1); nothing else reads it.
+    /// </summary>
+    public static (long UiThread, long Background) ReadCounts =>
+        (Interlocked.Read(ref _uiThreadReads), Interlocked.Read(ref _backgroundReads));
+
     public static string PathFor(string stateFile) => UiSettingsFile.PathFor(stateFile);
 
     /// <summary>The value of one key, read on the UI thread. Null when the file or the key is missing, or the file cannot be read.</summary>
     public static JsonNode? Read(string stateFile, string key)
     {
+        Interlocked.Increment(ref _uiThreadReads);
         var path = PathFor(stateFile);
         var slot = path + "\u0001" + key;
         if (UiSettingsFile.TryRead(path, key, UiWait, out var value, AppLog.Write))
@@ -37,8 +49,34 @@ public static class UiFile
         return LastGood.TryGetValue(slot, out var last) ? last?.DeepClone() : null;
     }
 
+    /// <summary>
+    /// The whole file as an object, read on the UI thread for at most <see cref="UiWait"/> (perf and testability batch, Q2). False when the lock stayed
+    /// busy; the caller then keeps the values it had. Used where a window draws a setting at once, such as the rail after a change in Settings.
+    /// </summary>
+    public static bool TryReadAll(string stateFile, out JsonObject? root)
+    {
+        Interlocked.Increment(ref _uiThreadReads);
+        var ok = UiSettingsFile.TryReadAll(PathFor(stateFile), UiWait, out root, AppLog.Write);
+        ReadBusy.Note(!ok);
+        return ok;
+    }
+
+    /// <summary>
+    /// The whole file as an object, read on a pool thread: it waits for the lock as long as a writer does (perf and testability batch, Q2). False
+    /// when the lock stayed busy for that long.
+    /// </summary>
+    public static bool TryReadAllInBackground(string stateFile, out JsonObject? root)
+    {
+        Interlocked.Increment(ref _backgroundReads);
+        return UiSettingsFile.TryReadAll(PathFor(stateFile), UiSettingsFile.DefaultWait, out root, AppLog.Write);
+    }
+
     /// <summary>The value of one key, read on a pool thread: it waits for the lock as long as a writer does. Null as <see cref="Read"/>.</summary>
-    public static JsonNode? ReadInBackground(string stateFile, string key) => UiSettingsFile.Read(PathFor(stateFile), key, AppLog.Write);
+    public static JsonNode? ReadInBackground(string stateFile, string key)
+    {
+        Interlocked.Increment(ref _backgroundReads);
+        return UiSettingsFile.Read(PathFor(stateFile), key, AppLog.Write);
+    }
 
     /// <summary>Sets one key and writes the file, keeping the other keys. False when the file was not written (the failure is logged).</summary>
     public static bool Set(string stateFile, string key, JsonNode? value) => UiSettingsFile.Set(PathFor(stateFile), key, value, AppLog.Write);

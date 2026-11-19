@@ -255,7 +255,13 @@ public sealed class TranscriptPager
     }
 
     /// <summary>Reads lines [start, start + count), clipped to the file. Records that are not shown are dropped.</summary>
-    public IReadOnlyList<TranscriptLine> ReadPage(int start, int count)
+    public IReadOnlyList<TranscriptLine> ReadPage(int start, int count) => ReadPage(start, count, CancellationToken.None);
+
+    /// <summary>
+    /// The same page, read on a pool thread by the view (perf and testability batch, Q3). The token is looked at before each record, so a page
+    /// that is no longer wanted stops early and throws <see cref="OperationCanceledException"/>.
+    /// </summary>
+    public IReadOnlyList<TranscriptLine> ReadPage(int start, int count, CancellationToken cancellationToken)
     {
         var result = new List<TranscriptLine>();
         if (start < 0 || start >= LineCount || count <= 0) return result;
@@ -267,6 +273,7 @@ public sealed class TranscriptPager
 
         for (int n = start; n < end; n++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var text = reader.ReadLine();
             if (text is null) break;
             var line = TranscriptLine.From(n + 1, text);

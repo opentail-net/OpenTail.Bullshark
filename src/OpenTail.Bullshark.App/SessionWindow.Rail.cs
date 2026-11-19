@@ -12,6 +12,7 @@ using OpenTail.Bullshark.Core.Folders;
 using OpenTail.Bullshark.Core.Library;
 using OpenTail.Bullshark.Core.Search;
 using OpenTail.Bullshark.Core.Supervisor;
+using OpenTail.Bullshark.Core.Ui;
 
 namespace OpenTail.Bullshark.App;
 
@@ -369,13 +370,19 @@ public partial class SessionWindow
     /// Rebuilds the rail from the state file, the last agent listing, the cache facts and the history read so far. The pass
     /// passes the records and the runs it read on a pool thread, so the drawing does not read the files again; other callers leave them out.
     /// </summary>
-    private void RefreshRail(IReadOnlyDictionary<string, SessionRecord>? known = null, IReadOnlyList<RunRecord>? knownRuns = null)
+    private void RefreshRail(
+        IReadOnlyDictionary<string, SessionRecord>? known = null,
+        IReadOnlyList<RunRecord>? knownRuns = null,
+        PassSettings? passSettings = null)
     {
+        var railClock = System.Diagnostics.Stopwatch.StartNew();
         // The marks are read again on every refresh: they are small, and another process may have changed them (D-L3 is inside).
         LoadLibrary();
         DropMissingTagFilter();
-        // The context window is read with the other settings each build, so a change in Settings shows at the next one (ctx meter, Part 1).
-        _contextWindow = ContextMeter.WindowFrom(UiFile.Read(_options.StatePath, ContextWindowKey));
+        // The context window and the silent threshold come from the pass's settings, or from the file as it is now (a change in Settings shows at once,
+        // ctx meter, Part 1). A pass passes what it read on the pool thread (perf and testability batch, Q2).
+        var settings = passSettings ?? SettingsNow();
+        _contextWindow = settings.ContextWindow;
         var stored = known ?? ReadRecords();
         // The palette's session entries are read from what was drawn here, so opening it reads no file (SessionWindow.Palette.cs).
         _railRecords = stored;
@@ -383,7 +390,7 @@ public partial class SessionWindow
         // A start that failed has no session, so it gets no terminal (it is listed as a failure below).
         foreach (var record in records.Where(r => !string.IsNullOrEmpty(r.SessionId) && !IsInOwnWindow(r.SessionId))) EnsureTerminal(record);
         // The silent-working notice (lifecycle batch L3): the threshold from ui.json, and the sessions the listing and the request times flag now.
-        var silentAfter = SilenceCheck.ThresholdOf(UiFile.Read(_options.StatePath, SilentKey));
+        var silentAfter = settings.SilentAfter;
         _attention = AttentionList.From(records, _agents, _clashes, ConflictsOf(records),
             silent: SilentNames(DateTimeOffset.UtcNow, silentAfter), silentAfter: silentAfter);
         UpdateNeedsYouCount();
@@ -434,6 +441,17 @@ public partial class SessionWindow
         }
         _railFolders = folderNames;
 
+        // The rail is drawn again only when what it draws has changed (perf and testability batch, Q5). A pass with the same inputs keeps the rows, so
+        // the scroll and the selection stay. A refresh from a user action (no pass settings) always draws again, and its signature is kept.
+        var railSignature = RailSignatureNow(stored, runs, now, settings);
+        if (passSettings is not null && railSignature is not null && railSignature == _railSignature)
+        {
+            _railsKept++;
+            SyncSessionTabs(stored);
+            return;
+        }
+        _railSignature = null;
+        if (RailScrollOffset() > 0) _railRebuildsWhileScrolled++;
         _rebuilding = true;
         try
         {
@@ -482,10 +500,13 @@ public partial class SessionWindow
 
             RestoreSelection();
             SyncSessionTabs(stored);
+            _railSignature = railSignature;
         }
         finally
         {
             _rebuilding = false;
+            // The soak log's time of the last rail build (perf batch Q1). Counts and times only.
+            NoteRailBuilt(railClock.Elapsed.TotalMilliseconds);
         }
     }
 
@@ -647,6 +668,8 @@ public partial class SessionWindow
             var facts = await Task.Run(() => ReadHistoryFacts(index.Sessions));
             _history = index.Sessions.ToList();
             _historyFacts = facts;
+            _historyVersion++;
+            NoteStartup("history read done");
             // The Storage page's names come from the working folders read here (P9), so its last listing is drawn again with them.
             RedrawStorageNames();
             // A return that came before the index was read (the Away page, D2) asks again now that it is.
@@ -698,26 +721,46 @@ public partial class SessionWindow
         var fallback = AllItems(Rail.Items).FirstOrDefault(i => i.Tag is RailTag { Kind: RailKind.Session })
                     ?? AllItems(Rail.Items).FirstOrDefault(i => i.Tag is RailTag { Kind: RailKind.Trust })
                     ?? AllItems(Rail.Items).FirstOrDefault(i => i.Tag is RailTag { Kind: RailKind.Folder });
-        if (fallback is null)
+
+        // What happens is decided in Core (perf and testability batch, Q6 a): with no live session in the rail, nothing is selected, and the pane
+        // keeps a search, a transcript, changes, Insights or Settings; otherwise the setup shows (found 2026-11-19 on real data). A refresh must not take
+        // the pane away from a search or a transcript the owner opened from a result, as those have no row selected in the rail.
+        switch (SelectionPolicy.Decide(selectedFound: false, hasFallback: fallback is not null, PaneOf(_activeTab)))
         {
-            _selected = null;
+            case SelectionAction.KeepPaneWithoutSelection:
+                _selected = null;
+                return;
 
-            // With no live session in the rail, nothing is selected, and every refresh came here and showed the setup over a search
-            // or a transcript opened from one. Those keep the pane, and so do Insights and Settings (found 2026-11-19 on real data: with no live
-            // session, the history read finishing showed the setup over the Away page).
-            if (_activeTab?.Kind is TabKind.Search or TabKind.Transcript or TabKind.Changes or TabKind.Insights or TabKind.Settings) return;
-            ShowOnly(_setup);
-            return;
+            case SelectionAction.ShowSetupWithoutSelection:
+                _selected = null;
+                ShowOnly(_setup);
+                return;
+
+            case SelectionAction.SelectFallbackKeepPane:
+                _selected = (RailTag)fallback!.Tag;
+                fallback.IsSelected = true;
+                return;
+
+            default:
+                _selected = (RailTag)fallback!.Tag;
+                fallback.IsSelected = true;
+                _ = ShowRailItemAsync(_selected);
+                return;
         }
-
-        _selected = (RailTag)fallback.Tag;
-        fallback.IsSelected = true;
-
-        // A refresh must not take the pane away from a search, or from a transcript the owner opened from a result: those have no
-        // row selected in the rail, so the fallback would show the setup over them.
-        if (_activeTab?.Kind is TabKind.Search or TabKind.Transcript or TabKind.Changes) return;
-        _ = ShowRailItemAsync(_selected);
     }
+
+    /// <summary>The pane kind of a tab, for the selection policy (Core). Null for no tab.</summary>
+    private static PaneKind? PaneOf(OpenTab? tab) => tab?.Kind switch
+    {
+        TabKind.Session => PaneKind.Session,
+        TabKind.Setup => PaneKind.Setup,
+        TabKind.Transcript => PaneKind.Transcript,
+        TabKind.Search => PaneKind.Search,
+        TabKind.Changes => PaneKind.Changes,
+        TabKind.Insights => PaneKind.Insights,
+        TabKind.Settings => PaneKind.Settings,
+        _ => null,
+    };
 
     private async void Rail_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
     {

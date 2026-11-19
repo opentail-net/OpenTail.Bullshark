@@ -69,6 +69,7 @@ public partial class SessionWindow : Window
         return (facts, newPaths);
     }
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(15) };
+    // The soak log's counters and timer are in SessionWindow.Soak.cs (perf batch Q1).
     private readonly TranscriptView _transcript = new() { Visibility = Visibility.Hidden };
     private readonly SetupView _setup;
     private bool _passRunning;
@@ -142,6 +143,9 @@ public partial class SessionWindow : Window
 
     public SessionWindow(LaunchOptions options)
     {
+        // A test process must never supervise: a window built by a test with the owner's default state once resumed the owner's real planner session
+        // (2026-11-19). Under a test host the window only reads and draws, whatever options it was given.
+        if (!options.NoPass && RunningUnderTest.Is) options = options with { NoPass = true };
         _options = options;
         InitializeComponent();
         // The Insights page hosts the four views that were tabs of their own (2026-11-18). It is made before InitRail, which draws the theme into it.
@@ -188,6 +192,7 @@ public partial class SessionWindow : Window
         InitToasts();
         InitTabDrag();
         InitZoom();
+        InitSoak();
 
         Loaded += async (_, _) =>
         {
@@ -213,6 +218,8 @@ public partial class SessionWindow : Window
             // so no pass writes after another window has taken the lock (F5).
             _windowClosing = true;
             _timer.Stop();
+            _soakTimer?.Stop();
+            WriteSoakLine("close");
             _trustTimer.Stop();
             _passCancel?.Cancel();
             if (!_passRunning) ReleaseSupervisor();
@@ -328,7 +335,14 @@ public partial class SessionWindow : Window
         DaemonStatus Daemon,
         VersionDrift? Drift,
         string? DaemonNotice,
-        string? DaemonStatusNotice);
+        string? DaemonStatusNotice,
+        PassSettings? Settings);
+
+    /// <summary>
+    /// The ui.json values the pass uses (perf and testability batch, Q2). Read once per pass on the pool thread and kept here for the pass's drawing and
+    /// announcements; the UI thread does not read ui.json on the pass path. Kept at the last values read when the file stayed busy.
+    /// </summary>
+    private PassSettings _passSettings = PassSettings.Defaults;
 
     /// <summary>
     /// Runs one supervisor pass, then refreshes the rail. The reads and the pass itself run on a pool thread, so the window does
@@ -345,6 +359,7 @@ public partial class SessionWindow : Window
         var pass = _passCancel = new CancellationTokenSource();
         var passToken = pass.Token;
         _lastPassStarted = DateTimeOffset.UtcNow;
+        var passClock = System.Diagnostics.Stopwatch.StartNew();
         TakeOverIfFree();
         try
         {
@@ -355,6 +370,7 @@ public partial class SessionWindow : Window
             _allAgents = read.PassAgents;
             _listingKnown = true;
             _runningFacts = read.Facts;
+            if (read.Settings is { } settings) _passSettings = settings;
             foreach (var pair in read.NewPaths) _transcriptPaths[pair.Key] = pair.Value;
             _storeProblem = read.StoreProblem;
             // The limits this pass is held to are set before it runs (round 6 item 1): a run at its limit gets no start or resume from the
@@ -408,7 +424,7 @@ public partial class SessionWindow : Window
             UpdateMergeChecks(records, RunStore.SpecsOf(runs));
             // The finished coders' transcripts are read here too, for the Ready for review lane (ready-for-review D1), off the UI thread.
             _reviewSources = await Task.Run(() => ReviewSourcesOf(records, paths, read.PassAgents));
-            RefreshRail(records, runs);
+            RefreshRail(records, runs, _passSettings);
             AnnounceAttention();
             WriteAttentionFile();
             if (passRan) WriteHeartbeat(DateTimeOffset.Now);
@@ -444,6 +460,7 @@ public partial class SessionWindow : Window
         finally
         {
             _passRunning = false;
+            NotePassDone(passClock.Elapsed.TotalMilliseconds);
             pass.Dispose();
             _passCancel = null;
             // A window that closed while this pass ran gives the supervisor lock back now, after the pass has stopped (F5).
@@ -552,8 +569,10 @@ public partial class SessionWindow : Window
         var paths = new Dictionary<string, string>(known, StringComparer.Ordinal);
         foreach (var pair in newPaths) paths[pair.Key] = pair.Value;
         var budgets = BudgetsOf(runs, records, paths);
+        // The ui.json values the pass draws and announces with (perf and testability batch, Q2): one read, here on the pool thread.
+        var settings = UiFile.TryReadAllInBackground(_options.StatePath, out var uiRoot) ? PassSettings.From(uiRoot) : null;
         return new PassReads(agents, passAgents, records, plan, facts, newPaths, budgets, recordsProblem ?? runsProblem, daemon, drift,
-            daemonNotice, daemonStatusNotice);
+            daemonNotice, daemonStatusNotice, settings);
     }
 
     /// <summary>
@@ -893,7 +912,11 @@ public sealed record LaunchOptions(
     /// <summary>--find (test only): the shown transcript opens its find bar with this query, for the screenshots (find and jump batch, T4).</summary>
     string? FindText = null,
     /// <summary>--search (test only): the rail's search box starts a search with this text, for the screenshots (keyboard batch T1 and T2).</summary>
-    string? SearchText = null)
+    string? SearchText = null,
+    /// <summary>--soak-seconds: the interval of the soak log line, in seconds (perf batch Q1). 0 turns the periodic line off; the start and close lines stay.</summary>
+    int SoakSeconds = SessionWindow.DefaultSoakSeconds,
+    /// <summary>--rail-scroll (test only): the rail is scrolled to this offset after the first pass, so the soak log shows whether a rebuild resets it (perf batch Q5).</summary>
+    double RailScrollTo = 0)
 {
     /// <summary>The folder of the transcripts: the owner's, unless a test home is given (--claude-home).</summary>
     public string ProjectsRoot => ClaudeHome is null ? TranscriptReader.DefaultProjectsRoot : TestHome.ProjectsRootUnder(ClaudeHome);
@@ -914,6 +937,8 @@ public sealed record LaunchOptions(
     {
         string? workdir = null, task = null, state = null, shot = null, selfTest = null, filterName = null, filterTag = null, groupName = null, selfTestMode = null, setupDetail = null, openSession = null, claudeHome = null, openTab = null, findText = null, searchText = null;
         double shotAfter = 8;
+        int soakSeconds = SessionWindow.DefaultSoakSeconds;
+        double railScroll = 0;
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         if (args.Length > 0 && args[^1] == "--state") throw new ArgumentException("--state needs the path of a state file.");
         for (int i = 0; i < args.Length - 1; i++)
@@ -936,6 +961,8 @@ public sealed record LaunchOptions(
                 case "--open-tab": openTab = args[++i]; break;
                 case "--find": findText = args[++i]; break;
                 case "--search": searchText = args[++i]; break;
+                case "--soak-seconds": soakSeconds = int.Parse(args[++i], inv); break;
+                case "--rail-scroll": railScroll = double.Parse(args[++i], inv); break;
             }
         }
         var defaultState = Path.Combine(
@@ -958,6 +985,17 @@ public sealed record LaunchOptions(
             OpenTab: TestScreenRequest.Parse(openTab),
             EffortOpen: args.Contains("--effort-open"),
             FindText: findText,
-            SearchText: searchText);
+            SearchText: searchText,
+            SoakSeconds: soakSeconds,
+            RailScrollTo: railScroll);
     }
+}
+
+/// <summary>True when the process is a test host (the test runner), so code that starts or resumes real sessions can refuse to run there.</summary>
+internal static class RunningUnderTest
+{
+    public static bool Is { get; } =
+        string.Equals(Environment.GetEnvironmentVariable("OPENTAIL_BULLSHARK_UNDER_TEST"), "1", StringComparison.Ordinal)
+        || System.Diagnostics.Process.GetCurrentProcess().ProcessName.StartsWith("testhost", StringComparison.OrdinalIgnoreCase)
+        || (System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name?.StartsWith("testhost", StringComparison.OrdinalIgnoreCase) ?? false);
 }
