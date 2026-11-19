@@ -23,6 +23,8 @@ public sealed class ToastEventsTests
     [InlineData(AttentionReason.Overlap, ToastCategory.Notices)]
     [InlineData(AttentionReason.Conflict, ToastCategory.Notices)]
     [InlineData(AttentionReason.LimitReached, ToastCategory.Notices)]
+    [InlineData(AttentionReason.NameTaken, ToastCategory.Problems)]
+    [InlineData(AttentionReason.Silent, ToastCategory.Notices)]
     public void EachReasonBelongsToOneCategory(AttentionReason reason, ToastCategory category)
     {
         Assert.Equal(category, ToastCategories.Of(reason));

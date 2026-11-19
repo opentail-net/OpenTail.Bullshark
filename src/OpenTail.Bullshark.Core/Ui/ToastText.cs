@@ -103,6 +103,8 @@ public static class ToastText
         AttentionReason.Overlap => "shares a file with another session",
         AttentionReason.Conflict => "conflicts with the default branch",
         AttentionReason.LimitReached => "run limit reached",
+        AttentionReason.NameTaken => "name taken by another session",
+        AttentionReason.Silent => "no output for a while",
         _ => "needs you",
     };
 

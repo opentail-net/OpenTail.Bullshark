@@ -150,6 +150,8 @@ public sealed class AttentionEscalationTests
     [InlineData(AttentionReason.Overlap, false)]
     [InlineData(AttentionReason.Conflict, false)]
     [InlineData(AttentionReason.LimitReached, false)]
+    [InlineData(AttentionReason.NameTaken, true)]
+    [InlineData(AttentionReason.Silent, false)]
     public void OnlyTheReasonsTheOwnerMustActOnEscalate(AttentionReason reason, bool escalates)
     {
         Assert.Equal(escalates, AttentionEscalation.Escalates(Waiting("coder", reason)));

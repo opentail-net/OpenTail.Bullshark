@@ -387,12 +387,15 @@ public sealed class SupervisorRunnerTests : IDisposable
         Assert.IsType<SupervisorAction.Resume>(Assert.Single(await runner.CheckOnceAsync([spec])));
         Assert.Null(store.Load()[TestSpecs.PlannerName].LastAlert);
 
-        // It is lost again. Two more restarts in the hour are under the limit, and the third reaches it: the alert comes back, once.
+        // It is lost again. The gaps of the backoff (lifecycle batch L2) apply: one minute after the restart at +61, then two minutes after the one at +62.
+        // Two more restarts in the hour are under the limit, and the third reaches it: the alert comes back, once.
         clock.Now = t0.AddMinutes(62);
         Assert.IsType<SupervisorAction.Resume>(Assert.Single(await runner.CheckOnceAsync([spec])));
         clock.Now = t0.AddMinutes(63);
-        Assert.IsType<SupervisorAction.Resume>(Assert.Single(await runner.CheckOnceAsync([spec])));
+        Assert.Empty(await runner.CheckOnceAsync([spec]));
         clock.Now = t0.AddMinutes(64);
+        Assert.IsType<SupervisorAction.Resume>(Assert.Single(await runner.CheckOnceAsync([spec])));
+        clock.Now = t0.AddMinutes(65);
         Assert.Equal(AlertKind.RestartLoop, Assert.IsType<SupervisorAction.Alert>(Assert.Single(await runner.CheckOnceAsync([spec]))).Kind);
 
         Assert.Equal(2, logged.Count(l => l.Contains("ALERT RestartLoop")));

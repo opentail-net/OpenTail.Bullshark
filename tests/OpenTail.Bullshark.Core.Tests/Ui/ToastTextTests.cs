@@ -74,6 +74,8 @@ public sealed class ToastTextTests
     [InlineData(AttentionReason.Overlap, "shares a file with another session")]
     [InlineData(AttentionReason.Conflict, "conflicts with the default branch")]
     [InlineData(AttentionReason.LimitReached, "run limit reached")]
+    [InlineData(AttentionReason.NameTaken, "name taken by another session")]
+    [InlineData(AttentionReason.Silent, "no output for a while")]
     public void EachReasonHasItsOwnWords(AttentionReason reason, string words)
     {
         Assert.Equal(words, ToastText.ReasonText(reason));

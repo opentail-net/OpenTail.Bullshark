@@ -150,13 +150,14 @@ public sealed class SupervisorRunner
                     // A session the owner brought back (listed in a state other than stopped or failed) no longer owes its stop or failure
                     // alert. The alert is cleared here, so a later loss is not read as a stop (round 6 item 2).
                     var revived = observed is not null && !SupervisorPolicy.IsStoppedOrFailed(observed);
+                    // A name-taken alert is about a lost session: once the session is listed again (lifecycle batch L1), it no longer stands.
                     // The stale-blocked alert stands while the session is stale or not listed. A listing that shows it live again clears it, so the
                     // next time it goes stale it is alerted again (round 8 item 1). Only a daemon known to be running clears it (round 9 item 5): on an
                     // unknown status the listing is used as it is, so a row that claims blocked clears the alert and the next not-running read
                     // alerts the same session again.
                     var listedLive = seen is not null && !string.Equals(seen.EffectiveState, DaemonStatus.StaleState, StringComparison.OrdinalIgnoreCase);
                     var daemonRunning = Daemon?.State == DaemonState.Running;
-                    var clear = (revived && IsStopOrFailureAlert(current.LastAlert))
+                    var clear = (revived && (IsStopOrFailureAlert(current.LastAlert) || IsNameTakenAlert(current.LastAlert)))
                         || (listedLive && daemonRunning && AttentionList.IsStaleBlockedAlert(current.LastAlert));
                     records[spec.Name] = current with { LastState = kept, LastAlert = clear ? null : current.LastAlert };
                 }
@@ -182,6 +183,9 @@ public sealed class SupervisorRunner
     private static bool IsStopOrFailureAlert(string? alert) =>
         alert?.StartsWith(AttentionList.StoppedAlertPrefix, StringComparison.Ordinal) == true
         || alert?.StartsWith(AttentionList.FailedAlertPrefix, StringComparison.Ordinal) == true;
+
+    /// <summary>True for a last alert that says another live session holds the name of this lost session (lifecycle batch L1).</summary>
+    private static bool IsNameTakenAlert(string? alert) => alert?.StartsWith(AttentionList.NameTakenPrefix, StringComparison.Ordinal) == true;
 
     /// <summary>Writes one performed action to the event sink, if there is one. The event names the session's run (round 5 item 10).</summary>
     private void Emit(SessionSpec spec, SupervisorAction action, DateTimeOffset now)

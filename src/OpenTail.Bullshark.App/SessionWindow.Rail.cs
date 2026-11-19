@@ -382,7 +382,10 @@ public partial class SessionWindow
         var records = stored.Values.OrderBy(r => r.Name, StringComparer.Ordinal).ToList();
         // A start that failed has no session, so it gets no terminal (it is listed as a failure below).
         foreach (var record in records.Where(r => !string.IsNullOrEmpty(r.SessionId) && !IsInOwnWindow(r.SessionId))) EnsureTerminal(record);
-        _attention = AttentionList.From(records, _agents, _clashes, ConflictsOf(records));
+        // The silent-working notice (lifecycle batch L3): the threshold from ui.json, and the sessions the listing and the request times flag now.
+        var silentAfter = SilenceCheck.ThresholdOf(UiFile.Read(_options.StatePath, SilentKey));
+        _attention = AttentionList.From(records, _agents, _clashes, ConflictsOf(records),
+            silent: SilentNames(DateTimeOffset.UtcNow, silentAfter), silentAfter: silentAfter);
         UpdateNeedsYouCount();
         // The finished coders the owner has not looked at yet. Built from memory: the pass read their transcripts (ready-for-review D1).
         _review = ReviewQueue.From(records, _allAgents, _reviewSources, _reviewed);
@@ -1017,14 +1020,17 @@ public partial class SessionWindow
     /// The row of a live session: its title, its activity line and its marks. The same row is used under its folder and under
     /// Needs you, so both show the same session the same way.
     /// </summary>
-    private TreeViewItem LiveRow(SessionRecord record, string state)
+    private TreeViewItem LiveRow(SessionRecord record, string state, string? notice = null)
     {
         var cache = CacheTextFor(record.SessionId);
         // A session that shares a file with another of its run, or whose committed work conflicts, is marked (gems items 1 and 2).
         var flagged = IsShared(record.SessionId) || HasConflict(record.SessionId);
         var title = (flagged ? "⚠ " : string.Empty) + LiveTitle(record);
+        // A notice (the silent working notice, lifecycle batch L3) goes after the activity line, so the running mark of the state is unchanged.
+        var activity = ActivityLine(record.SessionId, state, record.StartedAt, state == "working");
+        if (!string.IsNullOrEmpty(notice)) activity = activity.Length == 0 ? notice : activity + " · " + notice;
         var item = NewItem(
-            ColourEdge(TwoLine(title, ActivityLine(record.SessionId, state, record.StartedAt, state == "working"), string.Empty,
+            ColourEdge(TwoLine(title, activity, string.Empty,
                 badge: MatchBadge(MatchOf(record.SessionId))), MarkOf(record.SessionId)?.Colour),
             new RailTag(RailKind.Session, record.SessionId),
             NoteTip(MarkOf(record.SessionId)) + PlanTip(MarkOf(record.SessionId)) + SearchTip(MatchOf(record.SessionId), cache.Full ?? record.SessionId));

@@ -26,6 +26,8 @@ public sealed record SettingsState(
     bool Toast,
     bool MagicAuto,
     EscalationChoice Escalation,
+    /// <summary>The silent-working threshold in ui.json (lifecycle batch L3): Off, a preset, or a custom value.</summary>
+    SilenceChoice Silence,
     ContextWindowChoice ContextWindow,
     IReadOnlyDictionary<ToastCategory, bool> ToastEvents,
     /// <summary>The quiet hours in ui.json (night batch N4); null when they are off.</summary>
@@ -45,6 +47,7 @@ public sealed class SettingsView : UserControl
     private readonly PillTabs _tabs = new();
     private readonly PillTabs _theme = new();
     private readonly PillTabs _escalate = new();
+    private readonly PillTabs _silence = new();
     private readonly PillTabs _contextWindow = new();
     private readonly PillTabs _quiet = new();
     private readonly CheckBox _notify;
@@ -75,6 +78,11 @@ public sealed class SettingsView : UserControl
         _escalate.Chosen += index =>
         {
             if (index < EscalationChoices.Presets.Count) EscalateChosen?.Invoke(EscalationChoices.Presets[index]);
+        };
+        _silence.SetItems(SilenceChoices.Presets.Select(SilenceChoices.PresetLabel).ToList(), 2);
+        _silence.Chosen += index =>
+        {
+            if (index < SilenceChoices.Presets.Count) SilenceChosen?.Invoke(SilenceChoices.Presets[index]);
         };
         _contextWindow.SetItems(ContextMeter.Presets.Select(ContextMeter.PresetLabel).ToList(), 0);
         _contextWindow.Chosen += index =>
@@ -127,7 +135,12 @@ public sealed class SettingsView : UserControl
             Heading("Re-alert an unanswered wait"),
             Note("A session that still waits for you sounds again after this time, up to three times. Acknowledge it or snooze it on its row "
                  + "under Needs you to stop. The default is 15 minutes."),
-            _escalate);
+            _escalate,
+            Heading("A session that is working but silent"),
+            Note("A session listed as working that has made no request for this long gets a notice under Needs you. It is a notice only: "
+                 + "nothing is sent to the session, and a long command can trip it. It sounds once per silent spell. The default is 45 minutes."),
+            Lead("A working session with no output for"),
+            _silence);
 
         var claude = Page(
             Heading("Standing instructions"),
@@ -175,6 +188,9 @@ public sealed class SettingsView : UserControl
     /// <summary>A re-alert interval chosen from the presets, in minutes (0 is Off).</summary>
     public event Action<int>? EscalateChosen;
 
+    /// <summary>A silent-working threshold chosen from the presets, in minutes (0 is Off; lifecycle batch L3).</summary>
+    public event Action<int>? SilenceChosen;
+
     /// <summary>Quiet hours chosen: a preset window, or null for Off (night batch N4).</summary>
     public event Action<QuietWindow?>? QuietChosen;
 
@@ -212,6 +228,16 @@ public sealed class SettingsView : UserControl
             index = labels.Count - 1;
         }
         _escalate.SetItems(labels, index);
+
+        // The silent threshold: the presets, and a value in the file that is not one of them, shown selected and not rewritten (SilenceChoices).
+        var silenceLabels = SilenceChoices.Presets.Select(SilenceChoices.PresetLabel).ToList();
+        var silenceIndex = SilenceChoices.Presets.ToList().IndexOf(state.Silence.Minutes);
+        if (state.Silence.IsCustom)
+        {
+            silenceLabels.Add(state.Silence.Label);
+            silenceIndex = silenceLabels.Count - 1;
+        }
+        _silence.SetItems(silenceLabels, silenceIndex);
 
         // The context window: the presets, and a value in the file that is not one of them, shown selected and not rewritten (ContextMeter).
         var windowLabels = ContextMeter.Presets.Select(ContextMeter.PresetLabel).ToList();
@@ -303,8 +329,8 @@ public sealed class SettingsView : UserControl
     private static string EventLabel(ToastCategory category) => category switch
     {
         ToastCategory.Blocked => "Blocked: a session waits for a permission or a question",
-        ToastCategory.Problems => "Problems: a restart loop, a failed start, a stopped or a failed session",
-        ToastCategory.Notices => "Notices: a shared file, a conflict with the default branch, the run limit",
+        ToastCategory.Problems => "Problems: a restart loop, a name taken by another session, a failed start, a stopped or a failed session",
+        ToastCategory.Notices => "Notices: a shared file, a conflict with the default branch, the run limit, a working session with no output",
         ToastCategory.Ready => "Ready for review: a coder finished with changes",
         ToastCategory.LimitReset => "Usage limit reset",
         _ => category.ToString(),

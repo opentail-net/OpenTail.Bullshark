@@ -27,14 +27,17 @@ public sealed class ClaudeTrustRetryTests : IDisposable
     {
         File.WriteAllText(_path, "{\"projects\":{");
         // Claude finishes writing the file while the pass waits for its one retry.
-        var writer = Task.Run(async () =>
+        // A dedicated thread, not the thread pool: under a parallel test run a pool task can start late, and the retry would then read the torn file.
+        var writer = new Thread(() =>
         {
-            await Task.Delay(50);
+            Thread.Sleep(20);
             File.WriteAllText(_path, Complete);
         });
+        writer.Start();
 
-        var trust = ClaudeTrust.Read(_path, TimeSpan.FromMilliseconds(500));
-        await writer;
+        var trust = ClaudeTrust.Read(_path, TimeSpan.FromMilliseconds(800));
+        writer.Join();
+        await Task.CompletedTask;
 
         Assert.Null(trust.Problem);
         Assert.True(trust.IsTrusted(Root));

@@ -44,6 +44,29 @@ public partial class SessionWindow
     private const string EscalateKey = "escalateMinutes";
 
     /// <summary>
+    /// The ui.json key for the silent-working threshold, in minutes: 0 turns the notice off, and a missing value is 45 (lifecycle batch L3).
+    /// </summary>
+    private const string SilentKey = "silentMinutes";
+
+    /// <summary>
+    /// The silent notices shown at the last announcement pass. A notice whose key leaves this set has ended its spell, so its key is forgotten from
+    /// <see cref="_announcedNotices"/> and the next spell is announced again (lifecycle batch L3). UI thread only.
+    /// </summary>
+    private IReadOnlySet<string> _silentShown = new HashSet<string>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The silent-working sessions: listed as working, with no request for the threshold, as the pass read them (the listing and the request times
+    /// the pass already read; no transcript is read here). Empty when the setting is off.
+    /// </summary>
+    private IReadOnlyList<string> SilentNames(DateTimeOffset now, TimeSpan threshold) =>
+        SilenceCheck.Find(_agents.Select(agent => (
+            agent.Name,
+            agent.SessionId ?? string.Empty,
+            agent.EffectiveState,
+            _runningFacts.TryGetValue(agent.SessionId ?? string.Empty, out var facts) ? facts.LastRequest : null)),
+            now, threshold);
+
+    /// <summary>
     /// The notes of the Needs-you group, one row each, in this order: the daemon note, the note of a window that only watches (reliability batch R1),
     /// and a supervisor problem (reliability batch R9). Each is a tag and its text.
     /// </summary>
@@ -114,7 +137,9 @@ public partial class SessionWindow
                 continue;
             }
             var listed = _agents.FirstOrDefault(a => string.Equals(a.SessionId, record.SessionId, StringComparison.OrdinalIgnoreCase));
-            var row = LiveRow(record, StateWithWaiting(listed));
+            // A silent notice (lifecycle batch L3) is shown at the end of the row's activity line, after the state.
+            var silent = _attention.FirstOrDefault(i => i.Name == record.Name && i.Reason == AttentionReason.Silent)?.Detail;
+            var row = LiveRow(record, StateWithWaiting(listed), silent);
             if (IsEscalating(record.Name)) AddEscalationItems(row, record.Name);
             section.Items.Add(row);
         }
@@ -198,6 +223,11 @@ public partial class SessionWindow
         if (_watching) return;
         var previous = _announced;
         _announced = _attention;
+        // A silent notice is announced once per spell (lifecycle batch L3): when it leaves the list, its key is forgotten, so a later spell of the
+        // same session is announced again. Its key stays while it is listed, so the notice does not sound on every pass.
+        var silentNow = AttentionList.SilentKeys(_attention);
+        _announcedNotices.RemoveWhere(key => _silentShown.Contains(key) && !silentNow.Contains(key));
+        _silentShown = silentNow;
         var now = DateTimeOffset.Now;
         // Every pass updates the escalation, so a session that was already waiting when the window opened is counted from the first pass.
         // A re-alert that falls while "notify" is false is used up without a sound: the owner chose silence.

@@ -86,6 +86,20 @@ public sealed class AttentionTests : IDisposable
     }
 
     [Fact]
+    public void ALostSessionWhoseNameAnotherSessionHoldsNeedsTheOwnerWhileItIsGone()
+    {
+        // Lifecycle batch L1: the lost session is not resumed, because a live session of its name exists. The owner stops or renames that one.
+        var lost = Record("coder", SessionA, Now,
+            lastAlert: "NameTaken: name 'coder' is taken by session 99999999; resume would make a second one");
+
+        var item = Assert.Single(AttentionList.From([lost], []));
+
+        Assert.Equal(AttentionReason.NameTaken, item.Reason);
+        Assert.Equal(SessionA, item.SessionId);
+        Assert.Equal("NameTaken: name 'coder' is taken by session 99999999; resume would make a second one", item.Detail);
+    }
+
+    [Fact]
     public void AStaleRestartLoopAlertIsIgnoredOnceTheSessionIsListed()
     {
         var back = Record("coder", SessionA, Now, lastAlert: "RestartLoop: old");

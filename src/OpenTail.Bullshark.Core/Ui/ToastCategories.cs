@@ -30,7 +30,9 @@ public static class ToastCategories
     public static ToastCategory Of(AttentionReason reason) => reason switch
     {
         AttentionReason.Blocked => ToastCategory.Blocked,
-        AttentionReason.RestartLoop or AttentionReason.StartFailed or AttentionReason.Stopped or AttentionReason.Failed => ToastCategory.Problems,
+        AttentionReason.RestartLoop or AttentionReason.StartFailed or AttentionReason.Stopped or AttentionReason.Failed or AttentionReason.NameTaken
+            => ToastCategory.Problems,
+        // Overlap, Conflict, LimitReached and Silent are notices: Silent (lifecycle batch L3) is one too, since it may be a long command.
         _ => ToastCategory.Notices,
     };
 

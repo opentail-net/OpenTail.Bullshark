@@ -29,6 +29,7 @@ public partial class SessionWindow
         _settings.ContextWindowChosen += SetContextWindow;
         _settings.MagicAutoChanged += SetMagicAuto;
         _settings.EscalateChosen += SetEscalation;
+        _settings.SilenceChosen += SetSilence;
         _settings.QuietChosen += SetQuiet;
         _settings.InstructionsRequested += OpenInstructions;
         _settings.SetupCheckRequested += OpenSetupCheck;
@@ -59,6 +60,7 @@ public partial class SessionWindow
             Toast: AttentionList.NotificationsOn(UiFile.Read(_options.StatePath, ToastKey)),
             MagicAuto: _magicAutoOn,
             Escalation: EscalationChoices.Of(UiFile.Read(_options.StatePath, EscalateKey)),
+            Silence: SilenceChoices.Of(UiFile.Read(_options.StatePath, SilentKey)),
             ContextWindow: ContextMeter.ChoiceOf(UiFile.Read(_options.StatePath, ContextWindowKey)),
             ToastEvents: Enum.GetValues<ToastCategory>().ToDictionary(category => category, category => ToastCategories.Enabled(events, category)),
             Quiet: QuietHours.Parse(UiFile.Read(_options.StatePath, QuietHours.Key))));
@@ -133,6 +135,22 @@ public partial class SessionWindow
         _theme = theme;
         ThemeStore.Save(_options.StatePath, _theme);
         ApplyTheme();
+        RefreshRail();
+        RefreshSettingsPage();
+    }
+
+    /// <summary>
+    /// Sets how long a working session may go without a request before its silent notice shows, in minutes (0 is Off), and shows the value the
+    /// file holds afterwards (lifecycle batch L3). The rail reads the same key on each refresh (<see cref="SilenceCheck.ThresholdOf"/>).
+    /// </summary>
+    private void SetSilence(int minutes)
+    {
+        UiFile.Set(_options.StatePath, SilentKey, JsonValue.Create(minutes)!);
+        var now = SilenceChoices.MinutesOf(UiFile.Read(_options.StatePath, SilentKey));
+        AppLog.Write($"silent working session: {now} minutes (the owner's choice in Settings)");
+        SetStatus(now != minutes ? "Not saved: ui.json cannot be written. See the log."
+            : now == 0 ? "Silent sessions give no notice."
+            : $"A working session with no output for {now} minutes gets a notice under Needs you.");
         RefreshRail();
         RefreshSettingsPage();
     }

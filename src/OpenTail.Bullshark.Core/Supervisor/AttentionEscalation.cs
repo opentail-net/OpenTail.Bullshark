@@ -39,12 +39,12 @@ public sealed class AttentionEscalation
     }
 
     /// <summary>
-    /// Only the reasons the owner must act on escalate (D1): blocked, restart loop, start failed, stopped, failed. The notices (overlap,
-    /// conflict, limit reached) never re-alert.
+    /// Only the reasons the owner must act on escalate (D1): blocked, restart loop, start failed, stopped, failed, and name taken (lifecycle batch
+    /// L1, with the restart loop it stops). The notices (overlap, conflict, limit reached, silent) never re-alert.
     /// </summary>
     public static bool Escalates(AttentionItem item) =>
         item.Reason is AttentionReason.Blocked or AttentionReason.RestartLoop or AttentionReason.StartFailed
-            or AttentionReason.Stopped or AttentionReason.Failed;
+            or AttentionReason.Stopped or AttentionReason.Failed or AttentionReason.NameTaken;
 
     /// <summary>
     /// The interval from ui.json's <c>escalateMinutes</c>. A missing value, a value that is not a number, or a negative one gives

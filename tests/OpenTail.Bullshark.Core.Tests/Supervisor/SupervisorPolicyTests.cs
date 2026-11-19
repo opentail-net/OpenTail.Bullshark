@@ -356,4 +356,221 @@ public sealed class SupervisorPolicyTests
 
         Assert.Equal(started, adopt.StartedAt);
     }
+
+    // ---- Lifecycle batch L2: restart backoff ----
+
+    private const string OtherSessionId = "99999999-aaaa-bbbb-cccc-dddddddddddd";
+
+    /// <summary>A lost record whose restarts are the given times, with the test planner's name.</summary>
+    private static SessionRecord LostWithRestarts(params DateTimeOffset[] restartTimes) =>
+        new(SessionRole.Planner, SessionId, TestSpecs.PlannerName, Now.AddHours(-5), restartTimes.Length, restartTimes, null, null);
+
+    [Fact]
+    public void TheFirstRestartInTheHourIsNeverDelayed()
+    {
+        // No restart in the last hour, and one older than the hour: the lost session is resumed at once.
+        Assert.IsType<SupervisorAction.Resume>(Assert.Single(SupervisorPolicy.Decide(Planner, LostWithRestarts(), [], Now, SupervisorRules.Default)));
+        Assert.IsType<SupervisorAction.Resume>(Assert.Single(SupervisorPolicy.Decide(Planner,
+            LostWithRestarts(Now.AddMinutes(-70)), [], Now, SupervisorRules.Default)));
+    }
+
+    [Fact]
+    public void ARestartTwentySecondsAgoWaitsOneMinuteBeforeTheNextResume()
+    {
+        var actions = SupervisorPolicy.Decide(Planner, LostWithRestarts(Now.AddSeconds(-20)), [], Now, SupervisorRules.Default);
+
+        // Silent: no alert and no action, so the loss stays visible in the rail only.
+        Assert.Empty(actions);
+    }
+
+    [Fact]
+    public void TheFirstGapEndsExactlyAtOneMinute()
+    {
+        var actions = SupervisorPolicy.Decide(Planner, LostWithRestarts(Now.AddMinutes(-1)), [], Now, SupervisorRules.Default);
+
+        Assert.IsType<SupervisorAction.Resume>(Assert.Single(actions));
+    }
+
+    [Fact]
+    public void AfterTwoRestartsTheWaitIsTwoMinutes()
+    {
+        // Two restarts in the hour. The last one was a minute ago, so the two-minute gap still holds.
+        var held = SupervisorPolicy.Decide(Planner, LostWithRestarts(Now.AddMinutes(-5), Now.AddMinutes(-1)), [], Now, SupervisorRules.Default);
+        Assert.Empty(held);
+
+        // Two minutes after the last one, the resume runs.
+        var due = SupervisorPolicy.Decide(Planner, LostWithRestarts(Now.AddMinutes(-5), Now.AddMinutes(-2)), [], Now, SupervisorRules.Default);
+        Assert.IsType<SupervisorAction.Resume>(Assert.Single(due));
+    }
+
+    [Fact]
+    public void TheGapIsCountedFromTheLatestRestartOfTheHour()
+    {
+        // Two restarts in the hour (the first 50 minutes ago): the gap is the two-minute one, counted from the latest, 90 seconds ago. It holds.
+        Assert.Empty(SupervisorPolicy.Decide(Planner,
+            LostWithRestarts(Now.AddMinutes(-50), Now.AddSeconds(-90)), [], Now, SupervisorRules.Default));
+
+        // Three minutes after the first and two and a half after the latest: the gap has passed.
+        Assert.IsType<SupervisorAction.Resume>(Assert.Single(SupervisorPolicy.Decide(Planner,
+            LostWithRestarts(Now.AddMinutes(-50), Now.AddSeconds(-150)), [], Now, SupervisorRules.Default)));
+    }
+
+    [Fact]
+    public void OldRestartsOutsideTheHourDoNotStartAGap()
+    {
+        // Three restarts more than an hour old, and one 70 seconds ago: the hour has one restart, so the one-minute gap has passed.
+        var actions = SupervisorPolicy.Decide(Planner,
+            LostWithRestarts(Now.AddHours(-2), Now.AddHours(-2).AddMinutes(1), Now.AddHours(-2).AddMinutes(2), Now.AddSeconds(-70)),
+            [], Now, SupervisorRules.Default);
+
+        Assert.IsType<SupervisorAction.Resume>(Assert.Single(actions));
+    }
+
+    [Fact]
+    public void TheRestartLimitStillAlertsWhateverTheGapSays()
+    {
+        // Three restarts in the hour and the last only 10 seconds ago: the cap is checked first, so the restart-loop alert is raised, not a silent wait.
+        var actions = SupervisorPolicy.Decide(Planner,
+            LostWithRestarts(Now.AddSeconds(-20), Now.AddSeconds(-15), Now.AddSeconds(-10)), [], Now, SupervisorRules.Default);
+
+        Assert.Equal(AlertKind.RestartLoop, Assert.IsType<SupervisorAction.Alert>(Assert.Single(actions)).Kind);
+    }
+
+    [Fact]
+    public void AGapCountPastTheTableUsesItsLastEntry()
+    {
+        // Ten restarts allowed an hour: three restarts in the hour put the count past the two-entry table, so the last entry (two minutes) holds.
+        var rules = new SupervisorRules(MaxRestartsPerHour: 10);
+
+        Assert.Empty(SupervisorPolicy.Decide(Planner,
+            LostWithRestarts(Now.AddMinutes(-5), Now.AddMinutes(-4), Now.AddMinutes(-1)), [], Now, rules));
+        Assert.IsType<SupervisorAction.Resume>(Assert.Single(SupervisorPolicy.Decide(Planner,
+            LostWithRestarts(Now.AddMinutes(-5), Now.AddMinutes(-4), Now.AddMinutes(-2)), [], Now, rules)));
+    }
+
+    [Fact]
+    public void ACustomGapTableIsTheOneUsed()
+    {
+        var rules = new SupervisorRules { RestartGaps = [TimeSpan.FromMinutes(5)] };
+
+        Assert.Empty(SupervisorPolicy.Decide(Planner, LostWithRestarts(Now.AddMinutes(-4)), [], Now, rules));
+        Assert.IsType<SupervisorAction.Resume>(Assert.Single(SupervisorPolicy.Decide(Planner,
+            LostWithRestarts(Now.AddMinutes(-5)), [], Now, rules)));
+    }
+
+    [Fact]
+    public void AnEmptyGapTableMeansNoGap()
+    {
+        var rules = new SupervisorRules { RestartGaps = [] };
+
+        Assert.IsType<SupervisorAction.Resume>(Assert.Single(SupervisorPolicy.Decide(Planner,
+            LostWithRestarts(Now.AddSeconds(-1)), [], Now, rules)));
+    }
+
+    [Fact]
+    public void ARestartTimeAheadOfTheClockIsNotHeldByTheGap()
+    {
+        // The clock went back: a restart "in the future" must not hold the role for longer than a gap.
+        var actions = SupervisorPolicy.Decide(Planner, LostWithRestarts(Now.AddHours(1)), [], Now, SupervisorRules.Default);
+
+        Assert.IsType<SupervisorAction.Resume>(Assert.Single(actions));
+    }
+
+    // ---- Lifecycle batch L1: name clash ----
+
+    /// <summary>A live or dead row of another session with the test planner's name.</summary>
+    private static AgentInfo OtherRow(string state) => NamedAgent(TestSpecs.PlannerName, state, OtherSessionId);
+
+    [Fact]
+    public void ALostSessionIsNotResumedWhileAWorkingSessionHoldsItsName()
+    {
+        var actions = SupervisorPolicy.Decide(Planner, LostWithRestarts(), [OtherRow("working")], Now, SupervisorRules.Default);
+
+        var alert = Assert.IsType<SupervisorAction.Alert>(Assert.Single(actions));
+        Assert.Equal(AlertKind.NameTaken, alert.Kind);
+        Assert.Equal($"name '{TestSpecs.PlannerName}' is taken by session 99999999; resume would make a second one", alert.Detail);
+    }
+
+    [Theory]
+    [InlineData("blocked")]
+    [InlineData("busy")]
+    public void ABlockedOrBusySessionAlsoHoldsTheName(string state)
+    {
+        var actions = SupervisorPolicy.Decide(Planner, LostWithRestarts(), [OtherRow(state)], Now, SupervisorRules.Default);
+
+        Assert.Equal(AlertKind.NameTaken, Assert.IsType<SupervisorAction.Alert>(Assert.Single(actions)).Kind);
+    }
+
+    [Theory]
+    [InlineData("done")]
+    [InlineData("stopped")]
+    [InlineData("failed")]
+    public void ANameHeldByAFinishedStoppedOrFailedRowDoesNotStopTheResume(string state)
+    {
+        var actions = SupervisorPolicy.Decide(Planner, LostWithRestarts(), [OtherRow(state)], Now, SupervisorRules.Default);
+
+        Assert.IsType<SupervisorAction.Resume>(Assert.Single(actions));
+    }
+
+    [Fact]
+    public void AStaleRowOfTheSameNameDoesNotHoldTheName()
+    {
+        // The daemon is not running: a working row of another session is stale, so it is not alive and does not hold the name.
+        var stale = DaemonStatus.Parse("not running\n").IdleListing([OtherRow("working")]).Single();
+        Assert.Equal(DaemonStatus.StaleState, stale.EffectiveState);
+
+        var actions = SupervisorPolicy.Decide(Planner, LostWithRestarts(), [stale], Now, SupervisorRules.Default);
+
+        Assert.IsType<SupervisorAction.Resume>(Assert.Single(actions));
+    }
+
+    [Theory]
+    [InlineData("working")]
+    [InlineData("done")]
+    public void TheSameSessionListedUnderItsNameIsNotAClash(string state)
+    {
+        // The record's own session is listed: it is not lost, so nothing is resumed or alerted.
+        var actions = SupervisorPolicy.Decide(Planner, LostWithRestarts(), [NamedAgent(TestSpecs.PlannerName, state, SessionId)], Now, SupervisorRules.Default);
+
+        Assert.Empty(actions);
+    }
+
+    [Fact]
+    public void ANameTakenAlertIsNotRepeatedWhileTheClashStands()
+    {
+        var record = new SessionRecord(SessionRole.Planner, SessionId, TestSpecs.PlannerName, Now.AddHours(-5), 0, [], null,
+            "NameTaken: name 'test-planner' is taken by session 99999999; resume would make a second one");
+
+        Assert.Empty(SupervisorPolicy.Decide(Planner, record, [OtherRow("working")], Now, SupervisorRules.Default));
+    }
+
+    [Fact]
+    public void WhenTheClashGoesTheResumeRuns()
+    {
+        var record = new SessionRecord(SessionRole.Planner, SessionId, TestSpecs.PlannerName, Now.AddHours(-5), 0, [], null,
+            "NameTaken: name 'test-planner' is taken by session 99999999; resume would make a second one");
+
+        // The other session is done now: the name is free, and the lost session is resumed under its own id.
+        var actions = SupervisorPolicy.Decide(Planner, record, [OtherRow("done")], Now, SupervisorRules.Default);
+
+        var resume = Assert.IsType<SupervisorAction.Resume>(Assert.Single(actions));
+        Assert.Equal(SessionId, resume.SessionId);
+    }
+
+    [Fact]
+    public void ARestartGapHoldsBeforeTheNameIsChecked()
+    {
+        // A restart 20 seconds ago and a clash: the pass waits silently for the gap, and the name is only checked when a resume would run.
+        Assert.Empty(SupervisorPolicy.Decide(Planner, LostWithRestarts(Now.AddSeconds(-20)), [OtherRow("working")], Now, SupervisorRules.Default));
+    }
+
+    [Fact]
+    public void TheRestartLimitIsAlertedBeforeTheNameClash()
+    {
+        var recent = new[] { Now.AddMinutes(-30), Now.AddMinutes(-20), Now.AddMinutes(-10) };
+
+        var actions = SupervisorPolicy.Decide(Planner, LostWithRestarts(recent), [OtherRow("working")], Now, SupervisorRules.Default);
+
+        Assert.Equal(AlertKind.RestartLoop, Assert.IsType<SupervisorAction.Alert>(Assert.Single(actions)).Kind);
+    }
 }

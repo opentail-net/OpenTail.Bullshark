@@ -272,6 +272,10 @@ if ($LASTEXITCODE -ne 0) { throw "The fixture generator failed" }
 $daemonDownListing = '[{"id":"a0a0a0a0","kind":"background","sessionId":"5e4f3a21-0000-4000-8000-00000000a0a0","name":"bullshark-planner-r4a1","state":"blocked"},' +
     '{"id":"c0d1c0d1","kind":"background","sessionId":"5e4f3a21-0000-4000-8000-00000000c0d1","name":"bullshark-coder-r4a1-1","state":"working"}]'
 
+# The listing for the silent-working screens (lifecycle batch L3): the coder is listed as working, with the daemon up. Its transcript's last request
+# is about 86 minutes old, so the notice shows under Needs you at the default 45 minutes.
+$silentListing = '[{"id":"c0d1c0d1","kind":"background","sessionId":"5e4f3a21-0000-4000-8000-00000000c0d1","name":"bullshark-coder-r4a1-1","state":"working"}]'
+
 # Each screen: a theme for the rail (ui.json beside the state file), the options that open the screen, and a name for its PNG.
 $screens = @(
     @{ Name = 'rail-dark'; Theme = 'Dark'; Options = @() },
@@ -301,6 +305,8 @@ $screens = @(
     @{ Name = 'settings-quiet-custom-light'; Theme = 'Light'; Options = @('--open-tab', 'settings'); UiExtra = ', "quietHours": { "from": "21:30", "to": "06:30" }' },
     @{ Name = 'settings-general-light'; Theme = 'Light'; Options = @('--open-tab', 'settings') },
     @{ Name = 'settings-naming-dark'; Theme = 'Dark'; Options = @('--open-tab', 'settings-naming') },
+    # Lifecycle batch L3: the Naming sub-tab has the silent-working row (Off, 30, 45, 60, 120 minutes), in both themes.
+    @{ Name = 'settings-naming-light'; Theme = 'Light'; Options = @('--open-tab', 'settings-naming') },
     @{ Name = 'settings-claude-dark'; Theme = 'Dark'; Options = @('--open-tab', 'settings-claude') },
     @{ Name = 'transcript-dark'; Theme = 'Dark'; Options = @('--open-transcript', '5e4f3a21-0000-4000-8000-00000000c0d1') },
     # The effort panel open (--effort-open), in both themes: its contents are what the screens check (round 5 item 16).
@@ -325,7 +331,10 @@ $screens = @(
     @{ Name = 'settings-window-custom-light'; Theme = 'Light'; Options = @('--open-tab', 'settings');
        UiExtra = ', "contextWindow": 300000, "toastEvents": { "notices": false, "ready": false }' },
     # The same rail as rail-dark with a 1M window: the 170k row has no warning mark, and its figure is the same.
-    @{ Name = 'rail-ctx-1m-dark'; Theme = 'Dark'; Options = @(); UiExtra = ', "contextWindow": 1000000' }
+    @{ Name = 'rail-ctx-1m-dark'; Theme = 'Dark'; Options = @(); UiExtra = ', "contextWindow": 1000000' },
+    # Lifecycle batch L3: a working session with no request for over 45 minutes shows the silent notice under Needs you (both themes).
+    @{ Name = 'rail-silent-dark'; Theme = 'Dark'; Options = @(); Env = @{ FAKECLAUDE_AGENTS = $silentListing } },
+    @{ Name = 'rail-silent-light'; Theme = 'Light'; Options = @(); Env = @{ FAKECLAUDE_AGENTS = $silentListing } }
 )
 
 # The stand-in goes first on PATH for these runs only: the window's claude calls reach it, not the owner's claude.

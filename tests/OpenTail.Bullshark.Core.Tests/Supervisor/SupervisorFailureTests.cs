@@ -26,6 +26,13 @@ public sealed class SupervisorFailureTests : IDisposable
         public override DateTimeOffset GetUtcNow() => Now;
     }
 
+    /// <summary>A clock the test moves forward, for the passes that must fall after the backoff gaps.</summary>
+    private sealed class SteppingClock(DateTimeOffset now) : TimeProvider
+    {
+        public DateTimeOffset Now { get; set; } = now;
+        public override DateTimeOffset GetUtcNow() => Now;
+    }
+
     private static string Agent(string sessionId, string name) =>
         $"{{\"id\":\"{sessionId[..8]}\",\"kind\":\"background\",\"sessionId\":\"{sessionId}\",\"name\":\"{name}\",\"state\":\"working\"}}";
 
@@ -87,7 +94,8 @@ public sealed class SupervisorFailureTests : IDisposable
                 : FakeCliRunner.Ok($"backgrounded · 11111111 · {TestSpecs.PlannerName}\n"),
             _ => FakeCliRunner.Ok(),
         });
-        var runner = new SupervisorRunner(new ClaudeCli(cli), new StateStore(path), new FixedClock(),
+        var clock = new SteppingClock(Now);
+        var runner = new SupervisorRunner(new ClaudeCli(cli), new StateStore(path), clock,
             resolveTimeout: TimeSpan.FromSeconds(3));
         var spec = TestSpecs.Planner(@"C:\W", "task");
 
@@ -96,14 +104,18 @@ public sealed class SupervisorFailureTests : IDisposable
         listed = false;
         refuse = true;
 
-        for (int pass = 1; pass <= 3; pass++)
+        // A refused resume counts as a restart, so the next try waits the backoff gap (lifecycle batch L2): one minute after the first
+        // refusal, and two minutes after the second. The passes are at minutes 0, 1 and 3.
+        foreach (var minute in new[] { 0, 1, 3 })
         {
+            clock.Now = Now.AddMinutes(minute);
             var actions = await runner.CheckOnceAsync([spec]);
             Assert.IsType<SupervisorAction.Alert>(Assert.Single(actions));
         }
         Assert.Equal(3, new StateStore(path).Load()[TestSpecs.PlannerName].Restarts);
 
         // The fourth pass does not try again: three failures in the hour raise the restart-loop alert.
+        clock.Now = Now.AddMinutes(4);
         int startsBefore = cli.Calls.Count(c => c.Args[0] == "--bg");
         var stopped = await runner.CheckOnceAsync([spec]);
 

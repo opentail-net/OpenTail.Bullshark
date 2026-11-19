@@ -38,6 +38,12 @@ public enum AlertKind
     /// The run reached its limit. Nothing new is started or resumed for it; a running session is not stopped. Raised once (additions item 4).
     /// </summary>
     LimitReached,
+
+    /// <summary>
+    /// A lost session would be resumed, but another listed session of the same name is alive (working, blocked or busy). A resume would make a second
+    /// paid session with that name, so nothing is resumed. Raised once while the clash stands (lifecycle batch L1).
+    /// </summary>
+    NameTaken,
 }
 
 /// <summary>One thing the supervisor decided to do on this check.</summary>
@@ -70,6 +76,13 @@ public abstract record SupervisorAction(SessionRole Role)
 /// <summary>Limits the supervisor applies, from the README decisions.</summary>
 public sealed record SupervisorRules(int MaxRestartsPerHour = 3)
 {
+    /// <summary>
+    /// The wait before a lost session is resumed again, after the restarts of the last hour (lifecycle batch L2). The entry at index k-1 is the gap
+    /// after the k-th restart in the hour: 1 minute after the first, 2 minutes after the second. A count past the table uses its last entry. The
+    /// first restart in the hour has no gap, so it is never delayed. An empty table means no gaps.
+    /// </summary>
+    public IReadOnlyList<TimeSpan> RestartGaps { get; init; } = [TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(2)];
+
     public static SupervisorRules Default { get; } = new();
 }
 
@@ -174,7 +187,7 @@ public static class SupervisorPolicy
         var agent = agents.FirstOrDefault(a => string.Equals(a.SessionId, record.SessionId, StringComparison.OrdinalIgnoreCase));
 
         // Gone: the daemon lost it or it was removed. Resume under the same id, unless it keeps happening.
-        if (agent is null) return DecideLost(spec, record, now, rules, reached);
+        if (agent is null) return DecideLost(spec, record, agents, now, rules, reached);
 
         var state = agent.EffectiveState;
 
@@ -187,7 +200,7 @@ public static class SupervisorPolicy
                 return AttentionList.IsStaleBlockedAlert(record.LastAlert)
                     ? []
                     : [new SupervisorAction.Alert(spec.Role, AlertKind.Blocked, AttentionList.StaleBlockedDetail)];
-            return DecideLost(spec, record, now, rules, reached);
+            return DecideLost(spec, record, agents, now, rules, reached);
         }
 
         // Waiting on a permission prompt does nothing until someone answers. Alert once per entry into the state.
@@ -221,10 +234,13 @@ public static class SupervisorPolicy
     /// A session that is lost: not in the listing, or stale and working (round 8 item 1). It is resumed under the same id, under the rules for a
     /// lost session: a session the owner stopped or that failed is not brought back, a session that was waiting for input when the daemon stopped
     /// is not (its prompt is lost; the owner opens its tab), nothing is resumed at the run's limit, and a restart loop stops until someone looks.
+    /// Two more holds (lifecycle batch): a pass inside the restart gap waits silently (L2), and a live listed session that holds the name stops the
+    /// resume with a <see cref="AlertKind.NameTaken"/> alert (L1). The first restart of the hour is never held by the gap.
     /// </summary>
     private static IReadOnlyList<SupervisorAction> DecideLost(
         SessionSpec spec,
         SessionRecord record,
+        IReadOnlyList<AgentInfo> agents,
         DateTimeOffset now,
         SupervisorRules rules,
         bool reached)
@@ -239,7 +255,8 @@ public static class SupervisorPolicy
 
         // At the run's limit a lost session is not brought back (additions item 4).
         if (reached) return [];
-        var recentRestarts = record.RestartTimes.Count(t => now - t < TimeSpan.FromHours(1));
+        var recent = record.RestartTimes.Where(t => now - t < TimeSpan.FromHours(1)).ToList();
+        var recentRestarts = recent.Count;
         if (recentRestarts >= rules.MaxRestartsPerHour)
         {
             // Alerted once: while the restart-loop alert stands, nothing more is done on each pass. When the restarts age out
@@ -249,8 +266,52 @@ public static class SupervisorPolicy
             return [new SupervisorAction.Alert(spec.Role, AlertKind.RestartLoop,
                 $"{recentRestarts} restarts in the last hour; not restarting until someone looks.")];
         }
+
+        // Backoff (lifecycle batch L2): a pass inside the gap after the last restart does nothing. No alert: the loss shows in the rail.
+        if (InRestartGap(recent, now, rules)) return [];
+
+        // Name clash (lifecycle batch L1): a live listed session of this name is another session, so a resume would be a second paid one.
+        // Alerted once while the clash stands. When the clash goes, the next pass resumes, and the runner clears the alert with the resume.
+        var clash = NameClash(spec, record, agents);
+        if (clash is not null)
+        {
+            if (record.LastAlert?.StartsWith(AttentionList.NameTakenPrefix, StringComparison.Ordinal) == true) return [];
+            return [new SupervisorAction.Alert(spec.Role, AlertKind.NameTaken,
+                $"name '{spec.Name}' is taken by session {ShortIdOf(clash)}; resume would make a second one")];
+        }
         return [new SupervisorAction.Resume(spec.Role, spec, record.SessionId)];
     }
+
+    /// <summary>
+    /// True while the gap after the latest restart of the last hour has not passed (lifecycle batch L2). The gap is entry k-1 of
+    /// <see cref="SupervisorRules.RestartGaps"/>, where k is the number of restarts in the hour, and the last entry for any count past the table. With no
+    /// restart in the hour there is no gap. A restart time ahead of now (the clock went back) is not held, so a clock jump cannot hold a role.
+    /// </summary>
+    private static bool InRestartGap(IReadOnlyList<DateTimeOffset> recent, DateTimeOffset now, SupervisorRules rules)
+    {
+        var index = Math.Min(recent.Count, rules.RestartGaps.Count) - 1;
+        if (index < 0) return false;
+        var since = now - recent.Max();
+        return since >= TimeSpan.Zero && since < rules.RestartGaps[index];
+    }
+
+    /// <summary>
+    /// The listed session that holds this name, is alive, and is not this record's session (lifecycle batch L1). Null when there is none. The name is
+    /// compared exactly, as the adoption does; the session id case-insensitively, as every other session match does.
+    /// </summary>
+    private static AgentInfo? NameClash(SessionSpec spec, SessionRecord record, IReadOnlyList<AgentInfo> agents) =>
+        agents.FirstOrDefault(a => string.Equals(a.Name, spec.Name, StringComparison.Ordinal)
+            && !string.Equals(a.SessionId, record.SessionId, StringComparison.OrdinalIgnoreCase)
+            && IsAlive(a.EffectiveState));
+
+    /// <summary>Alive is listed as working, blocked or busy. A done, stopped, failed or stale row is not alive (lifecycle batch L1).</summary>
+    private static bool IsAlive(string state) => Is(state, "working") || Is(state, "blocked") || Is(state, "busy");
+
+    /// <summary>The short id the owner knows a session by: the listing's own, else the first eight characters of the session id.</summary>
+    private static string ShortIdOf(AgentInfo agent) =>
+        !string.IsNullOrEmpty(agent.Id) ? agent.Id
+        : agent.SessionId is { Length: > 0 } id ? id[..Math.Min(8, id.Length)]
+        : "unknown";
 
     /// <summary>How long a lost session that was waiting for input is held back from a resume, counted from its stale-blocked alert (round 9 item 4).</summary>
     public static readonly TimeSpan StaleBlockedHold = TimeSpan.FromHours(1);
