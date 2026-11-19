@@ -3,9 +3,19 @@ using System.Text;
 
 namespace OpenTail.Bullshark.Core.Supervisor;
 
-/// <summary>A state file that cannot be read as the records it should hold. Nothing is written when this is thrown.</summary>
+/// <summary>
+/// A state file that cannot be read as the records it should hold. Nothing is written when this is thrown. The path and the reason are kept
+/// apart as well as in the message, so the owner's text can name the file alone (firstrun batch B2, <c>PassErrorText</c>).
+/// </summary>
 public sealed class StoreUnreadableException(string path, string reason)
-    : Exception($"{path} cannot be read ({reason}); nothing was changed.");
+    : Exception($"{path} cannot be read ({reason}); nothing was changed.")
+{
+    /// <summary>The full path of the file that could not be read.</summary>
+    public string FilePath { get; } = path;
+
+    /// <summary>Why it could not be read, as the parser or the reader said it.</summary>
+    public string Reason { get; } = reason;
+}
 
 /// <summary>
 /// The failures a user action expects from the files behind the window: a store that cannot be read or written, a lock that is not

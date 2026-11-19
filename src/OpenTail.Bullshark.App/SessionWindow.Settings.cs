@@ -33,6 +33,8 @@ public partial class SessionWindow
         _settings.QuietChosen += SetQuiet;
         _settings.InstructionsRequested += OpenInstructions;
         _settings.SetupCheckRequested += OpenSetupCheck;
+        _settings.DiagnosticsRequested += SaveDiagnostics;
+        _settings.AttentionFileChanged += SetAttentionFile;
     }
 
     /// <summary>The status bar's Settings button: the sub-tab that was shown last.</summary>
@@ -63,7 +65,9 @@ public partial class SessionWindow
             Silence: SilenceChoices.Of(UiFile.Read(_options.StatePath, SilentKey)),
             ContextWindow: ContextMeter.ChoiceOf(UiFile.Read(_options.StatePath, ContextWindowKey)),
             ToastEvents: Enum.GetValues<ToastCategory>().ToDictionary(category => category, category => ToastCategories.Enabled(events, category)),
-            Quiet: QuietHours.Parse(UiFile.Read(_options.StatePath, QuietHours.Key))));
+            Quiet: QuietHours.Parse(UiFile.Read(_options.StatePath, QuietHours.Key)),
+            VersionLine: AppInfo.VersionLine(_cliVersion),
+            AttentionFile: AttentionFile.Enabled(UiFile.Read(_options.StatePath, AttentionFile.Key))));
     }
 
     /// <summary>

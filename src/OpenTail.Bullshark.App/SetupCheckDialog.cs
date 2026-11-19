@@ -92,9 +92,27 @@ public sealed class SetupCheckDialog : Window
             Text = "●",
             Foreground = RailPalette.Brush(Colour(item.State)),
             FontSize = 14,
-            Margin = new Thickness(0, 1, 10, 0),
+            Margin = new Thickness(0, 1, 6, 0),
             VerticalAlignment = VerticalAlignment.Top,
         };
+        // The state is also a word, so the colour is not the only sign (firstrun batch B8).
+        var word = new TextBlock
+        {
+            Text = StateWord(item.State),
+            Foreground = RailPalette.Brush(Colour(item.State)),
+            FontSize = 12,
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 2, 0, 0),
+        };
+        var head = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Width = 92,
+            Margin = new Thickness(0, 0, 8, 0),
+            VerticalAlignment = VerticalAlignment.Top,
+        };
+        head.Children.Add(dot);
+        head.Children.Add(word);
 
         var text = new StackPanel();
         text.Children.Add(new TextBlock
@@ -113,11 +131,21 @@ public sealed class SetupCheckDialog : Window
         });
 
         var row = new DockPanel { Margin = new Thickness(0, 0, 0, 10) };
-        DockPanel.SetDock(dot, Dock.Left);
-        row.Children.Add(dot);
+        DockPanel.SetDock(head, Dock.Left);
+        row.Children.Add(head);
         row.Children.Add(text);
+        // A screen reader reads the state, the check and its detail as one line (firstrun batch B8).
+        System.Windows.Automation.AutomationProperties.SetName(row, $"{StateWord(item.State)}: {item.Area}, {item.Name}. {item.Detail}");
         return row;
     }
+
+    /// <summary>The state as a word, shown beside the dot: Ok, Warning or Problem.</summary>
+    private static string StateWord(SetupState state) => state switch
+    {
+        SetupState.Ok => "Ok",
+        SetupState.Warning => "Warning",
+        _ => "Problem",
+    };
 
     private string Colour(SetupState state) => (state, _palette.IsLight) switch
     {

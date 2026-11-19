@@ -35,10 +35,24 @@ public static class SetupCheck
     {
         var path = pathVariable ?? Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
         var items = new List<SetupItem>();
+        CheckClaudeCode(path, items);
         CheckSettings(Path.Combine(claudeDir, "settings.json"), path, items);
         CheckClaudeJson(claudeJsonPath, path, items);
         CheckInstructions(Path.Combine(claudeDir, "CLAUDE.md"), items);
         return items;
+    }
+
+    /// <summary>
+    /// The first row: that the <c>claude</c> program itself is on PATH (firstrun batch B1). Only the PATH is searched; nothing is run, so the
+    /// check costs no process on each refresh. The version is not read here: that would start claude on every refresh.
+    /// </summary>
+    private static void CheckClaudeCode(string path, List<SetupItem> items)
+    {
+        const string area = "Claude Code";
+        var found = FindOnPath("claude", path);
+        items.Add(found is null
+            ? new SetupItem(area, "claude", SetupState.Problem, "not found on PATH: install Claude Code, or add it to PATH, then press Check again")
+            : new SetupItem(area, "claude", SetupState.Ok, Clip($"found: {found}")));
     }
 
     private static void CheckSettings(string file, string path, List<SetupItem> items)
@@ -310,7 +324,10 @@ public static class SetupCheck
     }
 
     /// <summary>True when a name is found as a file in one of the PATH folders, with a Windows program extension when it has none.</summary>
-    private static bool OnPath(string program, string pathVariable)
+    private static bool OnPath(string program, string pathVariable) => FindOnPath(program, pathVariable) is not null;
+
+    /// <summary>The full path of the first PATH folder holding the name (with a program extension when it has none), or null.</summary>
+    private static string? FindOnPath(string program, string pathVariable)
     {
         var names = new List<string>();
         if (Path.HasExtension(program))
@@ -332,7 +349,8 @@ public static class SetupCheck
             {
                 try
                 {
-                    if (File.Exists(Path.Combine(directory, name))) return true;
+                    var candidate = Path.Combine(directory, name);
+                    if (File.Exists(candidate)) return candidate;
                 }
                 catch (ArgumentException)
                 {
@@ -340,7 +358,7 @@ public static class SetupCheck
                 }
             }
         }
-        return false;
+        return null;
     }
 
     private static bool LooksLikePath(string value) =>

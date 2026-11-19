@@ -6,6 +6,10 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <!-- The owner has not named a version: 0.1.0 is an assumption (firstrun batch B5). -->
+    <Version>0.1.0</Version>
+    <!-- The SDK would add the full commit id after the short hash; the target below writes the short one (firstrun batch B5). -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,5 +20,20 @@
   <ItemGroup>
     <ProjectReference Include="..\OpenTail.Bullshark.Core\OpenTail.Bullshark.Core.csproj" />
   </ItemGroup>
+
+  <!--
+    The informational version carries the git short hash when git can give it: 0.1.0+abc1234. Without git (or outside a repository) the hash is
+    left out and the build is not affected. The command's exit code is ignored, and its errors are not reported as build errors.
+  -->
+  <Target Name="BulsharkGitHash" BeforeTargets="BeforeBuild">
+    <Exec Command="git rev-parse --short HEAD" WorkingDirectory="$(MSBuildProjectDirectory)" ConsoleToMSBuild="true"
+          IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true"
+          StandardOutputImportance="low" StandardErrorImportance="low" ContinueOnError="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="BulsharkGitHash" />
+    </Exec>
+    <PropertyGroup Condition="'$(BulsharkGitHash)' != ''">
+      <InformationalVersion>$(Version)+$(BulsharkGitHash.Trim())</InformationalVersion>
+    </PropertyGroup>
+  </Target>
 
 </Project>

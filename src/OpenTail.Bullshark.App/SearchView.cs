@@ -80,15 +80,21 @@ public sealed class SearchView : UserControl
     /// Shows the matching sessions. <paramref name="titleOf"/> gives each one's title as the rail shows it (the owner's name, when there is one);
     /// without it, the transcript's own title is shown.
     /// </summary>
-    public void ShowResults(string query, IReadOnlyList<SessionMatch> matches, Func<SessionDigest, string>? titleOf = null, Func<SessionDigest, FolderLabel>? folderOf = null)
+    /// <param name="searched">How many sessions the search read (not counting subagents). With no hit it says so (firstrun batch B8); null says nothing about it.</param>
+    public void ShowResults(string query, IReadOnlyList<SessionMatch> matches, Func<SessionDigest, string>? titleOf = null,
+        Func<SessionDigest, FolderLabel>? folderOf = null, int? searched = null)
     {
         _mode = Mode.Results;
         _query = query;
         _matches = matches;
         _titleOf = titleOf;
         _folderOf = folderOf;
+        _searched = searched;
         Render();
     }
+
+    /// <summary>The sessions the last search read, for the empty result's line. Null when the caller did not say.</summary>
+    private int? _searched;
 
     private void Render()
     {
@@ -107,7 +113,7 @@ public sealed class SearchView : UserControl
 
             case Mode.Results:
                 _heading.Text = _matches.Count == 0
-                    ? $"No session says every word of \"{_query}\"."
+                    ? $"No session says every word of \"{_query}\". {OpenTail.Bullshark.Core.Search.SearchedSentence.Of(_searched)}".TrimEnd()
                     : $"{_matches.Count} session(s) say every word of \"{_query}\", newest first" +
                       (_matches.Count == HistorySearch.MaxResults ? $" (the first {HistorySearch.MaxResults} are shown)" : string.Empty) + ".";
                 foreach (var match in _matches) _list.Children.Add(Block(match));

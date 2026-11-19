@@ -129,9 +129,9 @@ public partial class SessionWindow
             var labels = FolderLabelsFor(Array.Empty<string>());
             FolderLabel FolderOf(SessionDigest digest) =>
                 labels.TryGetValue(digest.ProjectFolder, out var known) ? known : FolderDisplay.Of(digest.ProjectFolder, [digest.Cwd]);
-            _search.ShowResults(query, results, DisplayTitle, FolderOf);
-            RefreshRail();
             var total = sessions.Count(s => !s.IsSubagent);
+            _search.ShowResults(query, results, DisplayTitle, FolderOf, searched: total);
+            RefreshRail();
             var skipped = outcome.Unreadable > 0 ? $" {outcome.Unreadable} session(s) could not be read and are left out." : string.Empty;
             SetStatus($"{results.Count} of {total} sessions say every word of \"{query}\". Newest first." +
                       (results.Count == HistorySearch.MaxResults ? $" The first {HistorySearch.MaxResults} are shown." : string.Empty) +

@@ -31,7 +31,11 @@ public sealed record SettingsState(
     ContextWindowChoice ContextWindow,
     IReadOnlyDictionary<ToastCategory, bool> ToastEvents,
     /// <summary>The quiet hours in ui.json (night batch N4); null when they are off.</summary>
-    QuietWindow? Quiet = null);
+    QuietWindow? Quiet = null,
+    /// <summary>The version line the Claude page shows, as it is built from the assembly and any known claude version (firstrun batch B5).</summary>
+    string VersionLine = "",
+    /// <summary>Whether ui.json switches on the attention file for other tools (firstrun batch B9). Off unless the owner turned it on.</summary>
+    bool AttentionFile = false);
 
 /// <summary>
 /// The Settings page (Insights and Settings plan). A tab with pill sub-tabs: General (theme and notifications), Naming (automatic magic
@@ -53,6 +57,8 @@ public sealed class SettingsView : UserControl
     private readonly CheckBox _notify;
     private readonly CheckBox _toast;
     private readonly CheckBox _magic;
+    private readonly CheckBox _attentionFile;
+    private readonly TextBlock _versionLine;
     private readonly Dictionary<ToastCategory, CheckBox> _toastEvents = new();
     private readonly List<TextBlock> _notes = [];
     private readonly Dictionary<SettingsTab, UIElement> _pages = new();
@@ -63,6 +69,8 @@ public sealed class SettingsView : UserControl
         _notify = Switch("Sound and flash for new waits");
         _toast = Switch("Toasts when the window is in the background");
         _magic = Switch("Automatic magic naming");
+        _attentionFile = Switch("Write attention.json for other tools");
+        _attentionFile.Click += (_, _) => AttentionFileChanged?.Invoke(_attentionFile.IsChecked == true);
         foreach (var category in Enum.GetValues<ToastCategory>())
         {
             var box = Switch(EventLabel(category));
@@ -142,13 +150,25 @@ public sealed class SettingsView : UserControl
             Lead("A working session with no output for"),
             _silence);
 
+        _versionLine = Note(string.Empty);
         var claude = Page(
             Heading("Standing instructions"),
             Note("Your CLAUDE.md, and the project files of the folders Claude has been trusted in. Nothing is sent to a session."),
             ActionButton("Edit standing instructions…", () => InstructionsRequested?.Invoke()),
             Heading("Setup check"),
             Note("Reads Claude Code's settings, hooks, MCP servers and CLAUDE.md on this computer. It changes nothing."),
-            ActionButton("Check setup…", () => SetupCheckRequested?.Invoke()));
+            ActionButton("Check setup…", () => SetupCheckRequested?.Invoke()),
+            Heading("Version"),
+            _versionLine,
+            Heading("Diagnostics"),
+            Note("Writes a zip for a bug report into the diagnostics folder beside the state file, and opens that folder. It holds the versions, "
+                 + "the setup check, the preflight, the last 500 log lines and 200 events, each with paths shortened and tokens and prompt text removed, "
+                 + "and the settings as keys and values that are not text. It never holds transcripts, library, runs, cache or your notes. Nothing is sent."),
+            ActionButton("Save diagnostics…", () => DiagnosticsRequested?.Invoke()),
+            Heading("Attention file"),
+            Note("Off by default. When it is on, each pass writes attention.json beside the state file: the reason codes and session names of the items "
+                 + "that wait for you, with the time in UTC. It is deleted when the window closes. Nothing is sent, and nothing reads it back."),
+            _attentionFile);
 
         _pages[SettingsTab.General] = general;
         _pages[SettingsTab.Naming] = naming;
@@ -200,6 +220,12 @@ public sealed class SettingsView : UserControl
     /// <summary>Check setup… was pressed.</summary>
     public event Action? SetupCheckRequested;
 
+    /// <summary>Save diagnostics… was pressed (firstrun batch B4).</summary>
+    public event Action? DiagnosticsRequested;
+
+    /// <summary>The attention-file switch was clicked, to on or off (firstrun batch B9).</summary>
+    public event Action<bool>? AttentionFileChanged;
+
     /// <summary>The sub-tab that is shown, or was shown last.</summary>
     public SettingsTab Current => _current;
 
@@ -218,6 +244,8 @@ public sealed class SettingsView : UserControl
         _notify.IsChecked = state.Notify;
         _toast.IsChecked = state.Toast;
         _magic.IsChecked = state.MagicAuto;
+        _attentionFile.IsChecked = state.AttentionFile;
+        _versionLine.Text = state.VersionLine;
 
         var labels = EscalationChoices.Presets.Select(EscalationChoices.PresetLabel).ToList();
         var index = EscalationChoices.Presets.ToList().IndexOf(state.Escalation.Minutes);

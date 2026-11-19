@@ -132,6 +132,7 @@ public partial class SessionWindow
                 NeedsYou: _attention.Select(item => item.Name).Distinct(StringComparer.Ordinal).Count(),
                 Quiet: new QuietState(reads.Quiet is { } window ? QuietHours.Label(window) : null, QuietHours.IsQuietAt(reads.Quiet, now)));
             var report = Preflight.Build(input);
+            _lastPreflight = report; // the diagnostics zip reads the last one drawn (firstrun batch B4)
             var lastPass = reads.LastPass is { } last
                 ? Heartbeat.Describe(Heartbeat.Age(last, now) ?? TimeSpan.Zero)
                 : "no pass recorded yet";

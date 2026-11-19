@@ -27,11 +27,25 @@ public partial class App : Application
         // Software rendering fixes that, and the embedded terminals still draw (finding F38).
         System.Windows.Media.RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
         base.OnStartup(e);
-        // With the standard handles cleared, nothing reaches a console, so unhandled errors go to the log.
+        // With the standard handles cleared, nothing reaches a console, so unhandled errors go to the log. Each one also gets a redacted crash
+        // file (firstrun batch B3), and the window says where it is on its status line. The UI error keeps going: Handled stays true.
         DispatcherUnhandledException += (_, args) =>
         {
             AppLog.Write($"unhandled: {args.Exception}");
+            CrashFiles.Record(args.Exception, "ui");
+            CrashFiles.ShowOnWindow();
             args.Handled = true;
+        };
+        AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+        {
+            AppLog.Write($"unhandled (not the UI thread, the app ends): {args.ExceptionObject}");
+            CrashFiles.Record(args.ExceptionObject as Exception, "domain");
+        };
+        TaskScheduler.UnobservedTaskException += (_, args) =>
+        {
+            AppLog.Write($"unobserved task: {args.Exception}");
+            CrashFiles.Record(args.Exception, "task");
+            args.SetObserved();
         };
         // --smoke runs the P1 spike harness (used by scripts/Test-Spike.ps1). Otherwise open the OpenTail.Bullshark window.
         Window window;
@@ -58,6 +72,14 @@ public partial class App : Application
         }
         MainWindow = window;
         window.Show();
+        // --crash-test (for the crash-file check only, never in a normal run): throws one exception on the UI thread, as a bug would, so the
+        // crash path runs and the window shows its notice. The handler above keeps the app running.
+        if (e.Args.Contains("--crash-test"))
+        {
+            Dispatcher.BeginInvoke(new Action(() =>
+                throw new InvalidOperationException("crash-test: a deliberate exception from --crash-test")),
+                System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+        }
     }
 }
 

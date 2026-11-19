@@ -18,6 +18,8 @@ public partial class SessionWindow
     private void InitTimeline()
     {
         _timeline.RefreshRequested += () => _ = RefreshTimelineAsync();
+        // The empty state's next step: the setup tab, the same one the + tab opens (firstrun batch B8).
+        _timeline.SetupRequested += () => OpenSetupTab(null);
     }
 
     /// <summary>Reads the runs and the events on a pool thread, then draws them. A log that cannot be read is shown as a line, not an error.</summary>

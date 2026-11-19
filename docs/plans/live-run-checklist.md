@@ -180,3 +180,15 @@ Method: the built App launched with `--state <scratch>` `--no-pass` (no claude c
 ### Found 2026-11-19 (after the transcript batch)
 - The `--open-transcript` test hook showed the transcript without making its tab active, so with no live session the rail refresh put the New-session page over it after about 45 s. A real click on a history row sets the tab (`NoteRailSelection`) and was never affected.
   The hook now does the same; checked on the owner's real data: the transcript is still shown at 62 s, in its own tab.
+
+## First-run batch (docs/plans/firstrun-diagnostics-batch-2026-11-19.md)
+- [ ] B5 launcher: double-click `scripts\Start-OpenTail.Bullshark.bat` after a build. The window opens with no demo folder or task. With no build it says so and waits for a key. `scripts\Start-Demo.bat` opens the demo task as before.
+- [ ] B5 version: Settings, Claude shows `Version 0.1.0 (<hash>) · .NET 10`. The number 0.1.0 is an assumption until the owner names one.
+- [ ] B1 claude on PATH: run the setup check with `claude` off PATH (or on a PATH without it): the first row "Claude Code · claude" is a problem with the install sentence beside it. With it on PATH: "found: <path>".
+- [ ] B2 errors: with `claude` off PATH, a pass shows "Claude Code could not be started: …" on the status line and under Needs you, not the exception.
+- [ ] B3 crash file: run `OpenTail.Bullshark.App.exe --crash-test --state <scratch>\state.json`. The status line says "The app hit an error and kept going: logs\crash-….txt"; the window stays open; the file is in `<scratch>\logs\`. Read it: no full user path, no token, the exception and the last lines are there, and the file is redacted.
+- [ ] B4 diagnostics: Settings, Claude, "Save diagnostics…". The status line names `diagnostics\diagnostics-….zip` and the folder opens. Open the zip: six entries; `settings.txt` has values for booleans and numbers and no note text; no transcript, `library.json`, `runs.json` or `cache` entry. Read the rest for anything private before sharing it.
+- [ ] B6 theme: with no `railTheme` in `ui.json` and Windows in light mode, the rail starts light; in dark mode, dark. After a choice with the rail's switch, the choice wins at the next start, whatever Windows says.
+- [ ] B7 shortcuts: Ctrl+Shift+P, "Keyboard shortcuts": the sheet lists the chords with their scopes, in both themes. A transcript's hint line reads as before.
+- [ ] B8 empty states: a scratch state with no transcripts: Storage names the folder and offers "Open Claude's folder". A scratch state with no runs: Timeline says "No runs yet. Start one from the + tab." and "Open the setup tab" opens the setup tab.
+- [ ] B9 attention file: Settings, Claude, switch on: `attention.json` appears beside the state file after a pass, with `at`, `count` and the reason codes. Switch off, or close the window: it is deleted.

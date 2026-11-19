@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Threading;
+using OpenTail.Bullshark.Core.Health;
 using OpenTail.Bullshark.Core.Ui;
 using Wpf.Ui.Terminal;
 
@@ -68,12 +69,27 @@ public partial class SessionWindow
             case TestScreen.Setup:
                 OpenSetupTab(null);
                 break;
+            case TestScreen.Shortcuts:
+                // The sheet is shown, not modal, so the screenshot can draw it; the picture is of the sheet (firstrun batch B7).
+                _shotDialog = new ShortcutsDialog(Palette) { Owner = this };
+                _shotDialog.Show();
+                break;
+            case TestScreen.SetupCheck:
+                _shotDialog = new SetupCheckDialog(Palette, () => SetupCheck.Run(SetupCheck.DefaultClaudeDir, SetupCheck.DefaultClaudeJsonPath))
+                {
+                    Owner = this,
+                };
+                _shotDialog.Show();
+                break;
             case TestScreen.Changes:
                 var record = ReadRecords().Values.FirstOrDefault(r => string.Equals(r.Name, request.SessionName, StringComparison.Ordinal));
                 if (record is not null && record.SessionId.Length > 0) OpenChanges(record.SessionId, record.Name);
                 break;
         }
     }
+
+    /// <summary>The dialog a screen flag opened, which the picture is of (null for the window itself).</summary>
+    private System.Windows.Window? _shotDialog;
 
     private void ScheduleScreenshot(string path, double afterSeconds)
     {
@@ -83,7 +99,7 @@ public partial class SessionWindow
             timer.Stop();
             try
             {
-                SaveScreenshot(path);
+                SaveScreenshot(path, _shotDialog);
             }
             catch (Exception ex)
             {
@@ -447,12 +463,14 @@ public partial class SessionWindow
     /// needs no screen copy and no z-order. Hosted terminal content may come out blank; a blank terminal in the picture
     /// is not a failure by itself (the self-test checks the terminal).
     /// </summary>
-    private void SaveScreenshot(string path)
+    private void SaveScreenshot(string path, System.Windows.Window? target = null)
     {
-        var handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
-        var dpi = System.Windows.Media.VisualTreeHelper.GetDpi(this);
-        int w = (int)(ActualWidth * dpi.DpiScaleX);
-        int h = (int)(ActualHeight * dpi.DpiScaleY);
+        // A dialog the screen flag opened (the shortcut sheet, the setup check) is drawn by itself; otherwise this window is (firstrun batch B7, B8).
+        var shown = target ?? this;
+        var handle = new System.Windows.Interop.WindowInteropHelper(shown).Handle;
+        var dpi = System.Windows.Media.VisualTreeHelper.GetDpi(shown);
+        int w = (int)(shown.ActualWidth * dpi.DpiScaleX);
+        int h = (int)(shown.ActualHeight * dpi.DpiScaleY);
 
         using var bmp = new System.Drawing.Bitmap(w, h);
         bool printed;

@@ -55,12 +55,18 @@ public sealed class PassHealth
     /// </summary>
     public static string Short(string message)
     {
-        var text = PathLike.Replace(message, match =>
-        {
-            var name = Path.GetFileName(match.Value.TrimEnd('\\', '/'));
-            return name.Length == 0 || name.Contains(':') ? "a path" : name;
-        });
+        var text = ReducePaths(message);
         text = string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
         return text.Length <= MaxReason ? text : text[..MaxReason] + "…";
     }
+
+    /// <summary>The text with each full path (a drive or a server share) cut to its file name; other text is unchanged.</summary>
+    public static string ReducePaths(string text) => PathLike.Replace(text, match =>
+    {
+        // A bare drive ("C:" or "C:\") or a share with no name has no file name: it is "a path". A name may hold a colon (a line number), so it is kept.
+        var trimmed = match.Value.TrimEnd('\\', '/');
+        if (trimmed.EndsWith(':') || trimmed.Length <= 2) return "a path";
+        var name = Path.GetFileName(trimmed);
+        return name.Length == 0 ? "a path" : name;
+    });
 }

@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
 using OpenTail.Bullshark.Core.Activity;
+using OpenTail.Bullshark.Core.Ui;
 
 namespace OpenTail.Bullshark.App;
 
@@ -20,10 +21,10 @@ public sealed partial class TranscriptView
     private readonly TextBox _findBox = new() { MinWidth = 160 };
     private readonly TextBlock _findCount = new() { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 4, 0), MinWidth = 96 };
 
-    /// <summary>The hint line under the header: the keys the view answers to (jump batch, T5).</summary>
+    /// <summary>The hint line under the header: the keys the view answers to (jump batch, T5). Built from the shortcut table (firstrun batch B7).</summary>
     private readonly TextBlock _hint = new()
     {
-        Text = "[ ] prompts   { } failures   Alt+[ ] writes   Ctrl+[ ] compactions   Ctrl+F find",
+        Text = Shortcuts.TranscriptHint,
         FontSize = 11,
         TextWrapping = TextWrapping.Wrap,
     };

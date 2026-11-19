@@ -19,6 +19,8 @@ public sealed class TestScreensTests
     [InlineData("settings", TestScreen.Settings)]
     [InlineData("settings-naming", TestScreen.SettingsNaming)]
     [InlineData("Settings-Claude", TestScreen.SettingsClaude)]
+    [InlineData("shortcuts", TestScreen.Shortcuts)]
+    [InlineData("setup-check", TestScreen.SetupCheck)]
     public void ThePlainScreensParse(string value, TestScreen screen)
     {
         var request = TestScreenRequest.Parse(value);

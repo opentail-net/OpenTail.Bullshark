@@ -113,10 +113,14 @@ public sealed class StorageView : UserControl
     /// <summary>The Restore button was pressed, with the checked archived paths.</summary>
     public event Action<IReadOnlyList<string>>? RestoreRequested;
 
+    /// <summary>"Open Claude's folder" was pressed, on the empty state (firstrun batch B8).</summary>
+    public event Action? ClaudeFolderRequested;
+
     /// <summary>Shows the projects and the archive. The transcripts pane keeps what it shows until a project is chosen.</summary>
     /// <param name="names">The name each project is shown by, by its folder (P9: the working folder's leaf). A folder not in it keeps Claude's name.</param>
+    /// <param name="projectsRootText">The projects folder as the owner reads it (with ~ for the profile), shown when there are no projects (firstrun batch B8).</param>
     public void ShowProjects(IReadOnlyList<ProjectStorage> projects, IReadOnlyList<TranscriptFileInfo> archived,
-        IReadOnlyDictionary<string, string>? names = null)
+        IReadOnlyDictionary<string, string>? names = null, string? projectsRootText = null)
     {
         _projects.Children.Clear();
         foreach (var project in projects)
@@ -137,11 +141,38 @@ public sealed class StorageView : UserControl
             row.Click += (_, _) => ProjectChosen?.Invoke(project.Folder);
             _projects.Children.Add(row);
         }
-        if (projects.Count == 0) _projects.Children.Add(new TextBlock { Text = "No transcripts were found.", Margin = new Thickness(0, 4, 0, 0) });
+        if (projects.Count == 0) _projects.Children.Add(EmptyProjects(projectsRootText));
 
         _archived.Children.Clear();
         foreach (var file in archived) _archived.Children.Add(FileRow(file, marked: false));
         _archivedCaption.Text = archived.Count == 0 ? "Archived: none" : $"Archived: {archived.Count}";
+    }
+
+    /// <summary>
+    /// The empty state with a next step (firstrun batch B8): where the transcripts were looked for, when Claude Code writes them, and a button to open
+    /// Claude's folder. Without a folder text it keeps the short line.
+    /// </summary>
+    private UIElement EmptyProjects(string? rootText)
+    {
+        if (rootText is null)
+            return new TextBlock { Text = "No transcripts were found.", Margin = new Thickness(0, 4, 0, 0), TextWrapping = TextWrapping.Wrap };
+
+        var panel = new StackPanel { Margin = new Thickness(0, 4, 0, 0) };
+        panel.Children.Add(new TextBlock
+        {
+            Text = $"No transcripts found under {rootText}. Claude Code writes them when a session runs.",
+            TextWrapping = TextWrapping.Wrap,
+        });
+        var open = new Button
+        {
+            Content = UiIcon.Label(UiIcon.Folder, "Open Claude's folder"),
+            Padding = new Thickness(12, 4, 12, 4),
+            Margin = new Thickness(0, 6, 0, 0),
+            HorizontalAlignment = HorizontalAlignment.Left,
+        };
+        open.Click += (_, _) => ClaudeFolderRequested?.Invoke();
+        panel.Children.Add(open);
+        return panel;
     }
 
     /// <summary>Shows the transcripts of one project, with checkboxes. The ones near their deletion, or past it, say so.</summary>

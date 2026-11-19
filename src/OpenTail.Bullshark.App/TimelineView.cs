@@ -31,6 +31,16 @@ public sealed class TimelineView : UserControl
         MaxHeight = 600,
     };
     private readonly TextBlock _caption = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 6) };
+
+    /// <summary>The next step when no run has been started: it opens the setup tab (firstrun batch B8). Shown only then.</summary>
+    private readonly Button _startRun = new()
+    {
+        Content = "Open the setup tab",
+        Padding = new Thickness(12, 4, 12, 4),
+        HorizontalAlignment = HorizontalAlignment.Left,
+        Margin = new Thickness(0, 0, 0, 8),
+        Visibility = Visibility.Collapsed,
+    };
     private readonly TextBlock _olderText = new() { VerticalAlignment = VerticalAlignment.Center };
     private readonly Button _showOlder = new() { Content = "Show older", Padding = new Thickness(10, 2, 10, 2), Margin = new Thickness(8, 0, 0, 0) };
     private readonly StackPanel _olderRow = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 4), Visibility = Visibility.Collapsed };
@@ -65,6 +75,8 @@ public sealed class TimelineView : UserControl
         var root = new StackPanel { Margin = new Thickness(12, 8, 12, 8) };
         // No page title here: the Insights tab's sub-tab row names the page (2026-11-18).
         root.Children.Add(_caption);
+        root.Children.Add(_startRun);
+        _startRun.Click += (_, _) => SetupRequested?.Invoke();
         root.Children.Add(choosers);
         root.Children.Add(_olderRow);
         root.Children.Add(_lines);
@@ -87,6 +99,9 @@ public sealed class TimelineView : UserControl
 
     /// <summary>The Refresh button was pressed. The window reads the log again.</summary>
     public event Action? RefreshRequested;
+
+    /// <summary>"Open the setup tab" was pressed, on the empty state (firstrun batch B8).</summary>
+    public event Action? SetupRequested;
 
     /// <summary>
     /// Takes the rail's palette, as the other views do. The list's items were drawn in the default colour, which is unreadable on the
@@ -113,7 +128,9 @@ public sealed class TimelineView : UserControl
         _events = events;
         _loading = false;
 
-        _caption.Text = runs.Count == 0 ? "No run has been started yet." : $"{events.Count:N0} events are recorded in all.";
+        // With no run, the caption names the next step and the button takes the owner to the setup tab (firstrun batch B8).
+        _caption.Text = runs.Count == 0 ? "No runs yet. Start one from the + tab." : $"{events.Count:N0} events are recorded in all.";
+        _startRun.Visibility = runs.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         FillSessions();
         Draw();
     }
@@ -122,6 +139,7 @@ public sealed class TimelineView : UserControl
     public void ShowProblem(string text)
     {
         _caption.Text = text;
+        _startRun.Visibility = Visibility.Collapsed;
         _lines.Items.Clear();
     }
 

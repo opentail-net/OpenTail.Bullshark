@@ -140,6 +140,16 @@ public partial class SessionWindow
         items.AddRange(MagicPaletteItems());
         items.Add(ActionItem("notify", "Toggle sound and flash for new waits", null, ToggleNotify));
         items.Add(ActionItem("toast", "Toggle toasts", "when the window is in the background", ToggleToasts));
+        // The keyboard route to what the mouse does on the rail and the zoom bar (firstrun batch B7): the shortcut sheet, the zoom, the theme, and
+        // one entry per rail filter. Each one does what the control does; none sends anything to a session.
+        items.Add(ActionItem("keys", "Keyboard shortcuts", "the chords, and where each one works", ShowShortcuts));
+        items.Add(ActionItem("zoom-in", "Zoom in", "session text, Ctrl+plus", () => ZoomBy(OpenTail.Bullshark.Core.Zoom.ZoomKey.In)));
+        items.Add(ActionItem("zoom-out", "Zoom out", "session text, Ctrl+minus", () => ZoomBy(OpenTail.Bullshark.Core.Zoom.ZoomKey.Out)));
+        items.Add(ActionItem("zoom-reset", "Zoom 100 %", "session text, Ctrl+0", () => ZoomBy(OpenTail.Bullshark.Core.Zoom.ZoomKey.Reset)));
+        items.Add(ActionItem("theme", "Switch theme", _theme == RailTheme.Light ? "now light: switch to dark" : "now dark: switch to light",
+            () => SetTheme(_theme == RailTheme.Light ? RailTheme.Dark : RailTheme.Light)));
+        foreach (var filter in Enum.GetValues<RailFilter>())
+            items.Add(ActionItem("filter:" + filter, $"Filter rail: {FilterLabel(filter)}", filter == _filter ? "in use" : null, () => ChooseFilter(filter)));
         // Quick capture (ideas #7, SessionWindow.Ideas.cs): an idea goes to ideas.md, never to a session.
         items.Add(ActionItem("add-idea", "Add idea…", "saved to ideas.md, not sent to a session", AddIdea));
         items.Add(ActionItem("open-ideas", "Open ideas file", "ideas.md beside the state file", OpenIdeas));
@@ -246,6 +256,9 @@ public partial class SessionWindow
     /// </summary>
     private void ToggleNotify() =>
         WriteFlag(NotifyKey, !AttentionList.NotificationsOn(UiFile.Read(_options.StatePath, NotifyKey)), "Sound and flash for new waits");
+
+    /// <summary>The keyboard shortcut sheet (firstrun batch B7): read only, opened over this window.</summary>
+    private void ShowShortcuts() => new ShortcutsDialog(Palette) { Owner = this }.ShowDialog();
 
     /// <summary>
     /// Turns the toast for new waits on or off in ui.json, the key the announcement reads (toasts D3). Like the sound, it is a setting only:

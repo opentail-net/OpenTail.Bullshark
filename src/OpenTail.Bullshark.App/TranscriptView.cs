@@ -842,7 +842,7 @@ public sealed partial class TranscriptView : UserControl
     }
 
     /// <summary>Tokens for display: input, output and cache writes (cache reads are left out, see the panel's tooltip).</summary>
-    private static string Tokens(TokenUsage usage) => (usage.Input + usage.Output + usage.CacheCreation).ToString("N0", System.Globalization.CultureInfo.InvariantCulture);
+    private static string Tokens(TokenUsage usage) => (usage.Input + usage.Output + usage.CacheCreation).ToString("N0", System.Globalization.CultureInfo.CurrentCulture);
 
     private static SolidColorBrush Brush(string hex) => (SolidColorBrush)new BrushConverter().ConvertFromString(hex)!;
 }

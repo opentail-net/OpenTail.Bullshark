@@ -310,6 +310,14 @@ $screens = @(
     # Lifecycle batch L3: the Naming sub-tab has the silent-working row (Off, 30, 45, 60, 120 minutes), in both themes.
     @{ Name = 'settings-naming-light'; Theme = 'Light'; Options = @('--open-tab', 'settings-naming') },
     @{ Name = 'settings-claude-dark'; Theme = 'Dark'; Options = @('--open-tab', 'settings-claude') },
+    # First-run batch B4, B5, B9 (2026-11-19): the Claude page has the version line, the diagnostics button and the attention-file switch (on here).
+    @{ Name = 'settings-claude-light'; Theme = 'Light'; Options = @('--open-tab', 'settings-claude') },
+    @{ Name = 'settings-claude-attention-dark'; Theme = 'Dark'; Options = @('--open-tab', 'settings-claude'); UiExtra = ', "attentionFile": true' },
+    # The keyboard shortcut sheet (B7) and the setup check dialog with its state words and the claude row (B1, B8), opened over the window.
+    @{ Name = 'shortcuts-dark'; Theme = 'Dark'; Options = @('--open-tab', 'shortcuts') },
+    @{ Name = 'shortcuts-light'; Theme = 'Light'; Options = @('--open-tab', 'shortcuts') },
+    @{ Name = 'setup-check-dark'; Theme = 'Dark'; Options = @('--open-tab', 'setup-check') },
+    @{ Name = 'setup-check-light'; Theme = 'Light'; Options = @('--open-tab', 'setup-check') },
     @{ Name = 'transcript-dark'; Theme = 'Dark'; Options = @('--open-transcript', '5e4f3a21-0000-4000-8000-00000000c0d1') },
     @{ Name = 'transcript-light'; Theme = 'Light'; Options = @('--open-transcript', '5e4f3a21-0000-4000-8000-00000000c0d1') },
     # Find in this session (find and jump batch, T4): the bar is open with "build" and the hits are highlighted, in both themes.

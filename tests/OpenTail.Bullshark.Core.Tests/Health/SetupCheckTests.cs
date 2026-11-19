@@ -46,12 +46,60 @@ public sealed class SetupCheckTests : IDisposable
     [Fact]
     public void MissingFilesAreWarningsNotProblems()
     {
-        var items = Run();
+        // claude is on this PATH, so the only rows that could be wrong are the missing files, and those are warnings.
+        Tool("claude.exe", "bin");
+        var items = Run(Path.Combine(_dir, "bin"));
 
         Assert.Contains(items, i => i.Name == "settings.json" && i.State == SetupState.Warning);
         Assert.Contains(items, i => i.Name == ".claude.json" && i.State == SetupState.Warning);
         Assert.Contains(items, i => i.Name == "CLAUDE.md" && i.State == SetupState.Warning);
         Assert.DoesNotContain(items, i => i.State == SetupState.Problem);
+    }
+
+    [Fact]
+    public void TheClaudeProgramRowIsTheFirstRowAndOkWhenItIsOnPath()
+    {
+        var claude = Tool("claude.exe", "bin");
+
+        var items = Run(Path.Combine(_dir, "bin"));
+
+        var row = items[0];
+        Assert.Equal("Claude Code", row.Area);
+        Assert.Equal("claude", row.Name);
+        Assert.Equal(SetupState.Ok, row.State);
+        // Windows names are not case-sensitive, and the PATHEXT search writes the extension in the case PATHEXT has.
+        Assert.Equal($"found: {claude}", row.Detail, ignoreCase: true);
+    }
+
+    [Fact]
+    public void TheClaudeProgramRowIsAProblemWithANextStepWhenItIsNotOnPath()
+    {
+        Tool("claude.exe", "elsewhere"); // a folder that is not on the PATH given
+
+        var items = Run(Path.Combine(_dir, "bin"));
+
+        var row = Assert.Single(items, i => i.Area == "Claude Code");
+        Assert.Equal(SetupState.Problem, row.State);
+        Assert.Contains("install Claude Code", row.Detail);
+        Assert.Contains("press Check again", row.Detail);
+    }
+
+    [Fact]
+    public void AnEmptyPathGivesTheClaudeProblemAndNoOtherProblem()
+    {
+        var items = Run(string.Empty);
+
+        Assert.Equal(SetupState.Problem, items[0].State);
+        Assert.Equal(1, items.Count(i => i.State == SetupState.Problem));
+    }
+
+    [Fact]
+    public void TheClaudeRowFindsAProgramWithAWindowsExtension()
+    {
+        // The name "claude" has no extension: the PATHEXT search finds claude.cmd, as the hooks' program check does.
+        Tool("claude.cmd", "bin");
+
+        Assert.Equal(SetupState.Ok, Run(Path.Combine(_dir, "bin"))[0].State);
     }
 
     [Fact]

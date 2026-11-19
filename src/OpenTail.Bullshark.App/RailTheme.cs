@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using System.Windows.Media;
+using OpenTail.Bullshark.Core.Ui;
 
 namespace OpenTail.Bullshark.App;
 
@@ -121,17 +122,44 @@ public sealed record RailPalette(string Panel, string Background, string Text, s
 }
 
 /// <summary>
-/// Remembers the rail theme in ui.json, beside the state file, so the choice survives a restart. A file that cannot be read
-/// gives the default; a file that cannot be written is logged.
+/// Remembers the rail theme in ui.json, beside the state file, so the choice survives a restart. A saved choice always wins. With none, the
+/// theme follows Windows' app theme (firstrun batch B6, <see cref="ThemeChoice"/>), and dark when Windows' value cannot be read. A file that cannot be
+/// read gives the default; a file that cannot be written is logged. Loading never writes the Windows value into ui.json.
 /// </summary>
 public static class ThemeStore
 {
-    /// <summary>The saved theme, read through ui.json's own reader (locked, and a damaged file is moved aside). Dark when there is none.</summary>
-    public static RailTheme Load(string stateFile) =>
-        UiFile.Read(stateFile, "railTheme") is System.Text.Json.Nodes.JsonValue value && value.TryGetValue<string>(out var name) &&
-        name == nameof(RailTheme.Light)
-            ? RailTheme.Light
-            : RailTheme.Dark;
+    /// <summary>
+    /// The theme to start with: the saved one read through ui.json's own reader (locked, and a damaged file is moved aside), else Windows' app theme.
+    /// <paramref name="windowsAppsUseLightTheme"/> reads the value (the default reads the registry); the tests and the window pass nothing.
+    /// </summary>
+    public static RailTheme Load(string stateFile, Func<int?>? windowsAppsUseLightTheme = null)
+    {
+        var saved = UiFile.Read(stateFile, ThemeChoice.Key) is System.Text.Json.Nodes.JsonValue value && value.TryGetValue<string>(out var name)
+            ? name
+            : null;
+        var light = ThemeChoice.IsLight(saved, (windowsAppsUseLightTheme ?? WindowsAppsUseLightTheme)());
+        return light ? RailTheme.Light : RailTheme.Dark;
+    }
+
+    /// <summary>
+    /// Windows' app theme: 1 for light, 0 for dark, from the Personalize key of the current user. Null when the value is missing or cannot be read
+    /// (the theme is then dark, as before this was read).
+    /// </summary>
+    public static int? WindowsAppsUseLightTheme()
+    {
+        try
+        {
+            return Microsoft.Win32.Registry.GetValue(
+                @"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme", null) is int value
+                ? value
+                : null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            AppLog.Write($"windows theme not read: {ex.GetType().Name}");
+            return null;
+        }
+    }
 
     public static void Save(string stateFile, RailTheme theme)
     {

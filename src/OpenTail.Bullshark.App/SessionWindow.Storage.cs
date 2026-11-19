@@ -36,6 +36,8 @@ public partial class SessionWindow
         _storage.ProjectChosen += folder => _ = ShowProjectAsync(folder);
         _storage.ArchiveRequested += paths => _ = ArchiveAsync(paths);
         _storage.RestoreRequested += paths => _ = RestoreAsync(paths);
+        // The empty state's button opens Claude's folder: the parent of the projects folder (firstrun batch B8).
+        _storage.ClaudeFolderRequested += () => OpenFolder(Path.GetDirectoryName(Path.GetFullPath(_options.ProjectsRoot))!);
     }
 
     /// <summary>The project folder whose transcripts the middle list shows, so the list can be read again after a move (round 5 item 11).</summary>
@@ -57,7 +59,8 @@ public partial class SessionWindow
             _storage.SetRetention(retention.Days ?? TranscriptRetention.DefaultDays, retention.Days is not null, retention.Problem);
             _storageProjects = projects;
             _storageArchived = archived;
-            _storage.ShowProjects(projects, archived, ProjectNames(projects));
+            _storage.ShowProjects(projects, archived, ProjectNames(projects),
+                UserPathText.Of(Path.GetFullPath(_options.ProjectsRoot), Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)));
             await RefreshChosenProjectAsync();
         }
         catch (Exception ex) when (StoreErrors.IsExpected(ex))

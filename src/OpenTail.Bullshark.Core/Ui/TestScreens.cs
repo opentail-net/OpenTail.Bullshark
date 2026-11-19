@@ -29,6 +29,12 @@ public enum TestScreen
     /// <summary>Settings on the Naming sub-tab.</summary>
     SettingsNaming,
 
+    /// <summary>The keyboard shortcut sheet, opened over the window (firstrun batch B7).</summary>
+    Shortcuts,
+
+    /// <summary>The setup check dialog, opened over the window (firstrun batch B8).</summary>
+    SetupCheck,
+
     /// <summary>Settings on the Claude sub-tab.</summary>
     SettingsClaude,
 }
@@ -61,6 +67,8 @@ public sealed record TestScreenRequest(TestScreen Screen, string? SessionName)
             "settings" when name is null => new TestScreenRequest(TestScreen.Settings, null),
             "settings-naming" when name is null => new TestScreenRequest(TestScreen.SettingsNaming, null),
             "settings-claude" when name is null => new TestScreenRequest(TestScreen.SettingsClaude, null),
+            "shortcuts" when name is null => new TestScreenRequest(TestScreen.Shortcuts, null),
+            "setup-check" when name is null => new TestScreenRequest(TestScreen.SetupCheck, null),
             "changes" when !string.IsNullOrEmpty(name) => new TestScreenRequest(TestScreen.Changes, name),
             _ => null,
         };

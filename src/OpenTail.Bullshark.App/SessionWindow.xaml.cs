@@ -410,6 +410,7 @@ public partial class SessionWindow : Window
             _reviewSources = await Task.Run(() => ReviewSourcesOf(records, paths, read.PassAgents));
             RefreshRail(records, runs);
             AnnounceAttention();
+            WriteAttentionFile();
             if (passRan) WriteHeartbeat(DateTimeOffset.Now);
 
             var failed = PassSnapshot.FailedStarts(records.Values);
@@ -419,7 +420,10 @@ public partial class SessionWindow : Window
             // A search owns the status line while it runs or while its results are shown: the pass's summary waits for it to end.
             if (_searchMatches is null && SearchBusy.Visibility != Visibility.Visible)
             {
-                SetStatus(_watching ? WatchingStatus : string.Join("  ·  ", parts));
+                // A crash notice (firstrun batch B3) stays at the front of the line until the window closes.
+                _crashNotice ??= CrashFiles.TakeNotice();
+                var line = _watching ? WatchingStatus : string.Join("  ·  ", parts);
+                SetStatus(_crashNotice is null ? line : $"{_crashNotice}  ·  {line}");
                 if (ReadBusy.TakeNotice()) SetStatus(ReadBusy.Notice);
             }
         }
@@ -431,9 +435,11 @@ public partial class SessionWindow : Window
         {
             // A pass that failed may not have read the session list, so the archive waits for the next pass that does (round 5 item 4).
             _listingKnown = false;
+            // The owner reads a sentence with a next step, not the exception (firstrun batch B2); the log keeps the exception.
             AppLog.Write($"pass failed: {ex.Message}");
-            SetStatus($"not running: {ex.Message}");
-            if (_supervisor is not null) ReportPass(ex.Message);
+            var sentence = PassErrorText.Of(ex);
+            SetStatus($"not running: {sentence}");
+            if (_supervisor is not null) ReportPass(sentence);
         }
         finally
         {
@@ -466,6 +472,8 @@ public partial class SessionWindow : Window
     /// <summary>Gives the supervisor name back when the window closes, so another window can take it (reliability batch R1).</summary>
     private void ReleaseSupervisor()
     {
+        // A clean close takes the attention file with it (firstrun batch B9): a stale file would still say that items wait.
+        if (_supervisor is not null) DeleteAttentionFile();
         _supervisor?.Dispose();
         _supervisor = null;
     }
@@ -526,6 +534,8 @@ public partial class SessionWindow : Window
         var daemonStatusNotice = daemon.StatusNotice(rawAgents);
         // The installed version is read only when the daemon reports one: there is no drift to show without both (round 7 item 2).
         var cliVersion = daemon.Version is null ? null : await _cli.VersionAsync();
+        // Kept for the Settings line and the diagnostics (firstrun batch B5): shown only once a pass has read it; nothing starts claude for it.
+        _cliVersion = cliVersion ?? _cliVersion;
         var drift = VersionDrift.OfStatus(daemon, cliVersion);
         var (records, recordsProblem) = LoadRecords(_store);
         var (runs, runsProblem) = LoadRuns(_runStore);
