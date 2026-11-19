@@ -42,6 +42,13 @@ public static class ContextMeter
         return $"ctx {tenths / 10}.{tenths % 10}M";
     }
 
+    /// <summary>
+    /// The window to judge a session against. A session that already holds more tokens than the chosen window cannot be in that window, so it is
+    /// judged against the larger standard one (1,000,000): the owner's 200k choice must not put a warning on every long session of a 1M model
+    /// (found on the owner's real data, 2026-11-19: contexts of 300k to 900k all showed the mark).
+    /// </summary>
+    public static long EffectiveWindow(long tokens, long window) => tokens > window ? Math.Max(window, 1_000_000) : window;
+
     /// <summary>True when the tokens are at least 80 % of the window. Exact: no rounding of the window.</summary>
     public static bool IsHigh(long tokens, long window) =>
         window > 0 && tokens * WarnDenominator >= window * WarnNumerator;

@@ -694,8 +694,9 @@ public partial class SessionWindow
             _selected = null;
 
             // With no live session in the rail, nothing is selected, and every refresh came here and showed the setup over a search
-            // or a transcript opened from one. Those keep the pane.
-            if (_activeTab?.Kind is TabKind.Search or TabKind.Transcript or TabKind.Changes) return;
+            // or a transcript opened from one. Those keep the pane, and so do Insights and Settings (found 2026-11-19 on real data: with no live
+            // session, the history read finishing showed the setup over the Away page).
+            if (_activeTab?.Kind is TabKind.Search or TabKind.Transcript or TabKind.Changes or TabKind.Insights or TabKind.Settings) return;
             ShowOnly(_setup);
             return;
         }
@@ -835,7 +836,7 @@ public partial class SessionWindow
         {
             // The figure and its mark are one unit when the second line wraps: their spaces are no-break spaces (2026-11-18). The text is not changed.
             var ctx = (ContextMeter.Short(withTokens.ContextTokens)
-                       + (ContextMeter.IsHigh(withTokens.ContextTokens, _contextWindow) ? " ⚠" : string.Empty))
+                       + (ContextMeter.IsHigh(withTokens.ContextTokens, ContextMeter.EffectiveWindow(withTokens.ContextTokens, _contextWindow)) ? " ⚠" : string.Empty))
                       .Replace(' ', ' ');
             line = line.Length == 0 ? ctx : line + " · " + ctx;
         }

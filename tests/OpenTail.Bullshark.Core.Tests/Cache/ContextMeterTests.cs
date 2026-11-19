@@ -23,6 +23,16 @@ public sealed class ContextMeterTests
     }
 
     [Fact]
+    public void ASessionBiggerThanTheChosenWindowIsJudgedAgainstOneMillion()
+    {
+        Assert.Equal(200_000, ContextMeter.EffectiveWindow(150_000, 200_000));
+        Assert.Equal(1_000_000, ContextMeter.EffectiveWindow(408_000, 200_000));
+        Assert.Equal(2_000_000, ContextMeter.EffectiveWindow(1_500_000, 2_000_000));
+        Assert.False(ContextMeter.IsHigh(408_000, ContextMeter.EffectiveWindow(408_000, 200_000)));
+        Assert.True(ContextMeter.IsHigh(917_000, ContextMeter.EffectiveWindow(917_000, 200_000)));
+    }
+
+    [Fact]
     public void TheWarningIsExactlyAtEightyPercentOfTheWindow()
     {
         Assert.False(ContextMeter.IsHigh(159_999, 200_000));
