@@ -13,7 +13,7 @@
 # Each run prints PASS or FAIL: the app exits 0 (it closes itself after the screenshot) and the PNG is written. The script exits 1 if
 # any check fails. The PNGs are for a person to look at; they are not committed.
 param(
-    [string]$Exe = (Join-Path (Split-Path -Parent $PSScriptRoot) 'src\OpenTail.Bullshark.App\bin\Debug\net10.0-windows10.0.19041.0\OpenTail.Bullshark.App.exe'),
+    [string]$Exe = ((Get-ChildItem -Path (Join-Path (Split-Path -Parent $PSScriptRoot) 'src\OpenTail.Bullshark.App\bin\Debug\net1*-windows10.0.19041.0\OpenTail.Bullshark.App.exe') -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1 -ExpandProperty FullName) ?? (Join-Path (Split-Path -Parent $PSScriptRoot) 'src\OpenTail.Bullshark.App\bin\Debug\net11.0-windows10.0.19041.0\OpenTail.Bullshark.App.exe')),
     [string]$Out = (Join-Path $env:TEMP 'bullshark-newscreens')
 )
 $ErrorActionPreference = 'Stop'
