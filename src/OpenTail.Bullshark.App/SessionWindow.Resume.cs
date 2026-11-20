@@ -118,34 +118,68 @@ public partial class SessionWindow
     /// </summary>
     private async Task ResumeInFullAsync(SessionDigest digest, string folder, ResumeChoice choice)
     {
-        // A fresh listing decides: a session that is listed is already running, and a second start would be a second session.
-        try
+        var start = await StartFullResumeAsync(digest.SessionId, folder, choice.Model, choice.Effort, prompt: null, includeCompleted: false, progress: SetStatus);
+        if (start.Refusal is { } refusal)
         {
-            _agents = _daemon.IdleListing(await _cli.ListAgentsAsync());
+            SetStatus(refusal);
+            return;
         }
-        catch (Exception ex)
+        if (!start.Recorded)
         {
-            SetStatus($"Not resumed: the sessions could not be read. {ex.Message}");
+            SetStatus($"Resumed as {start.Name} but not recorded: {start.RecordProblem}. Check the log.");
+            RefreshRail();
             return;
         }
 
-        if (_agents.Any(a => string.Equals(a.SessionId, digest.SessionId, StringComparison.OrdinalIgnoreCase))
-            || ReadRecords().Values.Any(r => SameId(r.SessionId, digest.SessionId)))
+        RefreshRail();
+        SetStatus(start.SessionId is null
+            ? $"Resume of {ShortId(digest.SessionId)} started as {start.Name}; the session id will be picked up on the next pass."
+            : $"Resumed {ShortId(digest.SessionId)} in full as {start.Name}. It is kept alive: if it stops, the supervisor resumes it.");
+    }
+
+    /// <summary>
+    /// What a full start gave: a refusal (the status text that says why, nothing was started), or a started session with its name, its short id, its
+    /// full id (null when it was not read back in time) and whether its record and run were written (<see cref="RecordProblem"/> says why not).
+    /// </summary>
+    private sealed record FullResume(string? Refusal, string? Name = null, string? ShortId = null, string? SessionId = null, bool Recorded = true, string? RecordProblem = null);
+
+    /// <summary>
+    /// The guards and the start that continue a past session in full: a fresh listing, "already open in the rail", the folder check, a name, the start
+    /// with the session's id (and the <paramref name="prompt"/>, when there is one), the id read back, and the record and the run that keep it alive.
+    /// The owner's resume and the limit wake both use it, so the guards are the same. It shows nothing: the caller shows the result.
+    /// <paramref name="includeCompleted"/> makes the listing include the finished and stopped sessions, so a wake refuses any session that is listed
+    /// (a finished session is not started by the wake). The owner's resume leaves them out, since it may continue a finished session.
+    /// </summary>
+    private async Task<FullResume> StartFullResumeAsync(
+        string sessionId, string folder, string model, string effort, string? prompt, bool includeCompleted, Action<string>? progress)
+    {
+        // A fresh listing decides: a session that is listed is already running, and a second start would be a second session.
+        IReadOnlyList<AgentInfo> listing;
+        try
         {
-            SetStatus($"Not resumed: session {ShortId(digest.SessionId)} is already open in the rail.");
-            return;
+            listing = _daemon.IdleListing(await _cli.ListAgentsAsync(includeCompleted));
+        }
+        catch (Exception ex)
+        {
+            return new FullResume($"Not resumed: the sessions could not be read. {ex.Message}");
+        }
+        if (!includeCompleted) _agents = listing;
+
+        if (listing.Any(a => string.Equals(a.SessionId, sessionId, StringComparison.OrdinalIgnoreCase))
+            || ReadRecords().Values.Any(r => SameId(r.SessionId, sessionId)))
+        {
+            return new FullResume($"Not resumed: session {ShortId(sessionId)} is already open in the rail.");
         }
 
         var check = FolderCheck.Check(folder, TrustCheck.DefaultClaudeJsonPath);
         if (check.Status is FolderStatus.Missing or FolderStatus.NotTrusted)
         {
-            SetStatus($"Not resumed: {check.Message}");
-            return;
+            return new FullResume($"Not resumed: {check.Message}");
         }
 
-        var taken = ReadRecords().Keys.Concat(_agents.Concat(_allAgents).Select(a => a.Name)).ToList();
+        var taken = ReadRecords().Keys.Concat(listing.Concat(_allAgents).Select(a => a.Name)).ToList();
         var name = "bullshark-resume-" + RunNames.NewRunId(taken);
-        SetStatus($"Resuming {ShortId(digest.SessionId)} in full as {name} ({choice.Model} {choice.Effort})…");
+        progress?.Invoke($"Resuming {ShortId(sessionId)} in full as {name} ({model} {effort})…");
 
         string shortId;
         try
@@ -153,24 +187,24 @@ public partial class SessionWindow
             shortId = await _cli.StartBackgroundAsync(new BackgroundLaunch(
                 Name: name,
                 WorkingDirectory: folder,
-                Model: choice.Model,
-                Effort: choice.Effort,
+                Model: model,
+                Effort: effort,
+                Prompt: prompt,
                 PermissionMode: "auto",
-                ResumeSessionId: digest.SessionId));
+                ResumeSessionId: sessionId));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             AppLog.Write($"resume in full failed: {ex.Message}");
-            SetStatus($"Not resumed: {ex.Message}");
-            return;
+            return new FullResume($"Not resumed: {ex.Message}");
         }
 
         // The session is running from here on, so a failure below is never reported as "not resumed". Its id is read back for the
         // record; if that takes longer than the wait, the record has no id and the next pass adopts the session by its name.
-        string? sessionId = null;
+        string? fullId = null;
         try
         {
-            sessionId = await _cli.ResolveSessionIdAsync(shortId, TimeSpan.FromSeconds(30));
+            fullId = await _cli.ResolveSessionIdAsync(shortId, TimeSpan.FromSeconds(30));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -178,24 +212,19 @@ public partial class SessionWindow
         }
 
         // The record first, then the run that keeps it alive. If the record cannot be written the session is running but not kept
-        // alive, and the log and the status say so, so the owner can attach to it or stop it.
+        // alive, and the log says so, so the owner can attach to it or stop it.
         try
         {
-            _store.Update(records => records[name] = RunPlan.ResumedRecord(name, sessionId, DateTimeOffset.UtcNow));
-            _runStore.Update(runs => runs.Append(RunPlan.ResumedRun(name, folder, choice.Model, choice.Effort, DateTimeOffset.UtcNow)).ToList());
+            _store.Update(records => records[name] = RunPlan.ResumedRecord(name, fullId, DateTimeOffset.UtcNow));
+            _runStore.Update(runs => runs.Append(RunPlan.ResumedRun(name, folder, model, effort, DateTimeOffset.UtcNow)).ToList());
         }
         catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
-            AppLog.Write($"resumed {sessionId ?? shortId} as {name} but it is not kept alive: {ex.Message}");
-            SetStatus($"Resumed as {name} but not recorded: {ex.Message}. Check the log.");
-            RefreshRail();
-            return;
+            AppLog.Write($"resumed {fullId ?? shortId} as {name} but it is not kept alive: {ex.Message}");
+            return new FullResume(null, name, shortId, fullId, Recorded: false, RecordProblem: ex.Message);
         }
 
-        RefreshRail();
-        SetStatus(sessionId is null
-            ? $"Resume of {ShortId(digest.SessionId)} started as {name}; the session id will be picked up on the next pass."
-            : $"Resumed {ShortId(digest.SessionId)} in full as {name}. It is kept alive: if it stops, the supervisor resumes it.");
+        return new FullResume(null, name, shortId, fullId);
     }
 
     /// <summary>The start text of a resume: the fitted text, the request that launches it, and the summary it carries (null for none).</summary>

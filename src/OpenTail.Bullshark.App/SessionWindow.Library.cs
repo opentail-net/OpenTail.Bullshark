@@ -129,6 +129,9 @@ public partial class SessionWindow
 
     public void SetArchived(string sessionId, bool archived) => ChangeMark(sessionId, mark => mark with { Archived = archived });
 
+    /// <summary>The owner's "Wake after the limit resets" choice for a session (limit wake). Written like the other marks.</summary>
+    public void SetAutoWake(string sessionId, bool on) => ChangeMark(sessionId, mark => mark with { AutoWake = on });
+
     /// <summary>The owner's name. Blank removes it, so the transcript's title shows again.</summary>
     public void SetName(string sessionId, string? name) =>
         ChangeMark(sessionId, mark => WithName(mark, name));
@@ -259,6 +262,8 @@ public partial class SessionWindow
         }
         // A live session's changes, read from its folder (item 2). A past session has no folder to read: its transcript is its record.
         if (!history) menu.Items.Add(MenuItemFor("Changes…", () => OpenChanges(sessionId, title)));
+        // The owner's choice to start the session again after its usage limit resets (limit wake, 2026-11-20). Live and past sessions alike.
+        menu.Items.Add(WakeMenuItem.Create(mark.AutoWake, on => SetAutoWake(sessionId, on)));
         menu.Items.Add(MenuItemFor("Edit…", () => EditMark(sessionId, title)));
         return menu;
     }

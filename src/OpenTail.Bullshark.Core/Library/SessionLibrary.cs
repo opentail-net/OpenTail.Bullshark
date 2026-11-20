@@ -11,6 +11,9 @@ namespace OpenTail.Bullshark.Core.Library;
 /// was named (the date shown, and the automatic limit per hour). A file written before them loads with both null.
 /// <see cref="PlanFile"/> is the absolute path of a Markdown plan file the owner attached by hand; its checkboxes show as progress on the row
 /// (plan progress, 2026-11-18). A file written before it loads with null.
+/// <see cref="AutoWake"/> is the owner's choice "Wake after the limit resets" for this session (limit wake, 2026-11-20). <see cref="AutoWokenHitAt"/> is
+/// the limit hit (its time) that was last woken, so the same hit is not woken twice, and <see cref="AutoWakeTimes"/> are the wakes of the last day,
+/// for the cap of three a day. Files written before them load with the defaults.
 /// </summary>
 public sealed record LibraryEntry(
     string? Name = null,
@@ -21,11 +24,19 @@ public sealed record LibraryEntry(
     string? Colour = null,
     DateTimeOffset? MagicAt = null,
     DateTimeOffset? MagicNamedAt = null,
-    string? PlanFile = null)
+    string? PlanFile = null,
+    bool AutoWake = false,
+    DateTimeOffset? AutoWokenHitAt = null,
+    IReadOnlyList<DateTimeOffset>? AutoWakeTimes = null)
 {
+    /// <summary>
+    /// True when nothing is set. The wake fields count as set: an entry with only the flag, or with the record of a wake, is kept (the record stops
+    /// a second wake of the same hit, and the cap of the day).
+    /// </summary>
     public bool IsEmpty =>
         string.IsNullOrWhiteSpace(Name) && !Pinned && !Archived && (Tags is null || Tags.Count == 0)
-        && string.IsNullOrWhiteSpace(Note) && string.IsNullOrWhiteSpace(Colour) && string.IsNullOrWhiteSpace(PlanFile);
+        && string.IsNullOrWhiteSpace(Note) && string.IsNullOrWhiteSpace(Colour) && string.IsNullOrWhiteSpace(PlanFile)
+        && !AutoWake && AutoWokenHitAt is null && (AutoWakeTimes is null || AutoWakeTimes.Count == 0);
 }
 
 /// <summary>

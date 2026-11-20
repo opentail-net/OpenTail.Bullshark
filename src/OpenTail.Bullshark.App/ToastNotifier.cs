@@ -21,6 +21,9 @@ internal static class ToastNotifier
     /// <summary>The tag of the toast for a usage limit that reset.</summary>
     private const string LimitTag = "limit-reset";
 
+    /// <summary>The tag of the toast for a limit-reset session that is still running (limit wake).</summary>
+    private const string LimitWakeTag = "limit-wake";
+
     /// <summary>The tag of the toast for a supervisor pass that failed (reliability batch R9).</summary>
     private const string ProblemTag = "supervisor-problem";
 
@@ -42,6 +45,9 @@ internal static class ToastNotifier
 
     /// <summary>The silent toast for usage limits that reset: their labels, such as "5-hour".</summary>
     public static void ShowLimitReset(IReadOnlyList<string> labels) => Post(() => ToastText.LimitReset(labels), LimitTag);
+
+    /// <summary>The silent toast for a session that stopped at the usage limit, whose reset has passed, and that is still running (limit wake).</summary>
+    public static void ShowLimitWake(string name) => Post(() => ToastText.LimitWake(name), LimitWakeTag);
 
     /// <summary>Removes this app's toasts from the action centre, so old ones do not pile up. Called when the window is activated.</summary>
     public static void ClearHistory()

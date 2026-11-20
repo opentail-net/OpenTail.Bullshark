@@ -207,3 +207,11 @@ Method: the built App launched with `--state <scratch>` `--no-pass` (no claude c
 - [ ] R5 stale: after a preview, change the level or the turns: the pane hides. Change the level, then back: the summary is made again (a new call, expected).
 - [ ] R6 log: `logs\app.log` has `preview built, N chars` lines and no transcript text.
 - [ ] R7 look: the split button matches the other green buttons in both themes, and the ▾ menu opens under the button without leaving the dialog's screen.
+
+## Limit wake (docs/plans/limit-wake-2026-11-20.md)
+- [ ] LW1 shows: a session the owner flags with "Wake after the limit resets" (row menu) that stops at a real limit shows `Limit resets HH:mm · wakes after` on its row and in Needs you. Without the flag the text has no "wakes after".
+- [ ] LW2 wakes once: after the reset (plus two minutes) the flagged session that is NOT running is started once; its transcript gets the line "The usage limit has reset. Please continue where you left off." and the log has one `limit wake:` line with the short id, the hit time, the reset time and "resume in full". It is not started again before the reset, nor twice for the same hit.
+- [ ] LW3 the owner's stop holds: a session the owner stopped (listed as stopped) is not woken; Needs you says "listed as stopped or failed: not woken" in the row text and the log has one `limit wake of … not started` line.
+- [ ] LW4 listing: record what `claude agents --json --all` lists for a session that stopped at the limit (its `state`, and whether it appears in the active list). This decides phase 2 (typing into an attached session); write the answer here.
+- [ ] LW5 a second hit of a session that was woken: it is NOT woken again by this feature. A wake creates a record (the session is kept alive in the rail), and the rule then says "kept in the rail: not woken". Check what really happens on a second hit, and whether the supervisor's own restart fires before the reset (see the review notes in `limit-wake-2026-11-20.md`).
+- [ ] LW6 running: a flagged session that is still running after its reset gets the row text "running: open it to continue" and one toast "Limit reset … can continue. Open it.", and is not started.

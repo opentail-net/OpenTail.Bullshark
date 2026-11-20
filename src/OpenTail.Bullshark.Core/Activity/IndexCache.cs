@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using OpenTail.Bullshark.Core.Cache;
+using OpenTail.Bullshark.Core.Setup;
 using OpenTail.Bullshark.Core.Supervisor;
 
 namespace OpenTail.Bullshark.Core.Activity;
@@ -18,11 +19,20 @@ internal static class IndexCache
     /// <summary>The module id of this build of the reader. It changes with the code, so a cache written by another build is not used.</summary>
     private static readonly string ReaderId = typeof(IndexCache).Module.ModuleVersionId.ToString("N");
 
-    /// <summary>The file as written: the reader build and one entry per transcript.</summary>
+    /// <summary>
+    /// The layout of the entries (limit wake, 2026-11-20 added the limit stop). It is bumped when an entry gains a field, so a cache of an older layout
+    /// is read again. The reader build (<see cref="ReaderId"/>) changes with the code anyway; this is the explicit version.
+    /// </summary>
+    internal const int FormatVersion = 2;
+
+    /// <summary>The file as written: the reader build, the layout, and one entry per transcript.</summary>
     public sealed class Document
     {
         [JsonPropertyName("reader")]
         public string Reader { get; set; } = string.Empty;
+
+        [JsonPropertyName("format")]
+        public int Format { get; set; }
 
         [JsonPropertyName("files")]
         public List<Entry> Files { get; set; } = [];
@@ -116,6 +126,23 @@ internal static class IndexCache
         /// <summary>The working folder the transcript names last (the summary's LatestCwd), so a cached session names its folder too.</summary>
         [JsonPropertyName("cwd")]
         public string? Cwd { get; set; }
+
+        /// <summary>The usage-limit stop at the end of the transcript, or null (limit wake). A stop that cannot be read is no stop.</summary>
+        [JsonPropertyName("limitStop")]
+        public LimitStopDto? LimitStop { get; set; }
+    }
+
+    /// <summary>A usage-limit stop as the cache keeps it: the times in the round-trip format, and the limit type.</summary>
+    public sealed class LimitStopDto
+    {
+        [JsonPropertyName("hitAt")]
+        public string? HitAt { get; set; }
+
+        [JsonPropertyName("resetsAt")]
+        public string? ResetsAt { get; set; }
+
+        [JsonPropertyName("type")]
+        public string? Type { get; set; }
     }
 
     public sealed class NameCountDto
@@ -162,7 +189,7 @@ internal static class IndexCache
             if (!File.Exists(path)) return null;
             // Read without the lock: a read that meets the replace is tried once more (reliability batch R11).
             var document = CacheRead.Retry(() => ReadDocument(path));
-            if (document is null || document.Reader != ReaderId) return null;
+            if (document is null || document.Reader != ReaderId || document.Format != FormatVersion) return null;
 
             // A null list or a null entry or path is an entry that is not there, and an entry that does not restore is read again (FromCache).
             var entries = new Dictionary<string, Entry>(StringComparer.Ordinal);
@@ -196,7 +223,7 @@ internal static class IndexCache
     {
         try
         {
-            var text = JsonSerializer.Serialize(new Document { Reader = ReaderId, Files = entries.ToList() });
+            var text = JsonSerializer.Serialize(new Document { Reader = ReaderId, Format = FormatVersion, Files = entries.ToList() });
             using (FileLock.Hold(path))
             {
                 FileLock.WriteAtomic(path, text);
@@ -243,6 +270,9 @@ internal static class IndexCache
             Continues = summary.ContinuesSessionId,
             Failed = summary.FailedToolCalls,
             Cwd = summary.LatestCwd,
+            LimitStop = summary.LimitStop is { } stop
+                ? new LimitStopDto { HitAt = FormatTime(stop.HitAt), ResetsAt = FormatTime(stop.ResetsAt), Type = stop.Type }
+                : null,
         },
         Messages = messages.Select(pair => new MessageDto
         {
@@ -293,8 +323,18 @@ internal static class IndexCache
             Compactions: s.Compactions,
             ContinuesSessionId: s.Continues,
             FailedToolCalls: s.Failed,
-            LatestCwd: s.Cwd);
+            LatestCwd: s.Cwd,
+            LimitStop: StopOf(s.LimitStop));
         return (summary, ledger);
+    }
+
+    /// <summary>The stop an entry holds, or null when it holds none or one of its times is missing (then it is no stop).</summary>
+    private static LimitStop? StopOf(LimitStopDto? dto)
+    {
+        if (dto is null) return null;
+        var hit = ParseTime(dto.HitAt);
+        var resets = ParseTime(dto.ResetsAt);
+        return hit is { } at && resets is { } until && dto.Type is { } type ? new LimitStop(at, until, type) : null;
     }
 
     private static string? FormatTime(DateTimeOffset? time) => time?.ToString("O", CultureInfo.InvariantCulture);

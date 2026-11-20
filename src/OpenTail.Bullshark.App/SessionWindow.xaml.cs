@@ -429,8 +429,12 @@ public partial class SessionWindow : Window
             UpdateMergeChecks(records, RunStore.SpecsOf(runs));
             // The finished coders' transcripts are read here too, for the Ready for review lane (ready-for-review D1), off the UI thread.
             _reviewSources = await Task.Run(() => ReviewSourcesOf(records, paths, read.PassAgents));
+            // The usage-limit stops of the supervised and the flagged sessions, read here so the rail and Needs you show them (limit wake).
+            await ProbeLimitsAsync(records, DateTimeOffset.Now);
             RefreshRail(records, runs, _passSettings);
             AnnounceAttention();
+            // The wake after the limit resets: only here, once per pass, with the trust known (limit wake, 2026-11-20). A start redraws the rail.
+            if (await WakeDueSessionsAsync(DateTimeOffset.Now, trustKnown: plan.Problem is null)) RefreshRail();
             WriteAttentionFile();
             if (passRan) WriteHeartbeat(DateTimeOffset.Now);
 

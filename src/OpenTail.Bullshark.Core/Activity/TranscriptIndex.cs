@@ -1,4 +1,5 @@
 using System.Runtime.ExceptionServices;
+using OpenTail.Bullshark.Core.Setup;
 
 namespace OpenTail.Bullshark.Core.Activity;
 
@@ -32,7 +33,12 @@ public sealed record SessionDigest(
     /// The working folder the transcript names last (its records' cwd), or null when none is named. Claude's folder name is lossy, so the rail
     /// and the Storage page name a folder by this (FolderDisplay). The folder's key is still the group's identity.
     /// </summary>
-    string? Cwd = null)
+    string? Cwd = null,
+    /// <summary>
+    /// The usage-limit stop at the end of the transcript, as of the read that made the digest (limit wake), or null. A digest is as fresh as its
+    /// read: the history is read on open and on refresh, so a live session's stop is read again by the supervisor pass, not from here.
+    /// </summary>
+    LimitStop? LimitStop = null)
 {
     /// <summary>
     /// The title (D-L1; the owner's own name comes in L3). Claude Code's title when the transcript has one, else the first
@@ -309,6 +315,7 @@ public sealed class TranscriptIndex
             ContextTokensAtLastTurn: summary.ContextTokensAtLastTurn,
             Usage: summary.TotalUsage,
             FailedToolCalls: summary.FailedToolCalls,
-            Cwd: summary.LatestCwd);
+            Cwd: summary.LatestCwd,
+            LimitStop: summary.LimitStop);
     }
 }

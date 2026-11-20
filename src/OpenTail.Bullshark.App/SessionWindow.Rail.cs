@@ -391,8 +391,10 @@ public partial class SessionWindow
         foreach (var record in records.Where(r => !string.IsNullOrEmpty(r.SessionId) && !IsInOwnWindow(r.SessionId))) EnsureTerminal(record);
         // The silent-working notice (lifecycle batch L3): the threshold from ui.json, and the sessions the listing and the request times flag now.
         var silentAfter = settings.SilentAfter;
+        // The usage-limit words of the sessions that stopped at the limit (limit wake): the rows and Needs you show the same ones.
+        _limitTexts = LimitTextsFor(stored, DateTimeOffset.Now);
         _attention = AttentionList.From(records, _agents, _clashes, ConflictsOf(records),
-            silent: SilentNames(DateTimeOffset.UtcNow, silentAfter), silentAfter: silentAfter);
+            silent: SilentNames(DateTimeOffset.UtcNow, silentAfter), silentAfter: silentAfter, usageLimits: _limitTexts);
         UpdateNeedsYouCount();
         // The finished coders the owner has not looked at yet. Built from memory: the pass read their transcripts (ready-for-review D1).
         _review = ReviewQueue.From(records, _allAgents, _reviewSources, _reviewed);
@@ -1075,7 +1077,9 @@ public partial class SessionWindow
         var title = (flagged ? "⚠ " : string.Empty) + LiveTitle(record);
         // A notice (the silent working notice, lifecycle batch L3) goes after the activity line, so the running mark of the state is unchanged.
         var activity = ActivityLine(record.SessionId, state, record.StartedAt, state == "working");
-        if (!string.IsNullOrEmpty(notice)) activity = activity.Length == 0 ? notice : activity + " · " + notice;
+        // The usage-limit words (limit wake) come after the notice, on the same line.
+        var notes = string.Join(" · ", new[] { notice, LimitTextOf(record.SessionId) }.Where(text => !string.IsNullOrEmpty(text)));
+        if (notes.Length > 0) activity = activity.Length == 0 ? notes : activity + " · " + notes;
         var item = NewItem(
             ColourEdge(TwoLine(title, activity, string.Empty,
                 badge: MatchBadge(MatchOf(record.SessionId))), MarkOf(record.SessionId)?.Colour),

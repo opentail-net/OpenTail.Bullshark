@@ -63,48 +63,67 @@ internal static class LimitEntries
     internal static LimitEntry? FromLine(string line)
     {
         if (!TranscriptJson.TryParse(line, out var document)) return null;
-        using (document)
+        using (document) return OfRecord(document.RootElement);
+    }
+
+    /// <summary>
+    /// The limit entry one parsed record holds, under the rule of <see cref="FromLine"/>. A record whose values cannot be read is null.
+    /// </summary>
+    internal static LimitEntry? OfRecord(JsonElement root)
+    {
+        try
         {
-            try
-            {
-                var root = document.RootElement;
-                if (TranscriptJson.Str(root, "apiError") != LimitError) return null;
-                var info = Child(Child(root, "apiErrorParams"), "rate_limit_info");
-                if (info is not { } limit) return null;
-                var status = TranscriptJson.Str(limit, "status") ?? string.Empty;
-                if (TranscriptJson.Number(limit, "resetsAt") is not { } seconds || seconds is < 0 or > MaxUnixSeconds) return null;
-                return new LimitEntry(WrittenOf(root), TypeOf(limit), status, DateTimeOffset.FromUnixTimeSeconds(seconds));
-            }
-            catch (Exception ex) when (TranscriptJson.IsUnreadable(ex))
-            {
-                return null;
-            }
+            if (TranscriptJson.Str(root, "apiError") != LimitError) return null;
+            var info = Child(Child(root, "apiErrorParams"), "rate_limit_info");
+            if (info is not { } limit) return null;
+            var status = TranscriptJson.Str(limit, "status") ?? string.Empty;
+            if (TranscriptJson.Number(limit, "resetsAt") is not { } seconds || seconds is < 0 or > MaxUnixSeconds) return null;
+            return new LimitEntry(WrittenOf(root), TypeOf(limit), status, DateTimeOffset.FromUnixTimeSeconds(seconds));
+        }
+        catch (Exception ex) when (TranscriptJson.IsUnreadable(ex))
+        {
+            return null;
         }
     }
 
     /// <summary>
-    /// The limit entries of the last <see cref="TailBytes"/> of a transcript. The file is opened the way every transcript reader opens it. The read
-    /// begins one byte before the cut; a first line that is cut is dropped. A file that cannot be opened or read gives none.
+    /// The limit entries of the last <see cref="TailBytes"/> of a transcript. A file that cannot be opened or read gives none.
     /// </summary>
     internal static List<LimitEntry> Tail(string path)
     {
         var entries = new List<LimitEntry>();
         try
         {
-            using var stream = TranscriptFile.Open(path);
-            var start = Math.Max(0, stream.Length - TailBytes);
-            // The read begins one byte before the cut. If that byte ends a line, the next line starts at the cut and is read whole.
-            // Otherwise the first line read is the end of a line that began before the cut, and it is dropped.
-            stream.Seek(Math.Max(0, start - 1), SeekOrigin.Begin);
-            using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: false);
-            if (start > 0) reader.ReadLine();
-            AddFrom(reader, entries);
+            foreach (var line in TailLines(path))
+            {
+                // The cheap test first: only a line that names the error is parsed.
+                if (line.Contains(LimitError, StringComparison.Ordinal) && FromLine(line) is { } entry) entries.Add(entry);
+            }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             return [];
         }
         return entries;
+    }
+
+    /// <summary>
+    /// The lines of the last <see cref="TailBytes"/> of a transcript, read the way every transcript reader opens it. The read begins one byte
+    /// before the cut; a first line that is cut is dropped. Throws when the file cannot be opened or read.
+    /// </summary>
+    internal static List<string> TailLines(string path)
+    {
+        using var stream = TranscriptFile.Open(path);
+        var start = Math.Max(0, stream.Length - TailBytes);
+        // The read begins one byte before the cut. If that byte ends a line, the next line starts at the cut and is read whole.
+        // Otherwise the first line read is the end of a line that began before the cut, and it is dropped.
+        stream.Seek(Math.Max(0, start - 1), SeekOrigin.Begin);
+        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: false);
+        if (start > 0) reader.ReadLine();
+        var lines = new List<string>();
+        string? line;
+        while ((line = reader.ReadLine()) is not null) lines.Add(line);
+        return lines;
     }
 
     /// <summary>
@@ -126,16 +145,6 @@ internal static class LimitEntries
             return [];
         }
         return entries;
-    }
-
-    private static void AddFrom(TextReader reader, List<LimitEntry> entries)
-    {
-        string? line;
-        while ((line = reader.ReadLine()) is not null)
-        {
-            // The cheap test first: only a line that names the error is parsed.
-            if (line.Contains(LimitError, StringComparison.Ordinal) && FromLine(line) is { } entry) entries.Add(entry);
-        }
     }
 
     /// <summary>The entry's timestamp, read as the transcripts write it (ISO UTC). Null when it is missing or cannot be read.</summary>

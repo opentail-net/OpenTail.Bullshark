@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Reflection;
 using System.Text.Json;
 using OpenTail.Bullshark.Core.Activity;
+using OpenTail.Bullshark.Core.Setup;
 using Xunit;
 
 namespace OpenTail.Bullshark.Core.Tests.Activity;
@@ -19,7 +20,7 @@ public sealed class IndexCacheFieldTests
     [
         "Records", "UserMessages", "AssistantMessages", "ToolCalls", "CompletedTurns", "LastAssistantText", "LastTimestamp", "LastModel",
         "FirstTimestamp", "ToolNames", "FilesWritten", "ContextTokensAtLastTurn", "FirstUserText", "AiTitle", "CustomTitle", "LastRecap",
-        "LastRecapAt", "Compactions", "ContinuesSessionId", "FailedToolCalls", "LatestCwd",
+        "LastRecapAt", "Compactions", "ContinuesSessionId", "FailedToolCalls", "LatestCwd", "LimitStop",
     ];
 
     /// <summary>The TranscriptSummary properties the cache does not carry. Each one has its reason; nothing else may be left out.</summary>
@@ -42,7 +43,7 @@ public sealed class IndexCacheFieldTests
     [
         "FirstActivity", "LastActivity", "Turns", "UserMessages", "AssistantMessages", "ToolCalls", "ToolNames", "FilesWritten",
         "LastAssistantText", "LastModel", "ContextTokensAtLastTurn", "Usage", "FirstUserText", "AiTitle", "CustomTitle", "LastRecap",
-        "LastRecapAt", "Compactions", "ContinuesSessionId", "FailedToolCalls", "Cwd",
+        "LastRecapAt", "Compactions", "ContinuesSessionId", "FailedToolCalls", "Cwd", "LimitStop",
     ];
 
     /// <summary>SessionDigest properties computed from the others. Span is computed from FirstActivity and LastActivity.</summary>
@@ -96,7 +97,8 @@ public sealed class IndexCacheFieldTests
             Compactions: 2,
             ContinuesSessionId: "11111111-2222-3333-4444-555555555555",
             FailedToolCalls: 3,
-            LatestCwd: @"C:\Git\split\OpenTail.Bullshark");
+            LatestCwd: @"C:\Git\split\OpenTail.Bullshark",
+            LimitStop: new LimitStop(new DateTimeOffset(2026, 11, 2, 9, 0, 0, offset), new DateTimeOffset(2026, 11, 2, 11, 30, 0, offset), "seven_day"));
 
         var cache = typeof(TranscriptIndex).Assembly.GetType("OpenTail.Bullshark.Core.Activity.IndexCache", throwOnError: true)!;
         var entryOf = cache.GetMethod("EntryOf", BindingFlags.Static | BindingFlags.Public)!;
@@ -156,6 +158,7 @@ public sealed class IndexCacheFieldTests
             "{" + string.Join(", ", counts.OrderBy(pair => pair.Key, StringComparer.Ordinal).Select(pair => pair.Key + "=" + pair.Value)) + "}",
         IEnumerable<string> items => "[" + string.Join(", ", items.Select(item => "\"" + item + "\"")) + "]",
         IConvertible number => number.ToString(CultureInfo.InvariantCulture),
+        LimitStop stop => $"{stop.HitAt.ToString("O", CultureInfo.InvariantCulture)}/{stop.ResetsAt.ToString("O", CultureInfo.InvariantCulture)}/{stop.Type}",
         _ => throw new NotSupportedException($"Add {value.GetType().Name} to Content and IsDefault in IndexCacheFieldTests."),
     };
 
@@ -169,6 +172,7 @@ public sealed class IndexCacheFieldTests
         IEnumerable<string> items => !items.Any(),
         int number => number == 0,
         long number => number == 0,
+        LimitStop => false,
         _ => throw new NotSupportedException($"Add {value.GetType().Name} to Content and IsDefault in IndexCacheFieldTests."),
     };
 }

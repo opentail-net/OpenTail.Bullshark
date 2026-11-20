@@ -1,5 +1,6 @@
 using System.Text.Json;
 using OpenTail.Bullshark.Core.Health;
+using OpenTail.Bullshark.Core.Setup;
 
 namespace OpenTail.Bullshark.Core.Activity;
 
@@ -41,7 +42,12 @@ public sealed record TranscriptSummary(
     /// The folder each relative file path was written from, by the cwd of the record that carries the write (round 8 item 8). A path
     /// written before any cwd is named is not in it, and the caller takes the session's folder for it.
     /// </summary>
-    IReadOnlyDictionary<string, string>? FileFolders = null)
+    IReadOnlyDictionary<string, string>? FileFolders = null,
+    /// <summary>
+    /// The usage-limit stop at the end of the transcript (limit wake), or null when the transcript does not end at a limit. Read in the same pass
+    /// as the rest (<see cref="LimitStop"/>).
+    /// </summary>
+    LimitStop? LimitStop = null)
 {
     public TokenUsage TotalUsage => UsageByModel.Values.Aggregate(TokenUsage.Zero, (sum, next) => sum.Add(next));
 }
@@ -179,6 +185,8 @@ public static class TranscriptReader
         private readonly Dictionary<string, DateTimeOffset> _fileLastWrites = new(StringComparer.Ordinal);
         // The folder each relative file path was written from: the cwd of the record that carries the write, not the latest one (round 8 item 8).
         private readonly Dictionary<string, string> _fileFolders = new(StringComparer.Ordinal);
+        // The usage-limit stop the records so far give (limit wake): the same rule as LimitStop.Find, record by record.
+        private readonly LimitStopTracker _stop = new();
         private int _records, _users, _assistants, _tools, _turns, _compactions, _failedCalls, _lineNumber;
         private string? _lastText, _lastModel, _firstUserText, _aiTitle, _customTitle, _lastRecap, _continuesSessionId;
         // The working folder that the last record naming one gives: the folder the session edits now, which can be a worktree (round 7 item 4).
@@ -210,6 +218,7 @@ public static class TranscriptReader
                 return false;
             }
 
+            _stop.Observe(root);
             var facts = _facts;
             _records++;
 
@@ -296,7 +305,7 @@ public static class TranscriptReader
         /// <summary>What has been counted so far.</summary>
         public TranscriptSummary Summary() => new(_records, _users, _assistants, _tools, _turns, _lastText, _lastTimestamp, _lastModel,
             _ledger.ByFile(_file), _firstTimestamp, _toolNames, _filesWritten, _contextAtLastTurn, _firstUserText,
-            _aiTitle, _customTitle, _lastRecap, _lastRecapAt, _compactions, _continuesSessionId, _failedCalls, _fileLastWrites, _latestCwd, _fileFolders);
+            _aiTitle, _customTitle, _lastRecap, _lastRecapAt, _compactions, _continuesSessionId, _failedCalls, _fileLastWrites, _latestCwd, _fileFolders, _stop.Current);
     }
 
     /// <summary>

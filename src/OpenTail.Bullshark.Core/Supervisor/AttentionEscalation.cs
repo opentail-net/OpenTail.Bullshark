@@ -40,7 +40,7 @@ public sealed class AttentionEscalation
 
     /// <summary>
     /// Only the reasons the owner must act on escalate (D1): blocked, restart loop, start failed, stopped, failed, and name taken (lifecycle batch
-    /// L1, with the restart loop it stops). The notices (overlap, conflict, limit reached, silent) never re-alert.
+    /// L1, with the restart loop it stops). The notices (overlap, conflict, limit reached, silent, usage limit) never re-alert.
     /// </summary>
     public static bool Escalates(AttentionItem item) =>
         item.Reason is AttentionReason.Blocked or AttentionReason.RestartLoop or AttentionReason.StartFailed

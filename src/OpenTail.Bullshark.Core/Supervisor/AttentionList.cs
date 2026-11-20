@@ -50,6 +50,12 @@ public enum AttentionReason
     /// a long command. Nothing is sent to the session, and the notice goes away when the session makes a request again.
     /// </summary>
     Silent,
+
+    /// <summary>
+    /// The session stopped at the usage limit (limit wake, 2026-11-20): its row says when the limit resets, and whether it wakes after. A notice: it
+    /// never re-alerts and is not announced (the wake's own notice is), and it goes when a user entry follows the stop.
+    /// </summary>
+    UsageLimit,
 }
 
 /// <summary>A coder's merge check result that found conflicts: the session's name, the conflicting files and the branch they conflict with.</summary>
@@ -122,6 +128,8 @@ public static class AttentionList
     /// (round 5 item 8, round 6 item 5).</item>
     /// <item>A session named in <paramref name="silent"/> (lifecycle batch L3), listed as `working`, gives <see cref="AttentionReason.Silent"/> when no
     /// other reason above applies to it. The detail carries <paramref name="silentAfter"/> in minutes. Null or zero gives none.</item>
+    /// <item>A session whose id is a key of <paramref name="usageLimits"/> (its limit text, limit wake) gives <see cref="AttentionReason.UsageLimit"/>
+    /// with that text as the detail, when no other reason above applies to it.</item>
     /// </list>
     /// The time a session entered its state is not recorded, so "oldest" means the session's own start time.
     /// <paramref name="clashes"/> (gems item 1) adds one <see cref="AttentionReason.Overlap"/> item per session per shared file.
@@ -132,14 +140,16 @@ public static class AttentionList
         IEnumerable<FileClash>? clashes = null,
         IEnumerable<SessionConflict>? conflicts = null,
         IEnumerable<string>? silent = null,
-        TimeSpan? silentAfter = null)
+        TimeSpan? silentAfter = null,
+        IReadOnlyDictionary<string, string>? usageLimits = null)
     {
         var recordList = records.ToList();
         var silentNames = new HashSet<string>(silent ?? [], StringComparer.Ordinal);
         var items = new List<AttentionItem>();
         foreach (var record in recordList)
         {
-            var item = ReasonFor(record, agents) ?? LimitItem(record, agents) ?? SilentItem(record, agents, silentNames, silentAfter ?? TimeSpan.Zero);
+            var item = ReasonFor(record, agents) ?? LimitItem(record, agents) ?? UsageLimitItem(record, usageLimits)
+                ?? SilentItem(record, agents, silentNames, silentAfter ?? TimeSpan.Zero);
             if (item is not null) items.Add(item);
         }
         if (clashes is not null) items.AddRange(OverlapItems(recordList, clashes));
@@ -175,9 +185,14 @@ public static class AttentionList
         // blocked, stopped, failed or start-failed reason of that session is announced (round 5 item 6).
         var waiting = previous.Where(item => !IsNotice(item)).Select(item => item.Name).ToHashSet(StringComparer.Ordinal);
         var notices = previous.Where(IsNotice).Select(NoticeKey).ToHashSet(StringComparer.Ordinal);
-        return current.Where(item => IsNotice(item)
-                ? !notices.Contains(NoticeKey(item)) && announced?.Contains(NoticeKey(item)) != true
-                : !waiting.Contains(item.Name))
+        // A usage-limit notice is shown in Needs you and never announced: the wake's own notice (log, toast) says what happened.
+        return current.Where(item =>
+            {
+                if (item.Reason == AttentionReason.UsageLimit) return false;
+                return IsNotice(item)
+                    ? !notices.Contains(NoticeKey(item)) && announced?.Contains(NoticeKey(item)) != true
+                    : !waiting.Contains(item.Name);
+            })
             .ToList();
     }
 
@@ -241,7 +256,7 @@ public static class AttentionList
 
     /// <summary>A notice tells the owner about something that happened, and the session keeps running. It is not a wait.</summary>
     private static bool IsNotice(AttentionItem item) =>
-        item.Reason is AttentionReason.Overlap or AttentionReason.Conflict or AttentionReason.Silent;
+        item.Reason is AttentionReason.Overlap or AttentionReason.Conflict or AttentionReason.Silent or AttentionReason.UsageLimit;
 
     /// <summary>
     /// Whether the owner's <c>notify</c> setting in ui.json turns notices on. A missing value, or one that is not a boolean, means on.
@@ -313,6 +328,18 @@ public static class AttentionList
         var listed = agents.FirstOrDefault(a => string.Equals(a.SessionId, record.SessionId, StringComparison.OrdinalIgnoreCase));
         if (listed is null || !string.Equals(listed.EffectiveState, "working", StringComparison.OrdinalIgnoreCase)) return null;
         return Item(record, AttentionReason.Silent, $"no output for {(int)after.TotalMinutes} min; may be a long command");
+    }
+
+    /// <summary>
+    /// The usage-limit notice of a session whose stop is in <paramref name="usageLimits"/> (limit wake): the text the caller built for it. A record with
+    /// no session id has no stop, so it gets none.
+    /// </summary>
+    private static AttentionItem? UsageLimitItem(SessionRecord record, IReadOnlyDictionary<string, string>? usageLimits)
+    {
+        if (usageLimits is null || string.IsNullOrEmpty(record.SessionId)) return null;
+        return usageLimits.TryGetValue(record.SessionId, out var text) && !string.IsNullOrWhiteSpace(text)
+            ? Item(record, AttentionReason.UsageLimit, text)
+            : null;
     }
 
     private static AttentionItem Item(SessionRecord record, AttentionReason reason, string detail) =>

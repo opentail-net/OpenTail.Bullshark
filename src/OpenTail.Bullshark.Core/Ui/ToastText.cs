@@ -92,6 +92,16 @@ public static class ToastText
         return new ToastMessage(LimitResetTitle, string.Join(", ", distinct));
     }
 
+    /// <summary>
+    /// The toast for a session that stopped at the usage limit, whose reset has passed, and that is still running, so the wake does not start it:
+    /// the session's name and the words "can continue. Open it." (limit wake, 2026-11-20). Null when the name is blank.
+    /// </summary>
+    public static ToastMessage? LimitWake(string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        return string.IsNullOrWhiteSpace(name) ? null : new ToastMessage("Limit reset", ShortName(name.Trim()) + " can continue. Open it.");
+    }
+
     /// <summary>The short words for a reason. Fixed here, so the toast never carries the detail of the item.</summary>
     public static string ReasonText(AttentionReason reason) => reason switch
     {
@@ -105,6 +115,7 @@ public static class ToastText
         AttentionReason.LimitReached => "run limit reached",
         AttentionReason.NameTaken => "name taken by another session",
         AttentionReason.Silent => "no output for a while",
+        AttentionReason.UsageLimit => "usage limit",
         _ => "needs you",
     };
 
