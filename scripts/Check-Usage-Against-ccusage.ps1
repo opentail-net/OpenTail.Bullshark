@@ -37,7 +37,7 @@ $ourTotals = [ordered]@{ input = $ours.inputTokens; output = $ours.outputTokens;
 $rows = foreach ($k in 'input', 'output', 'cacheWrite', 'cacheRead') {
     $diff = $ourTotals[$k] - $ccTotals[$k]
     $pct = if ($ccTotals[$k] -eq 0) { 0 } else { [math]::Round(100.0 * $diff / $ccTotals[$k], 4) }
-    [pscustomobject]@{ Metric = $k; OpenTail.Bullshark = $ourTotals[$k]; ccusage = $ccTotals[$k]; Difference = $diff; Percent = $pct }
+    [pscustomobject]@{ Metric = $k; 'OpenTail.Bullshark' =$ourTotals[$k]; ccusage = $ccTotals[$k]; Difference = $diff; Percent = $pct }
 }
 $rows | Format-Table -AutoSize | Out-String | Write-Host
 "transcript files read by OpenTail.Bullshark: $($ours.files); ccusage sessions: $(@($cc.sessions).Count)"
