@@ -242,7 +242,7 @@ public partial class SessionWindow
 
         _magicRunning = true;
         // Background work: the window stays usable (no wait cursor); the status line shows progress.
-        SetStatus(automatic ? "Automatic magic naming with Haiku…" : $"Naming {targets.Count} session(s) with Haiku…");
+        SetStatus(automatic ? "Magic name with Haiku…" : $"Naming {targets.Count} session(s) with Haiku…");
         var marks = _marks;
         var history = _history ?? [];
         var taken = MagicCandidates.TakenNames(marks, targets.Select(target => target.Digest.SessionId));
@@ -432,8 +432,8 @@ public partial class SessionWindow
         [
             ActionItem("magic-cold", $"Name cold sessions with Haiku ({cold})",
                 _magicRunning ? "a run is already going" : cold == 0 ? "none has gone cold" : "asks first; at most 10 a run", () => _ = NameColdSessionsAsync()),
-            ActionItem("magic-auto", "Toggle automatic magic naming",
-                _magicAutoOn ? "on: names a never-named session when its cache goes cold ❄" : "off (the default); it uses your usage when on",
+            ActionItem("magic-auto", "Toggle magic name (auto-rename when a session goes ❄)",
+                _magicAutoOn ? "on: renames a session still on Claude's title when its row turns ❄" : "off (the default); it uses your usage when on",
                 ToggleMagicAuto),
         ];
     }
@@ -454,8 +454,8 @@ public partial class SessionWindow
         AppLog.Write($"automatic magic naming: {(_magicAutoOn ? "on" : "off")} (the owner's choice)");
         SetStatus(_magicAutoOn != on ? "Not saved: ui.json cannot be written. See the log."
             : _magicAutoOn
-            ? "Automatic magic naming is on: a never-named session is named when its cache goes cold ❄, at most 3 an hour, only when the window is idle."
-            : "Automatic magic naming is off.");
+            ? "Magic name is on: a session still on Claude's title is renamed when its row turns ❄, at most 3 an hour, only when the window is idle."
+            : "Magic name is off.");
         RefreshSettingsPage();
     }
 }

@@ -68,7 +68,7 @@ public sealed class SettingsView : UserControl
     {
         _notify = Switch("Sound and flash for new waits");
         _toast = Switch("Toasts when the window is in the background");
-        _magic = Switch("Automatic magic naming");
+        _magic = Switch("Magic-name a session when it goes ❄");
         _attentionFile = Switch("Write attention.json for other tools");
         _attentionFile.Click += (_, _) => AttentionFileChanged?.Invoke(_attentionFile.IsChecked == true);
         foreach (var category in Enum.GetValues<ToastCategory>())
@@ -136,10 +136,11 @@ public sealed class SettingsView : UserControl
             _contextWindow);
 
         var naming = Page(
-            Heading("Automatic magic naming"),
-            Note("Off by default. When it is on, a session that has never been named gets a name from Haiku when its cache goes cold, "
-                 + "at most three an hour, and only while the window is idle. It uses your usage. The palette and the History mark name the cold sessions on request."),
+            Heading("Magic name"),
+            Note("Renames a session by itself. When a session's row turns ❄, Haiku replaces the title Claude gave it with a proper name and tags. "
+                 + "That spends your usage: at most three an hour, and only while the window is idle. A name set by hand is left alone."),
             _magic,
+            Note("To rename them now, use the palette or the History mark."),
             Heading("Re-alert an unanswered wait"),
             Note("A session that still waits for you sounds again after this time, up to three times. Acknowledge it or snooze it on its row "
                  + "under Needs you to stop. The default is 15 minutes."),
