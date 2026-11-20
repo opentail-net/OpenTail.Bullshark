@@ -9,6 +9,12 @@ namespace OpenTail.Bullshark.Core.Terminal;
 /// </summary>
 public static class PasteText
 {
+    /// <summary>
+    /// What Alt+V sends (ESC v). Claude Code pastes a clipboard image on this key; a bare Ctrl+V byte does nothing there, so the
+    /// window sends it for Ctrl+V when the clipboard holds an image and no text. It carries no clipboard data.
+    /// </summary>
+    public const string ImagePasteKeys = "\u001bv";
+
     /// <summary>Removes control characters (C0 except tab, CR and LF; DEL; C1) and makes every line break a CR.</summary>
     public static string Clean(string text)
     {

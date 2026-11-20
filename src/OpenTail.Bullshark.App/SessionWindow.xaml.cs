@@ -775,7 +775,11 @@ public partial class SessionWindow : Window
         }
         bool paste = (e.Key == System.Windows.Input.Key.V && modifiers == System.Windows.Input.ModifierKeys.Control)
                   || (e.Key == System.Windows.Input.Key.Insert && modifiers == System.Windows.Input.ModifierKeys.Shift);
-        if (!paste || !System.Windows.Clipboard.ContainsText()) return;
+        // Text on the clipboard is pasted by the window. An image alone is not: Claude Code takes it on Alt+V (ESC v), and a bare Ctrl+V byte
+        // does nothing there, so the window sends the same Alt+V for the owner's Ctrl+V (PasteText.ImagePasteKeys).
+        var hasText = paste && System.Windows.Clipboard.ContainsText();
+        var hasImage = paste && !hasText && System.Windows.Clipboard.ContainsImage();
+        if (!hasText && !hasImage) return;
         // A text box of this window (the Changes note, the rail's search) pastes into itself. Without this, PasteTarget can still be a session
         // of the right pane that is on screen, and the clipboard would go into that session (principle 3). A terminal with focus has no WPF
         // focused element, so the paste into a terminal is unchanged.
@@ -783,6 +787,20 @@ public partial class SessionWindow : Window
 
         var term = PasteTarget()?.ConPTYTerm;
         if (term is null) return;
+
+        if (hasImage)
+        {
+            try
+            {
+                term.WriteToTerm(OpenTail.Bullshark.Core.Terminal.PasteText.ImagePasteKeys);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Write($"image paste failed: {ex.GetType().Name}: {ex.Message}");
+            }
+            e.Handled = true;
+            return;
+        }
 
         // ESC and the other control characters go, so the clipboard cannot end the bracketed paste early (PasteText, F1).
         var text = OpenTail.Bullshark.Core.Terminal.PasteText.Clean(System.Windows.Clipboard.GetText());

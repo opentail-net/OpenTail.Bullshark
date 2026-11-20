@@ -6,6 +6,13 @@ namespace OpenTail.Bullshark.Core.Tests.Terminal;
 public sealed class PasteTextTests
 {
     [Fact]
+    public void ImagePasteSendsAltV()
+    {
+        // Alt+V is ESC then v. Only the key goes to the terminal; Claude Code reads the clipboard itself.
+        Assert.Equal(new[] { '\u001b', 'v' }, PasteText.ImagePasteKeys.ToCharArray());
+    }
+
+    [Fact]
     public void AnEscapeThatEndsTheBracketedPasteIsRemoved()
     {
         // The hostile clipboard text: it would close the paste and type "rm -rf x" into the session.
