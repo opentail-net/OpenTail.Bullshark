@@ -10,11 +10,82 @@
             <Setter Property="Padding" Value="14,7" />
             <Setter Property="Margin" Value="0,0,8,0" />
         </Style>
-        <!-- Resume is the app's green launch button (P6, 2026-11-19). This style keeps only the size: it is based on the app's GoButton, and the
-             window's own Button style below is not in its chain, so the colours are the green, not the grey of the Button style. -->
+        <!-- Resume is the app's green launch button (P6, 2026-11-19), cut in two (2026-11-20): the main part resumes, and the narrow part on its right
+             opens the menu with the preview. Both are based on the app's GoButton, so the colours and the hover are the app's; the templates only
+             round the outer corners (8 is the app's UiRadius) and leave the join square. The window's own Button style below is not in these chains. -->
         <Style x:Key="ResumeGo" TargetType="Button" BasedOn="{StaticResource GoButton}">
             <Setter Property="Padding" Value="20,7" />
-            <Setter Property="Margin" Value="0,0,8,0" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid>
+                            <Border x:Name="Ring" CornerRadius="10,0,0,10" BorderThickness="2" BorderBrush="Transparent" Margin="-2" />
+                            <Border x:Name="Frame" Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="8,0,0,8" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                  TextElement.Foreground="{TemplateBinding Foreground}" />
+                            </Border>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Frame" Property="Background" Value="{DynamicResource UiGoHover}" />
+                                <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource UiGoHover}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Frame" Property="Background" Value="{DynamicResource UiGoPressed}" />
+                                <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource UiGoPressed}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Ring" Property="BorderBrush" Value="{DynamicResource UiAccent}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45" />
+                                <Setter Property="Cursor" Value="Arrow" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- The narrow part of the split button: the same green, with the corners on its right rounded. -->
+        <Style x:Key="ResumeMenuPart" TargetType="Button" BasedOn="{StaticResource GoButton}">
+            <Setter Property="Padding" Value="9,7" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid>
+                            <Border x:Name="Ring" CornerRadius="0,10,10,0" BorderThickness="2" BorderBrush="Transparent" Margin="-2" />
+                            <Border x:Name="Frame" Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="0,8,8,0" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                  TextElement.Foreground="{TemplateBinding Foreground}" />
+                            </Border>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Frame" Property="Background" Value="{DynamicResource UiGoHover}" />
+                                <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource UiGoHover}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Frame" Property="Background" Value="{DynamicResource UiGoPressed}" />
+                                <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource UiGoPressed}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Ring" Property="BorderBrush" Value="{DynamicResource UiAccent}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45" />
+                                <Setter Property="Cursor" Value="Arrow" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <Style TargetType="RadioButton">
@@ -118,8 +189,33 @@
 
         <TextBlock x:Name="CostText" Style="{StaticResource Muted}" Margin="0,16,0,0" />
 
+        <!-- The prompt the new session would get, shown before anything runs. Hidden until a preview is made, and hidden again when the choice changes. -->
+        <StackPanel x:Name="PreviewBlock" Visibility="Collapsed" Margin="0,14,0,0">
+            <TextBlock x:Name="PreviewHeader" Style="{StaticResource Muted}" />
+            <TextBox x:Name="PreviewText" IsReadOnly="True" TextWrapping="Wrap" FontFamily="Consolas" FontSize="12"
+                     MaxHeight="220" VerticalScrollBarVisibility="Auto" Margin="0,6,0,0" Padding="8"
+                     Background="{DynamicResource PromptPanel}" Foreground="{DynamicResource PromptText}"
+                     BorderBrush="{DynamicResource PromptBorder}" />
+            <TextBlock x:Name="PreviewNote" Style="{StaticResource Muted}" Margin="0,4,0,0" Visibility="Collapsed" />
+        </StackPanel>
+
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
-            <Button Content="Resume" Click="Resume_Click" Style="{StaticResource ResumeGo}" />
+            <StackPanel Orientation="Horizontal" Margin="0,0,8,0">
+                <Button x:Name="ResumeButton" Content="Resume" Click="Resume_Click" Style="{StaticResource ResumeGo}"
+                        AutomationProperties.Name="Resume" />
+                <Border Width="1" Background="{DynamicResource UiGoText}" Opacity="0.35" />
+                <Button x:Name="ResumeMenuButton" Content="▾" Style="{StaticResource ResumeMenuPart}" Click="ResumeMenuButton_Click"
+                        ToolTip="Resume options: preview the prompt" AutomationProperties.Name="Resume options">
+                    <Button.ContextMenu>
+                        <ContextMenu x:Name="ResumeMenu" Placement="Bottom" HorizontalOffset="-150" MinWidth="200">
+                            <MenuItem x:Name="PreviewItem" Header="Preview the prompt…" Click="PreviewItem_Click"
+                                      ToolTipService.ShowOnDisabled="True" />
+                            <MenuItem x:Name="CopyItem" Header="Copy the prompt" Click="CopyItem_Click"
+                                      ToolTipService.ShowOnDisabled="True" />
+                        </ContextMenu>
+                    </Button.ContextMenu>
+                </Button>
+            </StackPanel>
             <Button Content="Cancel" IsCancel="True" IsDefault="True" Click="Cancel_Click" Margin="0" />
         </StackPanel>
     </StackPanel>

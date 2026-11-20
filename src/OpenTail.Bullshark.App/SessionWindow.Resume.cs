@@ -80,7 +80,8 @@ public partial class SessionWindow
         var facts = $"{digest.Turns} {(digest.Turns == 1 ? "turn" : "turns")} · last active {AgeOf(digest.LastActivity)} · in {folder}";
         var defaults = SavedSolo();
         var prompt = new ResumePrompt($"Resume: {DisplayTitle(digest)}", facts, digest.ContextTokensAtLastTurn, Palette,
-            defaults.PlannerModel, defaults.PlannerEffort)
+            defaults.PlannerModel, defaults.PlannerEffort,
+            (choice, kept, cancellationToken) => PreviewAsync(digest, folder, lines, choice, kept, cancellationToken))
         {
             Owner = this,
         };
@@ -93,7 +94,21 @@ public partial class SessionWindow
         }
 
         if (choice.Mode == ResumeMode.Full) await ResumeInFullAsync(digest, folder, choice);
-        else await StartFromTextAsync(digest, folder, lines, choice);
+        else await StartFromTextAsync(digest, folder, lines, choice, prompt.KeptSummary);
+    }
+
+    /// <summary>
+    /// The prompt's preview (and its copy): the start text the choice would send, built by the same method the start uses, so the two cannot
+    /// drift. It starts nothing and types into no session. A summary is made once here and the prompt keeps it for the start.
+    /// </summary>
+    private async Task<ResumePreview> PreviewAsync(
+        SessionDigest digest, string folder, IReadOnlyList<TranscriptLine> lines, ResumeChoice choice, KeptSummary? kept, CancellationToken cancellationToken)
+    {
+        if (choice.Mode == ResumeMode.Full) throw new InvalidOperationException("A full resume sends no prompt, so there is none to preview.");
+        var start = await BuildStartTextAsync(digest, folder, lines, choice, kept, cancellationToken);
+        // The text itself is the owner's transcript, so only its size is logged.
+        AppLog.Write($"preview built, {start.Fitted.Text.Length:N0} chars");
+        return new ResumePreview(start.Fitted.Text, start.Fitted.CutCharacters, start.Fitted.Fits, start.Summary);
     }
 
     /// <summary>
@@ -183,29 +198,33 @@ public partial class SessionWindow
             : $"Resumed {ShortId(digest.SessionId)} in full as {name}. It is kept alive: if it stops, the supervisor resumes it.");
     }
 
+    /// <summary>The start text of a resume: the fitted text, the request that launches it, and the summary it carries (null for none).</summary>
+    private sealed record StartText(ResumeText.FittedStart Fitted, SetupRequest Request, KeptSummary? Summary);
+
     /// <summary>
-    /// A new session starts from the chosen text: the summary (one Haiku call, when the owner chose a level), then the last turns
-    /// word for word. The new session runs at the chosen model and effort. It is a solo run in the session's own folder, so it is
-    /// written, supervised and shown like any run.
+    /// The start text of a resume, built once for the preview and for the start alike: the summary (one Haiku call when the owner chose a
+    /// level, or none when the kept summary of that level is reused), then the last turns, fitted to the command line the session is
+    /// launched with. The request is the one the start launches, for the fitted text. It starts nothing and shows nothing. A summary that is
+    /// not made throws ClaudeCliException; a cancelled one throws OperationCanceledException.
     /// </summary>
-    private async Task StartFromTextAsync(SessionDigest digest, string folder, IReadOnlyList<TranscriptLine> lines, ResumeChoice choice)
+    private async Task<StartText> BuildStartTextAsync(
+        SessionDigest digest, string folder, IReadOnlyList<TranscriptLine> lines, ResumeChoice choice, KeptSummary? kept,
+        CancellationToken cancellationToken = default)
     {
-        string? summary = null;
+        KeptSummary? summary = null;
         if (choice.Level is { } level)
         {
-            SetStatus($"Summarising {ShortId(digest.SessionId)} ({level.ToString().ToLowerInvariant()}): one model call…");
-            try
+            if (kept is not null && kept.MatchesLevel(level))
             {
-                var input = await Task.Run(() => ResumeText.SummaryInput(lines, digest.FilesWritten));
-                summary = await _cli.SummariseAsync(ResumeText.Instructions(level), input);
+                summary = kept;
             }
-            catch (ClaudeCliException ex)
+            else
             {
-                AppLog.Write($"summary not made: {ex.Message}");
-                SetStatus($"Not started: {ex.Message}");
-                return;
+                var input = await Task.Run(() => ResumeText.SummaryInput(lines, digest.FilesWritten), cancellationToken);
+                var text = await _cli.SummariseAsync(ResumeText.Instructions(level), input, cancellationToken);
+                await SaveSummaryFileAsync(digest, level, text);
+                summary = new KeptSummary(level, text, Saved: true);
             }
-            await SaveSummaryFileAsync(digest, level, summary);
         }
 
         // The start text names the session it continues, on its first line (D-L8). It is fitted to the command line the session is
@@ -220,14 +239,41 @@ public partial class SessionWindow
             PlannerEffort: choice.Effort,
             CoderModel: pattern.CoderModel,
             CoderEffort: pattern.CoderEffort);
-        var fitted = ResumeText.Fit(summary, choice.Level, lines, choice.Turns, digest.SessionId,
+        var fitted = ResumeText.Fit(summary?.Text, choice.Level, lines, choice.Turns, digest.SessionId,
             text => SetupPlan.LongestCommandLine(RequestFor(text)));
+        return new StartText(fitted, RequestFor(fitted.Text), summary);
+    }
+
+    /// <summary>
+    /// A new session starts from the chosen text: the summary (one Haiku call, when the owner chose a level and no kept summary of that
+    /// level exists), then the last turns word for word. The new session runs at the chosen model and effort. It is a solo run in the
+    /// session's own folder, so it is written, supervised and shown like any run.
+    /// </summary>
+    private async Task StartFromTextAsync(
+        SessionDigest digest, string folder, IReadOnlyList<TranscriptLine> lines, ResumeChoice choice, KeptSummary? kept)
+    {
+        if (choice.Level is { } level && !(kept is not null && kept.MatchesLevel(level)))
+            SetStatus($"Summarising {ShortId(digest.SessionId)} ({level.ToString().ToLowerInvariant()}): one model call…");
+
+        StartText start;
+        try
+        {
+            start = await BuildStartTextAsync(digest, folder, lines, choice, kept);
+        }
+        catch (ClaudeCliException ex)
+        {
+            AppLog.Write($"summary not made: {ex.Message}");
+            SetStatus($"Not started: {ex.Message}");
+            return;
+        }
+
+        var fitted = start.Fitted;
         if (!fitted.Fits)
         {
             SetStatus("Not started: the start text is too long for the command line, even with its latest turn cut.");
             return;
         }
-        var request = RequestFor(fitted.Text);
+        var request = start.Request;
 
         var check = SetupPlan.Validate(request, TrustCheck.DefaultClaudeJsonPath);
         if (!check.IsValid)

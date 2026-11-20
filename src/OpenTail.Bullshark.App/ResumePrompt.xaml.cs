@@ -1,5 +1,8 @@
 using System.Globalization;
 using System.Linq;
+using System.Runtime.InteropServices;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using OpenTail.Bullshark.Core.Resume;
@@ -28,17 +31,24 @@ public sealed record ResumeChoice(ResumeMode Mode, SummaryLevel? Level, int Turn
 
 /// <summary>
 /// The resume prompt (D14, D-S11). One list of ways to continue, with the recommended one already selected: a full resume only
-/// when the context is small (ResumeAdvice), otherwise a summary. It shows what each choice would send before anything runs.
-/// The owner picks the model and effort of the session that continues. Cancel is the default.
+/// when the context is small (ResumeAdvice), otherwise a summary. It shows what each choice would send before anything runs. The Resume
+/// menu previews that text, and copies it, through the window's own method, so the text shown is the text sent. A summary made for the
+/// preview is kept, and Resume uses it without a second model call. The owner picks the model and effort of the session that continues.
+/// Cancel is the default.
 /// </summary>
 public partial class ResumePrompt : Window
 {
     private const int MaxTurns = 200;
     private readonly int _contextTokens;
+    private readonly Func<ResumeChoice, KeptSummary?, CancellationToken, Task<ResumePreview>>? _previewAsync;
+    private CancellationTokenSource? _previewCts;
+    private bool _previewing;
 
-    public ResumePrompt(string heading, string facts, long contextTokens, RailPalette palette, string defaultModel, string defaultEffort)
+    public ResumePrompt(string heading, string facts, long contextTokens, RailPalette palette, string defaultModel, string defaultEffort,
+        Func<ResumeChoice, KeptSummary?, CancellationToken, Task<ResumePreview>>? previewAsync = null)
     {
         InitializeComponent();
+        _previewAsync = previewAsync;
         UiTheme.Apply(palette);
         Resources["PromptBg"] = RailPalette.Brush(palette.Background);
         Resources["PromptPanel"] = RailPalette.Brush(palette.Panel);
@@ -90,6 +100,12 @@ public partial class ResumePrompt : Window
     /// <summary>The choice, or null when the owner cancelled.</summary>
     public ResumeChoice? Choice { get; private set; }
 
+    /// <summary>
+    /// The summary the preview made (or reused). Resume passes it on, so the summary is not made twice. Null when none was made, or when the
+    /// level changed after the preview.
+    /// </summary>
+    public KeptSummary? KeptSummary { get; private set; }
+
     /// <summary>One option of a row: a segment that shows as pressed when it is the chosen one.</summary>
     private RadioButton Segment(string text, string group, bool isChecked) => new()
     {
@@ -103,9 +119,12 @@ public partial class ResumePrompt : Window
     private static string? SelectedTag(Panel row) =>
         row.Children.OfType<RadioButton>().FirstOrDefault(radio => radio.IsChecked == true)?.Tag as string;
 
+    /// <summary>The summary level on screen, or null when none is chosen.</summary>
+    private SummaryLevel? SelectedLevelOrNull() =>
+        Enum.TryParse<SummaryLevel>(SelectedTag(LevelRow), out var level) ? level : (SummaryLevel?)null;
+
     /// <summary>The summary level on screen. Normal when none is chosen.</summary>
-    private SummaryLevel SelectedLevel() =>
-        Enum.TryParse<SummaryLevel>(SelectedTag(LevelRow), out var level) ? level : SummaryLevel.Normal;
+    private SummaryLevel SelectedLevel() => SelectedLevelOrNull() ?? SummaryLevel.Normal;
 
     /// <summary>The choice on screen, or null when none is selected. turnsValid is false when the turns are not a whole number in range.</summary>
     private ResumeChoice? Selected(out bool turnsValid)
@@ -123,10 +142,22 @@ public partial class ResumePrompt : Window
     }
 
     /// <summary>
-    /// Says what the selected choice costs and sends, before the owner presses Resume. It also shows only the options that apply to
-    /// the choice: the summary levels for a summary, and the turns for anything but a full resume.
+    /// Runs when the choice, its level or its turns change. A preview on screen is then stale, so it is taken away. A kept summary stays only
+    /// while its level is the one chosen. The model and the effort do not change the text, so they do not come here.
     /// </summary>
     private void UpdateCost()
+    {
+        HidePreview();
+        if (KeptSummary is { } kept && !kept.MatchesLevel(SelectedLevelOrNull())) KeptSummary = null;
+        Refresh();
+    }
+
+    /// <summary>
+    /// Says what the selected choice costs and sends, before the owner presses Resume. It also shows only the options that apply to
+    /// the choice: the summary levels for a summary, and the turns for anything but a full resume. And it sets what can be pressed: while a
+    /// preview is being made, the choice, the Resume split button and its menu are off.
+    /// </summary>
+    private void Refresh()
     {
         var choice = Selected(out var turnsValid);
         LevelBlock.Visibility = SummaryChoice.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
@@ -134,19 +165,176 @@ public partial class ResumePrompt : Window
 
         var sizes = turnsValid ? string.Empty : $" Enter a whole number from 0 to {MaxTurns} for the turns.";
         var runs = choice is null ? string.Empty : $" The new session runs at {choice.Model} {choice.Effort}.";
-        CostText.Text = (choice?.Mode switch
+        CostText.Text = _previewing
+            ? (NeedsSummaryCall(choice) ? "Summarising: one model call…" : "Building the prompt…")
+            : (choice?.Mode switch
+            {
+                ResumeMode.Full =>
+                    $"Resuming in full re-reads all of the context, about {_contextTokens:N0} tokens, before the first reply. " +
+                    "A warm cache makes that cheap; a cold one charges it at full price. Nothing runs until you press Resume.",
+                ResumeMode.Summary =>
+                    $"One Haiku call (low effort) reads your messages and Claude's replies, not the tool output, up to about " +
+                    $"{ResumeText.SummaryInputChars / 4:N0} tokens, and writes the {(choice.Level ?? SummaryLevel.Normal).ToString().ToLowerInvariant()} " +
+                    "summary. Then a new session starts from it and from the last turns.",
+                ResumeMode.TailOnly =>
+                    "No model call. The last turns are copied word for word into a new session.",
+                _ => "Choose one of the ways to continue.",
+            }) + runs + sizes;
+
+        var free = !_previewing;
+        Enable(FullChoice, free);
+        Enable(SummaryChoice, free);
+        Enable(TailChoice, free);
+        Enable(TurnsBox, free);
+        foreach (var segment in LevelRow.Children.OfType<RadioButton>()) Enable(segment, free);
+        ResumeButton.IsEnabled = free;
+        ResumeMenuButton.IsEnabled = free;
+
+        var canBuild = free && choice is not null && choice.Mode != ResumeMode.Full && turnsValid && _previewAsync is not null;
+        PreviewItem.IsEnabled = canBuild;
+        CopyItem.IsEnabled = canBuild;
+        PreviewItem.ToolTip = MenuTip(choice, turnsValid, copy: false);
+        CopyItem.ToolTip = MenuTip(choice, turnsValid, copy: true);
+    }
+
+    /// <summary>True when the choice needs a model call that has not been made yet: a summary, and no kept summary of its level.</summary>
+    private bool NeedsSummaryCall(ResumeChoice? choice) =>
+        choice?.Mode == ResumeMode.Summary && !(KeptSummary?.MatchesLevel(choice.Level) ?? false);
+
+    /// <summary>The tooltip of the Preview and the Copy items: why an item is off, or what it does, and whether it makes the model call.</summary>
+    private string MenuTip(ResumeChoice? choice, bool turnsValid, bool copy)
+    {
+        if (choice?.Mode == ResumeMode.Full) return "Resuming in full sends no prompt.";
+        if (!turnsValid) return "Enter a whole number of turns first.";
+        if (choice is null || _previewAsync is null) return "There is no prompt to preview here.";
+        if (choice.Mode == ResumeMode.TailOnly)
         {
-            ResumeMode.Full =>
-                $"Resuming in full re-reads all of the context, about {_contextTokens:N0} tokens, before the first reply. " +
-                "A warm cache makes that cheap; a cold one charges it at full price. Nothing runs until you press Resume.",
-            ResumeMode.Summary =>
-                $"One Haiku call (low effort) reads your messages and Claude's replies, not the tool output, up to about " +
-                $"{ResumeText.SummaryInputChars / 4:N0} tokens, and writes the {(choice.Level ?? SummaryLevel.Normal).ToString().ToLowerInvariant()} " +
-                "summary. Then a new session starts from it and from the last turns.",
-            ResumeMode.TailOnly =>
-                "No model call. The last turns are copied word for word into a new session.",
-            _ => "Choose one of the ways to continue.",
-        }) + runs + sizes;
+            return copy
+                ? "Copies the last turns, word for word, to the clipboard. No model call, and nothing is sent to a session."
+                : "Shows the last turns, word for word, as the new session would get them. No model call.";
+        }
+        if (!NeedsSummaryCall(choice))
+        {
+            return copy
+                ? "Copies the start text, with the summary already made. No model call."
+                : "Shows the start text, with the summary already made. No model call.";
+        }
+        return copy
+            ? "Makes the summary now (one Haiku call), keeps it for Resume, and copies the start text to the clipboard. Nothing is sent to a session."
+            : "Makes the summary now (one Haiku call) and keeps it: Resume then uses it without a second call. Cancelling after this still spends the call.";
+    }
+
+    private static void Enable(UIElement element, bool enabled)
+    {
+        element.IsEnabled = enabled;
+        element.Opacity = enabled ? 1 : 0.5;
+    }
+
+    /// <summary>The Preview item: builds the prompt and shows it. Nothing is started.</summary>
+    private async void PreviewItem_Click(object sender, RoutedEventArgs e) => await BuildAsync(copy: false);
+
+    /// <summary>The Copy item: builds the prompt, shows it, and puts it on the clipboard. Nothing is sent to a session.</summary>
+    private async void CopyItem_Click(object sender, RoutedEventArgs e) => await BuildAsync(copy: true);
+
+    /// <summary>The narrow part of the split button: opens the menu under it.</summary>
+    private void ResumeMenuButton_Click(object sender, RoutedEventArgs e)
+    {
+        ResumeMenu.PlacementTarget = ResumeMenuButton;
+        ResumeMenu.IsOpen = true;
+    }
+
+    /// <summary>
+    /// Builds the prompt for the chosen way, through the window's method that the start uses, shows it, and copies it when asked. A failure is
+    /// shown in the pane and the dialog stays open. A build cancelled because the dialog closed shows nothing.
+    /// </summary>
+    private async Task BuildAsync(bool copy)
+    {
+        var choice = Selected(out var turnsValid);
+        if (_previewAsync is null || _previewing || choice is null || choice.Mode == ResumeMode.Full || !turnsValid) return;
+
+        _previewing = true;
+        var cts = new CancellationTokenSource();
+        _previewCts = cts;
+        Refresh();
+        try
+        {
+            var preview = await _previewAsync(choice, KeptSummary, cts.Token);
+            if (preview.Summary is { } summary) KeptSummary = summary;
+            ShowPreview(preview);
+            if (copy) CopyText(preview.Text);
+        }
+        catch (OperationCanceledException)
+        {
+            // The dialog closed while the summary was being made. The window is gone, so nothing is shown.
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex.Message);
+        }
+        finally
+        {
+            _previewing = false;
+            _previewCts = null;
+            cts.Dispose();
+            Refresh();
+        }
+    }
+
+    /// <summary>Shows a built prompt: its size line (in the danger colour when it does not fit), and the text, read-only.</summary>
+    private void ShowPreview(ResumePreview preview)
+    {
+        PreviewHeader.Text = ResumePreviewText.Header(preview.Text.Length, preview.CutCharacters, preview.Fits);
+        PreviewHeader.SetResourceReference(TextBlock.ForegroundProperty, preview.Fits ? "PromptMuted" : "UiDanger");
+        PreviewText.Text = preview.Text;
+        PreviewText.Visibility = Visibility.Visible;
+        PreviewNote.Visibility = Visibility.Collapsed;
+        PreviewBlock.Visibility = Visibility.Visible;
+        PreviewText.CaretIndex = 0;
+        PreviewText.ScrollToHome();
+    }
+
+    /// <summary>Shows why the prompt could not be built. The dialog stays open, so the owner can change the choice or cancel.</summary>
+    private void ShowError(string message)
+    {
+        PreviewHeader.Text = $"The prompt could not be built: {message}";
+        PreviewHeader.SetResourceReference(TextBlock.ForegroundProperty, "UiDanger");
+        PreviewText.Text = string.Empty;
+        PreviewText.Visibility = Visibility.Collapsed;
+        PreviewNote.Visibility = Visibility.Collapsed;
+        PreviewBlock.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>Puts the prompt on the clipboard and says so under the text. The clipboard is the only place it goes.</summary>
+    private void CopyText(string text)
+    {
+        try
+        {
+            Clipboard.SetText(text);
+            PreviewNote.Text = "Copied to the clipboard. Nothing was sent to a session.";
+            PreviewNote.SetResourceReference(TextBlock.ForegroundProperty, "PromptMuted");
+        }
+        catch (ExternalException)
+        {
+            // Another program holds the clipboard: the owner can press Copy again.
+            PreviewNote.Text = "The clipboard is busy. Press Copy the prompt again.";
+            PreviewNote.SetResourceReference(TextBlock.ForegroundProperty, "UiDanger");
+        }
+        PreviewNote.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>Takes the preview away. The text is cleared too, so no stale prompt stays in the dialog.</summary>
+    private void HidePreview()
+    {
+        PreviewBlock.Visibility = Visibility.Collapsed;
+        PreviewText.Text = string.Empty;
+        PreviewNote.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>A summary still being made is cancelled with the dialog: nothing waits for it.</summary>
+    protected override void OnClosed(EventArgs e)
+    {
+        _previewCts?.Cancel();
+        base.OnClosed(e);
     }
 
     private void Resume_Click(object sender, RoutedEventArgs e)

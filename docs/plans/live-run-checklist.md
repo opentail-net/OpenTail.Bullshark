@@ -198,3 +198,12 @@ Method: the built App launched with `--state <scratch>` `--no-pass` (no claude c
 - [ ] Q3 transcript: open the largest transcript and press "Load earlier" about six times: the lines past 1,000 are released and the one muted line under the header says which lines are shown; a find or a jump to a released line shows it again. Note the `transcript earlier page` lines in the log.
 - [ ] Q5 rail: scroll the rail down, wait two minutes with nothing happening: the rail keeps its scroll position and the selected row. A new session or a changed state redraws it.
 - [ ] Q6 Settings: change a toast switch or the quiet hours in Settings and check that the next pass announces by the new setting (the toast or the log line), and that the Settings page shows it at once.
+
+## Resume preview (docs/plans/resume-preview-2026-11-20.md)
+- [ ] R1 preview, tail: open Resume on a real past session (History, then Resume). The Resume button has a narrow "▾" part on its right; open it and choose "Preview the prompt…". The pane shows "Prompt the new session starts with: about N tokens (C characters)." and the text, read-only, with no model call. The text starts with "Continues session: <that session's id>".
+- [ ] R2 preview, summary: choose "From a summary", a level, then ▾ > "Preview the prompt…". The tooltip says it makes the one Haiku call. Press Resume afterwards: the log has one `summary saved: …` line for the preview and no second one, and the new session starts from the same summary text as the preview.
+- [ ] R3 copy: ▾ > "Copy the prompt", then paste into a text editor: the same text as the preview. Nothing is typed into any session.
+- [ ] R4 full: choose "In full": both menu items are off, and their tooltips say "Resuming in full sends no prompt."
+- [ ] R5 stale: after a preview, change the level or the turns: the pane hides. Change the level, then back: the summary is made again (a new call, expected).
+- [ ] R6 log: `logs\app.log` has `preview built, N chars` lines and no transcript text.
+- [ ] R7 look: the split button matches the other green buttons in both themes, and the ▾ menu opens under the button without leaving the dialog's screen.
