@@ -29,7 +29,7 @@ foreach ($s in $cc.sessions) {
     $ccTotals.cacheRead += $s.cacheReadTokens
 }
 
-$exe = Join-Path $repo 'src\OpenTail.Bullshark.Supervisor\bin\Debug\net10.0\OpenTail.Bullshark.Supervisor.dll'
+$exe = (@(Get-ChildItem -Path (Join-Path $repo 'src\OpenTail.Bullshark.Supervisor\bin\Debug\net1*\OpenTail.Bullshark.Supervisor.dll') -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -ExpandProperty FullName) + @(Join-Path $repo 'src\OpenTail.Bullshark.Supervisor\bin\Debug\net11.0\OpenTail.Bullshark.Supervisor.dll'))[0]
 if (-not (Test-Path $exe)) { throw "Build the supervisor first: $exe not found" }
 $ours = (& dotnet $exe --usage-report | Out-String) | ConvertFrom-Json
 $ourTotals = [ordered]@{ input = $ours.inputTokens; output = $ours.outputTokens; cacheWrite = $ours.cacheCreationTokens; cacheRead = $ours.cacheReadTokens }

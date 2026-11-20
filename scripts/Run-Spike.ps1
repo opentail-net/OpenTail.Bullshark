@@ -12,7 +12,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
-$exe = Join-Path $repo 'src\OpenTail.Bullshark.App\bin\Debug\net10.0-windows\OpenTail.Bullshark.App.exe'
+$exe = (@(Get-ChildItem -Path (Join-Path $repo 'src\OpenTail.Bullshark.App\bin\Debug\net1*-windows10.0.19041.0\OpenTail.Bullshark.App.exe') -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -ExpandProperty FullName) + @(Join-Path $repo 'src\OpenTail.Bullshark.App\bin\Debug\net11.0-windows10.0.19041.0\OpenTail.Bullshark.App.exe'))[0]
 if (-not (Test-Path $exe)) { throw "Build the app first: $exe not found" }
 
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null

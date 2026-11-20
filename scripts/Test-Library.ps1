@@ -10,7 +10,7 @@
 #
 # Each check prints PASS or FAIL. The script exits with 1 if any check fails. -Keep leaves the scratch folder for a look.
 param(
-    [string]$Exe = (Join-Path (Split-Path -Parent $PSScriptRoot) 'src\OpenTail.Bullshark.App\bin\Debug\net10.0-windows\OpenTail.Bullshark.App.exe'),
+    [string]$Exe = ((@(Get-ChildItem -Path (Join-Path (Split-Path -Parent $PSScriptRoot) 'src\OpenTail.Bullshark.App\bin\Debug\net1*-windows10.0.19041.0\OpenTail.Bullshark.App.exe') -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -ExpandProperty FullName) + @(Join-Path (Split-Path -Parent $PSScriptRoot) 'src\OpenTail.Bullshark.App\bin\Debug\net11.0-windows10.0.19041.0\OpenTail.Bullshark.App.exe'))[0]),
     [string]$Shots = (Join-Path $env:TEMP 'bullshark-library-shots'),
     [switch]$Keep
 )

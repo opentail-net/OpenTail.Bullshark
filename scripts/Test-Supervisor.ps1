@@ -8,7 +8,7 @@
 #
 # Each check prints PASS or FAIL. The script exits with 1 if any check fails. -Keep leaves the scratch folder for a look.
 param(
-    [string]$Exe = (Join-Path (Split-Path -Parent $PSScriptRoot) 'src\OpenTail.Bullshark.Supervisor\bin\Debug\net10.0\OpenTail.Bullshark.Supervisor.exe'),
+    [string]$Exe = ((@(Get-ChildItem -Path (Join-Path (Split-Path -Parent $PSScriptRoot) 'src\OpenTail.Bullshark.Supervisor\bin\Debug\net1*\OpenTail.Bullshark.Supervisor.exe') -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -ExpandProperty FullName) + @(Join-Path (Split-Path -Parent $PSScriptRoot) 'src\OpenTail.Bullshark.Supervisor\bin\Debug\net11.0\OpenTail.Bullshark.Supervisor.exe'))[0]),
     [switch]$Keep
 )
 $ErrorActionPreference = 'Stop'

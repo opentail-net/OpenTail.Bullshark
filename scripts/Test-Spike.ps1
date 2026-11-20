@@ -7,7 +7,7 @@
 # Each test prints PASS or FAIL. The script exits with 1 if any test fails.
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
-$exe = Join-Path $repo 'src\OpenTail.Bullshark.App\bin\Debug\net10.0-windows\OpenTail.Bullshark.App.exe'
+$exe = (@(Get-ChildItem -Path (Join-Path $repo 'src\OpenTail.Bullshark.App\bin\Debug\net1*-windows10.0.19041.0\OpenTail.Bullshark.App.exe') -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -ExpandProperty FullName) + @(Join-Path $repo 'src\OpenTail.Bullshark.App\bin\Debug\net11.0-windows10.0.19041.0\OpenTail.Bullshark.App.exe'))[0]
 $work = Join-Path $env:TEMP ('bullshark-test-work-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
 New-Item -ItemType Directory -Force $work | Out-Null
 $results = New-Object System.Collections.Generic.List[object]
