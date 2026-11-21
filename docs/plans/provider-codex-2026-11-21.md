@@ -20,7 +20,7 @@ Accepted and written into the plan below; the plan is **not ready for a coder un
 ## Decisions taken (owner, 2026-11-21) and assumptions
 - Dropdown swaps the rail only; no mixed lists. (Owner.)
 - Later providers must fit the same seam. (Owner.) Design the interface against **three** providers on paper (Claude, Codex, one of opencode/Copilot/aider) so it is not shaped by two.
-- A1 (assumption): Codex has no `--bg` equivalent. Its live rows are **terminal tabs the window owns** (a Codex process in an embedded terminal), not supervised background sessions. Stage C ends there; supervision is stage E and optional.
+- A1 (assumption, **corrected 2026-11-21 from evidence**): the old wording "Codex has no `--bg` equivalent" was wrong. Codex has its own background mechanisms (a shared app-server daemon, seen in probe P03; `codex queue`, in its help text), and the owner's machine has the Codex desktop app. This app still does not use them. Its Codex rows are history from disk, and its live rows are **terminal tabs the window owns**. Stage C ends there; supervision is stage E and optional. See `docs/research/codex-evidence/README.md` for what has been checked.
 - A2 (assumption): the supervisor loop, `claude stop/respawn`, trust, daemon health and limit-wake stay Claude-only and are hidden for Codex by capability flags.
 - A3 (decision for the owner, section "Open decisions"): adding packages to Core (zstd, SQLite).
 
@@ -180,3 +180,46 @@ Probes: a net11.0 console app in the session scratchpad (structure only: line co
 - Orchestrator (this session) writes the map (A1) and the interfaces (A2) itself: they are the contracts. Haiku coder gets A3-A6 as one batch with tests, then B (spike, report only), then C as one batch.
 - Sonnet review after A (diff range, contracts table, key migration) and after C. Findings go in `provider-codex-2026-11-21-review-notes.md`.
 - Estimate (range, driven by A1's count and B's dependency result): A about 1-2 days coder time; B half a day; C 2-4 days; D each about 1 day; E a week or more.
+
+## Parity with the Claude rail (2026-11-21; the owner asked for the Codex side to follow the Claude design)
+
+Sources (read these first): `docs/research/rail-feature-inventory.md` (every Claude feature, with its Codex status), `docs/research/codex-evidence/README.md` (what has been run, with versions: Codex 0.171.0, Claude 2.1.330), `docs/research/claude-docs-index.md` (Claude's documentation), `docs/research/app-restart-behaviour.md` (restarts, from the code).
+
+**Contracts this must satisfy.** Codex features go through the provider seam only: `IHistorySource` (rows), `ITerminalOpener` (tabs), `ITranscriptReader.ReadPageAsync` (transcript, built in C2, not yet shown). A shared control reads history through the provider, never through Claude's marks. A Codex feature that needs supervision is hidden by `ProviderFeatures.Has<ISupervisedLauncher>`, not by a new flag. Claude rows keep their current behaviour until the shared-control step (P10) changes them in a separate commit.
+
+**Decisions taken (earlier, owner):** the Codex side follows the Claude blueprints; a shared control is welcome where it reduces churn, and the author says so when it is worse; each platform's summaries use its own model; the model is chosen by the owner later (P9 is the first step of that).
+
+**Steps (checkboxes; each ends green, commits, and pushes when its tests pass):**
+- [x] P0 Text fix: the Codex live heading and tooltip wrongly said Codex has no background sessions and runs only in this window's tabs. Corrected in commit `27e1d84`. Tests: Core 2296 (net11.0) and 2284 (net10.0); App 68 (net11.0) and 68 (net10.0), all exit 0. Why: the owner's machine runs the Codex app-server daemon and the desktop app (probes P01 and P03).
+- [ ] P1 **Bug:** under Codex the command palette still lists Claude sessions and opens them (`App/SessionWindow.Palette.cs:84-158`; the only provider reference in that file is line 231, a tab check). Fix: filter palette session entries and their actions by the current provider. Test: under Codex, no palette entry carries a `claude:` key. Why: a Codex user can open Claude sessions and data from the Codex view. Checked by grep on 2026-11-21 and by the inventory's read; not yet run on screen.
+- [ ] P2 **Bug:** Insights (`App/SessionWindow.Away.cs`, opened from `xaml:46-48`) has no provider reference, so under Codex it reads and shows Claude marks and data. Blocked on owner decision O1 (hide or label). Do not build before O1.
+- [ ] P3 Plan figure on Codex rows: Edit already saves `PlanFile` for `codex:` keys (`App/SessionWindow.Library.cs:210`), but the row reads only Claude's marks (`Library.cs:218`). Fix: read the plan figure through the provider's marks. Shared control.
+- [ ] P4 Pin and the Pinned group for Codex rows: the library already keeps `codex:` marks (`Library.cs:27-28`); add the row menu item (`Codex.cs:235-244`) and the group (`LibraryRail.cs:14, 30-47`). Shared control.
+- [ ] P5 Tag filter and group by tag for Codex history (`Rail.cs:152-182, 184-207`); Edit already writes tags (`Codex.cs:242`). Shared control.
+- [ ] P6 Search of past Codex sessions: the box is disabled under Codex (`Codex.cs:88-89`). First step: search titles, names, tags and notes (cheap, from marks and the index). Second step, later: message text, which needs the rollout reader on every session; the reader has a 16 MB per-line cap and skips bad lines. Blocked on owner decision O3 for the second step.
+- [ ] P7 Transcript view of a past Codex session: `ReadPageAsync` exists in Core and is tested (C2); the App view and find are not built (C-D4). Shared with Claude's transcript tab (`Tabs.cs:156-159`).
+- [ ] P8 Summaries (D2): `CodexSummarizer` in Core runs `codex exec -m gpt-6-luna --ephemeral -s read-only` with the transcript on stdin, in the session's folder, with a timeout and cancellation, and logs no transcript text. Tests use a fake runner. Evidence: probe P05 shows the call works on a three-word prompt (exit 0, 3.8 s, 4 events). Blocked on owner decision O4 before any transcript is sent, because a long transcript on Luna may use a large share of the account's allowance.
+- [ ] P9 Launcher model dropdown (D3): the list comes from `model/list` with hidden entries removed (probe P04 shows `gpt-6-luna` default, `gpt-5.6-terra`, `gpt-5.6-luna`); the default is the entry with `isDefault`; the chosen id is passed as `-m` after a pattern check (`[a-z0-9][a-z0-9.-]*`). Plan-dependent: Sol is not offered on the basic plan, so the dropdown shows only what the account returns. Build after the dropdown is needed; no model is hard-coded.
+- [ ] P10 Shared controls (history row, row menu, folder group header, provider dropdown): build for Codex first. Then migrate Claude's history rows in a separate commit, with before and after screenshots (the screenshot script needs `pwsh`). Revert if anything looks different. Why: the owner said keep the design close to Claude's, and a shared control reduces churn; the author's view is that it is worth it only if the Claude rows stay pixel-identical.
+- [ ] P11 Codex's collapsed "Archived (n)" group aligned with Claude's Archived filter (`Codex.cs:178-185`; Claude's filter is in the view menu, `Rail.cs:55-62`). Shared.
+- [ ] P12 Codex tab close: today it closes the terminal and does not stop the process (`Codex.cs:375-381`). Blocked on owner decision O2.
+
+**Not planned for Codex (Claude-only by nature, from the inventory):** Needs you with acknowledge and snooze (needs a supervisor); live rows, state glyphs, Stop and Respawn; limit wake and limit status; magic rename; changes and ready-for-review; own window. Codex is not supervised, so none of these apply.
+
+**Owner decisions needed (the work above waits for these):**
+- O1 Insights and Settings under Codex: hide Claude data, or label it as Claude's (P2).
+- O2 Closing a Codex tab: should it end the `codex` process, or only close the window's terminal as today (P12)? The research did not settle whether the process ends with the terminal (ConPTY disposal not read).
+- O3 Codex search of message text: allowed to read every rollout on the machine (local only, but a privacy-sensitive read)? (P6, second step.)
+- O4 Summaries: may the App send a session's transcript to Luna, and with what cap per session and per day? The account's usage window read 73% used on 2026-11-21 (probe P04). (P8.)
+- O5 Hooks for Needs-you on Codex (`PermissionRequest` and `Stop`, documented; `SessionStart` for the thread id before the first message). Installing or trusting a hook is the owner's decision. An earlier attempt to pass a trust-bypass flag was refused by the permission check and must not be repeated.
+- O6 Claude supervision continues while a Codex view is shown (`App/SessionWindow.xaml.cs:446`: the pass has no provider check). Is that intended? It is the right behaviour for Claude sessions in the background, but the owner should confirm it.
+- O7 Running Codex through the window's own app-server with `--remote` (the documented route to live status). This needs the owner's test (see `codex-evidence/README.md`, owner tests) before any design.
+
+**Owner tests (cannot be run by an agent; see the research files for the reasons):** the seven restart tests in `app-restart-behaviour.md`; the Codex owner tests in `codex-evidence/README.md` (daemon start and stop with and without `--no-daemon`; an approval wait in a plain terminal; a Codex tab opened through the window's own server); and checklist C13 in `docs/plans/live-run-checklist.md`.
+
+**Unresolved facts that change the plan if they go the other way:**
+- Whether a Codex process survives a window close (`xaml.cs:733-737`).
+- Whether `codex resume` restores the chat (only the command line is built, per `CodexTerminalOpenerTests`).
+- Whether a `done` Claude session that leaves the listing is resumed by the App (`SupervisorPolicy` has no `done` guard; restart doc section 2). This one matters now, because it can cause a resume the owner did not ask for.
+
+**Status (sitrep):** 1 of 13 steps done (P0). Counted by steps in this section. Blocked: P2, P8, P12 on owner decisions; P6 second step on O3. Next: P1 (palette filter), a small coder-sized fix with a test, and no owner decision needed. Not pushed: the Codex evidence-library commit `557402b` has no tests and is waiting for approval, and the next push would include it.

@@ -39,3 +39,10 @@ Owner tests (not run by probes, because they change processes or need the owner'
 - `probes/run-probes.ps1`: the Codex probes. Run `pwsh -File probes\run-probes.ps1` (no model calls), or add `-IncludeModelCall` for P05.
 - `results/<date>-run.md`: the sanitised log of each run.
 - `results/help/`: saved `--help` output for the commands we use.
+- `results/claude-help/`: saved `claude --help` output (Claude 2.1.330).
+
+## Related research (one folder up)
+
+- `docs/research/claude-docs-index.md`: the Claude Code documentation for agents, the daemon, states, restarts, hooks and limits, with URLs, quotes and status labels.
+- `docs/research/app-restart-behaviour.md`: how the App behaves across restarts, from the code, with live tests for the owner.
+- `docs/research/rail-feature-inventory.md`: the rail feature inventory, Claude and Codex side by side.
