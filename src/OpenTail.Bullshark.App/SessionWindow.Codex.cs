@@ -204,7 +204,7 @@ public partial class SessionWindow
         _codexSessions
             .Where(session => CodexPlaceOf(session) == CodexPlace.FolderGroups)
             .GroupBy(session => session.Folder ?? string.Empty, StringComparer.OrdinalIgnoreCase)
-            .Select(group => new CodexFolder(group.Key, group.OrderByDescending(s => s.LastActivity ?? DateTimeOffset.MinValue).ToList()))
+            .Select(group => new CodexFolder(group.Key, CodexRailGroups.Sorted(group).ToList()))
             .OrderByDescending(folder => folder.Sessions[0].LastActivity ?? DateTimeOffset.MinValue)
             .ToList();
 

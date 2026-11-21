@@ -76,7 +76,7 @@ internal static class CodexRailGroups
     /// The order inside a group: the rule of <see cref="HistoryOrder.Sorted"/>, for a Codex summary. Main sessions first, subagents last, and the
     /// newest first inside each part.
     /// </summary>
-    private static IEnumerable<SessionSummary> Sorted(IEnumerable<SessionSummary> sessions) =>
+    internal static IEnumerable<SessionSummary> Sorted(IEnumerable<SessionSummary> sessions) =>
         sessions
             .OrderBy(session => session.IsSubagent == true)
             .ThenByDescending(session => session.LastActivity ?? DateTimeOffset.MinValue);
