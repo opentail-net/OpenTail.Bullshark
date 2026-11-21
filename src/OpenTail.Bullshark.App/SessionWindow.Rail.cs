@@ -10,6 +10,7 @@ using OpenTail.Bullshark.Core.Cache;
 using OpenTail.Bullshark.Core.Claude;
 using OpenTail.Bullshark.Core.Folders;
 using OpenTail.Bullshark.Core.Library;
+using OpenTail.Bullshark.Core.Providers;
 using OpenTail.Bullshark.Core.Search;
 using OpenTail.Bullshark.Core.Supervisor;
 using OpenTail.Bullshark.Core.Ui;
@@ -359,6 +360,7 @@ public partial class SessionWindow
         _setup?.ApplyTheme(palette);
         _search.ApplyTheme(palette);
         _transcript.ApplyTheme(palette);
+        foreach (var codexView in _codexTranscripts.Values) codexView.ApplyTheme(palette);
         _changes.ApplyTheme(palette);
         _timeline.ApplyTheme(palette);
         _limits.ApplyTheme(palette);
@@ -777,6 +779,14 @@ public partial class SessionWindow
             return;
         }
 
+        // A Codex terminal tab keeps its pane when no row is selected (found reading the code, 2026-11-21, not yet seen on screen). Codex's rows are not
+        // Claude's session rows, so the policy below would show the setup page over the terminal, or select a folder. Claude's policy is unchanged.
+        if (_activeTab is { Kind: TabKind.Session } activeTab && activeTab.Provider == ProviderId.Codex)
+        {
+            _selected = null;
+            return;
+        }
+
         var fallback = AllItems(Rail.Items).FirstOrDefault(i => i.Tag is RailTag { Kind: RailKind.Session })
                     ?? AllItems(Rail.Items).FirstOrDefault(i => i.Tag is RailTag { Kind: RailKind.Trust })
                     ?? AllItems(Rail.Items).FirstOrDefault(i => i.Tag is RailTag { Kind: RailKind.Folder });
@@ -818,6 +828,8 @@ public partial class SessionWindow
         TabKind.Changes => PaneKind.Changes,
         TabKind.Insights => PaneKind.Insights,
         TabKind.Settings => PaneKind.Settings,
+        // A Codex transcript opens from a row's menu, with no row selected: like a Claude transcript, it keeps its pane when the rail refreshes.
+        TabKind.CodexTranscript => PaneKind.Transcript,
         _ => null,
     };
 

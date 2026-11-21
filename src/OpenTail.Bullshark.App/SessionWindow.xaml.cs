@@ -706,6 +706,11 @@ public partial class SessionWindow : Window
         _transcript.Visibility = ReferenceEquals(_transcript, element) ? Visibility.Visible : Visibility.Hidden;
         // The Night page refreshes itself only while it is the page shown (night batch N6).
         if (!ReferenceEquals(_insights, element)) SetNightLive(false);
+        // The Codex transcript tabs (parity P7): each is shown only when it is the element.
+        foreach (var codexView in _codexTranscripts.Values)
+        {
+            codexView.Visibility = ReferenceEquals(codexView, element) ? Visibility.Visible : Visibility.Hidden;
+        }
         _setup.Visibility = ReferenceEquals(_setup, element) ? Visibility.Visible : Visibility.Hidden;
         _search.Visibility = ReferenceEquals(_search, element) ? Visibility.Visible : Visibility.Hidden;
         _changes.Visibility = ReferenceEquals(_changes, element) ? Visibility.Visible : Visibility.Hidden;
@@ -1026,7 +1031,9 @@ public sealed record LaunchOptions(
     /// <summary>--codex-resume summary (test only): that screen opens in the summary mode and presses Make summary once, for the screenshots.</summary>
     bool CodexResumeSummary = false,
     /// <summary>--codex-view (test only): the Codex rail starts on this view (all, history or archived), for the screenshots (parity P11).</summary>
-    string? CodexViewName = null)
+    string? CodexViewName = null,
+    /// <summary>--codex-transcript (test only): once the Codex history has loaded, the transcript of its first session opens, for the screenshots (parity P7).</summary>
+    bool CodexTranscript = false)
 {
     /// <summary>The folder of the transcripts: the owner's, unless a test home is given (--claude-home).</summary>
     public string ProjectsRoot => ClaudeHome is null ? TranscriptReader.DefaultProjectsRoot : TestHome.ProjectsRootUnder(ClaudeHome);
@@ -1104,7 +1111,8 @@ public sealed record LaunchOptions(
             RailScrollTo: railScroll,
             CodexResume: codexResumeAt >= 0,
             CodexResumeSummary: codexResumeAt >= 0 && codexResumeAt + 1 < args.Length && args[codexResumeAt + 1] == "summary",
-            CodexViewName: codexView);
+            CodexViewName: codexView,
+            CodexTranscript: args.Contains("--codex-transcript"));
     }
 }
 

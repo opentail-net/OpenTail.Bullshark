@@ -1,6 +1,7 @@
 # Codex resume screen, screenshots (steps R7 of docs/plans/provider-codex-2026-11-21.md). A copy of the pattern of Test-NewScreens.ps1, for the two
 # screens of the Codex resume dialog: "From the last turns" (dark) and "From a Codex summary" with Make summary pressed (light), and the Codex
-# history grouped by tag (dark, --rail-group tag: tags P5), and the Codex rail on its Archived view (light, --codex-view archived: parity P11).
+# history grouped by tag (dark, --rail-group tag: tags P5), the Codex rail on its Archived view (light, --codex-view archived: parity P11), and the
+# transcript of the first Codex session (light, --codex-transcript: parity P7; the injected context must not show).
 #
 # Everything the App reads is a scratch fixture, built by this script in -Out:
 #   - a state folder (the App's state.json and ui.json; ui.json picks Codex as the window's provider);
@@ -168,7 +169,9 @@ $screens = @(
     # The Codex rail grouped by tag (--rail-group tag): two sessions, the first with two tags, so it is under both tag groups.
     @{ Name = 'codex-rail-tag-dark'; Theme = 'Dark'; Options = @('--rail-group', 'tag'); Tags = $true },
     # The Codex rail on its Archived view (--codex-view archived, parity P11): the one session is archived, so the view lists it in its folder.
-    @{ Name = 'codex-rail-archived-light'; Theme = 'Light'; Options = @('--codex-view', 'archived'); Archived = $true }
+    @{ Name = 'codex-rail-archived-light'; Theme = 'Light'; Options = @('--codex-view', 'archived'); Archived = $true },
+    # The transcript of the first Codex session (--codex-transcript, parity P7): the four messages, with the injected context left out.
+    @{ Name = 'codex-transcript-light'; Theme = 'Light'; Options = @('--codex-transcript'); Transcript = $true }
 )
 
 $originalPath = $env:PATH
@@ -219,7 +222,7 @@ try {
         $expectedSessions = if ($screen.Tags) { 2 } else { 1 }
         $historyOk = $log -match "codex history read: $expectedSessions sessions"
         # The grouping is not logged (tag text stays out of the log), so the tag screen's step is its picture, which a person looks at.
-        $stepOk = if ($screen.Summary) { $log -match 'codex summary made: \d' } elseif ($screen.Tags) { $true } elseif ($screen.Archived) { $log -match 'codex view at start: archived' } else { $log -match 'codex start text built: \d' }
+        $stepOk = if ($screen.Summary) { $log -match 'codex summary made: \d' } elseif ($screen.Tags) { $true } elseif ($screen.Archived) { $log -match 'codex view at start: archived' } elseif ($screen.Transcript) { $log -match 'codex transcript read: 4 messages' } else { $log -match 'codex start text built: \d' }
         if ($process.ExitCode -eq 0 -and $pictureOk -and $historyOk -and $stepOk) {
             Write-Output "PASS ${name}: exit 0, history read, the step ran, $png"
         } else {

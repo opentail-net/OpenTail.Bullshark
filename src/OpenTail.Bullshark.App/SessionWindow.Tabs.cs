@@ -37,6 +37,12 @@ public partial class SessionWindow
 
         /// <summary>Settings: General, Naming and Claude (2026-11-18). One tab, with the key "settings".</summary>
         Settings,
+
+        /// <summary>
+        /// A past Codex session's messages, read-only (parity P7, T-D3). Key: the session id, with the Codex provider. Its view is in
+        /// <see cref="_codexTranscripts"/>. Claude's <see cref="Transcript"/> tab is a different kind and is not used for Codex.
+        /// </summary>
+        CodexTranscript,
     }
 
     internal sealed class OpenTab(TabKind kind, string key, string title, ProviderId? provider = null)
@@ -180,6 +186,10 @@ public partial class SessionWindow
                 ShowOnly(_settings);
                 RefreshSettingsPage();
                 break;
+
+            case TabKind.CodexTranscript:
+                if (_codexTranscripts.TryGetValue(KeyOf(tab), out var codexView)) ShowOnly(codexView);
+                break;
         }
     }
 
@@ -197,6 +207,7 @@ public partial class SessionWindow
         var next = TabPolicy.ActiveAfterClose(_tabs.ToList(), index, IsRight);
         _tabs.Remove(tab);
         if (tab.Kind == TabKind.Session && tab.Provider == ProviderId.Claude) _hiddenSessions.Add(KeyOf(tab));
+        if (tab.Kind == TabKind.CodexTranscript) RemoveCodexTranscript(KeyOf(tab));
         if (tab.Kind == TabKind.Search) ClearSearchFilter();
         if (!ReferenceEquals(_activeTab, tab))
         {

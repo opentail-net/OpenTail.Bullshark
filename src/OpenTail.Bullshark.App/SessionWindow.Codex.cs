@@ -12,8 +12,8 @@ namespace OpenTail.Bullshark.App;
 
 /// <summary>
 /// Codex in the window (stage C3, C4): the provider dropdown at the top of the rail, the Codex rows under it, and the Codex terminal tabs.
-/// The Codex rows are history only (C-D4): a row resumes in a terminal tab, and no transcript is shown. Claude's tabs and records are not changed
-/// by any of this: they stay as they were, whatever the dropdown shows. Codex has no supervisor (B5), so its rows are never live.
+/// The Codex rows are history only (C-D4): a row resumes in a terminal tab, and its menu can open a read-only transcript (parity P7).
+/// Claude's tabs and records are not changed by any of this: they stay as they were, whatever the dropdown shows. Codex has no supervisor (B5), so its rows are never live.
 /// </summary>
 public partial class SessionWindow
 {
@@ -399,8 +399,8 @@ public partial class SessionWindow
     }
 
     /// <summary>
-    /// The right-click menu of a Codex row (D1): resume, pin or unpin, archive or unarchive, and the edit dialog for the name, tags, note and colour.
-    /// The pin order is the Claude row's (Library.cs RowMenu): Pin before Archive.
+    /// The right-click menu of a Codex row (D1): resume, view the transcript (parity P7), pin or unpin, archive or unarchive, and the edit dialog for the
+    /// name, tags, note and colour. The pin order is the Claude row's (Library.cs RowMenu): Pin before Archive.
     /// </summary>
     private ContextMenu CodexRowMenu(SessionSummary session, string title)
     {
@@ -409,6 +409,7 @@ public partial class SessionWindow
         var menu = StyledMenu();
         menu.Items.Add(MenuItemFor("Resume…", () => ResumeCodexScreen(session)));
         menu.Items.Add(MenuItemFor("Resume in a terminal tab", () => ResumeCodex(session)));
+        menu.Items.Add(MenuItemFor("View transcript", () => OpenCodexTranscript(session)));
         menu.Items.Add(MenuItemFor(mark.Pinned ? "Unpin" : "Pin", () => SetCodexPinned(id, !mark.Pinned)));
         menu.Items.Add(MenuItemFor(mark.Archived ? "Unarchive" : "Archive", () => SetCodexArchived(id, !mark.Archived)));
         menu.Items.Add(MenuItemFor("Edit…", () => EditMarkOf(ProviderId.Codex, id, title)));
@@ -442,6 +443,7 @@ public partial class SessionWindow
             _codexFailed = false;
             AppLog.Write($"codex history read: {_codexSessions.Count} sessions");
             OpenCodexResumeForShot();
+            OpenCodexTranscriptForShot();
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
