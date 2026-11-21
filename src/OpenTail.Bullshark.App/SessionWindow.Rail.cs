@@ -124,14 +124,20 @@ public partial class SessionWindow
 
     private void UpdateFilterMark()
     {
-        var tag = ActiveTagFilter;
-        var grouping = _groupByTag ? " · by tag" : string.Empty;
-        FilterMark.Text = $"show: {_filter.ToString().ToLowerInvariant()}{(tag is null ? string.Empty : " · #" + tag)}{grouping} ▾";
+        // Under Codex the label shows Codex's tag and "all": the Claude view and the grouping do not apply to the Codex rail (tags P5).
+        var codex = IsCodexActive;
+        var tag = codex ? ActiveCodexTagFilter : ActiveTagFilter;
+        var view = codex ? "all" : _filter.ToString().ToLowerInvariant();
+        var grouping = !codex && _groupByTag ? " · by tag" : string.Empty;
+        FilterMark.Text = $"show: {view}{(tag is null ? string.Empty : " · #" + tag)}{grouping} ▾";
         // The label may be cut with an ellipsis when the tag is long, so the tooltip names the tag in full.
         FilterBox.ToolTip = tag is null ? "Choose what the rail shows" : $"Choose what the rail shows (tag filter #{tag})";
     }
 
     private ContextMenu? _filterMenu;
+
+    /// <summary>The view entries of the dropdown, built once. Claude's dropdown lists them; Codex's does not (the Codex rail ignores the view).</summary>
+    private readonly List<MenuItem> _viewItems = [];
 
     /// <summary>The dropdown of views: all four are listed, with a tick on the one in use. Styled in the rail's palette.</summary>
     private void InitFilterMenu()
@@ -141,19 +147,26 @@ public partial class SessionWindow
         {
             var item = new MenuItem { Header = FilterLabel(option), Tag = option, IsCheckable = true, Padding = new Thickness(10, 4, 16, 4) };
             item.Click += (_, _) => ChooseFilter(option);
+            _viewItems.Add(item);
             _filterMenu.Items.Add(item);
         }
     }
 
     /// <summary>
-    /// Rebuilds the part of the dropdown below the views: a separator, the tags in use with their counts (a tick on the one in use), and
-    /// "Clear tag filter" when one is set. It is rebuilt each time the dropdown opens, so it lists the tags as the marks are now.
+    /// Rebuilds the dropdown each time it opens, so it lists the tags as the marks are now. Under Claude: the views, then a separator, the tags in
+    /// use with their counts (a tick on the one in use), "Clear tag filter" when one is set, and the grouping. Under Codex: only Codex's tags
+    /// (<see cref="AddCodexTagItems"/>, tags P5).
     /// </summary>
     private void RebuildTagMenu()
     {
         if (_filterMenu is null) return;
-        var views = Enum.GetValues<RailFilter>().Length;
-        while (_filterMenu.Items.Count > views) _filterMenu.Items.RemoveAt(views);
+        _filterMenu.Items.Clear();
+        if (IsCodexActive)
+        {
+            AddCodexTagItems(_filterMenu);
+            return;
+        }
+        foreach (var view in _viewItems) _filterMenu.Items.Add(view);
 
         var tags = TagIndex.Counts(_marks.Values);
         if (tags.Count > 0 || ActiveTagFilter is not null)
@@ -214,9 +227,12 @@ public partial class SessionWindow
     private void ChooseTag(string? tag)
     {
         var wanted = string.IsNullOrWhiteSpace(tag) ? null : tag.Trim().ToLowerInvariant();
-        _tagFilter = wanted;
+        // Under Codex the tag is Codex's own filter (tags P5). Claude's filter is not changed by it.
+        if (IsCodexActive) _codexTagFilter = wanted; else _tagFilter = wanted;
         UpdateFilterMark();
-        SetStatus(wanted is null ? "Tag filter cleared." : $"Showing the rows tagged #{wanted}. Needs you is never filtered.");
+        SetStatus(wanted is null ? "Tag filter cleared."
+            : IsCodexActive ? $"Showing the Codex sessions tagged #{wanted}."
+            : $"Showing the rows tagged #{wanted}. Needs you is never filtered.");
         RefreshRail();
     }
 
@@ -385,6 +401,7 @@ public partial class SessionWindow
         // The marks are read again on every refresh: they are small, and another process may have changed them (D-L3 is inside).
         LoadLibrary();
         DropMissingTagFilter();
+        DropMissingCodexTagFilter();
         // The context window and the silent threshold come from the pass's settings, or from the file as it is now (a change in Settings shows at once,
         // ctx meter, Part 1). A pass passes what it read on the pool thread (perf and testability batch, Q2).
         var settings = passSettings ?? SettingsNow();

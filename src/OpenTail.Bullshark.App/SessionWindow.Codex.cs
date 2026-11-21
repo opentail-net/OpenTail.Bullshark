@@ -20,6 +20,12 @@ public partial class SessionWindow
     /// <summary>The Codex sessions as the last read gave them.</summary>
     private IReadOnlyList<SessionSummary> _codexSessions = [];
 
+    /// <summary>
+    /// The tag the Codex rail shows rows for, or null (tags P5). Kept apart from Claude's tag filter, which DropMissingTagFilter clears when no
+    /// Claude mark holds the tag. One at a time, held for the window run, as Claude's is.
+    /// </summary>
+    private string? _codexTagFilter;
+
     /// <summary>True once the Codex history has been read in this window.</summary>
     private bool _codexRead;
 
@@ -78,13 +84,13 @@ public partial class SessionWindow
     }
 
     /// <summary>
-    /// The chrome that is Claude's: the filter, the search box and the status bar's Claude items (C4). Under Codex the search box is off and its hint
-    /// says why. The Claude items are set again by the next pass when Claude shows.
+    /// The chrome that is Claude's: the search box and the status bar's Claude items (C4). The filter box stays under Codex, where its menu offers
+    /// the Codex tags (tags P5). Under Codex the search box is off and its hint says why. The Claude items are set again by the next pass when Claude shows.
     /// </summary>
     private void ApplyProviderChrome()
     {
         var claude = ClaudeSupervision;
-        FilterBox.Visibility = claude ? Visibility.Visible : Visibility.Collapsed;
+        UpdateFilterMark();
         SearchBox.IsEnabled = claude;
         SearchHint.Text = claude ? _claudeSearchHint : "Codex search comes later";
         SearchHint.Visibility = SearchBox.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -142,9 +148,16 @@ public partial class SessionWindow
             }
             else
             {
-                if (CodexPinned() is { Count: > 0 } pinned) section.Items.Add(CodexPinnedItem(pinned));
-                foreach (var folder in CodexFolders()) section.Items.Add(CodexFolderItem(folder));
-                if (CodexArchived() is { Count: > 0 } archived) section.Items.Add(CodexArchivedItem(archived));
+                var pinned = CodexPinned();
+                var folders = CodexFolders();
+                var archived = CodexArchived();
+                // A tag filter that leaves no row says which tag it is, so an empty rail is not taken for a fault (tags P5).
+                if (ActiveCodexTagFilter is { } tag && pinned.Count == 0 && folders.Count == 0 && archived.Count == 0)
+                    section.Items.Add(NewItem(Label($"No Codex session has the tag #{tag}", muted: true), new RailTag(RailKind.Heading, "codex:tag-empty"),
+                        "The tag filter shows the Codex sessions that carry the tag. Clear it from the filter menu."));
+                if (pinned.Count > 0) section.Items.Add(CodexPinnedItem(pinned));
+                foreach (var folder in folders) section.Items.Add(CodexFolderItem(folder));
+                if (archived.Count > 0) section.Items.Add(CodexArchivedItem(archived));
             }
         }
         finally
@@ -159,11 +172,12 @@ public partial class SessionWindow
 
     /// <summary>
     /// The Codex folders, newest first. The sessions in each are newest first too. Archived sessions are left out: they are in the Archived group.
-    /// A pinned session is left out too: it is listed in the Pinned group only (parity P4).
+    /// A pinned session is left out too: it is listed in the Pinned group only (parity P4). With a Codex tag filter, a session without the tag is
+    /// left out, so a folder with none left is not listed (tags P5).
     /// </summary>
     private IReadOnlyList<CodexFolder> CodexFolders() =>
         _codexSessions
-            .Where(session => !IsCodexArchived(session) && !InCodexPinnedGroup(session))
+            .Where(session => !IsCodexArchived(session) && !InCodexPinnedGroup(session) && CodexTagShows(session))
             .GroupBy(session => session.Folder ?? string.Empty, StringComparer.OrdinalIgnoreCase)
             .Select(group => new CodexFolder(group.Key, group.OrderByDescending(s => s.LastActivity ?? DateTimeOffset.MinValue).ToList()))
             .OrderByDescending(folder => folder.Sessions[0].LastActivity ?? DateTimeOffset.MinValue)
@@ -180,9 +194,10 @@ public partial class SessionWindow
     private bool InCodexPinnedGroup(SessionSummary session) =>
         MarkOf(ProviderId.Codex, session.Key.SessionId) is { Pinned: true, Archived: false };
 
-    /// <summary>The Codex sessions in the Pinned group, newest first (parity P4).</summary>
+    /// <summary>The Codex sessions in the Pinned group, newest first (parity P4), with the Codex tag filter applied (tags P5).</summary>
     private IReadOnlyList<SessionSummary> CodexPinned() =>
-        _codexSessions.Where(InCodexPinnedGroup).OrderByDescending(s => s.LastActivity ?? DateTimeOffset.MinValue).ToList();
+        _codexSessions.Where(session => InCodexPinnedGroup(session) && CodexTagShows(session))
+            .OrderByDescending(s => s.LastActivity ?? DateTimeOffset.MinValue).ToList();
 
     /// <summary>
     /// The pinned Codex sessions, in one group at the top of the Codex history, before the folders (parity P4, as the Claude Pinned group). Each row
@@ -198,9 +213,73 @@ public partial class SessionWindow
         return item;
     }
 
-    /// <summary>The archived Codex sessions, newest first, or an empty list.</summary>
+    /// <summary>The archived Codex sessions, newest first, or an empty list, with the Codex tag filter applied (tags P5).</summary>
     private IReadOnlyList<SessionSummary> CodexArchived() =>
-        _codexSessions.Where(IsCodexArchived).OrderByDescending(s => s.LastActivity ?? DateTimeOffset.MinValue).ToList();
+        _codexSessions.Where(session => IsCodexArchived(session) && CodexTagShows(session))
+            .OrderByDescending(s => s.LastActivity ?? DateTimeOffset.MinValue).ToList();
+
+    /// <summary>The tag the Codex rail filters by, or null. Nothing is filtered while library.json cannot be read (D-L3).</summary>
+    private string? ActiveCodexTagFilter => _libraryError is null ? _codexTagFilter : null;
+
+    /// <summary>
+    /// True when a Codex session carries the Codex tag filter, or no Codex tag filter is set (tags P5). Read from the session's Codex mark only, so the
+    /// Claude marks do not decide it.
+    /// </summary>
+    private bool CodexTagShows(SessionSummary session) =>
+        TagIndex.Has(MarkOf(ProviderId.Codex, session.Key.SessionId), ActiveCodexTagFilter);
+
+    /// <summary>The Codex marks of the sessions in the history: what the Codex tag menu counts (tags P5).</summary>
+    private IEnumerable<LibraryEntry> CodexHistoryMarks() =>
+        _codexSessions.Select(session => MarkOf(ProviderId.Codex, session.Key.SessionId)).OfType<LibraryEntry>();
+
+    /// <summary>
+    /// A Codex tag that no Codex mark holds any more clears the Codex tag filter, with a status line (tags P5). Nothing is cleared while library.json
+    /// cannot be read. Claude's filter is left alone.
+    /// </summary>
+    private void DropMissingCodexTagFilter()
+    {
+        if (_codexTagFilter is null || _libraryError is not null) return;
+        if (TagIndex.Counts(MarksOf(ProviderId.Codex).Values).Any(tag => SameTag(tag.Tag, _codexTagFilter))) return;
+        _codexTagFilter = null;
+        UpdateFilterMark();
+        SetStatus("The tag filter is cleared: no Codex session has that tag any more.");
+    }
+
+    /// <summary>
+    /// The Codex part of the filter dropdown (tags P5): "Filter by tag #x (n)" for each tag the Codex sessions in the history hold, with a tick on
+    /// the one in use, and "Clear tag filter" while one is set. Each click works as Claude's tag entries do. No view or grouping entry is listed.
+    /// </summary>
+    private void AddCodexTagItems(ContextMenu menu)
+    {
+        var tags = TagIndex.Counts(CodexHistoryMarks());
+        var active = ActiveCodexTagFilter;
+        if (tags.Count == 0 && active is null)
+        {
+            var reason = _libraryError is null ? "No tags on Codex sessions yet" : "No tags: library.json cannot be read";
+            menu.Items.Add(new MenuItem { Header = reason, IsEnabled = false, Padding = new Thickness(10, 4, 16, 4) });
+            return;
+        }
+        foreach (var tag in tags)
+        {
+            var name = tag.Tag;
+            var item = new MenuItem
+            {
+                Header = $"Filter by tag #{name} ({tag.Count})",
+                IsCheckable = true,
+                IsChecked = SameTag(name, active),
+                Padding = new Thickness(10, 4, 16, 4),
+            };
+            // A click on the tag in use clears it; a click on another tag makes it the one in use.
+            item.Click += (_, _) => ChooseTag(SameTag(name, ActiveCodexTagFilter) ? null : name);
+            menu.Items.Add(item);
+        }
+        if (active is not null)
+        {
+            var clear = new MenuItem { Header = "Clear tag filter", Padding = new Thickness(10, 4, 16, 4) };
+            clear.Click += (_, _) => ChooseTag(null);
+            menu.Items.Add(clear);
+        }
+    }
 
     /// <summary>
     /// The archived Codex sessions, in one collapsed group at the end of the history (D1). Their rows are muted, and each row's menu unarchives it,
