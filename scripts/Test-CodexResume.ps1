@@ -1,7 +1,8 @@
 # Codex resume screen, screenshots (steps R7 of docs/plans/provider-codex-2026-11-21.md). A copy of the pattern of Test-NewScreens.ps1, for the two
 # screens of the Codex resume dialog: "From the last turns" (dark) and "From a Codex summary" with Make summary pressed (light), and the Codex
 # history grouped by tag (dark, --rail-group tag: tags P5), the Codex rail on its Archived view (light, --codex-view archived: parity P11), and the
-# transcript of the first Codex session (light, --codex-transcript: parity P7; the injected context must not show).
+# transcript of the first Codex session (light, --codex-transcript: parity P7; the injected context must not show), and the Codex search (dark,
+# --codex-search: parity P6, first step) with the box set to a query whose one session shows in the results tab.
 #
 # Everything the App reads is a scratch fixture, built by this script in -Out:
 #   - a state folder (the App's state.json and ui.json; ui.json picks Codex as the window's provider);
@@ -171,7 +172,11 @@ $screens = @(
     # The Codex rail on its Archived view (--codex-view archived, parity P11): the one session is archived, so the view lists it in its folder.
     @{ Name = 'codex-rail-archived-light'; Theme = 'Light'; Options = @('--codex-view', 'archived'); Archived = $true },
     # The transcript of the first Codex session (--codex-transcript, parity P7): the four messages, with the injected context left out.
-    @{ Name = 'codex-transcript-light'; Theme = 'Light'; Options = @('--codex-transcript'); Transcript = $true }
+    @{ Name = 'codex-transcript-light'; Theme = 'Light'; Options = @('--codex-transcript'); Transcript = $true },
+    # The Codex search (--codex-search, parity P6): the box is set to "tidy notes" once the history is read. The one session's title holds both words,
+    # so the results tab shows that session. Only the title is searched: the session's message text is not. The value is quoted on the command line,
+    # because Start-Process joins the argument array with spaces and does not quote an element (unquoted, the App would get "tidy" alone).
+    @{ Name = 'codex-search-dark'; Theme = 'Dark'; Options = @('--codex-search', '"tidy notes"'); Search = $true }
 )
 
 $originalPath = $env:PATH
@@ -222,7 +227,7 @@ try {
         $expectedSessions = if ($screen.Tags) { 2 } else { 1 }
         $historyOk = $log -match "codex history read: $expectedSessions sessions"
         # The grouping is not logged (tag text stays out of the log), so the tag screen's step is its picture, which a person looks at.
-        $stepOk = if ($screen.Summary) { $log -match 'codex summary made: \d' } elseif ($screen.Tags) { $true } elseif ($screen.Archived) { $log -match 'codex view at start: archived' } elseif ($screen.Transcript) { $log -match 'codex transcript read: 4 messages' } else { $log -match 'codex start text built: \d' }
+        $stepOk = if ($screen.Summary) { $log -match 'codex summary made: \d' } elseif ($screen.Tags) { $true } elseif ($screen.Archived) { $log -match 'codex view at start: archived' } elseif ($screen.Transcript) { $log -match 'codex transcript read: 4 messages' } elseif ($screen.Search) { $log -match 'codex search: 1 of 1 sessions match' } else { $log -match 'codex start text built: \d' }
         if ($process.ExitCode -eq 0 -and $pictureOk -and $historyOk -and $stepOk) {
             Write-Output "PASS ${name}: exit 0, history read, the step ran, $png"
         } else {

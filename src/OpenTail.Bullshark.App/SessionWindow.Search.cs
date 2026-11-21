@@ -46,7 +46,9 @@ public partial class SessionWindow
         _searchDelay.Stop();
         if (SearchBox.Text.Trim().Length == 0)
         {
-            CloseSearchTab();
+            // Under Codex a cleared box closes the Codex results tab only; Claude's results tab is left as it is (parity P6).
+            if (IsCodexActive) CloseCodexSearchTab();
+            else CloseSearchTab();
             return;
         }
         _searchDelay.Start();
@@ -70,6 +72,12 @@ public partial class SessionWindow
 
     private void StartSearch(string text)
     {
+        // Under Codex the box searches the Codex history by title, name, tags and note (parity P6). Claude's search below is not changed.
+        if (IsCodexActive)
+        {
+            StartCodexSearch(text);
+            return;
+        }
         var query = text.Trim();
         if (query.Length == 0) return;
 

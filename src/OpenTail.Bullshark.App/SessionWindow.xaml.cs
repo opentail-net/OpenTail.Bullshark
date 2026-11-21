@@ -218,6 +218,7 @@ public partial class SessionWindow : Window
         Pane.Children.Add(_setup);
         Pane.Children.Add(_search);
         InitSearch();
+        InitCodexSearch();
         InitChanges();
         InitReview();
         InitStorage();
@@ -713,6 +714,8 @@ public partial class SessionWindow : Window
         }
         _setup.Visibility = ReferenceEquals(_setup, element) ? Visibility.Visible : Visibility.Hidden;
         _search.Visibility = ReferenceEquals(_search, element) ? Visibility.Visible : Visibility.Hidden;
+        // The Codex search results (parity P6): shown only when they are the element.
+        _codexSearch.Visibility = ReferenceEquals(_codexSearch, element) ? Visibility.Visible : Visibility.Hidden;
         _changes.Visibility = ReferenceEquals(_changes, element) ? Visibility.Visible : Visibility.Hidden;
         // The Insights and Settings pages. The four views inside Insights are shown by it (InsightsView.Show), not here.
         _insights.Visibility = ReferenceEquals(_insights, element) ? Visibility.Visible : Visibility.Hidden;
@@ -1033,7 +1036,9 @@ public sealed record LaunchOptions(
     /// <summary>--codex-view (test only): the Codex rail starts on this view (all, history or archived), for the screenshots (parity P11).</summary>
     string? CodexViewName = null,
     /// <summary>--codex-transcript (test only): once the Codex history has loaded, the transcript of its first session opens, for the screenshots (parity P7).</summary>
-    bool CodexTranscript = false)
+    bool CodexTranscript = false,
+    /// <summary>--codex-search (test only): once the Codex history has loaded, the box is set to this text, so the Codex search runs and its results show (parity P6).</summary>
+    string? CodexSearchText = null)
 {
     /// <summary>The folder of the transcripts: the owner's, unless a test home is given (--claude-home).</summary>
     public string ProjectsRoot => ClaudeHome is null ? TranscriptReader.DefaultProjectsRoot : TestHome.ProjectsRootUnder(ClaudeHome);
@@ -1056,7 +1061,7 @@ public sealed record LaunchOptions(
         double shotAfter = 8;
         int soakSeconds = SessionWindow.DefaultSoakSeconds;
         double railScroll = 0;
-        string? codexView = null;
+        string? codexView = null, codexSearch = null;
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         if (args.Length > 0 && args[^1] == "--state") throw new ArgumentException("--state needs the path of a state file.");
         for (int i = 0; i < args.Length - 1; i++)
@@ -1082,6 +1087,7 @@ public sealed record LaunchOptions(
                 case "--soak-seconds": soakSeconds = int.Parse(args[++i], inv); break;
                 case "--rail-scroll": railScroll = double.Parse(args[++i], inv); break;
                 case "--codex-view": codexView = args[++i]; break;
+                case "--codex-search": codexSearch = args[++i]; break;
             }
         }
         // --codex-resume takes an optional value, summary (test only): the flag's position is read here, not in the switch above.
@@ -1112,7 +1118,8 @@ public sealed record LaunchOptions(
             CodexResume: codexResumeAt >= 0,
             CodexResumeSummary: codexResumeAt >= 0 && codexResumeAt + 1 < args.Length && args[codexResumeAt + 1] == "summary",
             CodexViewName: codexView,
-            CodexTranscript: args.Contains("--codex-transcript"));
+            CodexTranscript: args.Contains("--codex-transcript"),
+            CodexSearchText: codexSearch);
     }
 }
 

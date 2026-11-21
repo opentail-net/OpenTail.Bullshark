@@ -359,6 +359,7 @@ public partial class SessionWindow
         Pane.Background = RailPalette.Brush(palette.Background);
         _setup?.ApplyTheme(palette);
         _search.ApplyTheme(palette);
+        _codexSearch.ApplyTheme(palette);
         _transcript.ApplyTheme(palette);
         foreach (var codexView in _codexTranscripts.Values) codexView.ApplyTheme(palette);
         _changes.ApplyTheme(palette);
@@ -830,6 +831,8 @@ public partial class SessionWindow
         TabKind.Settings => PaneKind.Settings,
         // A Codex transcript opens from a row's menu, with no row selected: like a Claude transcript, it keeps its pane when the rail refreshes.
         TabKind.CodexTranscript => PaneKind.Transcript,
+        // A Codex search's results keep their pane when the rail refreshes, as Claude's search results do.
+        TabKind.CodexSearchResults => PaneKind.Search,
         _ => null,
     };
 

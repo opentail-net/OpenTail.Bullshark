@@ -43,6 +43,12 @@ public partial class SessionWindow
         /// <see cref="_codexTranscripts"/>. Claude's <see cref="Transcript"/> tab is a different kind and is not used for Codex.
         /// </summary>
         CodexTranscript,
+
+        /// <summary>
+        /// The results of a search of past Codex sessions (parity P6). One tab, with the key "codex-search" and the Codex provider. Its view is
+        /// <see cref="_codexSearch"/>. Claude's <see cref="Search"/> tab is a different kind and is not used for Codex.
+        /// </summary>
+        CodexSearchResults,
     }
 
     internal sealed class OpenTab(TabKind kind, string key, string title, ProviderId? provider = null)
@@ -189,6 +195,10 @@ public partial class SessionWindow
 
             case TabKind.CodexTranscript:
                 if (_codexTranscripts.TryGetValue(KeyOf(tab), out var codexView)) ShowOnly(codexView);
+                break;
+
+            case TabKind.CodexSearchResults:
+                ShowOnly(_codexSearch);
                 break;
         }
     }

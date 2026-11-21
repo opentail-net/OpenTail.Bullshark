@@ -90,15 +90,16 @@ public partial class SessionWindow
     }
 
     /// <summary>
-    /// The chrome that is Claude's: the search box and the status bar's Claude items (C4). The filter box stays under Codex, where its menu offers
-    /// the Codex tags (tags P5). Under Codex the search box is off and its hint says why. The Claude items are set again by the next pass when Claude shows.
+    /// The chrome that is Claude's: the status bar's Claude items (C4). The search box is on under both providers: Claude's search under Claude, and the
+    /// Codex history search under Codex (parity P6), and its hint says which. The filter box stays under Codex, where its menu offers
+    /// the Codex tags (tags P5). The Claude items are set again by the next pass when Claude shows.
     /// </summary>
     private void ApplyProviderChrome()
     {
         var claude = ClaudeSupervision;
         UpdateFilterMark();
-        SearchBox.IsEnabled = claude;
-        SearchHint.Text = claude ? _claudeSearchHint : "Codex search comes later";
+        SearchBox.IsEnabled = claude || IsCodexActive;
+        SearchHint.Text = claude ? _claudeSearchHint : IsCodexActive ? CodexSearchHintText : string.Empty;
         SearchHint.Visibility = SearchBox.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
         if (claude) return;
         TrustButton.Visibility = Visibility.Collapsed;
@@ -444,6 +445,7 @@ public partial class SessionWindow
             AppLog.Write($"codex history read: {_codexSessions.Count} sessions");
             OpenCodexResumeForShot();
             OpenCodexTranscriptForShot();
+            OpenCodexSearchForShot();
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
