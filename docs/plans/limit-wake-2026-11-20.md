@@ -112,12 +112,10 @@ Verified: diff read (Core `LimitStop`, `LimitWake`, the App wake file, the share
   so a session whose process exited at the limit was resumed **before the reset**. Fixed with `SupervisorRunner.LimitHolds`: after each probe the window holds each
   supervised session whose recent stop has its reset still ahead, by session name (`SessionWindow.LimitHoldsOf`), and `DecideLost` returns nothing while the hold stands.
   The hold is silent (no alert, no restart time) and applies from the next pass, as the budgets do. Tests: `LimitHoldTests`, `LimitHoldsTests` (App.Tests).
-  Open: the probe runs after the pass, so the pass that first sees the loss can still resume the session once; the hold covers the passes after it. Running the probe
-  before the decisions would close that, but it moves the probe in the pass's order, so it is not done here (a decision for the orchestrator).
+  The probe also runs **before** the decisions (second review, 2026-11-21), from the records the pass starts with, so the pass that first finds a session gone already holds it.
 - **Review items 2 and 3, fixed (2026-11-21):** a restart time ahead of now (the clock went back) no longer counts toward the hourly restart limit; a failed `claude --bg`
-  launch names its command and its exit code or output length, never its output (`ClaudeCli.RunAsync` with `includeOutput: false`). Open: the summary path
-  (`ClaudeCli.SummariseAsync`) still quotes the first line of its error output, because `SummariseTests.AFailedSummaryIsReportedWithItsReason` asserts that text. Decide
-  whether the summary's error may carry stderr, which can echo transcript text.
+  launch names its command and its exit code or output length, never its output (`ClaudeCli.RunAsync` with `includeOutput: false`). The summary path (`ClaudeCli.SummariseAsync`) too now names only its exit code
+  (second review, 2026-11-21; test `AFailedSummaryNamesItsExitCodeButNoOutput`), since stderr can echo transcript text. Cost: the owner no longer sees a reason such as "no credit" there.
 - Coder decisions accepted: stop is read from the 256 KB tail on each supervisor pass for flagged and supervised sessions (the digest alone is stale between history reads);
   the model and effort for a wake are the saved solo planner's; a limit entry with no readable time is not a stop; quiet hours only log the "running" toast; the first-run cache
   format bump rebuilds every transcript index once.

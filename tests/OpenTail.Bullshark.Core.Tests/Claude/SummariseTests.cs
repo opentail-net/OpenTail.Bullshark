@@ -20,13 +20,15 @@ public sealed class SummariseTests
     }
 
     [Fact]
-    public async Task AFailedSummaryIsReportedWithItsReason()
+    public async Task AFailedSummaryNamesItsExitCodeButNoOutput()
     {
-        var cli = new ClaudeCli(new FakeCliRunner(_ => FakeCliRunner.Fail("no credit")));
+        var cli = new ClaudeCli(new FakeCliRunner(_ => FakeCliRunner.Fail("CANARY-TRANSCRIPT-7731 no credit")));
 
         var error = await Assert.ThrowsAsync<ClaudeCliException>(() => cli.SummariseAsync("Summarise.", "you: hello"));
 
-        Assert.Contains("no credit", error.Message);
+        Assert.Contains("exit", error.Message);
+        Assert.DoesNotContain("CANARY", error.Message);
+        Assert.DoesNotContain("no credit", error.Message);
     }
 
     [Fact]

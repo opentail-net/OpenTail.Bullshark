@@ -409,6 +409,10 @@ public partial class SessionWindow : Window
             string? afterProblem = null;
             if (_supervisor is not null && plan.Problem is null)
             {
+                // The usage-limit holds are read BEFORE the decisions (review of 2026-11-21): the pass that first finds a session gone must already know its
+                // limit stop, or it could resume the session once before the reset.
+                await ProbeLimitsAsync(read.Records, DateTimeOffset.Now);
+                _runner.LimitHolds = LimitHoldsOf(read.Records, _limitStops, DateTimeOffset.Now);
                 // The records the pass leaves are read on the pool thread too, so the rail is drawn from that one read.
                 (actions, records, afterProblem) = await Task.Run(() => RunPassAndReadAsync(read, passToken));
                 _storeProblem = afterProblem ?? _storeProblem;

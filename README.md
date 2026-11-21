@@ -2,7 +2,7 @@
 
 Bullshark - saves your bytes.
 
-> **Status (2026-11-21): built and tested locally; the live end-to-end run with real sessions is not done.** Latest local run (2026-11-21): Core.Tests 2181 passed on net10.0 and net11.0, with the live tests filtered out as CI does; App.Tests 33 passed on both Windows targets. The CI workflow (`.github/workflows/ci.yml`) has not run on GitHub yet. The live run with the real `claude` CLI is still open: see [docs/plans/live-run-checklist.md](docs/plans/live-run-checklist.md). The provider and Codex work is a plan only, nothing built: see [docs/plans/provider-codex-2026-11-21.md](docs/plans/provider-codex-2026-11-21.md). See [Plans](#plans).
+> **Status (2026-11-21): built and tested locally; the live end-to-end run with real sessions is not done.** Latest local run (2026-11-21): Core.Tests 2181 passed on net10.0 and net11.0, with the live tests filtered out as CI does; App.Tests 33 passed on both Windows targets. The CI workflow (`.github/workflows/ci.yml`) ran green on GitHub for commit beed809 (Core 2181 and App 33 on net10 and net11). The live run with the real `claude` CLI is still open: see [docs/plans/live-run-checklist.md](docs/plans/live-run-checklist.md). The provider and Codex work is a plan only, nothing built: see [docs/plans/provider-codex-2026-11-21.md](docs/plans/provider-codex-2026-11-21.md). See [Plans](#plans).
 
 ## What it is
 

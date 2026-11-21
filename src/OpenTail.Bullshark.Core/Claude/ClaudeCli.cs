@@ -323,7 +323,7 @@ public sealed class ClaudeCli
             cancellationToken,
             transcript);
         if (result.TimedOut) throw new ClaudeCliException("the summary timed out after five minutes");
-        if (result.ExitCode != 0) throw new ClaudeCliException($"the summary failed (exit {result.ExitCode}): {FirstLineOf(result.StdErr)}");
+        if (result.ExitCode != 0) throw new ClaudeCliException($"the summary failed (exit {result.ExitCode})");
         var text = result.StdOut.Trim();
         if (text.Length == 0) throw new ClaudeCliException("the summary came back empty");
         return text;
