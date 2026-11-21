@@ -116,6 +116,8 @@ Verified: diff read (Core `LimitStop`, `LimitWake`, the App wake file, the share
 - **Review items 2 and 3, fixed (2026-11-21):** a restart time ahead of now (the clock went back) no longer counts toward the hourly restart limit; a failed `claude --bg`
   launch names its command and its exit code or output length, never its output (`ClaudeCli.RunAsync` with `includeOutput: false`). The summary path (`ClaudeCli.SummariseAsync`) too now names only its exit code
   (second review, 2026-11-21; test `AFailedSummaryNamesItsExitCodeButNoOutput`), since stderr can echo transcript text. Cost: the owner no longer sees a reason such as "no credit" there.
+- **Third review, fixed (2026-11-21):** an unreadable transcript no longer removes a known hold. A read gives one of three outcomes: a stop (held to its reset), no stop (clears a
+  hold), or no read (keeps the id's known stop; with none, the session is held fail closed for 15 minutes, renewed by each pass while the read fails). `LimitStop.TryReadTail`, `ProbeLimits`, `LimitHoldsOf`; tests `LimitProbeTests` (App.Tests).
 - Coder decisions accepted: stop is read from the 256 KB tail on each supervisor pass for flagged and supervised sessions (the digest alone is stale between history reads);
   the model and effort for a wake are the saved solo planner's; a limit entry with no readable time is not a stop; quiet hours only log the "running" toast; the first-run cache
   format bump rebuilds every transcript index once.

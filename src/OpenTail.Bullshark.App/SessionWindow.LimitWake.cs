@@ -29,9 +29,22 @@ public partial class SessionWindow
 
     /// <summary>
     /// The stops the last pass read at the end of its candidates' transcripts (the sessions it supervises and the ones the owner flagged), by session id.
-    /// A null value is a candidate probed with no stop. A session that was not probed takes its digest's stop, as of the history's read.
+    /// A null value is a candidate probed with no stop, or one whose state is unknown (see <see cref="_limitUnknown"/>). A session that was not probed
+    /// takes its digest's stop, as of the history's read.
     /// </summary>
     private Dictionary<string, LimitStop?> _limitStops = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The sessions whose limit state the last probe could not establish: their transcript could not be read and no stop was known for them. Each is held
+    /// for <see cref="UnknownLimitHold"/> from the pass that reads it, so the hold lasts while the read keeps failing and ends on the first good read.
+    /// </summary>
+    private IReadOnlySet<string> _limitUnknown = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The hold of a session whose limit state is unknown (<see cref="_limitUnknown"/>): 15 minutes from each pass that still cannot read it. Fail closed:
+    /// a lost session is not resumed while its transcript cannot be read. Only the supervisor's lost-session rule reads it.
+    /// </summary>
+    private static readonly TimeSpan UnknownLimitHold = TimeSpan.FromMinutes(15);
 
     /// <summary>The reset of the limit still in force (LimitReset.Find), as the last read gave it, and when it was read.</summary>
     private DateTimeOffset? _limitInForce;
@@ -171,33 +184,60 @@ public partial class SessionWindow
         }
     }
 
-    /// <summary>What the pass read of the limits on a pool thread: the stops of its candidates, and the limit in force when it was read.</summary>
-    private sealed record LimitProbe(Dictionary<string, LimitStop?> Stops, bool InForceRead, DateTimeOffset? InForce);
+    /// <summary>
+    /// What the pass read of the limits on a pool thread: the stops of its candidates, and the limit in force when it was read. Unknown holds the ids
+    /// whose transcript could not be read while no stop was known for them (see <see cref="UnknownLimitHold"/>).
+    /// </summary>
+    internal sealed record LimitProbe(Dictionary<string, LimitStop?> Stops, bool InForceRead, DateTimeOffset? InForce, IReadOnlySet<string> Unknown);
 
     /// <summary>
     /// Reads the stop at the end of each candidate's transcript, and, when a flagged session with a stop is due and the last read is old, the reset of the
-    /// limit in force. Touches no window object. A candidate with no transcript is not probed.
+    /// limit in force. Touches no window object. The three outcomes of a read are kept apart: a stop found; a read with no stop, which clears a kept
+    /// stop; and a read that could not be made, which keeps the id's stop from <paramref name="previous"/> when there is one, and otherwise marks the id
+    /// unknown (held, fail closed). A candidate whose transcript is not known (a new session) and that had no stop has no stop and no hold.
     /// </summary>
-    private static LimitProbe ProbeLimits(
+    internal static LimitProbe ProbeLimits(
         IReadOnlyList<string> candidates,
         IReadOnlyDictionary<string, string> pathOf,
         ISet<string> flagged,
         string projectsRoot,
         DateTimeOffset now,
-        bool readInForce)
+        bool readInForce,
+        IReadOnlyDictionary<string, LimitStop?> previous)
     {
         var stops = new Dictionary<string, LimitStop?>(StringComparer.OrdinalIgnoreCase);
+        var unknown = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var id in candidates)
         {
+            var kept = previous.TryGetValue(id, out var before) ? before : null;
             var path = pathOf.TryGetValue(id, out var known) ? known : TranscriptReader.FindTranscript(projectsRoot, id);
-            if (path is null) continue;
-            stops[id] = LimitStop.ReadTail(path);
+            if (path is null || !File.Exists(path))
+            {
+                // No transcript is known for the id now, or its file is not there (deleted or moved; an unreadable file still exists, so it is not this case): a stop known before stays. A session with none is new, so it has no stop and no hold.
+                if (kept is not null) stops[id] = kept;
+                continue;
+            }
+
+            if (LimitStop.TryReadTail(path, out var stop))
+            {
+                stops[id] = stop;
+            }
+            else if (kept is not null)
+            {
+                stops[id] = kept;
+            }
+            else
+            {
+                // The state cannot be established and no stop was known: the id is held (fail closed) until a read succeeds.
+                stops[id] = null;
+                unknown.Add(id);
+            }
         }
 
         var due = stops.Any(pair => pair.Value is { } stop && flagged.Contains(pair.Key) && stop.IsRecent(now)
                                     && now >= LimitReset.StartFor(stop.ResetsAt));
-        if (!readInForce || !due) return new LimitProbe(stops, false, null);
-        return new LimitProbe(stops, true, LimitReset.Find(projectsRoot, now));
+        if (!readInForce || !due) return new LimitProbe(stops, false, null, unknown);
+        return new LimitProbe(stops, true, LimitReset.Find(projectsRoot, now), unknown);
     }
 
     /// <summary>
@@ -218,12 +258,18 @@ public partial class SessionWindow
         var readInForce = _limitInForceRead is not { } last || now - last >= InForceEvery;
         var root = _options.ProjectsRoot;
         var flaggedSet = flagged.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var previous = _limitStops;
 
         // The feature must not fail the pass: a read that throws is logged and the last values are kept.
         try
         {
-            var probe = await Task.Run(() => ProbeLimits(candidates, pathOf, flaggedSet, root, now, readInForce));
+            var probe = await Task.Run(() => ProbeLimits(candidates, pathOf, flaggedSet, root, now, readInForce, previous));
             _limitStops = probe.Stops;
+            _limitUnknown = probe.Unknown;
+            foreach (var id in probe.Unknown)
+            {
+                if (_wakeSaid.Add("unknown|" + id)) AppLog.Write($"limit state unknown for {ShortId(id)}: transcript not readable; the session is held");
+            }
             if (probe.InForceRead)
             {
                 _limitInForce = probe.InForce;
@@ -362,12 +408,14 @@ public partial class SessionWindow
     /// <summary>
     /// The usage-limit holds the supervisor's next pass is held to (review item 1, 2026-11-21): each supervised session whose stop the last probe read,
     /// when that stop is recent and its reset is still ahead, by the session's name. The supervisor does not resume such a session before the reset.
-    /// A session with no stop, an old stop, or a reset already passed has no hold.
+    /// A session with no stop, an old stop, or a reset already passed has no hold, unless its limit state is unknown (<paramref name="unknown"/>, third
+    /// review, 2026-11-21): then it is held for <see cref="UnknownLimitHold"/> from this pass, so an unreadable transcript never frees a session early.
     /// </summary>
     internal static IReadOnlyDictionary<string, DateTimeOffset> LimitHoldsOf(
         IReadOnlyDictionary<string, SessionRecord> records,
         IReadOnlyDictionary<string, LimitStop?> stops,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        IReadOnlySet<string>? unknown = null)
     {
         var holds = new Dictionary<string, DateTimeOffset>(StringComparer.Ordinal);
         foreach (var record in records.Values)
@@ -375,6 +423,8 @@ public partial class SessionWindow
             if (record.SessionId.Length == 0) continue;
             if (stops.TryGetValue(record.SessionId, out var stop) && stop is { } found && found.IsRecent(now) && found.ResetsAt > now)
                 holds[record.Name] = found.ResetsAt;
+            else if (unknown is not null && unknown.Contains(record.SessionId))
+                holds[record.Name] = now + UnknownLimitHold;
         }
         return holds;
     }

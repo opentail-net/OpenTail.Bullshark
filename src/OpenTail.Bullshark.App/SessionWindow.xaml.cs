@@ -412,7 +412,7 @@ public partial class SessionWindow : Window
                 // The usage-limit holds are read BEFORE the decisions (review of 2026-11-21): the pass that first finds a session gone must already know its
                 // limit stop, or it could resume the session once before the reset.
                 await ProbeLimitsAsync(read.Records, DateTimeOffset.Now);
-                _runner.LimitHolds = LimitHoldsOf(read.Records, _limitStops, DateTimeOffset.Now);
+                _runner.LimitHolds = LimitHoldsOf(read.Records, _limitStops, DateTimeOffset.Now, _limitUnknown);
                 // The records the pass leaves are read on the pool thread too, so the rail is drawn from that one read.
                 (actions, records, afterProblem) = await Task.Run(() => RunPassAndReadAsync(read, passToken));
                 _storeProblem = afterProblem ?? _storeProblem;
@@ -437,7 +437,7 @@ public partial class SessionWindow : Window
             await ProbeLimitsAsync(records, DateTimeOffset.Now);
             // The usage-limit holds from this probe: the next pass does not resume a lost session before its limit resets (review item 1). Like the
             // budgets, they apply from the next pass on.
-            _runner.LimitHolds = LimitHoldsOf(records, _limitStops, DateTimeOffset.Now);
+            _runner.LimitHolds = LimitHoldsOf(records, _limitStops, DateTimeOffset.Now, _limitUnknown);
             RefreshRail(records, runs, _passSettings);
             AnnounceAttention();
             // The wake after the limit resets: only here, once per pass, with the trust known (limit wake, 2026-11-20). A start redraws the rail.

@@ -30,15 +30,24 @@ public sealed record LimitStop(DateTimeOffset HitAt, DateTimeOffset ResetsAt, st
     /// The stop at the end of a transcript, read from its last bytes only (the same window as <see cref="LimitEntries.Tail"/>). A stop is recent
     /// in that window or not at all. A file that cannot be opened or read gives null.
     /// </summary>
-    public static LimitStop? ReadTail(string path)
+    public static LimitStop? ReadTail(string path) => TryReadTail(path, out var stop) ? stop : null;
+
+    /// <summary>
+    /// The same read as <see cref="ReadTail"/>, with a failed read told apart from "no stop": true when the file was read (<paramref name="stop"/> is
+    /// the stop, or null when there is none), false when it could not be opened or read (<paramref name="stop"/> is null then). A transcript that
+    /// cannot be read says nothing about whether its session is stopped, so the limit probe needs the difference.
+    /// </summary>
+    public static bool TryReadTail(string path, out LimitStop? stop)
     {
         try
         {
-            return Find(LimitEntries.TailLines(path));
+            stop = Find(LimitEntries.TailLines(path));
+            return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            return null;
+            stop = null;
+            return false;
         }
     }
 
