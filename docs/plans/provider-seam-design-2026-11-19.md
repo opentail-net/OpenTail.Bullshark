@@ -1,6 +1,6 @@
 # Provider seam: design notes (2026-11-19, a design only; nothing built)
 
-Status: **proposal for the owner.** No code change is planned from this file without their word. It exists so the decision can be taken with the facts in one place. Research: `../research/other-ai-tools-research-2026-11-19.md`.
+Status: **partly superseded by `provider-codex-2026-11-21.md` (2026-11-21).** The plan replaces the single `ISessionProvider` below with separate small interfaces (history, transcript reader, terminal opener, supervised launcher, live source) and takes precedence wherever the two differ. Tier 4 (Ollama naming) is **not part of the Codex plan: deferred, unscheduled.** Tier 0 (plain terminal tab) is folded into the plan's stage C. Status of this file: **proposal for the owner.** No code change is planned from this file without their word. It exists so the decision can be taken with the facts in one place. Research: `../research/other-ai-tools-research-2026-11-19.md`.
 
 ## Goal
 Let the window show, search and watch sessions of other AI terminals (and use local models for its own small jobs) without weakening the Claude Code path, and without ever typing into a session for the owner or accepting/merging on their behalf (principle 3).
