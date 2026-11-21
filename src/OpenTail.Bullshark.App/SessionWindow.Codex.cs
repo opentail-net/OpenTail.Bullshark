@@ -26,6 +26,12 @@ public partial class SessionWindow
     /// </summary>
     private string? _codexTagFilter;
 
+    /// <summary>
+    /// The view the Codex rail shows: All, History or Archived, as Claude's View menu names them (parity P11, A-D1). Kept apart from Claude's view, which
+    /// the Codex rail does not use. One at a time, held for the window run, as Claude's view is (not kept between launches).
+    /// </summary>
+    private RailFilter _codexView = RailFilter.All;
+
     /// <summary>True once the Codex history has been read in this window.</summary>
     private bool _codexRead;
 
@@ -104,7 +110,8 @@ public partial class SessionWindow
 
     /// <summary>
     /// The rail under Codex: a header with its reload mark, "New Codex session…", the empty state of the live part (Codex has none), then the
-    /// pinned sessions (parity P4), then the history grouped by folder, newest folder first, or by tag under Group by tag (tags P5). Replaces the
+    /// pinned sessions (parity P4), then the history grouped by folder, newest folder first, or by tag under Group by tag (tags P5). The view in use
+    /// (All, History or Archived, parity P11) decides which of these are listed (<see cref="CodexRailGroups.PlaceOf"/>). Replaces the
     /// Claude rows; the Claude tabs are kept in step by <see cref="SyncSessionTabs"/>.
     /// </summary>
     private void RefreshCodexRail(IReadOnlyDictionary<string, SessionRecord> stored)
@@ -154,10 +161,16 @@ public partial class SessionWindow
                 IReadOnlyList<TagGroup<SessionSummary>> tagGroups = _groupByTag ? CodexTagGroups() : [];
                 IReadOnlyList<CodexFolder> folders = _groupByTag ? [] : CodexFolders();
                 var listed = _groupByTag ? tagGroups.Count : folders.Count;
-                // A tag filter that leaves no row says which tag it is, so an empty rail is not taken for a fault (tags P5).
-                if (ActiveCodexTagFilter is { } tag && pinned.Count == 0 && listed == 0 && archived.Count == 0)
-                    section.Items.Add(NewItem(Label($"No Codex session has the tag #{tag}", muted: true), new RailTag(RailKind.Heading, "codex:tag-empty"),
-                        "The tag filter shows the Codex sessions that carry the tag. Clear it from the filter menu."));
+                // A tag filter or the view that leaves no row says so, so an empty rail is not taken for a fault (tags P5, parity P11).
+                if (pinned.Count == 0 && listed == 0 && archived.Count == 0)
+                {
+                    if (ActiveCodexTagFilter is { } tag)
+                        section.Items.Add(NewItem(Label($"No Codex session has the tag #{tag}", muted: true), new RailTag(RailKind.Heading, "codex:tag-empty"),
+                            "The tag filter shows the Codex sessions that carry the tag. Clear it from the filter menu."));
+                    else if (_codexView == RailFilter.Archived)
+                        section.Items.Add(NewItem(Label("No Codex session is archived", muted: true), new RailTag(RailKind.Heading, "codex:archived-empty"),
+                            "Archive a Codex session from its menu, and it is listed here."));
+                }
                 if (pinned.Count > 0) section.Items.Add(CodexPinnedItem(pinned));
                 if (_groupByTag)
                 {
@@ -181,40 +194,38 @@ public partial class SessionWindow
     private sealed record CodexFolder(string Folder, IReadOnlyList<SessionSummary> Sessions);
 
     /// <summary>
-    /// The Codex folders, newest first. The sessions in each are newest first too. Archived sessions are left out: they are in the Archived group.
-    /// A pinned session is left out too: it is listed in the Pinned group only (parity P4). With a Codex tag filter, a session without the tag is
-    /// left out, so a folder with none left is not listed (tags P5). The rule is <see cref="CodexRailGroups.InHistoryGroups"/>, shared with the tag groups.
+    /// The Codex folders under the view in use, newest first. The sessions in each are newest first too. Under All and History a folder holds the
+    /// sessions that are neither archived nor pinned: an archived one is in the Archived group, a pinned one in the Pinned group only (parity P4). Under
+    /// Archived a folder holds the archived sessions (parity P11). With a Codex tag filter, a session without the tag is left out, so a folder with none
+    /// left is not listed (tags P5). The rule is <see cref="CodexRailGroups.PlaceOf"/>, shared with the tag groups.
     /// </summary>
     private IReadOnlyList<CodexFolder> CodexFolders() =>
         _codexSessions
-            .Where(session => CodexRailGroups.InHistoryGroups(MarkOf(ProviderId.Codex, session.Key.SessionId), ActiveCodexTagFilter))
+            .Where(session => CodexPlaceOf(session) == CodexPlace.FolderGroups)
             .GroupBy(session => session.Folder ?? string.Empty, StringComparer.OrdinalIgnoreCase)
             .Select(group => new CodexFolder(group.Key, group.OrderByDescending(s => s.LastActivity ?? DateTimeOffset.MinValue).ToList()))
             .OrderByDescending(folder => folder.Sessions[0].LastActivity ?? DateTimeOffset.MinValue)
             .ToList();
 
-    /// <summary>True when the owner archived a Codex session (its codex: entry, D1).</summary>
-    private bool IsCodexArchived(SessionSummary session) => MarkOf(ProviderId.Codex, session.Key.SessionId)?.Archived == true;
-
     /// <summary>
-    /// True when a Codex session is listed in the Pinned group rather than its folder: pinned and not archived (parity P4). The pin is the owner's
-    /// codex: entry (D1), never Claude's. The Claude filter does not apply: the Codex rail has no filter of its own (its box is hidden), so the
-    /// group shows whichever Claude filter is set.
+    /// Where a Codex session is listed under the view in use (parity P11, A-D2): the Pinned group, the folders or tag groups, the Archived group, or
+    /// nowhere. The Codex marks decide it, and the Codex tag filter applies first (tags P5). The pin and the archive are the owner's codex: entries (D1),
+    /// never Claude's, and Claude's filter does not apply (the Codex rail has no filter of its own).
     /// </summary>
-    private bool InCodexPinnedGroup(SessionSummary session) =>
-        MarkOf(ProviderId.Codex, session.Key.SessionId) is { Pinned: true, Archived: false };
+    private CodexPlace CodexPlaceOf(SessionSummary session) =>
+        CodexRailGroups.PlaceOf(_codexView, MarkOf(ProviderId.Codex, session.Key.SessionId), ActiveCodexTagFilter);
 
-    /// <summary>The Codex sessions in the Pinned group, newest first (parity P4), with the Codex tag filter applied (tags P5).</summary>
+    /// <summary>The Codex sessions in the Pinned group, newest first (parity P4), under the view in use: All and History only (parity P11).</summary>
     private IReadOnlyList<SessionSummary> CodexPinned() =>
-        _codexSessions.Where(session => InCodexPinnedGroup(session) && CodexTagShows(session))
+        _codexSessions.Where(session => CodexPlaceOf(session) == CodexPlace.PinnedGroup)
             .OrderByDescending(s => s.LastActivity ?? DateTimeOffset.MinValue).ToList();
 
     /// <summary>
-    /// The Codex tag groups under Group by tag (tags P5): the sessions that are neither archived nor pinned, with the Codex tag filter applied first.
-    /// The groups are those of <see cref="CodexRailGroups.ByTag"/>, with the Codex marks.
+    /// The Codex tag groups under Group by tag (tags P5): the sessions the view in use lists in the folders (parity P11), with the Codex tag filter
+    /// applied first. The groups are those of <see cref="CodexRailGroups.ByTag"/>, with the Codex marks.
     /// </summary>
     private IReadOnlyList<TagGroup<SessionSummary>> CodexTagGroups() =>
-        CodexRailGroups.ByTag(_codexSessions, id => MarkOf(ProviderId.Codex, id), ActiveCodexTagFilter);
+        CodexRailGroups.ByTag(_codexSessions, id => MarkOf(ProviderId.Codex, id), ActiveCodexTagFilter, _codexView);
 
     /// <summary>
     /// One Codex tag group (tags P5): "#tag (N)", or "No tag (N)" for the sessions with no tag, as a Claude tag group is named. A session with several tags
@@ -248,20 +259,27 @@ public partial class SessionWindow
         return item;
     }
 
-    /// <summary>The archived Codex sessions, newest first, or an empty list, with the Codex tag filter applied (tags P5).</summary>
+    /// <summary>
+    /// The archived Codex sessions of the All view, newest first, with the Codex tag filter applied (tags P5). Under the other views the list is empty:
+    /// Archived lists its sessions in the folders (parity P11).
+    /// </summary>
     private IReadOnlyList<SessionSummary> CodexArchived() =>
-        _codexSessions.Where(session => IsCodexArchived(session) && CodexTagShows(session))
+        _codexSessions.Where(session => CodexPlaceOf(session) == CodexPlace.ArchivedGroup)
             .OrderByDescending(s => s.LastActivity ?? DateTimeOffset.MinValue).ToList();
 
     /// <summary>The tag the Codex rail filters by, or null. Nothing is filtered while library.json cannot be read (D-L3).</summary>
     private string? ActiveCodexTagFilter => _libraryError is null ? _codexTagFilter : null;
 
     /// <summary>
-    /// True when a Codex session carries the Codex tag filter, or no Codex tag filter is set (tags P5). Read from the session's Codex mark only, so the
-    /// Claude marks do not decide it.
+    /// Sets the view the Codex rail shows (parity P11, A-D1). Claude's views that Codex does not have (Running, Temporary) fall back to All. The rail is
+    /// drawn again at once, and Claude's view is not changed.
     /// </summary>
-    private bool CodexTagShows(SessionSummary session) =>
-        TagIndex.Has(MarkOf(ProviderId.Codex, session.Key.SessionId), ActiveCodexTagFilter);
+    private void ChooseCodexView(RailFilter view)
+    {
+        _codexView = IsCodexView(view) ? view : RailFilter.All;
+        UpdateFilterMark();
+        RefreshRail();
+    }
 
     /// <summary>The Codex marks of the sessions in the history: what the Codex tag menu counts (tags P5).</summary>
     private IEnumerable<LibraryEntry> CodexHistoryMarks() =>
@@ -282,8 +300,8 @@ public partial class SessionWindow
 
     /// <summary>
     /// The Codex part of the filter dropdown (tags P5): "Filter by tag #x (n)" for each tag the Codex sessions in the history hold, with a tick on
-    /// the one in use, and "Clear tag filter" while one is set. Each click works as Claude's tag entries do. No view entry is listed: the grouping
-    /// entries follow these (<see cref="SessionWindow.AddGroupingItems"/>, tags P5).
+    /// the one in use, and "Clear tag filter" while one is set. Each click works as Claude's tag entries do. The view entries come before these, and the
+    /// grouping entries after (<see cref="SessionWindow.AddGroupingItems"/>, tags P5, parity P11).
     /// </summary>
     private void AddCodexTagItems(ContextMenu menu)
     {
@@ -319,7 +337,7 @@ public partial class SessionWindow
 
     /// <summary>
     /// The archived Codex sessions, in one collapsed group at the end of the history (D1). Their rows are muted, and each row's menu unarchives it,
-    /// so an archive is seen and reversed here (the rail has no Archived view under Codex).
+    /// so an archive is seen and reversed here. Under All only: the Archived view lists them in its folders (parity P11).
     /// </summary>
     private TreeViewItem CodexArchivedItem(IReadOnlyList<SessionSummary> archived)
     {

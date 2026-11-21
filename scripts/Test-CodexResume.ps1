@@ -1,6 +1,6 @@
 # Codex resume screen, screenshots (steps R7 of docs/plans/provider-codex-2026-11-21.md). A copy of the pattern of Test-NewScreens.ps1, for the two
 # screens of the Codex resume dialog: "From the last turns" (dark) and "From a Codex summary" with Make summary pressed (light), and the Codex
-# history grouped by tag (dark, --rail-group tag: tags P5).
+# history grouped by tag (dark, --rail-group tag: tags P5), and the Codex rail on its Archived view (light, --codex-view archived: parity P11).
 #
 # Everything the App reads is a scratch fixture, built by this script in -Out:
 #   - a state folder (the App's state.json and ui.json; ui.json picks Codex as the window's provider);
@@ -59,7 +59,7 @@ using OpenTail.Bullshark.Core.Library;
 using OpenTail.Bullshark.Core.Providers;
 using OpenTail.Bullshark.Core.Supervisor;
 
-// Scratch state for the screenshots: no run and no record, so the state files only say so. Usage: gen <stateFolder> [tags].
+// Scratch state for the screenshots: no run and no record, so the state files only say so. Usage: gen <stateFolder> [tags|archived].
 var stateFolder = args[0];
 Directory.CreateDirectory(stateFolder);
 new RunStore(Path.Combine(stateFolder, "runs.json")).Save([]);
@@ -71,6 +71,14 @@ if (args.Length > 1 && args[1] == "tags")
     {
         entries["019e2000-0000-7000-8000-00000000c0de"] = new LibraryEntry(Tags: ["demo", "screenshot"]);
         entries["019e2000-0000-7000-8000-00000000c0df"] = new LibraryEntry(Tags: ["screenshot"]);
+    });
+}
+// The archived screen only: the first synthetic session's Codex mark says it is archived, so the Archived view lists it (parity P11).
+if (args.Length > 1 && args[1] == "archived")
+{
+    SessionLibrary.Beside(Path.Combine(stateFolder, "state.json")).UpdateProvider(ProviderId.Codex, entries =>
+    {
+        entries["019e2000-0000-7000-8000-00000000c0de"] = new LibraryEntry(Archived: true);
     });
 }
 '@ | Set-Content -LiteralPath "$tools\gen\Program.cs" -Encoding UTF8
@@ -158,7 +166,9 @@ $screens = @(
     @{ Name = 'codex-resume-tail-dark'; Theme = 'Dark'; Options = @('--codex-resume') },
     @{ Name = 'codex-resume-summary-light'; Theme = 'Light'; Options = @('--codex-resume', 'summary'); Summary = $true },
     # The Codex rail grouped by tag (--rail-group tag): two sessions, the first with two tags, so it is under both tag groups.
-    @{ Name = 'codex-rail-tag-dark'; Theme = 'Dark'; Options = @('--rail-group', 'tag'); Tags = $true }
+    @{ Name = 'codex-rail-tag-dark'; Theme = 'Dark'; Options = @('--rail-group', 'tag'); Tags = $true },
+    # The Codex rail on its Archived view (--codex-view archived, parity P11): the one session is archived, so the view lists it in its folder.
+    @{ Name = 'codex-rail-archived-light'; Theme = 'Light'; Options = @('--codex-view', 'archived'); Archived = $true }
 )
 
 $originalPath = $env:PATH
@@ -183,6 +193,15 @@ try {
                 continue
             }
         }
+        if ($screen.Archived) {
+            # The archive fixture: the one session is marked archived (written for that screen only; the next screen's start clears library.json).
+            & dotnet "$tools\gen\out\gen.dll" $state archived | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                Write-Output "FAIL ${name}: the archive fixture was not written (the fixture generator failed)"
+                $failed++
+                continue
+            }
+        }
         $png = Join-Path $shots "$name.png"
         $argList = @('--state', "$state\state.json", '--no-pass', '--workdir', $repo, '--claude-home', $claudeHome,
             '--shot', $png, '--shot-after', '9') + $screen.Options
@@ -200,7 +219,7 @@ try {
         $expectedSessions = if ($screen.Tags) { 2 } else { 1 }
         $historyOk = $log -match "codex history read: $expectedSessions sessions"
         # The grouping is not logged (tag text stays out of the log), so the tag screen's step is its picture, which a person looks at.
-        $stepOk = if ($screen.Summary) { $log -match 'codex summary made: \d' } elseif ($screen.Tags) { $true } else { $log -match 'codex start text built: \d' }
+        $stepOk = if ($screen.Summary) { $log -match 'codex summary made: \d' } elseif ($screen.Tags) { $true } elseif ($screen.Archived) { $log -match 'codex view at start: archived' } else { $log -match 'codex start text built: \d' }
         if ($process.ExitCode -eq 0 -and $pictureOk -and $historyOk -and $stepOk) {
             Write-Output "PASS ${name}: exit 0, history read, the step ran, $png"
         } else {

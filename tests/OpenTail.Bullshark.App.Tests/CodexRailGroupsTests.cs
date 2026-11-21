@@ -6,8 +6,9 @@ namespace OpenTail.Bullshark.App.Tests;
 
 /// <summary>
 /// Codex's Group by tag (tags P5): a session with two tags is in both tag groups, a session with no tag is in the "No tag" group, an archived or
-/// pinned session is in no tag group (the Archived and Pinned groups list it), the Codex tag filter applies before the grouping, and a subagent comes
-/// last in its group. Synthetic summaries and marks only; the window is not built here (see <see cref="CodexRailGroups"/>).
+/// pinned session is in no tag group under All (the Archived and Pinned groups list it), the Codex tag filter applies before the grouping, and a subagent
+/// comes last in its group. The views (parity P11): each view lists its own sessions, the tag filter applies to all of them, and Archived groups the
+/// archived sessions by tag. Synthetic summaries and marks only; the window is not built here (see <see cref="CodexRailGroups"/>).
 /// </summary>
 public sealed class CodexRailGroupsTests
 {
@@ -128,5 +129,70 @@ public sealed class CodexRailGroupsTests
 
         Assert.Equal(["beta", "alpha", "zeta", null], groups.Select(g => g.Tag).ToList());
         Assert.Equal(new[] { "e" }, Ids(groups[3]));
+    }
+
+    [Fact]
+    public void EachViewListsTheSessionsItOwns()
+    {
+        var plain = new LibraryEntry();
+        var pinned = new LibraryEntry(Pinned: true);
+        var archived = new LibraryEntry(Archived: true);
+        var pinnedArchived = new LibraryEntry(Pinned: true, Archived: true);
+
+        // All: every session is listed; a pinned one in the Pinned group, an archived one in the Archived group (pinned or not).
+        Assert.Equal(CodexPlace.FolderGroups, CodexRailGroups.PlaceOf(RailFilter.All, plain, null));
+        Assert.Equal(CodexPlace.FolderGroups, CodexRailGroups.PlaceOf(RailFilter.All, null, null));
+        Assert.Equal(CodexPlace.PinnedGroup, CodexRailGroups.PlaceOf(RailFilter.All, pinned, null));
+        Assert.Equal(CodexPlace.ArchivedGroup, CodexRailGroups.PlaceOf(RailFilter.All, archived, null));
+        Assert.Equal(CodexPlace.ArchivedGroup, CodexRailGroups.PlaceOf(RailFilter.All, pinnedArchived, null));
+
+        // History: no archived session; a pinned one in the Pinned group; the rest in the folders.
+        Assert.Equal(CodexPlace.FolderGroups, CodexRailGroups.PlaceOf(RailFilter.History, plain, null));
+        Assert.Equal(CodexPlace.PinnedGroup, CodexRailGroups.PlaceOf(RailFilter.History, pinned, null));
+        Assert.Equal(CodexPlace.NotListed, CodexRailGroups.PlaceOf(RailFilter.History, archived, null));
+        Assert.Equal(CodexPlace.NotListed, CodexRailGroups.PlaceOf(RailFilter.History, pinnedArchived, null));
+
+        // Archived: only the archived sessions, in the folders, pinned or not (Claude's Archived filter lists a pinned archived session in its folder).
+        Assert.Equal(CodexPlace.NotListed, CodexRailGroups.PlaceOf(RailFilter.Archived, plain, null));
+        Assert.Equal(CodexPlace.NotListed, CodexRailGroups.PlaceOf(RailFilter.Archived, pinned, null));
+        Assert.Equal(CodexPlace.FolderGroups, CodexRailGroups.PlaceOf(RailFilter.Archived, archived, null));
+        Assert.Equal(CodexPlace.FolderGroups, CodexRailGroups.PlaceOf(RailFilter.Archived, pinnedArchived, null));
+    }
+
+    [Fact]
+    public void TheTagFilterAppliesToEveryView()
+    {
+        var other = new LibraryEntry(Tags: ["other"]);
+        var demo = new LibraryEntry(Tags: ["demo"]);
+        var demoArchived = new LibraryEntry(Tags: ["demo"], Archived: true);
+        var demoPinned = new LibraryEntry(Tags: ["demo"], Pinned: true);
+
+        // A session without the filter tag is listed under no view, and a session with no mark holds no tag.
+        foreach (var view in new[] { RailFilter.All, RailFilter.History, RailFilter.Archived })
+        {
+            Assert.Equal(CodexPlace.NotListed, CodexRailGroups.PlaceOf(view, other, "demo"));
+            Assert.Equal(CodexPlace.NotListed, CodexRailGroups.PlaceOf(view, null, "demo"));
+        }
+        Assert.Equal(CodexPlace.FolderGroups, CodexRailGroups.PlaceOf(RailFilter.All, demo, "demo"));
+        Assert.Equal(CodexPlace.ArchivedGroup, CodexRailGroups.PlaceOf(RailFilter.All, demoArchived, "demo"));
+        Assert.Equal(CodexPlace.PinnedGroup, CodexRailGroups.PlaceOf(RailFilter.History, demoPinned, "demo"));
+        Assert.Equal(CodexPlace.FolderGroups, CodexRailGroups.PlaceOf(RailFilter.Archived, demoArchived, "demo"));
+    }
+
+    [Fact]
+    public void AnUnarchivedSessionIsNotListedUnderArchived()
+    {
+        // The Archived view groups only the archived sessions by tag: the open one is left out, the archived pinned one is kept.
+        var sessions = new[] { Session("open", 1), Session("archived", 2), Session("pinnedArchived", 3) };
+        var marks = new Dictionary<string, LibraryEntry>
+        {
+            ["open"] = new(Tags: ["t"]),
+            ["archived"] = new(Tags: ["t"], Archived: true),
+            ["pinnedArchived"] = new(Tags: ["t"], Pinned: true, Archived: true),
+        };
+
+        var group = Assert.Single(CodexRailGroups.ByTag(sessions, Marks(marks), tagFilter: null, RailFilter.Archived));
+
+        Assert.Equal(new[] { "archived", "pinnedArchived" }, Ids(group));
     }
 }

@@ -124,10 +124,10 @@ public partial class SessionWindow
 
     private void UpdateFilterMark()
     {
-        // Under Codex the label shows Codex's tag and "all": the Claude view does not apply to the Codex rail (tags P5). The grouping does (G-D4).
+        // Under Codex the label shows Codex's own view and tag (parity P11, tags P5): the Claude view does not apply to the Codex rail. The grouping does (G-D4).
         var codex = IsCodexActive;
         var tag = codex ? ActiveCodexTagFilter : ActiveTagFilter;
-        var view = codex ? "all" : _filter.ToString().ToLowerInvariant();
+        var view = (codex ? _codexView : _filter).ToString().ToLowerInvariant();
         var grouping = _groupByTag ? " · by tag" : string.Empty;
         FilterMark.Text = $"show: {view}{(tag is null ? string.Empty : " · #" + tag)}{grouping} ▾";
         // The label may be cut with an ellipsis when the tag is long, so the tooltip names the tag in full.
@@ -136,10 +136,10 @@ public partial class SessionWindow
 
     private ContextMenu? _filterMenu;
 
-    /// <summary>The view entries of the dropdown, built once. Claude's dropdown lists them; Codex's does not (the Codex rail ignores the view).</summary>
+    /// <summary>The view entries of the dropdown, built once. Claude's dropdown lists them all; Codex's lists the views Codex has (parity P11).</summary>
     private readonly List<MenuItem> _viewItems = [];
 
-    /// <summary>The dropdown of views: all four are listed, with a tick on the one in use. Styled in the rail's palette.</summary>
+    /// <summary>The dropdown of views: all five are listed, with a tick on the one in use (Codex lists three of them, see <see cref="IsCodexView"/>). Styled in the rail's palette.</summary>
     private void InitFilterMenu()
     {
         _filterMenu = new ContextMenu { Placement = PlacementMode.Bottom, HasDropShadow = true, PlacementTarget = FilterBox };
@@ -154,8 +154,8 @@ public partial class SessionWindow
 
     /// <summary>
     /// Rebuilds the dropdown each time it opens, so it lists the tags as the marks are now. Under Claude: the views, then a separator, the tags in
-    /// use with their counts (a tick on the one in use), "Clear tag filter" when one is set, and the grouping. Under Codex: Codex's tags
-    /// (<see cref="AddCodexTagItems"/>, tags P5), then the same grouping.
+    /// use with their counts (a tick on the one in use), "Clear tag filter" when one is set, and the grouping. Under Codex: Codex's views (All,
+    /// History and Archived, parity P11), a separator, Codex's tags (<see cref="AddCodexTagItems"/>, tags P5), then the same grouping.
     /// </summary>
     private void RebuildTagMenu()
     {
@@ -163,6 +163,8 @@ public partial class SessionWindow
         _filterMenu.Items.Clear();
         if (IsCodexActive)
         {
+            foreach (var view in _viewItems.Where(item => item.Tag is RailFilter codexView && IsCodexView(codexView))) _filterMenu.Items.Add(view);
+            _filterMenu.Items.Add(new Separator());
             AddCodexTagItems(_filterMenu);
             AddGroupingItems(_filterMenu);
             return;
@@ -267,8 +269,17 @@ public partial class SessionWindow
         _ => "All",
     };
 
+    /// <summary>The views the Codex rail has (parity P11): All, History and Archived. Running and Temporary are Claude's only.</summary>
+    private static bool IsCodexView(RailFilter view) => view is RailFilter.All or RailFilter.History or RailFilter.Archived;
+
     private void ChooseFilter(RailFilter filter)
     {
+        // Under Codex the view is Codex's own (A-D1, parity P11): Claude's filter is not changed by it.
+        if (IsCodexActive)
+        {
+            ChooseCodexView(filter);
+            return;
+        }
         _filter = filter;
         UpdateFilterMark();
         RefreshRail();
@@ -279,8 +290,9 @@ public partial class SessionWindow
     {
         if (_filterMenu is null) return;
         RebuildTagMenu();
+        var current = IsCodexActive ? _codexView : _filter;
         foreach (var item in _filterMenu.Items.OfType<MenuItem>())
-            if (item.Tag is RailFilter view) item.IsChecked = view == _filter;
+            if (item.Tag is RailFilter view) item.IsChecked = view == current;
         _filterMenu.IsOpen = true;
     }
 
@@ -303,6 +315,12 @@ public partial class SessionWindow
         InitFilterMenu();
         // A test flag picks the starting filter (all, running, history, temporary). Without it the rail starts on All.
         if (Enum.TryParse<RailFilter>(_options.FilterName, ignoreCase: true, out var start)) _filter = start;
+        // --codex-view (test only) starts the Codex rail on one of its views (all, history, archived; parity P11). Without it the view is All.
+        if (Enum.TryParse<RailFilter>(_options.CodexViewName, ignoreCase: true, out var codexStart) && IsCodexView(codexStart))
+        {
+            _codexView = codexStart;
+            AppLog.Write($"codex view at start: {codexStart.ToString().ToLowerInvariant()}");
+        }
         // The same for the tag filter (--rail-tag): a test flag, the rail starts with that tag shown. Cleared at the first refresh if no session has it.
         if (!string.IsNullOrWhiteSpace(_options.FilterTag)) _tagFilter = _options.FilterTag.Trim().ToLowerInvariant();
         // --rail-group tag starts the History section grouped by tag, for the screenshots only (features batch G4).

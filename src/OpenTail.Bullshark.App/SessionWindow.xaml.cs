@@ -1024,7 +1024,9 @@ public sealed record LaunchOptions(
     /// <summary>--codex-resume (test only): once the Codex history has loaded, the Codex resume screen opens on its first session, for the screenshots.</summary>
     bool CodexResume = false,
     /// <summary>--codex-resume summary (test only): that screen opens in the summary mode and presses Make summary once, for the screenshots.</summary>
-    bool CodexResumeSummary = false)
+    bool CodexResumeSummary = false,
+    /// <summary>--codex-view (test only): the Codex rail starts on this view (all, history or archived), for the screenshots (parity P11).</summary>
+    string? CodexViewName = null)
 {
     /// <summary>The folder of the transcripts: the owner's, unless a test home is given (--claude-home).</summary>
     public string ProjectsRoot => ClaudeHome is null ? TranscriptReader.DefaultProjectsRoot : TestHome.ProjectsRootUnder(ClaudeHome);
@@ -1047,6 +1049,7 @@ public sealed record LaunchOptions(
         double shotAfter = 8;
         int soakSeconds = SessionWindow.DefaultSoakSeconds;
         double railScroll = 0;
+        string? codexView = null;
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         if (args.Length > 0 && args[^1] == "--state") throw new ArgumentException("--state needs the path of a state file.");
         for (int i = 0; i < args.Length - 1; i++)
@@ -1071,6 +1074,7 @@ public sealed record LaunchOptions(
                 case "--search": searchText = args[++i]; break;
                 case "--soak-seconds": soakSeconds = int.Parse(args[++i], inv); break;
                 case "--rail-scroll": railScroll = double.Parse(args[++i], inv); break;
+                case "--codex-view": codexView = args[++i]; break;
             }
         }
         // --codex-resume takes an optional value, summary (test only): the flag's position is read here, not in the switch above.
@@ -1099,7 +1103,8 @@ public sealed record LaunchOptions(
             SoakSeconds: soakSeconds,
             RailScrollTo: railScroll,
             CodexResume: codexResumeAt >= 0,
-            CodexResumeSummary: codexResumeAt >= 0 && codexResumeAt + 1 < args.Length && args[codexResumeAt + 1] == "summary");
+            CodexResumeSummary: codexResumeAt >= 0 && codexResumeAt + 1 < args.Length && args[codexResumeAt + 1] == "summary",
+            CodexViewName: codexView);
     }
 }
 
