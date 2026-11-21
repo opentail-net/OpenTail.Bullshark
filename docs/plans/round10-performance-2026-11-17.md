@@ -1,5 +1,7 @@
 # Round 10, 2026-11-17: speed on the owner's real transcripts
 
+> Split on 2026-11-21: the done items moved to [Done/round10-performance-2026-11-17-done.md](Done/round10-performance-2026-11-17-done.md). This file keeps the open items.
+
 Status (2026-11-17, builder): items 1 and 4 done; item 2 partly done, item 3 partly done. Built on branch `round10-perf` (commits
 `dc9e095`..`c6dc664`, one commit per fix), merged to `main` and pushed. Open: the first index read with no cache is still about 1.6 s
 (over the 1 s line; a byte-level reader is the next step), and the window's own start was not timed, because its startup pass calls
@@ -31,19 +33,13 @@ pass (running facts, overlap, budgets, effort) and on demand (search, storage, t
 
 ## Items
 
-- [x] **1. Measure.** A small console benchmark (new project `tools/OpenTail.Bullshark.Bench`, added to the solution, no packages) that times, on a given projects root (default: the real one, read-only): `TranscriptIndex.Build`, `HistorySearch` for three queries (a common word, a rare word, a Windows path), `StorageReport`, `EffortReport` and `TurnFacts` on the 3 largest files, `TranscriptPager.Open` + first/last page on the largest file, and one overlap/budget pass over 5 sessions. Report wall time and peak working set. Write results to `docs/findings/perf-2026-11-17.md` (numbers and sizes only).
 - [ ] **2. Fix what is slow.** Anything over 1 s on this data, or over 300 MB peak, gets a fix (streaming instead of whole-file reads, caching by path+length+write time, avoiding repeated JSON parsing, parallel per-file work where it is safe for the ledger). Each fix: its own commit, a test that proves the output is unchanged (synthetic fixture), and the before/after numbers in the perf file.
   - Status: done, with a fix each: index in parallel (`334c8f7`), search pre-filter for escaped words (`34dfa37`), search in batches (`ef88740`), index cache (`c6dc664`). Open: the cold index read with no cache, about 1.6 s on this data.
 - [ ] **3. Window start.** Time the window from start to the history rail being filled, with `--no-pass`, a scratch `--state` and the real `--claude-home` (read-only), using the existing screenshot option to end the run. If over 3 s, find why (log timestamps) and fix it in the same way as item 2. Record before/after.
   - Status: not done as written. The window's startup pass calls the `claude` CLI, so it was not run. The history path it waits for (index and tails) was timed with the bench: 1.8 s with no cache, 0.26 s with the cache. That is under 3 s, so no fix was made for it.
-- [x] **4. Record.** Add a finding (next F number) summarising the data size, the slow spots found and what changed; update the README Plans row and this Status line. (F64; README row; this status.)
 
 ## Decisions made while building
 
-- Item 1: the counts at measuring time were 163 transcripts and 861.9 MB, not the planner's 162 and 866 MB (the owner's sessions
-  changed during the day). The bench runs each step in its own process, twice, in Release, and the findings keep sizes and times only.
-- Item 1: the bench prints no file, folder or session name, and a failure prints the exception type only (a message can hold a path).
-  Its Windows-path query is a generic path that does not occur in the transcripts, so it is the worst case (every line parsed).
 - Item 2, index: the default `TranscriptIndex.Build` reads the files in parallel, each into its own ledger, and combines them in the
   one-after-another order. The one-after-another overload stays as the reference and for injected readers. Output is identical by
   test (every field, the model order, the skipped files), and a mutation of the usage rule fails it. Fresh-process median 3.88 s to

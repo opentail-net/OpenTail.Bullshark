@@ -11,21 +11,21 @@ sides changed it (both kept). Tests: 357 at the start, 1007 at the end.
 
 | Plan | In short |
 |---|---|
-| `review-2026-11-17.md` | Trust file read once; pass off the UI thread; one listing per pass; launch length guard; testable clock; file lock fixes. |
+| `Done/review-2026-11-17.md` | Trust file read once; pass off the UI thread; one listing per pass; launch length guard; testable clock; file lock fixes. |
 | `additions-2026-11-17.md` | Needs you (rail group, flash, sound); Changes tab; run limits; run timeline; Markdown export; `--cwd` argument. Worktree per coder skipped (gate). |
-| `bugs-2026-11-17.md` | Finished/stopped sessions no longer resumed (F61); restart-loop alert once; one bad transcript skipped; one way to open transcripts. |
+| `Done/bugs-2026-11-17.md` | Finished/stopped sessions no longer resumed (F61); restart-loop alert once; one bad transcript skipped; one way to open transcripts. |
 | `gems-2026-11-17.md` | File-overlap alert; merge-conflict check with a copy-able resolve prompt; effort panel; scheduled runs; storage page with archive/restore (no delete). OpenTelemetry gated. |
-| `bugs-round3-2026-11-17.md` | 16 fixes: search with `\`/`"`, startup with bad runs.json, locked pattern/ui/library stores, resume orphans and length, and more. |
-| `round4-2026-11-17.md` | Unreadable stores never read as empty; one error filter; setup check for `VAR=1 cmd` and built-ins; first screenshots (`scripts/Test-NewScreens.ps1`). |
-| `round5-2026-11-17.md` .. `round9-2026-11-17.md` | Reviews of the day's code: stop guard, event-log failures, limits from real start, archive safety, attention keys, incremental transcript reads, timeline paging, DST-safe start times, daemon health (F63) with stale rows, Respawn all with a hold, limits kept when a session is closed. |
+| `Done/bugs-round3-2026-11-17.md` | 16 fixes: search with `\`/`"`, startup with bad runs.json, locked pattern/ui/library stores, resume orphans and length, and more. |
+| `Done/round4-2026-11-17.md` | Unreadable stores never read as empty; one error filter; setup check for `VAR=1 cmd` and built-ins; first screenshots (`scripts/Test-NewScreens.ps1`). |
+| `Done/round5-2026-11-17.md` .. `Done/round9-2026-11-17.md` | Reviews of the day's code: stop guard, event-log failures, limits from real start, archive safety, attention keys, incremental transcript reads, timeline paging, DST-safe start times, daemon health (F63) with stale rows, Respawn all with a hold, limits kept when a session is closed. |
 | `round10-performance-2026-11-17.md` | Index and search speed on the owner's transcripts: the index built and the search run on several threads, a search pre-filter for escaped words, batched search, and an index cache kept between starts. Merged to `main` and pushed. Numbers in `docs/findings/perf-2026-11-17.md`. Open: the first index read with no cache, about 1.6 s. |
-| `round11-2026-11-17.md` | Review of round 10 (findings R1, R2, R3, R5 and R7): the cache key from a fresh stat, a cache that never fails the history load, a locked atomic cache save, search and index with one thread fewer than the processors and cancellable, and a test that fails when the cache misses a summary or digest field. Merged to `main` and pushed. |
-| `round12-2026-11-17.md` | A bad transcript line or file is skipped, not fatal, in every reader and in the window's pass; shared line helper; the merge check and Changes tab use the writes cache; bounded CLI output reads; supervisor reads logs for live sessions only; the log rotates at 5 MB; the index parses UTF-8 bytes (cold 1.69 s to 1.35 s). Merged to `main` and pushed. |
-| `toasts-2026-11-18.md` | Windows toast when the window is not in front: one silent toast per batch (session name and reason only), click brings the window forward, `"toast"` setting and "Toggle toasts" in the palette. New package `CommunityToolkit.WinUI.Notifications` 7.1.2 (MIT); the App targets `net10.0-windows10.0.19041.0`. Not seen on screen. |
-| `batch-b-2026-11-18.md` (B1) | "Copy review prompt" in the Changes tab: a note box and a button copy a prompt that names the changed files to the clipboard. Nothing is sent. Not seen in a running window. |
-| `batch-b-2026-11-18.md` (B2) | "Copy as Markdown" on the Away page copies the digest the page shows (same fields, Markdown characters escaped). The page stays open. Not seen in a running window. |
-| `batch-b-2026-11-18.md` (B3) | Quick capture: the palette's "Add idea…" appends an unchecked line to `ideas.md` beside the state file; "Open ideas file" opens it. Nothing is sent to a session. Not seen in a running window. |
-| `magic-rename-2026-11-18.md` | Haiku names cold past sessions (a wand marks the name): row menu "Magic rename" (the owner's name only after a confirm), History mark and palette "Name cold sessions with Haiku (N)" (asks first, 10 a run), automatic naming off by default. Core tests 95, suite 1273. The gate: `--no-session-persistence` leaves no session file. Not seen in a running window. |
+| `Done/round11-2026-11-17.md` | Review of round 10 (findings R1, R2, R3, R5 and R7): the cache key from a fresh stat, a cache that never fails the history load, a locked atomic cache save, search and index with one thread fewer than the processors and cancellable, and a test that fails when the cache misses a summary or digest field. Merged to `main` and pushed. |
+| `Done/round12-2026-11-17.md` | A bad transcript line or file is skipped, not fatal, in every reader and in the window's pass; shared line helper; the merge check and Changes tab use the writes cache; bounded CLI output reads; supervisor reads logs for live sessions only; the log rotates at 5 MB; the index parses UTF-8 bytes (cold 1.69 s to 1.35 s). Merged to `main` and pushed. |
+| `Done/toasts-2026-11-18.md` | Windows toast when the window is not in front: one silent toast per batch (session name and reason only), click brings the window forward, `"toast"` setting and "Toggle toasts" in the palette. New package `CommunityToolkit.WinUI.Notifications` 7.1.2 (MIT); the App targets `net10.0-windows10.0.19041.0`. Not seen on screen. |
+| `Done/batch-b-2026-11-18.md` (B1) | "Copy review prompt" in the Changes tab: a note box and a button copy a prompt that names the changed files to the clipboard. Nothing is sent. Not seen in a running window. |
+| `Done/batch-b-2026-11-18.md` (B2) | "Copy as Markdown" on the Away page copies the digest the page shows (same fields, Markdown characters escaped). The page stays open. Not seen in a running window. |
+| `Done/batch-b-2026-11-18.md` (B3) | Quick capture: the palette's "Add idea…" appends an unchecked line to `ideas.md` beside the state file; "Open ideas file" opens it. Nothing is sent to a session. Not seen in a running window. |
+| `Done/magic-rename-2026-11-18.md` | Haiku names cold past sessions (a wand marks the name): row menu "Magic rename" (the owner's name only after a confirm), History mark and palette "Name cold sessions with Haiku (N)" (asks first, 10 a run), automatic naming off by default. Core tests 95, suite 1273. The gate: `--no-session-persistence` leaves no session file. Not seen in a running window. |
 
 Findings added: F61 (`agents --json` hides finished/stopped sessions without `--all`), F62 (`--bg` refuses an untrusted folder),
 F63 (daemon not running while the listing still shows sessions; the daemon runs on demand).
@@ -34,13 +34,13 @@ F63 (daemon not running while the listing still shows sessions; the daemon runs 
 
 Decisions:
 - Windows toast notifications need a package (CommunityToolkit or Windows App SDK). Today: flash + sound in the window only.
-- Start when the limit resets: built 2026-11-18, see `limit-reset-start-2026-11-18.md`. Not checked in a running window.
-- Limit in force on the status bar and the Limits history page (backlog A2, A4): built 2026-11-18, see `limit-status-and-history-2026-11-18.md`. Not checked in a running window.
-- "While you were away" digest (backlog D1): built 2026-11-18, see `away-digest-2026-11-18.md`. Not checked in a running window.
-- Limit history scans cached (backlog E1, perf plan `limit-perf-2026-11-18.md`): built 2026-11-18. Warm read 2.4 s before, 0.11 s with the cache, same result. Not checked in a running window.
-- Command palette, Ctrl+Shift+P or "Go to..." (backlog D3): built 2026-11-18, see `palette-2026-11-18.md`. Not checked in a running window (the chord, the button, the window, the focus return to a terminal).
-- Needs-you escalation, snooze and acknowledge (backlog D2): built 2026-11-18, see `escalation-2026-11-18.md`. Not checked in a running window (sound, flash, menu, tab acknowledgement).
-- "Ready for review" rail section for finished coders (backlog D4): built 2026-11-18, see `ready-for-review-2026-11-18.md`. Not checked in a running window (the section, its menu, the mark on Changes).
+- Start when the limit resets: built 2026-11-18, see `Done/limit-reset-start-2026-11-18.md`. Not checked in a running window.
+- Limit in force on the status bar and the Limits history page (backlog A2, A4): built 2026-11-18, see `Done/limit-status-and-history-2026-11-18.md`. Not checked in a running window.
+- "While you were away" digest (backlog D1): built 2026-11-18, see `Done/away-digest-2026-11-18.md`. Not checked in a running window.
+- Limit history scans cached (backlog E1, perf plan `Done/limit-perf-2026-11-18.md`): built 2026-11-18. Warm read 2.4 s before, 0.11 s with the cache, same result. Not checked in a running window.
+- Command palette, Ctrl+Shift+P or "Go to..." (backlog D3): built 2026-11-18, see `Done/palette-2026-11-18.md`. Not checked in a running window (the chord, the button, the window, the focus return to a terminal).
+- Needs-you escalation, snooze and acknowledge (backlog D2): built 2026-11-18, see `Done/escalation-2026-11-18.md`. Not checked in a running window (sound, flash, menu, tab acknowledgement).
+- "Ready for review" rail section for finished coders (backlog D4): built 2026-11-18, see `Done/ready-for-review-2026-11-18.md`. Not checked in a running window (the section, its menu, the mark on Changes).
 - Should old transcripts ever be deleted (today: archive only)?
 - Should a `done` coder in a live run ever be woken? Today: no.
 - A sound when a session that is already waiting goes stale (daemon stopped)? Today: no new sound (round 8 B2.2).

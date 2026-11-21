@@ -1,5 +1,7 @@
 # Session library (2026-11-16)
 
+> Split on 2026-11-21: the done items moved to [Done/session-library-done.md](Done/session-library-done.md). This file keeps the open items.
+
 Status (2026-11-16): L1 to L3 are in commit 72cee28. Committed on 2026-11-16 in two commits: the L5 core (1a2a1ff), then L4 and the L5 screens (the commit after it). L4 is built and checked where no click is needed; the clicks are for the owner. The on-screen items of L5 are built and not checked. The one real resume is not run. L6 is not to be built.
 
 Make past sessions easy to recognise, sort and find again: better titles and a recap taken from the transcripts for free, then the
@@ -118,14 +120,6 @@ Decided while building (2026-11-16; accepted by the planner, git-fb):
 
 ### L1 Free facts from the transcripts (Core)
 
-- [x] `TranscriptSummary` and `SessionDigest` gain optional members: `AiTitle` (the last `ai-title`), `CustomTitle` (the last
-      `custom-title`), `LastRecap` and `LastRecapAt` (the newest `away_summary`), `Compactions` (count of `compact_boundary`).
-- [x] `SessionDigest.Title` follows D-L1 without the owner's name (that comes in L3): `AiTitle`, else `FirstUserText`, else the id.
-- [x] Tests on fixtures: `TheLastAiTitleWins`, `ATranscriptWithNoAiTitleKeepsTheFirstMessage`, `TheNewestRecapIsKept`,
-      `CompactionsAreCounted`, `AnAiTitleRecordWithNoTextIsIgnored`. Checked in `tests/.../Activity/TranscriptFactsTests.cs`, with
-      three more: `TheTitleIsTheAiTitleThenTheFirstMessage`, `TheCustomTitleIsNotTheTitle`, `TheTitleFallsBackToTheShortId`.
-- [x] A check on the real folder, in a script, not a unit test: `scripts/Check-Titles.ps1` (read-only; see below).
-
 Check: `dotnet test` passes. Checked 2026-11-16: `dotnet test tests/OpenTail.Bullshark.Core.Tests --filter "FullyQualifiedName!~Live"`
 passes 262 (254 before this slice, plus the 8 new tests).
 
@@ -139,9 +133,6 @@ Real folder, read-only, `scripts/Check-Titles.ps1`, 2026-11-16 (7 seconds):
 
 ### L2 The rail shows them (App)
 
-- [x] The row title uses the new `Title`: seen on screen. The tooltip adds the recap (with its age), the `custom-title` when there
-      is one, and "compacted N times" when N is above 0. Built as `FactsTip` in `SessionWindow.Rail.cs`. Not seen on screen: a
-      tooltip needs a hover, and hovering was not done. Keep this box open until a hover is checked.
 - [ ] The transcript view's heading and the resume prompt's heading use the same title. By code reading only: both read
       `digest.Title`. Not seen on screen: a transcript opens with a click, and clicks were not simulated.
 - [ ] Checked on screen with a temporary state folder: a session with an `ai-title`, one without, and a subagent row. Partly: an
@@ -153,13 +144,6 @@ state folder, `--no-pass`, `--shot`): the row "OpenTail.Bullshark review..." (se
 row is visible, so the three-row check is not complete.
 
 ### L3 The library store (Core)
-
-- [x] `SessionLibrary` in `Core/Library/`: `Load()`, `Update(change)`, the entry record, following `RunStore` (lock, atomic
-      write, missing file is empty, unreadable file throws `StoreUnreadableException`). `Beside(stateFile)` gives its path. Built: the property is `FilePath`, because `Path` would hide `System.IO.Path`.
-- [x] `TitleFor(digest, entry)` applies D-L1 in full. `TagsOf(text)` parses the typed tags (D-L6). Both are static methods on
-      `SessionLibrary`.
-- [x] Tests: `AMissingFileIsAnEmptyLibrary`, `AnUnreadableFileThrowsAndIsNotOverwritten`, `AnEmptyEntryIsRemoved`,
-      `TwoUpdatesBothLand`, `TheOwnersNameComesFirst`, `TagsAreSplitAndLowerCased`.
 
 Check: `dotnet test` passes. Checked 2026-11-16: the Core suite passes 270 with the Live tests filtered out. The eight tests are in
 `tests/.../Library/SessionLibraryTests.cs`: the six named, plus `TheEntryIsKeptAcrossALoad` and
@@ -177,11 +161,6 @@ Check: `dotnet test` passes. Checked 2026-11-16: the Core suite passes 270 with 
 - [ ] The colour bar on the rail row and on the tab (D-L11), in both themes. Seen: the rail row's bar (Blue) in the dark and the light
       theme. Built, not seen: the tab's top bar (`DrawStrip`), because a tab needs a click. The Red session is not in the visible part
       of the list.
-- [x] The Pinned group (D-L4) and the Archived filter (D-L5), with its own `FilterLabel` branch. Seen: the Pinned group at the top of
-      History (dark and light); the archived session hidden in All (dark); the Archived filter, started with `--rail-filter archived`,
-      lists it muted (light).
-- [x] An unreadable library follows D-L3. Seen: the rail shows; a notice "library.json cannot be read" is at the top of History; the log
-      has the line "library not read"; the file is not overwritten (`scripts\Test-Library.ps1`, check 6).
 - [ ] Checked on screen with a temporary state folder: rename, pin, unpin, archive, the Archived filter, unarchive, a tag, a note, a
       colour in the dark and the light theme; then close and reopen the window and see them again. Seen: the Archived filter; a colour
       in both themes; a fresh start reads `library.json` and shows the Pinned group, which is the reopen. Not done: rename, pin, unpin,
@@ -193,23 +172,11 @@ Check: the on-screen list is not complete; the boxes above say what is. `scripts
 
 ### L5 Search and lineage
 
-- [x] `HistorySearch.Run` takes an optional `Func<SessionDigest, string?>` giving a session's extra text (D-L7). Tests:
-      `AWordInTheOwnersNameMatches`, `AWordInATagMatchesWithNoMatchingMessage`, `EveryWordIsStillNeeded` (`HistorySearchExtraTextTests.cs`).
-      The window passes the owner's name, tags and note (`SearchableText`), read from a snapshot of the marks.
 - [ ] `SearchView` shows "matched its name, tags or note" for a match with no messages. Built (`SearchView.cs`). Not seen: a search needs
       typing, which is for the owner.
-- [x] `ResumeText.Compose` takes the source session id and writes the `Continues session:` line (D-L8). Tests:
-      `ResumeContinuesLineTests` (the first line; no line without a source; read back by `SessionTitle.ContinuesIdOf`). The resume passes
-      the id (`SessionWindow.Resume.cs`). The two existing tests compile unchanged, because the parameter is optional.
-- [x] `TranscriptReader` reads that line from the first user message into `SessionDigest.ContinuesSessionId`. Tests:
-      `TheContinuesLineIsRead`, `ALineLikeItLaterInTheSessionIsIgnored` (`TranscriptLineageTests.cs`).
 - [ ] The rail tooltip says "continues: <title>". The transcript view shows "Continued from…" and "Continued in…" links. Built
       (`ContinuesTip`, `ShowLineage`, `LineageLink`). Not seen: a hover and a transcript click are needed, and no continuation exists yet
       to show the links.
-- [x] A session resumed from a summary has no title from its start text (`SessionTitle.Clean` skips "Continues session:" and "This session
-      continues…"). Its title is "↪ " and the earlier session's title when it has no `ai-title` and no name:
-      `SessionLibrary.TitleFor(digest, entry, continued)`, tested in `LineageTitleTests.cs` (five tests). Not seen on screen: no resumed
-      session exists.
 
 Check: `dotnet test` passes: 287 with the Live tests filtered out (2026-11-16). One real resume is not run. Its box waits for the owner's
 word. The on-screen boxes above are unticked until a click or a hover is checked.

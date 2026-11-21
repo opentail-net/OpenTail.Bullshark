@@ -1,5 +1,7 @@
 # Tabs and panes (2026-11-16)
 
+> Split on 2026-11-21: the done items moved to [Done/tabs-and-panes-done.md](Done/tabs-and-panes-done.md). This file keeps the open items.
+
 Status: T1 and T2 are built (2026-11-16), tested with counters in place of sessions, and committed in 39eaf53. T3 is not built. What was
 not checked on screen is listed under "Not verified". Results: finding F55.
 
@@ -54,12 +56,6 @@ Recommended by the assistant. The owner has not confirmed them.
 
 ### T1 Reorder
 
-- [x] Drag on a tab: after the pointer moves more than a few pixels, the tab changes places with a tab when the pointer passes
-      that tab's middle. A click without a drag still activates the tab. "+" stays last. (`SessionWindow.TabDrag.cs`)
-- [x] `TabOrder.Move`, `Arrange` and `DropPlace` in Core (`Core/Tabs/TabOrder.cs`), with 16 tests, among them `ATabMovesLeft`,
-      `ATabMovesRight`, `AMoveOutOfRangeIsIgnored`, `AWideAndANarrowTabDoNotSwapBack`.
-- [x] Save the order of session tabs (by session id) in `tabs.json` and restore it at start. Unknown ids are ignored; new
-      sessions go last. (The second run of `scripts/Test-Split.ps1` checks the restore.)
 - [ ] Checked on screen with a temporary state folder: three tabs, reorder, wait for one rail refresh (the order holds), reopen.
       Not done: the drag was not driven on screen. For the owner.
 
@@ -67,17 +63,6 @@ Check: `dotnet test` passes; the on-screen steps are seen.
 
 ### T2 Split (spike first)
 
-- [x] **Spike, the gate (passed, F55):** in the self-test window (`--selftest`, the counter of F45), move a running terminal from one `Grid`
-      to another in the same window, and back. Pass: the counter keeps ticking, a key still reaches it, and it redraws at the
-      new size. Record the result as a finding. If it fails, T2 keeps each terminal in its first pane and offers "show in the
-      other pane" only for a terminal that is closed and attached again.
-- [x] Two pane grids with a splitter between them. Built differently from the first plan: only session tabs go to the right
-      pane (D-T6), so `ShowOnly(element)` keeps its meaning and no caller changes. A terminal whose parent is the right pane
-      is shown there (`ShowInRight`); everything else is shown at the left as before.
-- [x] Each pane has its own strip and its own active tab. Selecting a session in the rail shows it in the pane it is in.
-- [x] A tab moves by its right-click menu, or by a drag released over the other half of the pane. Closing the last tab of the
-      right pane closes the split. Which sessions are at the right is saved in `tabs.json`.
-- [x] `scripts/Test-Split.ps1`: two counters as sessions, 13 checks pass, 2 click checks skipped (the window was covered).
 - [ ] Checked on screen with real sessions: planner left, coder right, both live; resize the splitter; collapse the rail;
       paste into each pane after a click in it. For the owner.
 
