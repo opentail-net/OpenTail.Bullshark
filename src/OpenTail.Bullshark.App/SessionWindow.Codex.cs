@@ -205,10 +205,13 @@ public partial class SessionWindow
         var id = session.Key.SessionId;
         var mark = MarkOf(ProviderId.Codex, id);
         var title = CodexRowTitle(mark?.Name, session);
-        var line = TwoLine(title, session.Model ?? string.Empty, RelativeTime(session.LastActivity) + TagsSuffix(mark));
+        // The third line: the time, the tags, then the plan figure "3/7" when the session has a plan file (parity P3).
+        var detail = RelativeTime(session.LastActivity) + TagsSuffix(mark);
+        if (PlanFigure(ProviderId.Codex, id) is { } plan) detail = detail.Length == 0 ? plan : detail + " · " + plan;
+        var line = TwoLine(title, session.Model ?? string.Empty, detail);
         var item = NewItem(ColourEdge(line, mark?.Colour),
             new RailTag(RailKind.CodexSession, id, Detail: session.Folder),
-            NoteTip(mark) + "Double click, or the menu, to resume it in a terminal tab.");
+            NoteTip(mark) + PlanTip(mark) + "Double click, or the menu, to resume it in a terminal tab.");
         if (mark?.Archived == true) item.Opacity = 0.55;
         item.ContextMenu = CodexRowMenu(session, title);
         item.MouseDoubleClick += (_, e) =>

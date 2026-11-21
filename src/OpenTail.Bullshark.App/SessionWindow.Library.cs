@@ -212,14 +212,17 @@ public partial class SessionWindow
 
     /// <summary>
     /// The plan counts of a session's plan file, read through the cache, or null when the session has no plan file or it cannot be read (plan
-    /// progress, Part 2). The counts are cached per file; the text is never logged.
+    /// progress, Part 2). The counts are cached per file; the text is never logged. Codex rows read Codex's marks (parity P3).
     /// </summary>
-    private PlanProgressCount? PlanOf(string sessionId) =>
-        MarkOf(sessionId)?.PlanFile is { } path ? _planProgress.Get(path) : null;
+    private PlanProgressCount? PlanOf(ProviderId provider, string sessionId) =>
+        MarkOf(provider, sessionId)?.PlanFile is { } path ? _planProgress.Get(path) : null;
 
     /// <summary>The plan figure of a row, "3/7": the checked items of all the items. Null when there is no plan file, or it has no items.</summary>
-    private string? PlanFigure(string sessionId) =>
-        PlanOf(sessionId) is { Total: > 0 } plan ? $"{plan.Done}/{plan.Total}" : null;
+    private string? PlanFigure(ProviderId provider, string sessionId) =>
+        PlanOf(provider, sessionId) is { Total: > 0 } plan ? $"{plan.Done}/{plan.Total}" : null;
+
+    /// <summary>The Claude row's plan figure (the rail's live and history rows use Claude's marks).</summary>
+    private string? PlanFigure(string sessionId) => PlanFigure(ProviderId.Claude, sessionId);
 
     /// <summary>
     /// The plan line at the top of a row's tooltip: "Plan: 3 of 7 done. Next: ...", with the first open item's text. Empty when the row shows no
