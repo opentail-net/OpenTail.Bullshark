@@ -8,7 +8,7 @@ using OpenTail.Bullshark.Core.Zoom;
 namespace OpenTail.Bullshark.App;
 
 /// <summary>
-/// A session tab can open its session in its own window (docs/plans/tabs-and-panes.md, T3). The tab releases its terminal and closes first,
+/// A session tab can open its session in its own window (docs/plans/window.md, T3). The tab releases its terminal and closes first,
 /// so a session is attached in one place at a time. When its window closes, the session comes back to the main window.
 /// </summary>
 public partial class SessionWindow

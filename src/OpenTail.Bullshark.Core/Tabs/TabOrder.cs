@@ -4,7 +4,7 @@ using OpenTail.Bullshark.Core.Supervisor;
 namespace OpenTail.Bullshark.Core.Tabs;
 
 /// <summary>
-/// The order of the session tabs (docs/plans/tabs-and-panes.md, T1). The owner drags a tab to a new place; the order of the
+/// The order of the session tabs (docs/plans/window.md, T1). The owner drags a tab to a new place; the order of the
 /// session tabs is kept in tabs.json, beside the state file, with the sessions shown in the right pane (T2). A file that is missing
 /// or cannot be read gives no order, and the tabs then open in name order as before.
 /// </summary>

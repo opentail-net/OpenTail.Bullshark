@@ -7,7 +7,7 @@ using Wpf.Ui.Terminal;
 namespace OpenTail.Bullshark.App;
 
 /// <summary>
-/// A session in its own window (docs/plans/tabs-and-panes.md, T3). It attaches afresh with claude attach; a terminal is never moved
+/// A session in its own window (docs/plans/window.md, T3). It attaches afresh with claude attach; a terminal is never moved
 /// between windows. Closing the window releases its terminal, and the session keeps running. Raises <see cref="Returned"/> once the
 /// terminal is released, so the main window can show the session again.
 /// </summary>

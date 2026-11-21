@@ -7,7 +7,7 @@ using OpenTail.Bullshark.Core.Tabs;
 namespace OpenTail.Bullshark.App;
 
 /// <summary>
-/// Dragging a tab (docs/plans/tabs-and-panes.md, T1 and T2). A press and release without moving is still a click. Once the pointer
+/// Dragging a tab (docs/plans/window.md, T1 and T2). A press and release without moving is still a click. Once the pointer
 /// has moved a few pixels the tab is being dragged. Along its strip it changes places with a tab when the pointer passes that tab's
 /// middle; "+" stays last. Released over the pane, below the strips, a session tab moves to the pane on that side: the right half
 /// opens the split. The order of the session tabs, and which are at the right, are saved beside the state file. Released outside the window, a session tab opens its session in its own window (T3).

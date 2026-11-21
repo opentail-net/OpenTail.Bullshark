@@ -10,7 +10,7 @@ using OpenTail.Bullshark.Core.Ui;
 namespace OpenTail.Bullshark.App;
 
 /// <summary>
-/// The command palette (ideas D3, docs/plans/palette-2026-11-18.md): Ctrl+Shift+P, or the "Go to…" button in the status bar, opens a box that goes to a
+/// The command palette (ideas D3, docs/plans/Done/palette-2026-11-18.md): Ctrl+Shift+P, or the "Go to…" button in the status bar, opens a box that goes to a
 /// session or a page, or runs a safe action. Nothing is sent to a session, and nothing is stopped, restarted or removed (principle 3). Each entry runs
 /// the handler the button, tab or rail already uses. The entries come from what is in memory, so opening the palette reads no file.
 /// </summary>

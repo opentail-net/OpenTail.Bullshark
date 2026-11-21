@@ -3,7 +3,7 @@ using Xunit;
 
 namespace OpenTail.Bullshark.Core.Tests.Health;
 
-/// <summary>The read-only setup check (docs/plans/setup-check.md). Files are written in temp folders; no hook or server is run.</summary>
+/// <summary>The read-only setup check (docs/plans/Done/setup-check.md). Files are written in temp folders; no hook or server is run.</summary>
 public sealed class SetupCheckTests : IDisposable
 {
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "bullshark-setup-" + Guid.NewGuid().ToString("N")[..8]);

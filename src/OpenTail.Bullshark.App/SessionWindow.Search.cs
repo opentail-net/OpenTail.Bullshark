@@ -10,7 +10,7 @@ using OpenTail.Bullshark.Core.Search;
 namespace OpenTail.Bullshark.App;
 
 /// <summary>
-/// The history search in the window (docs/plans/history-search.md). Typing in the box at the foot of the rail starts a search 400 ms after
+/// The history search in the window (docs/plans/Done/DONE_history-search.md). Typing in the box at the foot of the rail starts a search 400 ms after
 /// the last key; Enter starts it at once; Escape clears the box. While a search runs the list stays as it is, and an hourglass shows. When
 /// it ends, the history list shows only the sessions that matched, each with a count of its matching messages, and the results tab gives
 /// their matching messages. Live sessions are not filtered. Clearing the box, or closing the results tab, shows the whole list again.

@@ -16,7 +16,7 @@ public enum SetupState
 public sealed record SetupItem(string Area, string Name, SetupState State, string Detail);
 
 /// <summary>
-/// A read-only check of the Claude Code setup on this computer (docs/plans/setup-check.md). It reads settings.json, ~/.claude.json and
+/// A read-only check of the Claude Code setup on this computer (docs/plans/Done/setup-check.md). It reads settings.json, ~/.claude.json and
 /// CLAUDE.md. For each command that a hook or a local MCP server starts with, it checks that the program exists, and that any script
 /// named in its arguments exists. It never runs a hook or a server, never contacts a remote server, and writes nothing.
 /// </summary>

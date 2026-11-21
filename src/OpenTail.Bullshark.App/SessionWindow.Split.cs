@@ -7,7 +7,7 @@ using Wpf.Ui.Terminal;
 namespace OpenTail.Bullshark.App;
 
 /// <summary>
-/// The split (docs/plans/tabs-and-panes.md, T2): a second pane at the right, so two sessions are in view at once, for example the
+/// The split (docs/plans/window.md, T2): a second pane at the right, so two sessions are in view at once, for example the
 /// planner at the left and the coder at the right. Only session tabs go to the right pane: the setup, the transcripts and the search
 /// are one view each, and they stay at the left. A tab moves by its menu (right click) or by dragging it onto the other half of the
 /// pane. The right pane has its own strip and its own active tab. It closes when its last tab leaves, and a session whose tab is

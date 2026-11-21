@@ -184,7 +184,7 @@ public partial class SessionWindow
     }
 
     /// <summary>
-    /// The spike of docs/plans/tabs-and-panes.md (T2): <c>--selftest &lt;result.json&gt; --selftest-mode move</c> moves a running
+    /// The spike of docs/plans/window.md (T2): <c>--selftest &lt;result.json&gt; --selftest-mode move</c> moves a running
     /// terminal from the pane to a second grid in the same window, and back. After each move it sends a key. The result says
     /// whether the process lived, whether the counter went on, whether each key came back, and the terminal's width in each place.
     /// </summary>
@@ -309,7 +309,7 @@ public partial class SessionWindow
         : null;
 
     /// <summary>
-    /// The check of the split (docs/plans/tabs-and-panes.md, T2): <c>--selftest &lt;result.json&gt; --selftest-mode split</c>, with a
+    /// The check of the split (docs/plans/window.md, T2): <c>--selftest &lt;result.json&gt; --selftest-mode split</c>, with a
     /// state file that holds two records. It moves the second session's tab to the right pane, sends a key to each terminal,
     /// checks which terminal a paste would go to after the script clicks in each, closes the right tab, and writes what it saw.
     /// </summary>

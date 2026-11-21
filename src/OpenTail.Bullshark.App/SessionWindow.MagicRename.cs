@@ -14,10 +14,10 @@ using OpenTail.Bullshark.Core.Supervisor;
 namespace OpenTail.Bullshark.App;
 
 /// <summary>
-/// The magic rename (docs/plans/magic-rename-2026-11-18.md): Haiku names a past session that has gone cold, and the library name gets a
+/// The magic rename (docs/plans/Done/magic-rename-2026-11-18.md): Haiku names a past session that has gone cold, and the library name gets a
 /// wand. One row menu item names one session; the History mark and the palette name the cold sessions (at most 10 a run, after a confirm).
 /// Automatic naming is a setting, off by default: a never-named session is named when its cache goes from warm to cold while the window is
-/// open (docs/plans/tags-and-auto-magic-2026-11-18.md, Part C). A name also carries up to two tags, which are added to the session's own
+/// open (docs/plans/Done/tags-and-auto-magic-2026-11-18.md, Part C). A name also carries up to two tags, which are added to the session's own
 /// (Part B). The model calls and the transcript reads run on a pool thread, the library is written through <see cref="SessionLibrary.Update"/>
 /// only, and nothing is sent to a session.
 /// </summary>

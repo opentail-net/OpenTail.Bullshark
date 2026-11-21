@@ -16,7 +16,7 @@ public sealed record SearchOutcome(IReadOnlyList<SessionMatch> Matches, int Unre
 /// Search over what was said in past sessions (owner, 2026-11-16), the way ChatGPT and Claude.ai search their chats. The owner's
 /// messages and Claude's text replies are searched; tool calls and results are not. A session matches when every word appears
 /// somewhere in it, on any line. Results are newest first and capped. The transcripts are read each time: there is no index yet
-/// (docs/plans/history-search.md).
+/// (docs/plans/Done/DONE_history-search.md).
 /// </summary>
 public static class HistorySearch
 {

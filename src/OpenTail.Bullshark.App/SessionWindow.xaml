@@ -89,7 +89,7 @@
                     </Border>
                     <TextBlock x:Name="SessionsTitle" Text="Sessions" FontWeight="SemiBold" VerticalAlignment="Center" />
                 </DockPanel>
-                <!-- Search what was said in past sessions (docs/plans/history-search.md). Three letters or more per word. -->
+                <!-- Search what was said in past sessions (docs/plans/Done/DONE_history-search.md). Three letters or more per word. -->
                 <Grid DockPanel.Dock="Bottom" Margin="8,4,8,8">
                     <TextBox x:Name="SearchBox" Padding="6,3,26,3" VerticalContentAlignment="Center" FontSize="12" BorderThickness="1"
                              ToolTip="Search what was said in your past sessions. Each word needs three letters or more. Enter searches at once."
@@ -115,7 +115,7 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
-                <!-- The second and third columns are the split (docs/plans/tabs-and-panes.md, T2). They have no width until a
+                <!-- The second and third columns are the split (docs/plans/window.md, T2). They have no width until a
                      session tab is moved to the right pane. -->
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition x:Name="PaneColumn" Width="*" />

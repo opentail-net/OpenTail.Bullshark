@@ -19,7 +19,7 @@ public sealed class MagicLimitException : Exception
 }
 
 /// <summary>
-/// Haiku through the `claude` command, as the gate ran it (docs/plans/magic-rename-2026-11-18.md, Gate): print mode, no session saved to
+/// Haiku through the `claude` command, as the gate ran it (docs/plans/Done/magic-rename-2026-11-18.md, Gate): print mode, no session saved to
 /// disk, no tools, the naming instructions as the system prompt, and the user message on standard input. The call runs in the given folder
 /// (beside the state file), never in a project. Its output is capped; a timeout or a non-zero exit is an error, and the error text never
 /// contains the transcript.

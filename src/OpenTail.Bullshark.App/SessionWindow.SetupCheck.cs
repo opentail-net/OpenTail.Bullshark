@@ -8,7 +8,7 @@ using OpenTail.Bullshark.Core.Trust;
 namespace OpenTail.Bullshark.App;
 
 /// <summary>
-/// The setup check and the instructions editor (docs/plans/setup-check.md). Both read Claude Code's files and change nothing here. They are opened
+/// The setup check and the instructions editor (docs/plans/Done/setup-check.md). Both read Claude Code's files and change nothing here. They are opened
 /// from the Claude sub-tab of Settings (2026-11-18); the dialogs and what they show are as before.
 /// </summary>
 public partial class SessionWindow

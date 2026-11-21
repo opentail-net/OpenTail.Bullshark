@@ -46,7 +46,7 @@ public sealed record RailPalette(string Panel, string Background, string Text, s
 
     /// <summary>
     /// The edge of a control (the buttons, the boxes, the combo boxes, the checks): UiBorder. Separate from <see cref="Border"/>, which draws the
-    /// rail's lines and the setup page's rules. Contrast against the background (P7, computed in docs/plans/ui-polish-batch-2026-11-19.md):
+    /// rail's lines and the setup page's rules. Contrast against the background (P7, computed in docs/plans/Done/ui-polish-batch-2026-11-19.md):
     /// light 3.19:1 (the 3:1 of a component's boundary), dark 2.47:1 (raised from 1.38:1, held modest so the dark theme stays quiet).
     /// </summary>
     public string Edge => IsLight ? "#7F8B9D" : "#4A5566";

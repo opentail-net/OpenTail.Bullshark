@@ -1,4 +1,4 @@
-# T2 acceptance (docs/plans/tabs-and-panes.md): the split pane, with two live terminals.
+# T2 acceptance (docs/plans/window.md): the split pane, with two live terminals.
 # The check uses a PowerShell counter in place of each session, so it costs nothing and touches no owner session.
 # It runs the window twice with --no-pass and scratch paths. Each run closes itself after about 20 seconds.
 # Run 1: a tab is moved to the right pane, keys and the paste target are checked, and the right tab is closed.

@@ -9,7 +9,7 @@ using OpenTail.Bullshark.Core.Health;
 namespace OpenTail.Bullshark.App;
 
 /// <summary>
-/// The setup check, opened from the status bar (docs/plans/setup-check.md). It lists what SetupCheck found: a line for each check, with
+/// The setup check, opened from the status bar (docs/plans/Done/setup-check.md). It lists what SetupCheck found: a line for each check, with
 /// a dot for the result and the detail under it. It changes nothing, and it starts no hook or server. "Check again" runs it again.
 /// </summary>
 public sealed class SetupCheckDialog : Window

@@ -1,7 +1,7 @@
 namespace OpenTail.Bullshark.Core.Ui;
 
 /// <summary>
-/// One line of the command palette (ideas D3, docs/plans/palette-2026-11-18.md). <paramref name="Id"/> names the entry for the caller and is not shown.
+/// One line of the command palette (ideas D3, docs/plans/Done/palette-2026-11-18.md). <paramref name="Id"/> names the entry for the caller and is not shown.
 /// <paramref name="Hint"/> is a short note drawn at the right, or null. <paramref name="Order"/> breaks ties: a lower number comes first. The caller
 /// numbers its groups: waiting sessions, other sessions, pages, actions. <paramref name="Keywords"/> is text the query can match at the start of
 /// a word (a tag, a folder name, a state), or null. It is never drawn, and it never outranks a match in the title (see <see cref="CommandPalette"/>).

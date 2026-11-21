@@ -9,7 +9,7 @@ using OpenTail.Bullshark.Core.Search;
 namespace OpenTail.Bullshark.App;
 
 /// <summary>
-/// The results of a history search (docs/plans/history-search.md): one block per session, newest first, with its title, folder, age,
+/// The results of a history search (docs/plans/Done/DONE_history-search.md): one block per session, newest first, with its title, folder, age,
 /// how many of its messages matched, and the newest matching messages. A click on a title or on a message opens the session's
 /// transcript at that line. The colours follow the rail's theme.
 /// </summary>
