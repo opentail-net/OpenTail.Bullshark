@@ -2,11 +2,11 @@
 
 Bullshark - saves your bytes.
 
-> **Status (2026-11-17, end of an autonomous session): built, not yet proven end to end with live sessions.** Everything planned on 2026-11-17, up to round 12, is on `main`, and on 2026-11-18 three additions that read the usage-limit entries of the transcripts: start a run when the limit resets, the status-bar limit text and a Limits history page (1038 tests; see [docs/plans/backlog-2026-11-18.md](docs/plans/backlog-2026-11-18.md)). What was built, the owner's open decisions and the gated checks are in [docs/plans/session-summary-2026-11-17.md](docs/plans/session-summary-2026-11-17.md). The end-to-end run with the real `claude` CLI (review of 2026-11-15, Phase 3) has not been done. See [Plans](#plans).
+> **Status (2026-11-21): built and tested locally; the live end-to-end run with real sessions is not done.** Latest local run (2026-11-21): Core.Tests 2181 passed on net10.0 and net11.0, with the live tests filtered out as CI does; App.Tests 33 passed on both Windows targets. The CI workflow (`.github/workflows/ci.yml`) has not run on GitHub yet. The live run with the real `claude` CLI is still open: see [docs/plans/live-run-checklist.md](docs/plans/live-run-checklist.md). The provider and Codex work is a plan only, nothing built: see [docs/plans/provider-codex-2026-11-21.md](docs/plans/provider-codex-2026-11-21.md). See [Plans](#plans).
 
 ## What it is
 
-OpenTail.Bullshark is a session manager for Claude Code, with a window that shows each session as a tab. It keeps a **planner** session and a **coder** session running, gives each one its first direction, and restarts them if they stop. The supervisor starts when the PC logs on.
+OpenTail.Bullshark is a session manager for Claude Code, with a window that shows each session as a tab. It keeps a **planner** session and a **coder** session running, gives each one its first direction, and restarts them if they stop. The window is the supervisor: it starts when the owner opens it, and watches the sessions while it is open. There is no log-on startup (P4, owner decision of 2026-11-15).
 
 Sessions are long-lived. A session is not closed after a task, so its context carries on from one day to the next.
 
@@ -30,7 +30,7 @@ On 2026-11-12/13 a planner session directed a second local Claude session (a Hai
 
 Two parts, plus a later optional third:
 
-- **Supervisor** (headless, starts at log-on). It starts the planner and the coder as background sessions (`claude --bg` with `--name`; `--bg` ignores `--session-id`, so the id is read back from the listing, F18), keeps their IDs in a state file, and polls `claude agents --json`. The window runs the same pass every 15 seconds while it is open, off the UI thread. If a session has gone, it restarts it. If a session is `blocked`, it raises an alert. *Built so far:* the headless host (`src/OpenTail.Bullshark.Supervisor`) is report-only for now: it prints the usage and cache reports and starts nothing. The loop runs inside the window, and the log-on start (P4) is not built.
+- **Supervisor** (the window runs it; a headless host exists but is not started at log-on, P4). It starts the planner and the coder as background sessions (`claude --bg` with `--name`; `--bg` ignores `--session-id`, so the id is read back from the listing, F18), keeps their IDs in a state file, and polls `claude agents --json`. The window runs the same pass every 15 seconds while it is open, off the UI thread. If a session has gone, it restarts it. If a session is `blocked`, it raises an alert. *Built so far:* the headless host (`src/OpenTail.Bullshark.Supervisor`) is report-only for now: it prints the usage and cache reports and starts nothing. The loop runs inside the window, and the log-on start (P4) is not built.
 - **Window** (opened by the owner). One tab per session. Each tab is an embedded terminal running `claude attach <id>`. Closing a tab detaches; the session keeps running.
 - **Orchestrator** (later, optional, P8). A local model that handles situations the supervisor cannot, such as recovery when a restart is not enough. See its own section.
 
@@ -123,7 +123,7 @@ The sessions see each other directly and live, with `SendMessage` by session nam
 
 ## Startup
 
-- **Supervisor:** a Windows Task Scheduler task, trigger "At log on", running as the owner's user account. *Expected, not verified:* a Windows Service would run under another account and would not see the owner's Claude login, so a service is the wrong choice.
+- **Supervisor (not built, not wanted now, P4):** the design was a Windows Task Scheduler task, trigger "At log on", running as the owner's user account. *Expected, not verified:* a Windows Service would run under another account and would not see the owner's Claude login, so a service is the wrong choice.
 - **Window:** opened by the owner. Auto-open at log-on is optional (owner's choice).
 - **Log-on, not power-on.** A PC that boots without logging in does not run OpenTail.Bullshark. Auto-logon would change that (D6).
 - **Blocked sessions:** the supervisor alerts once per entry into `blocked`. The window lists the session under "Needs you" at the top of the rail, shows the count in the status bar, and flashes the taskbar button with a sound when a session newly needs the owner (turn off with `"notify": false` in `ui.json`). When the window is not in front (minimised or behind other windows), a silent Windows toast also shows the session's name and reason, one per batch; turn it off with `"toast": false` in `ui.json` or "Toggle toasts" in the command palette. A toast is not seen on screen until a run is checked by the owner.

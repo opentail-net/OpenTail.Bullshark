@@ -84,6 +84,28 @@ public sealed class SupervisorPolicyTests
         Assert.IsType<SupervisorAction.Resume>(Assert.Single(actions));
     }
 
+    [Fact]
+    public void RestartTimesAheadOfNowDoNotCountTowardTheHourlyLimit()
+    {
+        // The clock went back: three restarts stamped after now are not "in the last hour", so the session is resumed, with no restart-loop alert.
+        var future = new[] { Now.AddMinutes(10), Now.AddMinutes(20), Now.AddMinutes(30) };
+
+        var actions = SupervisorPolicy.Decide(Planner, Record(restarts: 3, restartTimes: future), [], Now, SupervisorRules.Default);
+
+        Assert.IsType<SupervisorAction.Resume>(Assert.Single(actions));
+    }
+
+    [Fact]
+    public void FutureRestartTimesAreIgnoredButPastOnesStillCount()
+    {
+        // Two restarts in the last hour, and one stamped ahead of now: two is under the limit of three, so the session is resumed.
+        var mixed = new[] { Now.AddMinutes(-10), Now.AddMinutes(-20), Now.AddMinutes(10) };
+
+        var actions = SupervisorPolicy.Decide(Planner, Record(restarts: 3, restartTimes: mixed), [], Now, SupervisorRules.Default);
+
+        Assert.IsType<SupervisorAction.Resume>(Assert.Single(actions));
+    }
+
     private static SessionRecord RecordWithAlert(string? lastAlert, params DateTimeOffset[] restartTimes) =>
         new(SessionRole.Planner, SessionId, "test-planner", Now.AddHours(-5), restartTimes.Length, restartTimes, null, lastAlert);
 

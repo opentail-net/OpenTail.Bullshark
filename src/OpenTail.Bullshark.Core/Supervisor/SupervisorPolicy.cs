@@ -107,10 +107,11 @@ public static class SupervisorPolicy
         IReadOnlyList<AgentInfo> agents,
         DateTimeOffset now,
         SupervisorRules rules,
-        RunBudget? budget = null)
+        RunBudget? budget = null,
+        DateTimeOffset? limitHoldUntil = null)
     {
         var reached = budget is { Reached: true };
-        var actions = DecideSession(spec, record, agents, now, rules, reached).ToList();
+        var actions = DecideSession(spec, record, agents, now, rules, reached, limitHoldUntil).ToList();
         if (record is null) return actions;
 
         // The run has no limit now (the owner removed it, or its run is gone from runs.json): the level the owner was told is cleared, so a
@@ -160,7 +161,8 @@ public static class SupervisorPolicy
         IReadOnlyList<AgentInfo> agents,
         DateTimeOffset now,
         SupervisorRules rules,
-        bool reached)
+        bool reached,
+        DateTimeOffset? limitHoldUntil)
     {
         // Adoption first: a session of this name is already running, because the record was lost or the start was not read back.
         // Starting it again would be a second paid session. An idle `done` session is adopted too: the listing cannot tell idle
@@ -187,7 +189,7 @@ public static class SupervisorPolicy
         var agent = agents.FirstOrDefault(a => string.Equals(a.SessionId, record.SessionId, StringComparison.OrdinalIgnoreCase));
 
         // Gone: the daemon lost it or it was removed. Resume under the same id, unless it keeps happening.
-        if (agent is null) return DecideLost(spec, record, agents, now, rules, reached);
+        if (agent is null) return DecideLost(spec, record, agents, now, rules, reached, limitHoldUntil);
 
         var state = agent.EffectiveState;
 
@@ -200,7 +202,7 @@ public static class SupervisorPolicy
                 return AttentionList.IsStaleBlockedAlert(record.LastAlert)
                     ? []
                     : [new SupervisorAction.Alert(spec.Role, AlertKind.Blocked, AttentionList.StaleBlockedDetail)];
-            return DecideLost(spec, record, agents, now, rules, reached);
+            return DecideLost(spec, record, agents, now, rules, reached, limitHoldUntil);
         }
 
         // Waiting on a permission prompt does nothing until someone answers. Alert once per entry into the state.
@@ -236,6 +238,9 @@ public static class SupervisorPolicy
     /// is not (its prompt is lost; the owner opens its tab), nothing is resumed at the run's limit, and a restart loop stops until someone looks.
     /// Two more holds (lifecycle batch): a pass inside the restart gap waits silently (L2), and a live listed session that holds the name stops the
     /// resume with a <see cref="AlertKind.NameTaken"/> alert (L1). The first restart of the hour is never held by the gap.
+    /// The usage-limit hold (review item 1, 2026-11-21) is silent: while the run's limit stop is in force (<paramref name="limitHoldUntil"/> is ahead of
+    /// now), a lost session is not resumed, since a resume cannot work before the reset. No alert and no restart time are made; the rail already shows
+    /// the limit. After the reset the rules below run, so the session is resumed then.
     /// </summary>
     private static IReadOnlyList<SupervisorAction> DecideLost(
         SessionSpec spec,
@@ -243,7 +248,8 @@ public static class SupervisorPolicy
         IReadOnlyList<AgentInfo> agents,
         DateTimeOffset now,
         SupervisorRules rules,
-        bool reached)
+        bool reached,
+        DateTimeOffset? limitHoldUntil)
     {
         // A session the owner stopped, or that failed, is not brought back even when the listing no longer shows it (`claude rm`,
         // or a listing that dropped it). Its last listed state, or its last alert, says so (round 5 item 1).
@@ -253,9 +259,13 @@ public static class SupervisorPolicy
         // through the rules below, as any lost session does, so its role is not held forever.
         if (StaleBlockedHeld(record, now)) return [];
 
+        // The usage-limit hold (review item 1): the run's limit stop is in force, so a resume now would fail again. Silent, see the summary.
+        if (limitHoldUntil is { } until && now < until) return [];
+
         // At the run's limit a lost session is not brought back (additions item 4).
         if (reached) return [];
-        var recent = record.RestartTimes.Where(t => now - t < TimeSpan.FromHours(1)).ToList();
+        // A restart stamped after now (the clock went back) is not one in the last hour, so it does not count (review item 2, 2026-11-21).
+        var recent = record.RestartTimes.Where(t => now >= t && now - t < TimeSpan.FromHours(1)).ToList();
         var recentRestarts = recent.Count;
         if (recentRestarts >= rules.MaxRestartsPerHour)
         {

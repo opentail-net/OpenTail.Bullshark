@@ -431,6 +431,9 @@ public partial class SessionWindow : Window
             _reviewSources = await Task.Run(() => ReviewSourcesOf(records, paths, read.PassAgents));
             // The usage-limit stops of the supervised and the flagged sessions, read here so the rail and Needs you show them (limit wake).
             await ProbeLimitsAsync(records, DateTimeOffset.Now);
+            // The usage-limit holds from this probe: the next pass does not resume a lost session before its limit resets (review item 1). Like the
+            // budgets, they apply from the next pass on.
+            _runner.LimitHolds = LimitHoldsOf(records, _limitStops, DateTimeOffset.Now);
             RefreshRail(records, runs, _passSettings);
             AnnounceAttention();
             // The wake after the limit resets: only here, once per pass, with the trust known (limit wake, 2026-11-20). A start redraws the rail.

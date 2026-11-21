@@ -27,6 +27,12 @@ public sealed class SupervisorRunner
     public IReadOnlyDictionary<string, RunBudget> Budgets { get; set; } = new Dictionary<string, RunBudget>(StringComparer.Ordinal);
 
     /// <summary>
+    /// Until when each session's run is held by a usage-limit stop, by session name (review item 1, 2026-11-21). Set by the window after a pass.
+    /// Empty, the default, holds nothing.
+    /// </summary>
+    public IReadOnlyDictionary<string, DateTimeOffset> LimitHolds { get; set; } = new Dictionary<string, DateTimeOffset>(StringComparer.Ordinal);
+
+    /// <summary>
     /// Where the timeline's events go (additions item 5). Null, the default, records nothing. A write that fails is logged, and the
     /// pass goes on: the log must never stop the supervision.
     /// </summary>
@@ -103,8 +109,10 @@ public sealed class SupervisorRunner
             {
                 processed.Add(spec.Name);
                 records.TryGetValue(spec.Name, out var record);
+                // The usage-limit hold of this session's run, if a stop was in force at the last read (review item 1, 2026-11-21).
+                DateTimeOffset? limitHoldUntil = LimitHolds.TryGetValue(spec.Name, out var hold) ? hold : null;
                 var actions = SupervisorPolicy.Decide(spec, record, agents, now, _rules,
-                    Budgets.TryGetValue(spec.Name, out var budget) ? budget : null);
+                    Budgets.TryGetValue(spec.Name, out var budget) ? budget : null, limitHoldUntil);
 
                 foreach (var action in actions)
                 {

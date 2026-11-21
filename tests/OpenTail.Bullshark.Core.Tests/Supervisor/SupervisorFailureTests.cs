@@ -71,7 +71,9 @@ public sealed class SupervisorFailureTests : IDisposable
         Assert.Equal(3, saved.Count);
         Assert.NotEmpty(saved["bullshark-coder-ab12-1"].SessionId);
         Assert.Equal(string.Empty, saved["bullshark-coder-ab12-2"].SessionId);
-        Assert.Contains("model not available", saved["bullshark-coder-ab12-2"].LastAlert);
+        // A refused launch names its exit code, never its output (review item 3, 2026-11-21): the output can echo the brief.
+        Assert.Contains("`claude --bg` failed (exit 1)", saved["bullshark-coder-ab12-2"].LastAlert);
+        Assert.DoesNotContain("model not available", saved["bullshark-coder-ab12-2"].LastAlert);
 
         int startsBefore = cli.Calls.Count(c => c.Args[0] == "--bg");
         var second = await runner.CheckOnceAsync(specs);

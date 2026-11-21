@@ -14,6 +14,7 @@ namespace OpenTail.Bullshark.Core.Tests.Live;
 /// started. Each writes a text report to the temp folder: the subagent calls, the planner's last context size, the token
 /// totals, and the states each session passed through.
 /// </summary>
+[Trait("Category", "Live")]
 public sealed class ReviewerLiveTests
 {
     private static bool Enabled =>

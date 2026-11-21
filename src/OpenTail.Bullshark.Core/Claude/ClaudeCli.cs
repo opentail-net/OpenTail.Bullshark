@@ -181,14 +181,16 @@ public sealed class ClaudeCli
         var args = ArgumentsOf(launch);
 
         RequireCarriable(launch, args);
-        var result = await RunAsync(args, launch.WorkingDirectory, cancellationToken);
+        // The launch's output can echo the brief, and the message goes to app.log and events.jsonl (review item 3, 2026-11-21): so neither the
+        // output nor a part of it is named, only its length.
+        var result = await RunAsync(args, launch.WorkingDirectory, cancellationToken, includeOutput: false);
         return ParseBackgroundId(result.StdOut)
-            ?? throw new ClaudeCliException($"`claude --bg` did not print an id: {FirstLineOf(result.StdOut)}");
+            ?? throw new ClaudeCliException($"`claude --bg` did not print an id (output {result.StdOut.Length} characters)");
     }
 
     /// <summary>
-    /// The first line of a command's output, cut to <see cref="MaxMessageCharacters"/>, for an exception message (F8). Such a message goes to
-    /// app.log and events.jsonl, and a failed `claude --bg` can echo the brief, so no more than that line is kept.
+    /// The first line of a command's output, cut to <see cref="MaxMessageCharacters"/>, for an exception message (F8). Cutting is not redaction. A launch's
+    /// failure names no output at all (review item 3); the summary's and the other commands' failures still use this (the summary is an open item in the plan).
     /// </summary>
     public static string FirstLineOf(string output)
     {
@@ -327,16 +329,23 @@ public sealed class ClaudeCli
         return text;
     }
 
+    /// <summary>
+    /// Runs a command. A failure throws when <paramref name="requireSuccess"/> is set, and the message names the command and the reason. The output's
+    /// first lines are quoted only when <paramref name="includeOutput"/> is set. A launch passes false (review item 3): then the message names only
+    /// the first argument, which for a launch is `--bg`, and the exit code or the timeout.
+    /// </summary>
     private async Task<CliResult> RunAsync(
         IReadOnlyList<string> args,
         string? workingDirectory,
         CancellationToken cancellationToken,
-        bool requireSuccess = true)
+        bool requireSuccess = true,
+        bool includeOutput = true)
     {
         var result = await _runner.RunAsync(args, workingDirectory, ShortTimeout, cancellationToken);
         if (requireSuccess && !result.Succeeded)
         {
             var reason = result.TimedOut ? "timed out" : $"exit {result.ExitCode}";
+            if (!includeOutput) throw new ClaudeCliException($"`claude {args[0]}` failed ({reason})");
             throw new ClaudeCliException($"`claude {string.Join(' ', args.Take(2))}` failed ({reason}): {FirstLineOf(result.StdErr)} {FirstLineOf(result.StdOut)}");
         }
         return result;

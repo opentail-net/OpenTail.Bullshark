@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Build and test (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up .NET SDKs
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            10.0.x
+            11.0.x
+
+      - name: Build
+        run: dotnet build OpenTail.Bullshark.slnx -nodeReuse:false
+
+      # No --framework here: it matches one exact target, and App.Tests targets only the Windows ones
+      # (net10.0-windows10.0.19041.0, net11.0-windows10.0.19041.0), so a per-framework run would skip it.
+      # Without it, every target of every test project runs: Core.Tests on net10.0 and net11.0, App.Tests on the Windows targets.
+      # The live tests start the real `claude` and spend tokens. They carry Trait Category=Live, and they are filtered out here.
+      # OPENTAIL_BULLSHARK_LIVE and OPENTAIL_BULLSHARK_LIVE_REVIEW are not set in this job, so their own gate returns early too.
+      - name: Test
+        run: dotnet test OpenTail.Bullshark.slnx -nodeReuse:false --no-build --filter "Category!=Live"

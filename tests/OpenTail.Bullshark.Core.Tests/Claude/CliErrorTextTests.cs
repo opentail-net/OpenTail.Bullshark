@@ -23,16 +23,45 @@ public sealed class CliErrorTextTests
         Assert.EndsWith("...", cut);
     }
 
+    private static BackgroundLaunch Launch() => new("planner", @"C:\W", "opus", "high", "Do the thing.");
+
+    /// <summary>
+    /// Review item 3 (2026-11-21): a launch's output can echo the brief, and an exception message goes to app.log and events.jsonl. So a failed
+    /// launch names its command and its output's length only, never a word of the output.
+    /// </summary>
     [Fact]
-    public async Task AFailedBackgroundStartNamesOnlyTheFirstLineOfWhatClaudePrinted()
+    public async Task AFailedBackgroundStartNamesNoOutputButItsLength()
     {
-        var runner = new FakeCliRunner(_ => FakeCliRunner.Ok("no id here: brief-secret-words\nthe rest of the brief, which is task text\n"));
-        var cli = new ClaudeCli(runner);
+        const string stdout = "CANARY-PROMPT-7731 do the thing\n";
+        var cli = new ClaudeCli(new FakeCliRunner(_ => FakeCliRunner.Ok(stdout)));
 
-        var error = await Assert.ThrowsAsync<ClaudeCliException>(() =>
-            cli.StartBackgroundAsync(new BackgroundLaunch("planner", @"C:\W", "opus", "high", "Do the thing.")));
+        var error = await Assert.ThrowsAsync<ClaudeCliException>(() => cli.StartBackgroundAsync(Launch()));
 
-        Assert.Contains("brief-secret-words", error.Message);
-        Assert.DoesNotContain("the rest of the brief", error.Message);
+        Assert.DoesNotContain("CANARY", error.Message);
+        Assert.Equal($"`claude --bg` did not print an id (output {stdout.Length} characters)", error.Message);
+    }
+
+    [Fact]
+    public async Task AFailedBackgroundLaunchNamesNoOutputButItsExitCode()
+    {
+        var failed = new CliResult(1, "CANARY-PROMPT-7731 do the thing", "CANARY-PROMPT-7731 stderr echo", TimedOut: false);
+        var cli = new ClaudeCli(new FakeCliRunner(_ => failed));
+
+        var error = await Assert.ThrowsAsync<ClaudeCliException>(() => cli.StartBackgroundAsync(Launch()));
+
+        Assert.DoesNotContain("CANARY", error.Message);
+        Assert.Equal("`claude --bg` failed (exit 1)", error.Message);
+    }
+
+    [Fact]
+    public async Task ATimedOutBackgroundLaunchSaysSoAndNamesNoOutput()
+    {
+        var timedOut = new CliResult(-1, "CANARY-PROMPT-7731 partial", string.Empty, TimedOut: true);
+        var cli = new ClaudeCli(new FakeCliRunner(_ => timedOut));
+
+        var error = await Assert.ThrowsAsync<ClaudeCliException>(() => cli.StartBackgroundAsync(Launch()));
+
+        Assert.DoesNotContain("CANARY", error.Message);
+        Assert.Equal("`claude --bg` failed (timed out)", error.Message);
     }
 }

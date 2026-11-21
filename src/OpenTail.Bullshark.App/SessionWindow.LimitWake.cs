@@ -359,6 +359,26 @@ public partial class SessionWindow
         ToastNotifier.ShowLimitWake(LiveTitleOf(sessionId));
     }
 
+    /// <summary>
+    /// The usage-limit holds the supervisor's next pass is held to (review item 1, 2026-11-21): each supervised session whose stop the last probe read,
+    /// when that stop is recent and its reset is still ahead, by the session's name. The supervisor does not resume such a session before the reset.
+    /// A session with no stop, an old stop, or a reset already passed has no hold.
+    /// </summary>
+    internal static IReadOnlyDictionary<string, DateTimeOffset> LimitHoldsOf(
+        IReadOnlyDictionary<string, SessionRecord> records,
+        IReadOnlyDictionary<string, LimitStop?> stops,
+        DateTimeOffset now)
+    {
+        var holds = new Dictionary<string, DateTimeOffset>(StringComparer.Ordinal);
+        foreach (var record in records.Values)
+        {
+            if (record.SessionId.Length == 0) continue;
+            if (stops.TryGetValue(record.SessionId, out var stop) && stop is { } found && found.IsRecent(now) && found.ResetsAt > now)
+                holds[record.Name] = found.ResetsAt;
+        }
+        return holds;
+    }
+
     /// <summary>The owner's name for a session the window supervises, else its short id.</summary>
     private string LiveTitleOf(string sessionId) =>
         _railRecords.Values.FirstOrDefault(record => SameId(record.SessionId, sessionId)) is { } record
