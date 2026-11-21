@@ -90,10 +90,10 @@ Stage A item A1 produces `provider-seam-map-2026-11-21.md`: one row per `Claude*
 - [x] C6 Tests: reader on synthetic fixtures, drift (unknown line type -> skipped, not fatal), dropdown swap keeps tabs, keys. *Core part built 2026-11-21 (coder):* Codex fixtures (a)-(h) in `tests/.../Codex/`; library tolerance (i) in `Library/LibraryReadOnlyMigrationTests` (3, C-D8). Counts for the Core part: 30 new on net11.0, 24 on net10.0. The dropdown and the App tests are not in this part. *App part built 2026-11-21 (coder): 18 new App tests (`ProviderTabTests` 5, `ProviderStoreTests` 13); App.Tests 44 -> 62 on net10.0 and net11.0, 0 failed.*
 - Check: tests, then screenshots with a scratch state; one real run by the owner (Codex is installed here, so the owner can open a real history).
 
-### Stage D: Codex extras (each optional, own decision)
-- [ ] D1 Limits page for Codex from `rate_limits` in rollouts.
-- [ ] D2 Effort/usage report for Codex (tokens by model from `token_count`).
-- [ ] D3 Tags/notes/archive work on `codex:` keys (should come free from A5; verify).
+### Stage D: Codex extras (each optional, own decision; items are SD1-SD3 so they do not clash with the decisions D1-D3 below)
+- [ ] SD1 Limits page for Codex from `rate_limits` in rollouts.
+- [ ] SD2 Effort/usage report for Codex (tokens by model from `token_count`).
+- [ ] SD3 Tags/notes/archive work on `codex:` keys (should come free from A5; verify). Covered by D1 below, which is built; verify on screen.
 
 ### Stage E: supervision of Codex (only if the owner wants it; separate plan)
 - Via `codex app-server` over stdio: `thread/status/changed` for working / `waitingOnApproval` / idle, giving a real Needs-you row. Read-only watcher; never answers an approval. Needs: a JSON-RPC client, `initialize` shape and the approval reply shape from the generated schema (researcher left these open), and a decision on `requiredHumanApproval`.
@@ -161,6 +161,7 @@ Probes: a net11.0 console app in the session scratchpad (structure only: line co
 - **D1 (library, App):** the App reads the active provider's view of the library, and writes through `UpdateAll` with that provider's key. Claude's view is unchanged. Codex rows get names, tags, notes and archive under `codex:<id>`.
   - [x] D1 built 2026-11-21 (coder): `SessionLibrary.ProviderView` and `UpdateProvider` (Claude's `Load`/`Update` use them, same behaviour); Codex rows read `_codexMarks`, show name, tags, colour and archive (an Archived group), and archive, rename, tag, note and colour under `codex:<id>`. Tests: `CodexLibraryViewTests` (9, Core), `CodexMarksTests` (6, App). Core.Tests 2284 (net10.0) and 2296 (net11.0); App.Tests 68 on each target; all passed. Not checked on screen.
 - **D2 (summary, Core first):** `CodexSummarizer` builds the input from the transcript (user and assistant text, tool names; bounded size), runs the call above, and returns the text. No transcript text is logged. Tests use a fake runner; a real call is an owner check. The App UI for the summary is a later decision.
+- **D3 (launcher model dropdown, owner's direction 2026-11-21; not built, step P9):** inside the terminal the user can pick any model (Sol, Luna, Terra and others), so the launcher needs a dropdown. The list comes from `model/list` with hidden entries removed (probe P04 on 2026-11-21: `gpt-6-luna` default, `gpt-5.6-terra`, `gpt-5.6-luna`; Sol is not on the basic plan). The default is the entry with `isDefault`. The chosen id is passed as `-m` after a pattern check (`[a-z0-9][a-z0-9.-]*`). Summaries are not affected: the platform rule above still applies until a user choice exists.
 
 ## Risks
 - R1 Core gains its first packages (zstd, maybe SQLite): licence, size, trimming, supply-chain review. Mitigation: B1/B2 first; prefer BCL/no-SQLite if it works.
