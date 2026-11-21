@@ -81,20 +81,26 @@ public partial class SessionWindow
     private List<PaletteItem> PaletteItems()
     {
         var items = new List<PaletteItem>();
+        // Under Codex the palette leaves out every Claude-only entry: live sessions, waits, review, magic rename, the tag and rail filters,
+        // Library, search and the Claude setup page. Codex has none of these yet (palette fix, parity P1).
+        var claude = ClaudeSupervision;
         var waiting = _attention.Select(item => item.Name).ToHashSet(StringComparer.Ordinal);
 
-        var sessions = _railRecords.Values
-            .Where(record => !string.IsNullOrEmpty(record.SessionId) && !IsInOwnWindow(record.SessionId))
-            .OrderBy(record => waiting.Contains(record.Name) ? 0 : 1)
-            .ThenBy(record => record.Name, StringComparer.Ordinal);
-        foreach (var record in sessions)
+        if (claude)
         {
-            var sessionId = record.SessionId;
-            var listed = _agents.FirstOrDefault(agent => SameId(agent.SessionId, sessionId));
-            var hint = StateWithWaiting(listed);
-            var entry = new PaletteEntry("session:" + sessionId, "Go to session " + LiveTitle(record), hint,
-                waiting.Contains(record.Name) ? 0 : 1, KeywordsOf(sessionId, hint));
-            items.Add(new PaletteItem(entry, () => GoToSession(sessionId, LiveTitle(record))));
+            var sessions = _railRecords.Values
+                .Where(record => !string.IsNullOrEmpty(record.SessionId) && !IsInOwnWindow(record.SessionId))
+                .OrderBy(record => waiting.Contains(record.Name) ? 0 : 1)
+                .ThenBy(record => record.Name, StringComparer.Ordinal);
+            foreach (var record in sessions)
+            {
+                var sessionId = record.SessionId;
+                var listed = _agents.FirstOrDefault(agent => SameId(agent.SessionId, sessionId));
+                var hint = StateWithWaiting(listed);
+                var entry = new PaletteEntry("session:" + sessionId, "Go to session " + LiveTitle(record), hint,
+                    waiting.Contains(record.Name) ? 0 : 1, KeywordsOf(sessionId, hint));
+                items.Add(new PaletteItem(entry, () => GoToSession(sessionId, LiveTitle(record))));
+            }
         }
 
         // The four pages are sub-tabs of Insights (2026-11-18): their entries open Insights on that sub-tab.
@@ -106,20 +112,23 @@ public partial class SessionWindow
         items.Add(PageItem("insights", "Open Insights", "the sub-tab shown last", () => OpenInsights(_insights.Current)));
         items.Add(PageItem("settings", "Open Settings", null, () => OpenSettings(_settings.Current)));
         // The window has no Library page: its past sessions are listed under the rail's Archived filter, so the entry sets that filter.
-        items.Add(PageItem("library", "Show archived sessions (Library)", "rail filter: Archived", () => ChooseFilter(RailFilter.Archived)));
-        items.Add(PageItem("search", "Search what was said", null, SearchFromPalette));
-        items.Add(PageItem("new-session", "New session setup", null, () => OpenSetupTab(null)));
+        if (claude)
+        {
+            items.Add(PageItem("library", "Show archived sessions (Library)", "rail filter: Archived", () => ChooseFilter(RailFilter.Archived)));
+            items.Add(PageItem("search", "Search what was said", null, SearchFromPalette));
+            items.Add(PageItem("new-session", "New session setup", null, () => OpenSetupTab(null)));
+        }
 
         // The next waiting session (Ctrl+Shift+N), counted from the session that is active as the palette opens. Hidden when no other session
         // waits. It navigates, so it does not return the keyboard.
         var from = ActiveSessionId();
-        if (NextWaitingId(from) is not null)
+        if (claude && NextWaitingId(from) is not null)
             items.Add(new PaletteItem(new PaletteEntry("action:next-waiting", "Go to next waiting session", "Ctrl+Shift+N", 3),
                 () => GoToNextWaitingFrom(from)));
         items.Add(ActionItem("refresh", "Refresh now", "the pass that runs every 15 seconds", () => _ = PassAndRefreshAsync()));
         // The re-alerts are only silenced, never answered: nothing is typed into a session (escalation D3, D4).
         var needing = _attention.Where(AttentionEscalation.Escalates).Select(item => item.Name).Distinct(StringComparer.Ordinal).ToList();
-        if (needing.Count > 0)
+        if (claude && needing.Count > 0)
         {
             var count = needing.Count == 1 ? "1 session" : $"{needing.Count} sessions";
             items.Add(ActionItem("ack-all", "Acknowledge all waiting", count, () =>
@@ -132,13 +141,13 @@ public partial class SessionWindow
             }));
         }
         // Marking is a note in ui.json only: nothing is sent to a session (ready-for-review D4).
-        if (_review.Count > 0)
+        if (claude && _review.Count > 0)
             items.Add(ActionItem("review-all", "Mark all ready sessions reviewed", _review.Count == 1 ? "1 session" : $"{_review.Count} sessions",
                 MarkAllReviewed));
         // The tag filter (tags plan, Part A3): one entry per tag in use, and Clear when one is set. The keyboard route to the rail's dropdown.
-        items.AddRange(TagPaletteItems());
+        if (claude) items.AddRange(TagPaletteItems());
         // The magic rename (magic-rename plan): Haiku names cold past sessions, after a confirm. Nothing is sent to a session.
-        items.AddRange(MagicPaletteItems());
+        if (claude) items.AddRange(MagicPaletteItems());
         items.Add(ActionItem("notify", "Toggle sound and flash for new waits", null, ToggleNotify));
         items.Add(ActionItem("toast", "Toggle toasts", "when the window is in the background", ToggleToasts));
         // The keyboard route to what the mouse does on the rail and the zoom bar (firstrun batch B7): the shortcut sheet, the zoom, the theme, and
@@ -149,8 +158,9 @@ public partial class SessionWindow
         items.Add(ActionItem("zoom-reset", "Zoom 100 %", "session text, Ctrl+0", () => ZoomBy(OpenTail.Bullshark.Core.Zoom.ZoomKey.Reset)));
         items.Add(ActionItem("theme", "Switch theme", _theme == RailTheme.Light ? "now light: switch to dark" : "now dark: switch to light",
             () => SetTheme(_theme == RailTheme.Light ? RailTheme.Dark : RailTheme.Light)));
-        foreach (var filter in Enum.GetValues<RailFilter>())
-            items.Add(ActionItem("filter:" + filter, $"Filter rail: {FilterLabel(filter)}", filter == _filter ? "in use" : null, () => ChooseFilter(filter)));
+        if (claude)
+            foreach (var filter in Enum.GetValues<RailFilter>())
+                items.Add(ActionItem("filter:" + filter, $"Filter rail: {FilterLabel(filter)}", filter == _filter ? "in use" : null, () => ChooseFilter(filter)));
         // Quick capture (ideas #7, SessionWindow.Ideas.cs): an idea goes to ideas.md, never to a session.
         items.Add(ActionItem("add-idea", "Add idea…", "saved to ideas.md, not sent to a session", AddIdea));
         items.Add(ActionItem("open-ideas", "Open ideas file", "ideas.md beside the state file", OpenIdeas));
