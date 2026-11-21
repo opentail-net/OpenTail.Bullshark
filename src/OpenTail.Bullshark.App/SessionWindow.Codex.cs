@@ -121,8 +121,8 @@ public partial class SessionWindow
 
             section.Items.Add(NewItem(Label("New Codex session…"), new RailTag(RailKind.CodexNew, "codex:new"),
                 "Choose a folder. Codex opens there in a terminal tab of this window."));
-            section.Items.Add(NewItem(Label("Codex has no background sessions", muted: true), new RailTag(RailKind.Heading, "codex:live"),
-                "Codex runs only in the terminal tabs this window opens, so there are no live rows and nothing is supervised."));
+            section.Items.Add(NewItem(Label("Codex live sessions are not shown", muted: true), new RailTag(RailKind.Heading, "codex:live"),
+                "This window shows Codex history and the terminal tabs it opens. Live Codex sessions started elsewhere are not shown, and nothing is supervised."));
 
             if (_codexFailed)
             {

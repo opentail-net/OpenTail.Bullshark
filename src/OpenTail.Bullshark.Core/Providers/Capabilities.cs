@@ -34,7 +34,7 @@ public interface ITerminalOpener
 
 /// <summary>
 /// The supervisor's launch and status calls. Claude only in stage A. Its members move here when the supervisor is written against the
-/// interface; Codex does not implement it (it has no background sessions, B5).
+/// interface; Codex does not implement it, because this app does not supervise Codex sessions (see the Codex plan, A1).
 /// </summary>
 public interface ISupervisedLauncher
 {
