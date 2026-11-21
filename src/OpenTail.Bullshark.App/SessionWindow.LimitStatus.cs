@@ -78,7 +78,8 @@ public partial class SessionWindow
         }
         LimitStatusText.Text = text;
         LimitStatusText.ToolTip = string.Join(Environment.NewLine, live.Select(limit => LimitWording(limit, now)));
-        LimitStatusText.Visibility = Visibility.Visible;
+        // The limits are Claude's: Codex shows none here (stage C4).
+        LimitStatusText.Visibility = ClaudeSupervision ? Visibility.Visible : Visibility.Collapsed;
     }
 
     /// <summary>"5-hour limit resets 13:10": the limit's name, and its reset as the start-time text shows it (local time).</summary>

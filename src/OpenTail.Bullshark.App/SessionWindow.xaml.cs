@@ -5,6 +5,7 @@ using System.Windows.Threading;
 using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Cache;
 using OpenTail.Bullshark.Core.Claude;
+using OpenTail.Bullshark.Core.Codex;
 using OpenTail.Bullshark.Core.Folders;
 using OpenTail.Bullshark.Core.Health;
 using OpenTail.Bullshark.Core.Providers;
@@ -29,17 +30,28 @@ public partial class SessionWindow : Window
     private readonly LaunchOptions _options;
 
     /// <summary>
-    /// The provider the window shows (R-8, stage A4). Claude is the only one in stage A, built on the window's own folders, so the window behaves as
-    /// before. A tab records the provider that opened it (<see cref="OpenTab.Provider"/>).
+    /// The provider the rail shows (R-8, stage C4): Claude or Codex, chosen in the dropdown at the top of the rail and saved in ui.json. A tab records the
+    /// provider that opened it (<see cref="OpenTab.Provider"/>), and keeps it when this changes.
     /// </summary>
-    private readonly IProvider _activeProvider;
+    private IProvider _activeProvider;
 
-    /// <summary>The window's provider as Claude's: the history and digests the rail reads (R-2). Only Claude exists in stage A.</summary>
-    private ClaudeProvider ActiveClaude =>
-        _activeProvider as ClaudeProvider ?? throw new InvalidOperationException("The active provider has no Claude history in stage A.");
+    /// <summary>Claude, built on the window's own folders. Always present: Claude's tabs and records are read from it whatever the dropdown shows.</summary>
+    private readonly ClaudeProvider _claude;
 
-    /// <summary>The key of a session in the window's dictionaries (R-3): the active provider and the session id.</summary>
-    private SessionKey KeyOf(string sessionId) => new(_activeProvider.Id, sessionId);
+    /// <summary>Codex, made when it is first chosen (C4). Null until then, and on a build where Codex is not offered.</summary>
+    private CodexProvider? _codex;
+
+    /// <summary>The window's Claude provider: the history and digests the rail and the transcript tabs read (R-2).</summary>
+    private ClaudeProvider ActiveClaude => _claude;
+
+    /// <summary>
+    /// The key of a Claude session id in the window's dictionaries (R-3). The live records, the Claude rail rows and the library's Claude view all
+    /// hold Claude sessions, so this key is Claude's whatever the dropdown shows. A tab's key is <see cref="KeyOf(OpenTab)"/>.
+    /// </summary>
+    private static SessionKey KeyOf(string sessionId) => new(ProviderId.Claude, sessionId);
+
+    /// <summary>The key of a tab's session in the window's dictionaries: the provider that opened the tab, and its key (stage C, the review's item 1).</summary>
+    internal static SessionKey KeyOf(OpenTab tab) => new(tab.Provider, tab.Key);
 
     private readonly ClaudeCli _cli = new(new ProcessCliRunner());
     private readonly StateStore _store;
@@ -166,11 +178,16 @@ public partial class SessionWindow : Window
         // (2026-11-19). Under a test host the window only reads and draws, whatever options it was given.
         if (!options.NoPass && RunningUnderTest.Is) options = options with { NoPass = true };
         _options = options;
-        _activeProvider = new ClaudeProvider(new ProviderPaths(options.ClaudeHome ?? ClaudePaths.ConfigDir(), options.ProjectsRoot, options.ArchiveRoot));
+        _claude = new ClaudeProvider(new ProviderPaths(options.ClaudeHome ?? ClaudePaths.ConfigDir(), options.ProjectsRoot, options.ArchiveRoot));
+        // The provider the saved choice names (C4). Codex is started only where this build offers it (C-D2): otherwise Claude, as before.
+        _activeProvider = _claude;
+        if (ProviderStore.Load(options.StatePath) == ProviderId.Codex && CodexProvider.Available)
+            _activeProvider = _codex = new CodexProvider();
         InitializeComponent();
         // The Insights page hosts the four views that were tabs of their own (2026-11-18). It is made before InitRail, which draws the theme into it.
         _insights = new InsightsView(_away, _night, _limits, _timeline, _storage) { Visibility = Visibility.Hidden };
         InitRail();
+        InitProvider();
         _store = new StateStore(options.StatePath, AppLog.Write);
         _runStore = new RunStore(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(options.StatePath))!, "runs.json"));
         // The one supervisor of this state (reliability batch R1). A window that cannot take the name only watches: it reads and draws, and runs no pass.
@@ -221,6 +238,8 @@ public partial class SessionWindow : Window
             // for it, so that the transcript can be opened (TA4).
             if (_options.OpenSessionId is null) _ = LoadHistoryAsync();
             else await LoadHistoryAsync();
+            // The Codex history is read at start too when Codex is the window's provider (C4); Claude's is read as before.
+            if (IsCodexActive) _ = LoadCodexHistoryAsync();
             await PassAndRefreshAsync();
             if (_options.OpenSessionId is { } openId) await OpenHistorySessionAsync(openId);
             // --find (test only): the shown transcript opens with its find bar on the query, as a search result does (find and jump batch, T4).
@@ -405,7 +424,7 @@ public partial class SessionWindow : Window
             // A daemon that runs another claude version gets the Respawn all button, and only the owner's confirmed click runs anything (round 7 item 2).
             _drift = read.Drift;
             // A window that only watches does not offer the respawn: it restarts the sessions, which only the supervising window does.
-            RespawnButton.Visibility = _drift is null || _watching ? Visibility.Collapsed : Visibility.Visible;
+            RespawnButton.Visibility = _drift is null || _watching || !ClaudeSupervision ? Visibility.Collapsed : Visibility.Visible;
             RespawnButton.ToolTip = _drift?.Message;
 
             // While ~/.claude.json cannot be read, trust is unknown: no root is judged untrusted, and no run starts or restarts.
@@ -415,7 +434,7 @@ public partial class SessionWindow : Window
             if (!_watching) foreach (var root in plan.UntrustedRoots) ShowTrustStep(root, select: false);
             foreach (var key in _trustSteps.Keys.Where(k => !needed.Contains(k)).ToList()) HideTrustStep(key);
             TrustButton.Tag = _trustSteps.Values.FirstOrDefault()?.Root;
-            TrustButton.Visibility = _trustSteps.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            TrustButton.Visibility = _trustSteps.Count > 0 && ClaudeSupervision ? Visibility.Visible : Visibility.Collapsed;
 
             if (_searchMatches is null && SearchBusy.Visibility != Visibility.Visible) SetStatus("checking sessions…");
 
@@ -463,7 +482,7 @@ public partial class SessionWindow : Window
             if (passRan) WriteHeartbeat(DateTimeOffset.Now);
 
             var failed = PassSnapshot.FailedStarts(records.Values);
-            RetryButton.Visibility = failed > 0 ? Visibility.Visible : Visibility.Collapsed;
+            RetryButton.Visibility = failed > 0 && ClaudeSupervision ? Visibility.Visible : Visibility.Collapsed;
             var parts = PassSnapshot.StatusParts(DateTime.Now, actions, plan.Waiting, failed, _storeProblem, plan.Problem, read.DaemonStatusNotice, _drift?.StatusText);
 
             // A search owns the status line while it runs or while its results are shown: the pass's summary waits for it to end.

@@ -35,7 +35,7 @@ public partial class SessionWindow
 
     private bool SplitOpen => PaneB.Visibility == Visibility.Visible;
 
-    private bool IsRight(OpenTab tab) => tab.Kind == TabKind.Session && _rightSessions.Contains(KeyOf(tab.Key));
+    private bool IsRight(OpenTab tab) => tab.Kind == TabKind.Session && _rightSessions.Contains(KeyOf(tab));
 
     /// <summary>
     /// The terminal a paste goes to: the one whose native window has the keyboard focus, else the one shown last. WPF's own
@@ -93,13 +93,13 @@ public partial class SessionWindow
     private void MoveToRight(OpenTab tab)
     {
         if (tab.Kind != TabKind.Session || IsRight(tab)) return;
-        if (!_terminals.TryGetValue(KeyOf(tab.Key), out var terminal))
+        if (!_terminals.TryGetValue(KeyOf(tab), out var terminal))
         {
             SetStatus("Not moved: this session has no terminal yet.");
             return;
         }
 
-        PlaceRight(tab.Key, terminal);
+        PlaceRight(KeyOf(tab), terminal);
         if (ReferenceEquals(_activeTab, tab))
         {
             _activeTab = null;
@@ -116,13 +116,13 @@ public partial class SessionWindow
     }
 
     /// <summary>Puts a session's terminal in the right pane and opens the split. Nothing is activated or saved.</summary>
-    private void PlaceRight(string sessionId, ExtendedTerminalControl terminal)
+    private void PlaceRight(SessionKey key, ExtendedTerminalControl terminal)
     {
         if (ReferenceEquals(_shown, terminal)) _shown = null;
         (terminal.Parent as Panel)?.Children.Remove(terminal);
         terminal.Visibility = Visibility.Hidden;
         PaneB.Children.Add(terminal);
-        _rightSessions.Add(KeyOf(sessionId));
+        _rightSessions.Add(key);
         OpenSplit();
     }
 
@@ -132,8 +132,8 @@ public partial class SessionWindow
     /// </summary>
     private void MoveToLeft(OpenTab tab, bool activate = true)
     {
-        if (!_rightSessions.Remove(KeyOf(tab.Key))) return;
-        if (_terminals.TryGetValue(KeyOf(tab.Key), out var terminal))
+        if (!_rightSessions.Remove(KeyOf(tab))) return;
+        if (_terminals.TryGetValue(KeyOf(tab), out var terminal))
         {
             if (ReferenceEquals(_shownRight, terminal)) _shownRight = null;
             if (ReferenceEquals(_focusTerminal, terminal)) _focusTerminal = null;
@@ -172,7 +172,7 @@ public partial class SessionWindow
         }
 
         if (_activeTabRight is null || !rightTabs.Contains(_activeTabRight)) _activeTabRight = rightTabs[0];
-        if (_terminals.TryGetValue(KeyOf(_activeTabRight.Key), out var terminal) && !ReferenceEquals(_shownRight, terminal))
+        if (_terminals.TryGetValue(KeyOf(_activeTabRight), out var terminal) && !ReferenceEquals(_shownRight, terminal))
             ShowInRight(terminal);
     }
 
@@ -202,13 +202,16 @@ public partial class SessionWindow
         PaneBColumn.Width = new GridLength(0);
     }
 
-    /// <summary>Saves the session tabs in strip order, and which of them are at the right. The other tabs are not kept between starts.</summary>
+    /// <summary>
+    /// Saves the Claude session tabs in strip order, and which of them are at the right. The other tabs are not kept between starts, and a Codex
+    /// tab is not kept at all (C-D5): it is not restored after a restart.
+    /// </summary>
     private void SaveTabLayout()
     {
-        var sessions = _tabs.Where(t => t.Kind == TabKind.Session).ToList();
+        var sessions = TabLayoutFile.ClaudeSessionTabs(_tabs);
         _savedTabOrder = sessions.Select(t => t.Key).ToList();
         _savedRight = sessions.Where(IsRight).Select(t => t.Key).ToList();
-        TabOrder.Save(TabOrderPath, new TabLayout(_savedTabOrder, _savedRight), AppLog.Write);
+        TabOrder.Save(TabOrderPath, TabLayoutFile.ToFile(_savedTabOrder, _savedRight), AppLog.Write);
     }
 
     /// <summary>The menu of a session tab: move it to the other pane.</summary>
@@ -242,9 +245,13 @@ public partial class SessionWindow
         };
         menu.Items.Add(item);
 
-        var popOut = new MenuItem { Header = "Open in its own window", Padding = new Thickness(10, 4, 16, 4) };
-        popOut.Click += (_, _) => PopOut(tab);
-        menu.Items.Add(popOut);
+        // A Codex terminal has no Claude session to open in its own window, so the item is for Claude's tabs only (C3).
+        if (tab.Provider == ProviderId.Claude)
+        {
+            var popOut = new MenuItem { Header = "Open in its own window", Padding = new Thickness(10, 4, 16, 4) };
+            popOut.Click += (_, _) => PopOut(tab);
+            menu.Items.Add(popOut);
+        }
         return menu;
     }
 }

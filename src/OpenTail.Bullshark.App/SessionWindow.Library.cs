@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Library;
+using OpenTail.Bullshark.Core.Providers;
 using OpenTail.Bullshark.Core.Supervisor;
 
 namespace OpenTail.Bullshark.App;
@@ -87,7 +88,8 @@ public partial class SessionWindow
     /// <summary>Keeps the tab titles in step with the owner's names, which can change while a tab is open. Reads the records once.</summary>
     private void RefreshTabTitles()
     {
-        var tabs = _tabs.Where(t => t.Kind is TabKind.Session or TabKind.Transcript).ToList();
+        // A Codex tab keeps the title it was opened with: its session is not in the Claude records (C4).
+        var tabs = _tabs.Where(t => t.Provider == ProviderId.Claude && t.Kind is (TabKind.Session or TabKind.Transcript)).ToList();
         if (tabs.Count == 0) return;
         var records = ReadRecords().Values.ToList();
         foreach (var tab in tabs) tab.Title = TitleOfSessionNow(tab.Key, records);

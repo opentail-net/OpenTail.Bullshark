@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Windows;
+using OpenTail.Bullshark.Core.Codex;
 using OpenTail.Bullshark.Core.Health;
 using OpenTail.Bullshark.Core.Instructions;
 using OpenTail.Bullshark.Core.Trust;
@@ -13,13 +14,17 @@ namespace OpenTail.Bullshark.App;
 /// </summary>
 public partial class SessionWindow
 {
-    /// <summary>The setup check: Claude Code's settings, hooks, MCP servers and CLAUDE.md, read only.</summary>
+    /// <summary>
+    /// The setup check. Under Claude it is Claude Code's settings, hooks, MCP servers and CLAUDE.md, read only. Under Codex it is the one Codex row:
+    /// whether the codex program is on PATH (C-D7). Neither starts a program.
+    /// </summary>
     private void OpenSetupCheck()
     {
-        var dialog = new SetupCheckDialog(Palette, () => SetupCheck.Run(SetupCheck.DefaultClaudeDir, SetupCheck.DefaultClaudeJsonPath))
-        {
-            Owner = this,
-        };
+        var dialog = IsCodexActive
+            ? new SetupCheckDialog(Palette, () => CodexSetupCheck.Run(),
+                "Looks for the Codex CLI on PATH and changes nothing. Its version is not read, and codex is not started.")
+            : new SetupCheckDialog(Palette, () => SetupCheck.Run(SetupCheck.DefaultClaudeDir, SetupCheck.DefaultClaudeJsonPath));
+        dialog.Owner = this;
         dialog.ShowDialog();
     }
 

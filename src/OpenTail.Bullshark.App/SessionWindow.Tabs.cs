@@ -104,12 +104,17 @@ public partial class SessionWindow
         ShowOnly(_setup);
     }
 
-    private OpenTab TabFor(TabKind kind, string key, Func<string> title) =>
-        _tabs.FirstOrDefault(t => t.Kind == kind && SameId(t.Key, key)) ?? AddTab(kind, key, title());
+    /// <summary>The tab of a rail row, made when there is none. A rail row of Claude's is passed with Claude (the default), so a tab is never a Codex one by mistake.</summary>
+    private OpenTab TabFor(TabKind kind, string key, Func<string> title, ProviderId? provider = null) =>
+        _tabs.FirstOrDefault(t => t.Kind == kind && t.Provider == (provider ?? ProviderId.Claude) && SameId(t.Key, key))
+        ?? AddTab(kind, key, title(), provider ?? ProviderId.Claude);
 
-    private OpenTab AddTab(TabKind kind, string key, string title)
+    /// <summary>
+    /// Adds a tab. Its provider is the one given, else the window's active provider (the setup and the other views, which are not a session's).
+    /// </summary>
+    private OpenTab AddTab(TabKind kind, string key, string title, ProviderId? provider = null)
     {
-        var tab = new OpenTab(kind, key, title, _activeProvider.Id);
+        var tab = new OpenTab(kind, key, title, provider ?? _activeProvider.Id);
         _tabs.Add(tab);
         return tab;
     }
@@ -119,8 +124,9 @@ public partial class SessionWindow
     {
         if (IsRight(tab)) _activeTabRight = tab;
         else _activeTab = tab;
-        // The owner opening a session's tab acknowledges its wait (escalation D3). Nothing else acknowledges it.
-        if (tab.Kind == TabKind.Session) AcknowledgeSession(tab.Key);
+        // The owner opening a session's tab acknowledges its wait (escalation D3). Nothing else acknowledges it. A Claude session only: a Codex tab
+        // has no Claude record to acknowledge.
+        if (tab.Kind == TabKind.Session && tab.Provider == ProviderId.Claude) AcknowledgeSession(tab.Key);
         RefreshTabStrip();
     }
 
@@ -131,11 +137,15 @@ public partial class SessionWindow
         switch (tab.Kind)
         {
             case TabKind.Session:
-                var railItem = FindItem(Rail.Items, new RailTag(RailKind.Session, tab.Key));
-                if (railItem is not null) railItem.IsSelected = true;
+                // A Codex tab has no rail row of its own (the Codex rows are history rows), so only its terminal is shown.
+                if (tab.Provider == ProviderId.Claude)
+                {
+                    var railItem = FindItem(Rail.Items, new RailTag(RailKind.Session, tab.Key));
+                    if (railItem is not null) railItem.IsSelected = true;
+                }
                 // Shown here too: selecting a rail item that is already selected raises no event, and the pane would keep
                 // whatever it showed (for example the setup).
-                if (_terminals.TryGetValue(KeyOf(tab.Key), out var terminal)) ShowOnly(terminal);
+                if (_terminals.TryGetValue(KeyOf(tab), out var terminal)) ShowOnly(terminal);
                 break;
 
             case TabKind.Transcript:
@@ -181,7 +191,7 @@ public partial class SessionWindow
         var index = _tabs.IndexOf(tab);
         var next = TabPolicy.ActiveAfterClose(_tabs.ToList(), index, IsRight);
         _tabs.Remove(tab);
-        if (tab.Kind == TabKind.Session) _hiddenSessions.Add(KeyOf(tab.Key));
+        if (tab.Kind == TabKind.Session && tab.Provider == ProviderId.Claude) _hiddenSessions.Add(KeyOf(tab));
         if (tab.Kind == TabKind.Search) ClearSearchFilter();
         if (!ReferenceEquals(_activeTab, tab))
         {
@@ -206,6 +216,12 @@ public partial class SessionWindow
         if (tab.Kind != TabKind.Session)
         {
             CloseTab(tab);
+            return;
+        }
+        // A Codex tab is the window's own terminal: there is no Claude session to stop, so its close only closes the terminal (C3).
+        if (tab.Provider != ProviderId.Claude)
+        {
+            CloseCodexTab(tab);
             return;
         }
 
@@ -313,7 +329,7 @@ public partial class SessionWindow
             return;
         }
 
-        DetachTerminal(sessionId);
+        DetachTerminal(KeyOf(sessionId));
         CloseTab(tab);
         RefreshRail();
         SetStatus(needsStop
@@ -347,10 +363,22 @@ public partial class SessionWindow
         }
     }
 
-    /// <summary>Takes a session's terminal out of the pane and detaches it, the way the window's close detaches every terminal.</summary>
-    private void DetachTerminal(string sessionId)
+    /// <summary>
+    /// Closes a Codex tab: the tab goes, and its terminal is closed with it. The Codex conversation is kept by Codex and can be resumed from the
+    /// Codex rows. Nothing is asked, as there is no Claude session behind the tab.
+    /// </summary>
+    private void CloseCodexTab(OpenTab tab)
     {
-        if (!_terminals.Remove(KeyOf(sessionId), out var terminal)) return;
+        var key = KeyOf(tab);
+        CloseTab(tab);
+        DetachTerminal(key);
+        SetStatus($"{tab.Title} is closed. Codex keeps the conversation: resume it from the Codex rows.");
+    }
+
+    /// <summary>Takes a terminal out of the pane and detaches it, the way the window's close detaches every terminal.</summary>
+    private void DetachTerminal(SessionKey key)
+    {
+        if (!_terminals.Remove(key, out var terminal)) return;
         if (ReferenceEquals(_shown, terminal)) ShowOnly(_setup);
         if (ReferenceEquals(_shownRight, terminal)) _shownRight = null;
         if (ReferenceEquals(_focusTerminal, terminal)) _focusTerminal = null;
@@ -407,19 +435,20 @@ public partial class SessionWindow
     {
         var records = known.Values.Where(r => !string.IsNullOrEmpty(r.SessionId)).ToList();
         // New tabs open in the order the owner last left them (T1); a session with no saved place goes after those, by name.
+        // The records are Claude's, so only Claude's session tabs are matched and removed here. A Codex tab is the window's own terminal and stays.
         foreach (var record in TabOrder.Arrange(records.OrderBy(r => r.Name, StringComparer.Ordinal), r => r.SessionId, _savedTabOrder))
         {
             if (_hiddenSessions.Contains(KeyOf(record.SessionId))) continue;
-            if (!_tabs.Any(t => t.Kind == TabKind.Session && SameId(t.Key, record.SessionId)))
+            if (!_tabs.Any(t => t.Kind == TabKind.Session && t.Provider == ProviderId.Claude && SameId(t.Key, record.SessionId)))
             {
-                AddTab(TabKind.Session, record.SessionId, record.Name);
+                AddTab(TabKind.Session, record.SessionId, record.Name, ProviderId.Claude);
                 // A session that was at the right when the window last closed opens there again (T2).
                 if (_savedRight.Contains(record.SessionId) && _terminals.TryGetValue(KeyOf(record.SessionId), out var terminal))
-                    PlaceRight(record.SessionId, terminal);
+                    PlaceRight(KeyOf(record.SessionId), terminal);
             }
         }
 
-        foreach (var tab in _tabs.Where(t => t.Kind == TabKind.Session).ToList())
+        foreach (var tab in TabLayoutFile.ClaudeSessionTabs(_tabs).ToList())
         {
             var record = records.FirstOrDefault(r => SameId(r.SessionId, tab.Key));
             if (record is null)
@@ -427,7 +456,7 @@ public partial class SessionWindow
                 _tabs.Remove(tab);
                 if (ReferenceEquals(_activeTab, tab)) _activeTab = null;
                 if (ReferenceEquals(_activeTabRight, tab)) _activeTabRight = null;
-                _rightSessions.Remove(KeyOf(tab.Key));
+                _rightSessions.Remove(KeyOf(tab));
                 continue;
             }
             tab.Title = record.Name;
@@ -505,7 +534,8 @@ public partial class SessionWindow
             content.Children.Add(close);
 
             // A session's colour is a bar along the top of its tab (D-L11). Tabs without one keep no edge.
-            var edge = tab.Kind is TabKind.Session or TabKind.Transcript ? TabEdgeBrush(tab.Key) : null;
+            // The marks are Claude's library: a Codex tab has none.
+            var edge = (tab.Kind is (TabKind.Session or TabKind.Transcript)) && tab.Provider == ProviderId.Claude ? TabEdgeBrush(tab.Key) : null;
             var border = new Border
             {
                 // The edge keeps its 2 px whether or not the tab has a colour, so coloured tabs are not taller (D-L11).

@@ -1,0 +1,299 @@
+using System.IO;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using OpenTail.Bullshark.Core.Codex;
+using OpenTail.Bullshark.Core.Providers;
+using OpenTail.Bullshark.Core.Supervisor;
+using Wpf.Ui.Terminal;
+
+namespace OpenTail.Bullshark.App;
+
+/// <summary>
+/// Codex in the window (stage C3, C4): the provider dropdown at the top of the rail, the Codex rows under it, and the Codex terminal tabs.
+/// The Codex rows are history only (C-D4): a row resumes in a terminal tab, and no transcript is shown. Claude's tabs and records are not changed
+/// by any of this: they stay as they were, whatever the dropdown shows. Codex has no supervisor (B5), so its rows are never live.
+/// </summary>
+public partial class SessionWindow
+{
+    /// <summary>The Codex sessions as the last read gave them.</summary>
+    private IReadOnlyList<SessionSummary> _codexSessions = [];
+
+    /// <summary>True once the Codex history has been read in this window.</summary>
+    private bool _codexRead;
+
+    /// <summary>True while the Codex history is being read, so a second read does not start.</summary>
+    private bool _codexLoading;
+
+    /// <summary>True when the last read failed. The rail then says so, and the status line says why.</summary>
+    private bool _codexFailed;
+
+    /// <summary>True once the dropdown has its items. Its selection events before that are not a choice of the owner.</summary>
+    private bool _providerReady;
+
+    /// <summary>The search hint as the XAML sets it, kept so Claude's text comes back when the dropdown returns to Claude.</summary>
+    private string _claudeSearchHint = string.Empty;
+
+    /// <summary>The window's provider is Codex.</summary>
+    private bool IsCodexActive => _activeProvider.Id == ProviderId.Codex;
+
+    /// <summary>
+    /// The Claude-only features (C4): the supervised rows, Needs you, limits, trust, respawn, retry and the search box. They show when the window's
+    /// provider supervises. Claude does (ISupervisedLauncher); Codex does not.
+    /// </summary>
+    private bool ClaudeSupervision => ProviderFeatures.Has<ISupervisedLauncher>(_activeProvider);
+
+    /// <summary>The dropdown's items: Claude, and Codex where this build offers it (C-D2). Then the chrome follows the saved provider.</summary>
+    private void InitProvider()
+    {
+        ProviderBox.Items.Add(new ComboBoxItem { Content = "Claude", Tag = ProviderId.Claude });
+        if (CodexProvider.Available) ProviderBox.Items.Add(new ComboBoxItem { Content = "Codex", Tag = ProviderId.Codex });
+        ProviderBox.SelectedItem = ProviderBox.Items.Cast<ComboBoxItem>().First(item => item.Tag is ProviderId id && id == _activeProvider.Id);
+        _claudeSearchHint = SearchHint.Text;
+        _providerReady = true;
+        ApplyProviderChrome();
+    }
+
+    private void ProviderBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_providerReady || ProviderBox.SelectedItem is not ComboBoxItem { Tag: ProviderId id }) return;
+        ChooseProvider(id);
+    }
+
+    /// <summary>
+    /// The dropdown's choice: the rail lists that provider's rows from now on, and the choice is saved in ui.json (C4). Open tabs keep their own
+    /// provider and stay as they are. Nothing is started or stopped here.
+    /// </summary>
+    private void ChooseProvider(ProviderId id)
+    {
+        if (id == _activeProvider.Id) return;
+        IProvider next = id == ProviderId.Codex ? (_codex ??= new CodexProvider()) : _claude;
+        _activeProvider = next;
+        ProviderStore.Save(_options.StatePath, id);
+        ApplyProviderChrome();
+        _railSignature = null;
+        if (IsCodexActive && !_codexRead) _ = LoadCodexHistoryAsync();
+        RefreshRail();
+    }
+
+    /// <summary>
+    /// The chrome that is Claude's: the filter, the search box and the status bar's Claude items (C4). Under Codex the search box is off and its hint
+    /// says why. The Claude items are set again by the next pass when Claude shows.
+    /// </summary>
+    private void ApplyProviderChrome()
+    {
+        var claude = ClaudeSupervision;
+        FilterBox.Visibility = claude ? Visibility.Visible : Visibility.Collapsed;
+        SearchBox.IsEnabled = claude;
+        SearchHint.Text = claude ? _claudeSearchHint : "Codex search comes later";
+        SearchHint.Visibility = SearchBox.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (claude) return;
+        TrustButton.Visibility = Visibility.Collapsed;
+        RetryButton.Visibility = Visibility.Collapsed;
+        RespawnButton.Visibility = Visibility.Collapsed;
+        NeedsYouText.Visibility = Visibility.Collapsed;
+        LimitStatusText.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// The rail under Codex: a header with its reload mark, "New Codex session…", the empty state of the live part (Codex has none), then the history
+    /// grouped by folder, newest folder first. Replaces the Claude rows; the Claude tabs are kept in step by <see cref="SyncSessionTabs"/>.
+    /// </summary>
+    private void RefreshCodexRail(IReadOnlyDictionary<string, SessionRecord> stored)
+    {
+        _railSignature = null;
+        _rebuilding = true;
+        try
+        {
+            Rail.Items.Clear();
+            var header = new StackPanel { Orientation = Orientation.Horizontal };
+            header.Children.Add(Label("Codex history", bold: true));
+            var reload = Label(_codexLoading ? "⏳" : "🔄", muted: true, emoji: true);
+            reload.Margin = new Thickness(8, 0, 0, 0);
+            reload.Cursor = Cursors.Hand;
+            reload.ToolTip = "Reload the Codex history from its rollouts (no model)";
+            reload.MouseLeftButtonUp += async (_, _) => await LoadCodexHistoryAsync();
+            header.Children.Add(reload);
+            var section = NewItem(header, new RailTag(RailKind.HistorySection, "codex"));
+            section.IsExpanded = true;
+            Rail.Items.Add(section);
+
+            section.Items.Add(NewItem(Label("New Codex session…"), new RailTag(RailKind.CodexNew, "codex:new"),
+                "Choose a folder. Codex opens there in a terminal tab of this window."));
+            section.Items.Add(NewItem(Label("Codex has no background sessions", muted: true), new RailTag(RailKind.Heading, "codex:live"),
+                "Codex runs only in the terminal tabs this window opens, so there are no live rows and nothing is supervised."));
+
+            if (_codexFailed)
+            {
+                section.Items.Add(NewItem(Label("Codex history could not be read", muted: true), new RailTag(RailKind.Heading, "codex:failed"),
+                    "The status line says why. Reload to try again."));
+            }
+            else if (!_codexRead)
+            {
+                section.Items.Add(NewItem(Label(_codexLoading ? "reading the Codex history…" : "not read yet", muted: true),
+                    new RailTag(RailKind.Heading, "codex:none")));
+            }
+            else if (_codexSessions.Count == 0)
+            {
+                section.Items.Add(NewItem(Label("No Codex sessions found", muted: true), new RailTag(RailKind.Heading, "codex:empty"),
+                    "No rollouts were found under the Codex home folder."));
+            }
+            else
+            {
+                foreach (var folder in CodexFolders()) section.Items.Add(CodexFolderItem(folder));
+            }
+        }
+        finally
+        {
+            _rebuilding = false;
+        }
+        SyncSessionTabs(stored);
+    }
+
+    /// <summary>A folder of Codex sessions: its working folder, or "" for the sessions whose rollouts name none.</summary>
+    private sealed record CodexFolder(string Folder, IReadOnlyList<SessionSummary> Sessions);
+
+    /// <summary>The Codex folders, newest first. The sessions in each are newest first too.</summary>
+    private IReadOnlyList<CodexFolder> CodexFolders() =>
+        _codexSessions
+            .GroupBy(session => session.Folder ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+            .Select(group => new CodexFolder(group.Key, group.OrderByDescending(s => s.LastActivity ?? DateTimeOffset.MinValue).ToList()))
+            .OrderByDescending(folder => folder.Sessions[0].LastActivity ?? DateTimeOffset.MinValue)
+            .ToList();
+
+    private TreeViewItem CodexFolderItem(CodexFolder folder)
+    {
+        var named = folder.Folder.Length > 0;
+        var leaf = named ? LeafOf(folder.Folder) : string.Empty;
+        var header = !named ? "No folder named" : leaf.Length > 0 ? leaf : folder.Folder;
+        var tooltip = named ? $"Folder: {folder.Folder}" : "The rollouts do not name the working folder.";
+        var item = NewItem(Label(header, bold: true), new RailTag(RailKind.Heading, "codex-folder:" + folder.Folder), tooltip);
+        item.IsExpanded = true;
+        foreach (var session in folder.Sessions.Take(MaxHistoryPerFolder)) item.Items.Add(CodexRow(session));
+        return item;
+    }
+
+    /// <summary>One Codex session. Its action is the resume in a terminal tab: from its menu, or a double click (C3).</summary>
+    private TreeViewItem CodexRow(SessionSummary session)
+    {
+        var id = session.Key.SessionId;
+        var title = string.IsNullOrWhiteSpace(session.Title) ? $"Codex session {id[..Math.Min(8, id.Length)]}" : session.Title;
+        var item = NewItem(TwoLine(title, session.Model ?? string.Empty, RelativeTime(session.LastActivity)),
+            new RailTag(RailKind.CodexSession, id, Detail: session.Folder),
+            "Double click, or the menu, to resume it in a terminal tab.");
+        var resume = new MenuItem { Header = "Resume in a terminal tab" };
+        resume.Click += (_, _) => ResumeCodex(session);
+        item.ContextMenu = new ContextMenu { Items = { resume } };
+        item.MouseDoubleClick += (_, e) =>
+        {
+            e.Handled = true;
+            ResumeCodex(session);
+        };
+        return item;
+    }
+
+    /// <summary>
+    /// Loads the Codex history off the UI thread (C1). Nothing is written. A failed read keeps the list it had and says so in the status line.
+    /// </summary>
+    private async Task LoadCodexHistoryAsync()
+    {
+        if (_codexLoading) return;
+        _codexLoading = true;
+        if (IsCodexActive) RefreshRail();
+        try
+        {
+            var provider = _codex ??= new CodexProvider();
+            _codexSessions = await provider.ListAsync(CancellationToken.None);
+            _codexRead = true;
+            _codexFailed = false;
+            AppLog.Write($"codex history read: {_codexSessions.Count} sessions");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _codexFailed = true;
+            AppLog.Write($"codex history read failed: {ex.GetType().Name}");
+            SetStatus($"Codex history not read: {ex.GetType().Name}");
+        }
+        finally
+        {
+            _codexLoading = false;
+            if (IsCodexActive) RefreshRail();
+        }
+    }
+
+    /// <summary>
+    /// Resumes a Codex session in a terminal tab: <c>codex resume &lt;id&gt;</c>, run in the session's folder (C3). A session whose tab is already open
+    /// is shown and not started again, so one conversation has one process in this window.
+    /// </summary>
+    private void ResumeCodex(SessionSummary session)
+    {
+        var id = session.Key.SessionId;
+        var open = _tabs.FirstOrDefault(t => t.Kind == TabKind.Session && t.Provider == ProviderId.Codex && SameId(t.Key, id));
+        if (open is not null)
+        {
+            SetActive(open);
+            if (_terminals.TryGetValue(KeyOf(open), out var shown)) ShowOnly(shown);
+            return;
+        }
+
+        string command;
+        try
+        {
+            command = (_codex ??= new CodexProvider()).ResumeCommandLine(id);
+        }
+        catch (ArgumentException)
+        {
+            SetStatus("Not resumed: the session id is not a valid Codex id.");
+            return;
+        }
+        var folder = session.Folder is { } path && Directory.Exists(path) ? path : _options.WorkDir;
+        OpenCodexTab(id, session.Title ?? $"Codex session {id[..Math.Min(8, id.Length)]}", command, folder);
+    }
+
+    /// <summary>"New Codex session…": asks for a folder, then opens <c>codex -C</c> there in a terminal tab (C3, C4). Cancel starts nothing.</summary>
+    private void NewCodexSession()
+    {
+        var dialog = new Microsoft.Win32.OpenFolderDialog { Title = "Choose the folder for the Codex session" };
+        if (dialog.ShowDialog(this) != true) return;
+        var folder = dialog.FolderName;
+        string command;
+        try
+        {
+            command = (_codex ??= new CodexProvider()).NewCommandLine(folder);
+        }
+        catch (ArgumentException ex)
+        {
+            SetStatus($"Not started: {ex.Message}");
+            return;
+        }
+        OpenCodexTab("new-" + Guid.NewGuid().ToString("N"), $"Codex: {LeafOf(folder)}", command, folder);
+    }
+
+    /// <summary>
+    /// Opens a Codex terminal tab: a terminal that runs <paramref name="command"/> in <paramref name="folder"/>, owned by this window (C3). A Codex
+    /// tab has no thread link (B6): its key is the id it was opened with, the session's id for a resume or a new unique id for a new session.
+    /// </summary>
+    private void OpenCodexTab(string id, string title, string command, string folder)
+    {
+        var terminal = new ExtendedTerminalControl
+        {
+            StartupCommandLine = command,
+            WorkingDirectory = folder,
+            Visibility = Visibility.Hidden,
+        };
+        _terminals[new SessionKey(ProviderId.Codex, id)] = terminal;
+        Pane.Children.Add(terminal);
+        ConfigureTerminal(terminal);
+        var tab = AddTab(TabKind.Session, id, title, ProviderId.Codex);
+        SetActive(tab);
+        ShowOnly(terminal);
+        SetStatus($"Codex tab opened in {folder}.");
+    }
+
+    /// <summary>The last part of a folder path, or the path itself when it has none (a drive root).</summary>
+    private static string LeafOf(string folder)
+    {
+        var leaf = Path.GetFileName(folder.TrimEnd('\\', '/'));
+        return leaf.Length > 0 ? leaf : folder;
+    }
+}

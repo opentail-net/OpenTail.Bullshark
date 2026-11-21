@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using OpenTail.Bullshark.Core.Claude;
+using OpenTail.Bullshark.Core.Providers;
 using OpenTail.Bullshark.Core.Zoom;
 
 namespace OpenTail.Bullshark.App;
@@ -18,7 +19,8 @@ public partial class SessionWindow
 
     private async void PopOut(OpenTab tab)
     {
-        if (tab.Kind != TabKind.Session) return;
+        // Claude's session tabs only: a Codex terminal is not a Claude session and has no window of its own (C3).
+        if (tab.Kind != TabKind.Session || tab.Provider != ProviderId.Claude) return;
         if (string.IsNullOrEmpty(tab.State) || tab.State == "not listed")
         {
             SetStatus("Not running: there is no session to open in its own window.");
@@ -32,7 +34,7 @@ public partial class SessionWindow
             SetStatus("Not opened: the session id is not a valid id, so it cannot be attached.");
             return;
         }
-        if (_terminals.TryGetValue(KeyOf(sessionId), out var terminal) && terminal.ConPTYTerm is { } connection)
+        if (_terminals.TryGetValue(KeyOf(tab), out var terminal) && terminal.ConPTYTerm is { } connection)
         {
             // Ctrl+Z drops "claude attach" back to its shell, which detaches it cleanly; the session keeps running. Wait for that before
             // the new window attaches, so the session never has two clients.
@@ -46,7 +48,7 @@ public partial class SessionWindow
             }
             await Task.Delay(TimeSpan.FromSeconds(2));
         }
-        DetachTerminal(sessionId);
+        DetachTerminal(KeyOf(sessionId));
         CloseTab(tab);
         // The rail must not show this session in the main window again while its own window has it.
         if (_selected is { Kind: RailKind.Session } selected && selected.Key == sessionId) _selected = null;

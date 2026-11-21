@@ -1,0 +1,48 @@
+using OpenTail.Bullshark.Core.Providers;
+
+namespace OpenTail.Bullshark.Core.Codex;
+
+/// <summary>
+/// Codex as a provider (stage C). It implements the interfaces it has: its history (<see cref="CodexHistorySource"/>), its transcript
+/// lines (<see cref="CodexTranscriptReader"/>) and its terminal commands (<see cref="CodexTerminalOpener"/>). It implements no supervisor
+/// and no live list (B5, R-1), so the window hides those features for it through <see cref="ProviderFeatures.Has{T}"/>.
+/// </summary>
+public sealed class CodexProvider : IProvider, IHistorySource, ITranscriptReader, ITerminalOpener
+{
+    private readonly CodexHistorySource _history;
+    private readonly CodexTranscriptReader _reader;
+    private readonly CodexTerminalOpener _opener = new();
+
+    /// <summary>The paths the provider reads: <c>CODEX_HOME</c> or <c>~\.codex</c> when none are given.</summary>
+    public CodexProvider(ProviderPaths? paths = null)
+    {
+        Paths = paths ?? ProviderPaths.ForCodex();
+        _history = new CodexHistorySource(Paths);
+        _reader = new CodexTranscriptReader(Paths);
+    }
+
+    public ProviderPaths Paths { get; }
+
+    /// <summary>
+    /// True when this build can read Codex history (C-D2, O1): Codex is offered only in a net11.0 build, where the BCL decodes the compressed
+    /// rollouts. The window does not offer Codex when this is false.
+    /// </summary>
+    public static bool Available => RolloutReader.CanDecodeCompressed;
+
+    public ProviderId Id => ProviderId.Codex;
+
+    public string DisplayName => "Codex";
+
+    /// <summary>The sessions as neutral summaries (C1). Empty when <see cref="Available"/> is false.</summary>
+    public Task<IReadOnlyList<SessionSummary>> ListAsync(CancellationToken ct) => _history.ListAsync(ct);
+
+    /// <summary>The lines of one rollout, a page at a time (C2).</summary>
+    public Task<TranscriptPage> ReadPageAsync(string sessionId, int firstLine, int count, CancellationToken ct) =>
+        _reader.ReadPageAsync(sessionId, firstLine, count, ct);
+
+    /// <summary>The command of a new Codex tab, in <paramref name="folder"/> (C3).</summary>
+    public string NewCommandLine(string folder) => _opener.NewCommandLine(folder);
+
+    /// <summary>The command that resumes a saved Codex session by its UUID (C3).</summary>
+    public string ResumeCommandLine(string sessionId) => _opener.ResumeCommandLine(sessionId);
+}

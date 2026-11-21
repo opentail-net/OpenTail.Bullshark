@@ -4,6 +4,7 @@ using System.Windows.Input;
 using System.Windows.Threading;
 using OpenTail.Bullshark.Core.Claude;
 using OpenTail.Bullshark.Core.Library;
+using OpenTail.Bullshark.Core.Providers;
 using OpenTail.Bullshark.Core.Supervisor;
 using OpenTail.Bullshark.Core.Ui;
 
@@ -226,7 +227,8 @@ public partial class SessionWindow
     {
         var inRight = KeyboardTarget() is { } focused && focused.IsDescendantOf(PaneB) && _activeTabRight is not null;
         var tab = inRight ? _activeTabRight : _activeTab;
-        return tab is { Kind: TabKind.Session } ? tab.Key : null;
+        // A Codex tab is not a Claude session, so the palette's Claude records cannot hold it (C4).
+        return tab is { Kind: TabKind.Session } && tab.Provider == ProviderId.Claude ? tab.Key : null;
     }
 
     /// <summary>

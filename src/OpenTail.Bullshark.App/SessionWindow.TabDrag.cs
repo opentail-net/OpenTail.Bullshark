@@ -32,8 +32,9 @@ public partial class SessionWindow
     private void InitTabDrag()
     {
         var layout = TabOrder.Load(TabOrderPath, AppLog.Write);
-        _savedTabOrder = layout.Order;
-        _savedRight = layout.Right;
+        // Both forms are read: a bare id of the older file, and a claude:<id> key. The Claude ids are kept (C-D5).
+        _savedTabOrder = TabLayoutFile.ClaudeIds(layout.Order);
+        _savedRight = TabLayoutFile.ClaudeIds(layout.Right);
         foreach (var strip in new[] { TabStrip, TabStripB })
         {
             strip.PreviewMouseLeftButtonDown += TabStrip_PreviewMouseLeftButtonDown;

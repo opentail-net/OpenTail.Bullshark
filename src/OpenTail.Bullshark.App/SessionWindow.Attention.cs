@@ -103,7 +103,7 @@ public partial class SessionWindow
         // A session can be waiting for more than one reason (gems item 1: a blocked session can also share a file), and it is one session.
         var count = _attention.Select(item => item.Name).Distinct(StringComparer.Ordinal).Count();
         NeedsYouText.Text = count == 1 ? "1 session needs you" : $"{count} sessions need you";
-        NeedsYouText.Visibility = count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        NeedsYouText.Visibility = count > 0 && ClaudeSupervision ? Visibility.Visible : Visibility.Collapsed;
     }
 
     /// <summary>

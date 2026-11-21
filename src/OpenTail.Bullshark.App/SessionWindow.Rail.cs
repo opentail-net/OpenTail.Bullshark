@@ -36,6 +36,12 @@ public enum RailKind
 
     /// <summary>The History section at the bottom of the rail. It holds the 🔄 mark that reloads the history.</summary>
     HistorySection,
+
+    /// <summary>A Codex session from its history (stage C4). Key: its session id. Its action is a resume in a terminal tab, from its menu or a double click.</summary>
+    CodexSession,
+
+    /// <summary>"New Codex session…" under Codex. Selecting it asks for a folder and opens Codex there in a terminal tab.</summary>
+    CodexNew,
 }
 
 /// <summary>The meaning of one rail item. Detail carries the folder path for folder items.</summary>
@@ -398,6 +404,13 @@ public partial class SessionWindow
         UpdateNeedsYouCount();
         // The finished coders the owner has not looked at yet. Built from memory: the pass read their transcripts (ready-for-review D1).
         _review = ReviewQueue.From(records, _allAgents, _reviewSources, _reviewed);
+
+        // Under Codex the rail lists Codex's history only (C4). The Claude records above are still read, so the Claude tabs stay in step.
+        if (IsCodexActive)
+        {
+            RefreshCodexRail(stored);
+            return;
+        }
 
         var groups = new Dictionary<string, RailGroup>(StringComparer.OrdinalIgnoreCase);
         RailGroup Folder(string folder)
@@ -768,6 +781,14 @@ public partial class SessionWindow
     {
         if (_rebuilding) return;
         if (e.NewValue is not TreeViewItem { Tag: RailTag tag }) return;
+        // "New Codex session…" asks for a folder first, so selecting it starts nothing until a folder is chosen (C4).
+        if (tag.Kind == RailKind.CodexNew)
+        {
+            NewCodexSession();
+            // The rail is drawn again after the dialog, so the row is not left selected and a second press still asks for a folder.
+            _ = Dispatcher.BeginInvoke(new Action(() => RefreshRail()));
+            return;
+        }
         _selected = tag;
         NoteRailSelection(tag);
         await ShowRailItemAsync(tag);

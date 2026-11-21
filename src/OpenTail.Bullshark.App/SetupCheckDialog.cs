@@ -24,7 +24,8 @@ public sealed class SetupCheckDialog : Window
     };
     private readonly StackPanel _rows = new();
 
-    public SetupCheckDialog(RailPalette palette, Func<IReadOnlyList<SetupItem>> run)
+    /// <param name="noteText">The line under the title. Null gives the Claude Code note; the Codex check passes its own (stage C-D7).</param>
+    public SetupCheckDialog(RailPalette palette, Func<IReadOnlyList<SetupItem>> run, string? noteText = null)
     {
         _palette = palette;
         _run = run;
@@ -54,7 +55,7 @@ public sealed class SetupCheckDialog : Window
 
         var note = new TextBlock
         {
-            Text = "Reads the Claude Code settings on this computer and changes nothing. Hooks and MCP servers are not started.",
+            Text = noteText ?? "Reads the Claude Code settings on this computer and changes nothing. Hooks and MCP servers are not started.",
             TextWrapping = TextWrapping.Wrap,
             Foreground = RailPalette.Brush(palette.Muted),
             FontSize = 12,
