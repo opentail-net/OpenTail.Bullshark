@@ -94,7 +94,12 @@ public partial class SessionWindow
     }
 
     /// <summary>The "+" tab: the setup, reusing the one setup tab.</summary>
-    private void NewTab_Click(object sender, MouseButtonEventArgs e) => OpenSetupTab(null);
+    private void NewTab_Click(object sender, MouseButtonEventArgs e)
+    {
+        // Under Codex the "+" starts a Codex session (the rail's own action); the Claude run setup is for Claude.
+        if (IsCodexActive) NewCodexSession();
+        else OpenSetupTab(null);
+    }
 
     private void OpenSetupTab(string? folder)
     {

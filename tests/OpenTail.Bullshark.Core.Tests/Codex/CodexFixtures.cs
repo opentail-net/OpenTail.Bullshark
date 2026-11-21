@@ -58,10 +58,10 @@ internal sealed class CodexHome : IDisposable
         {
             zstd.Write(bytes);
         }
+        return path;
 #else
         throw new NotSupportedException("The compressed fixture needs the net11.0 build.");
 #endif
-        return path;
     }
 
     /// <summary>Writes the session index (names only) in the home folder.</summary>

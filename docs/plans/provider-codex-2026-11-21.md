@@ -140,6 +140,17 @@ Probes: a net11.0 console app in the session scratchpad (structure only: line co
 - **C-D8 review should-fix items, done in C:** (1) a tab's keys come from the tab's own provider (`KeyOf(OpenTab)`); (2) a library migration that cannot write logs one line and returns the entries in memory, and a test covers a read-only file. *Part 2 built 2026-11-21 (coder): (1) in App, `KeyOf(OpenTab)` at every tab site, and `KeyOf(string)` is Claude's key only; (2) in Core, see C6.*
 - **C-D9 no change for Claude:** the default is Claude; with Claude selected the rail, tabs, library and checks behave as before. The existing tests must pass unchanged.
 
+## Stage C check and open points (2026-11-21, orchestrator)
+
+- **Checked:** build 0 errors (only the existing CS8601 in `MainWindow.xaml.cs:23`); Core.Tests 2271 (net10.0) and 2277 (net11.0) passed; App.Tests 62 on each target passed; exit 0 throughout. Stage C App commit `18c6c6d`; a fix to "+" (under Codex it starts a Codex session) and a fixture warning are in the commit after it.
+- **Not checked:** no screen check of the dropdown, the Codex rail or the tabs; no Codex process was started (so `codex -C` and `codex resume` are verified as command strings only). The Sonnet review of stage C is the next step.
+- **Owner decisions (open):**
+  1. Closing a Codex tab closes its terminal without asking. Whether the Codex process ends with the terminal is not verified; the window's close also disposes every terminal. Keep, or ask first?
+  2. When the last tab closes, the window still opens the Claude setup page as its empty-pane fallback, under Codex too. It starts nothing until Start is pressed. Hide it under Codex, or keep it?
+  3. Insights and Settings still show Claude data under Codex. Hide them, or label them?
+  4. A folder whose path ends in a backslash (a drive root such as `C:\`) cannot start a Codex session: the backslash would escape the closing quote, so the command is refused. A fix needs a different quoting rule; not done.
+  5. The app-side tab layout is written as `claude:<id>` (A5); bare ids are still read. Codex tabs are not restored after a restart (C-D5).
+
 ## Risks
 - R1 Core gains its first packages (zstd, maybe SQLite): licence, size, trimming, supply-chain review. Mitigation: B1/B2 first; prefer BCL/no-SQLite if it works.
 - R2 Codex file formats are unpromised and change (the `_5` in `state_5.sqlite` suggests versioned schemas; not verified). Mitigation: a version/format check, skip-on-unknown, fixtures, "Codex history may be incomplete" state.
