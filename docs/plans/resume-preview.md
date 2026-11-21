@@ -42,7 +42,7 @@ The Resume button becomes a split button. The main part resumes exactly as now. 
 - [ ] App.Tests (headless, existing `UiThread` helper): construct `ResumePrompt` with a fake delegate; assert Preview is disabled for Full, enabled for Tail/Summary; a tail preview shows the text and header; changing the level collapses the pane and drops the kept summary; Resume after a preview returns the kept summary; a delegate that throws shows a message and does not crash.
 - [ ] App.Tests: one test that renders the dialog (with a preview showing) to a PNG with `RenderTargetBitmap` into a **unique scratch folder you create** (`%TEMP%\bullshark-resume-preview-<guid>`), and prints the path so the orchestrator can look at it. Do not delete it.
 - [ ] Build App with 0 errors; run Core.Tests and App.Tests in full; report counts and exit codes.
-- [ ] Update `docs/plans/live-run-checklist.md` with a live item: open Resume on a real past session, use ▾ > Preview for tail and for a summary, press Resume after a summary preview and confirm no second Haiku call (one `summary saved` line in the log).
+- [ ] Live checks R1 to R7: in [live-run-checklist.md](live-run-checklist.md), section C8, run in the owner's sitting after this build.
 
 ## Rules for the coder (carry these)
 - DELETION RULE: delete only what you created in this task, with a unique self-created name (include a guid). List it and read any note file in a separate step before deleting; never chain a listing and a delete; never `rm -rf` a fixed short name in a shared folder. Do not touch `%TEMP%\bullshark-app-tests-*` folders you did not create this run.
@@ -53,3 +53,25 @@ The Resume button becomes a split button. The main part resumes exactly as now. 
 
 ## Open items (owner)
 - None blocking. Assumption recorded: the previewed summary is saved as a file at preview time (decision 4).
+
+## Summaries (open from the review of 2026-11-15, phase 2)
+
+The summaries folder, the handover, and the measurement are the same feature as the start text above. Step 2 waits for the owner's sitting, section B, where "resume from a summary" must pass first.
+
+- [ ] Summaries folder. Decided 2026-11-16 (owner and planner), in two steps. Step 1 is built (2026-11-16, uncommitted): `SummaryFiles` in Core, tests in `SummaryFilesTests.cs`, and the window keeps a copy of each summary it makes (`SaveSummaryFileAsync`). Step 2 is open. Two choices made while building, both for the planner to check: the session name in the file name is the title the rail shows (the owner's name, else the transcript's title), cleaned of characters a file name cannot hold and cut to 60 characters, because the CLI name of a past session is often a role name; and a second summary of the same session, day and level gets " (2)" rather than overwriting the first.
+      Step 1, now: every summary the app makes is also saved as a file in the `Summaries` subfolder of the app's data folder.
+      Nothing else changes: the resumed session still gets the summary in its start text, as today. A file that cannot be
+      written is logged and does not stop the resume.
+      Step 2, after the Phase 3 run: the start text names the file instead of carrying the summary. This changes what a resumed
+      session starts from, and the resume has not yet been seen working with the real CLI, so the run comes first. The "measure
+      first" box below belongs to this step. Each summary is saved as a markdown file in `%LOCALAPPDATA%\OpenTail.Bullshark\Summaries\` (proposed location). The file title carries the date, the session name, the level and the short session id, in that order, for example `2026-11-16 ovc-planner complete 5bc2852c.md`. The session name comes before the level because the session is what the owner looks for. A fixed date-first order keeps files sorted by day; the cost is that the name is slightly harder to parse, which is accepted. The start text names the file's path, not the summary, so the 6,000-character command-line cap no longer applies to the summary. The new session reads the file.
+
+- [ ] Handover: the same file is the handover to another session.
+
+- [ ] Measure first: Complete is written to a 1,200-word limit and cut at 6,000 characters. Measure a real Complete summary before deciding whether Complete is recommended for long sessions (the owner said "possibly").
+
+- [ ] Open: the tail still goes on the command line (up to 4,000 tokens, roughly 16,000 characters). Decide whether the tail goes into the file too.
+
+- [ ] Linked to finding 15: the summary call's working folder can be the Summaries folder.
+
+Not placed in any phase yet: finding 15 (the summary call runs in the app's own folder, with that folder's settings). Proposed fix: run it from a folder under the data folder. Decide in Phase 3, which checks the History.

@@ -1,12 +1,12 @@
-# Tabs and panes (2026-11-16)
-
-> Split on 2026-11-21: the done items moved to [Done/tabs-and-panes-done.md](Done/tabs-and-panes-done.md). This file keeps the open items.
+# Tabs, panes and zoom: open work
 
 Status: T1 and T2 are built (2026-11-16), tested with counters in place of sessions, and committed in 39eaf53. T3 is not built. What was
 not checked on screen is listed under "Not verified". Results: finding F55.
 
 The owner asked for dockable, reorderable tabs, "a bit similar to a browser", and whether that is a real pain to build. It comes
 in three sizes. The first is small, the second needs one test first, and the third is cheap only if done a particular way.
+
+Their on-screen checks are in [live-run-checklist.md](live-run-checklist.md), section C7.
 
 ## Contracts this must satisfy
 
@@ -54,17 +54,11 @@ Recommended by the assistant. The owner has not confirmed them.
 
 ## Steps
 
-### T1 Reorder
-
-- [ ] Checked on screen with a temporary state folder: three tabs, reorder, wait for one rail refresh (the order holds), reopen.
-      Not done: the drag was not driven on screen. For the owner.
+### T1 Reorder (built; on-screen check in the checklist)
 
 Check: `dotnet test` passes; the on-screen steps are seen.
 
-### T2 Split (spike first)
-
-- [ ] Checked on screen with real sessions: planner left, coder right, both live; resize the splitter; collapse the rail;
-      paste into each pane after a click in it. For the owner.
+### T2 Split (built; on-screen check in the checklist)
 
 Check: the spike's finding is written; the on-screen steps are seen; no terminal is restarted by a move.
 
@@ -92,3 +86,24 @@ a session on a second monitor.
 
 1. Is T1 then T2 the right order, with T3 only if you still want it after using the split?
 2. Two panes side by side: enough, or do you see three sessions at once as the normal case (plan, code, review)?
+
+## Zoom: open points
+
+Zoom is built and checked. These two points stayed open.
+
+
+1. The palette is Windows Terminal's default, written in. A user with a different Windows Terminal scheme would see the default palette, not theirs. The library's own default colours were not read, because they are not exposed.
+2. Only the 16 Campbell colours and the greys are exact. The 256-colour cube follows the xterm values. Claude Code's output was not checked with 256 colours on screen.
+
+
+The package is WPF-UI.Terminal 1.0.39 over Microsoft.Terminal.Wpf 1.25. The source is not in the package cache, so this was read from the compiled code by reflection.
+
+- `TerminalControl` is a `UserControl` whose content is an `HwndHost` (`TerminalContainer`): the terminal is a native window inside WPF. This is why focus does not follow it (F55).
+- `ExtendedTerminalControl.SetTheme` applies the font size, through `TerminalContainer.SetTheme`, only when `Theme` has a value. The app never set one, so the size was never applied. Setting `Terminal.FontSize`, or the size before load, did nothing. Four attempts (below) all showed the same screen at 100% and 200%.
+  1. set `Terminal.FontSize` when the terminal loads;
+  2. set `FontSizeWhenSettingTheme` before the terminal loads;
+  3. set `Terminal.FontSize` again 1.5 s after load;
+  4. the same, followed by a one-pixel change of the terminal's width and back.
+- `TerminalTheme` is public after all, with public fields: `DefaultBackground`, `DefaultForeground`, `DefaultSelectionBackground`, `CursorStyle` and `ColorTable` (a 256-entry table). Setting `Theme` makes the library apply the font size.
+- A theme without a colour table draws every ANSI colour black (checked: the red and green test lines went nearly invisible).
+- Each colour is read as `0x00BBGGRR`. With `0x00RRGGBB`, red came out blue. `TerminalColours` converts the Windows Terminal palette (Campbell, and the xterm cube and greys) to this order. Checked on screen at 100%: the red and the green are dark red and dark green.

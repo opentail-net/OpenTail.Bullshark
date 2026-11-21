@@ -1,6 +1,6 @@
 # Round 10, 2026-11-17: speed on the owner's real transcripts
 
-> Split on 2026-11-21: the done items moved to [Done/round10-performance-2026-11-17-done.md](Done/round10-performance-2026-11-17-done.md). This file keeps the open items.
+> Record. Restructured 2026-11-21: the open items of this plan are carried into the live files in start at [00-current-work.md](../00-current-work.md). The finished items are in the section at the end.
 
 Status (2026-11-17, builder): items 1 and 4 done; item 2 partly done, item 3 partly done. Built on branch `round10-perf` (commits
 `dc9e095`..`c6dc664`, one commit per fix), merged to `main` and pushed. Open: the first index read with no cache is still about 1.6 s
@@ -66,3 +66,16 @@ pass (running facts, overlap, budgets, effort) and on demand (search, storage, t
 - Item 3, window: the window cannot be run for timing. Its startup pass calls the `claude` CLI (`agents`, `daemon status`) even with
   `--no-pass`, and the brief allows no CLI calls. Item 3 times the history work the window waits for (index and tails) in the bench
   instead, and records that WPF start and the rail drawing are not measured.
+
+## Done items (from the split of 2026-11-21)
+
+## Items
+- [x] **1. Measure.** A small console benchmark (new project `tools/OpenTail.Bullshark.Bench`, added to the solution, no packages) that times, on a given projects root (default: the real one, read-only): `TranscriptIndex.Build`, `HistorySearch` for three queries (a common word, a rare word, a Windows path), `StorageReport`, `EffortReport` and `TurnFacts` on the 3 largest files, `TranscriptPager.Open` + first/last page on the largest file, and one overlap/budget pass over 5 sessions. Report wall time and peak working set. Write results to `docs/findings/perf-2026-11-17.md` (numbers and sizes only).
+
+- [x] **4. Record.** Add a finding (next F number) summarising the data size, the slow spots found and what changed; update the README Plans row and this Status line. (F64; README row; this status.)
+
+## Decisions made while building
+- Item 1: the counts at measuring time were 163 transcripts and 861.9 MB, not the planner's 162 and 866 MB (the owner's sessions
+  changed during the day). The bench runs each step in its own process, twice, in Release, and the findings keep sizes and times only.
+- Item 1: the bench prints no file, folder or session name, and a failure prints the exception type only (a message can hold a path).
+  Its Windows-path query is a generic path that does not occur in the transcripts, so it is the worst case (every line parsed).

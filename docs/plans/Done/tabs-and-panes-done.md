@@ -1,6 +1,6 @@
 # Tabs and panes (2026-11-16) (done items)
 
-> Split from [tabs-and-panes.md](../tabs-and-panes.md) on 2026-11-21. These items are checked in the original; the open items stay there. The headings above each item are its place in that plan.
+> Split from [window.md](../window.md) on 2026-11-21. These items are checked in the original; the open items stay there. The headings above each item are its place in that plan.
 
 ## Steps
 ### T1 Reorder

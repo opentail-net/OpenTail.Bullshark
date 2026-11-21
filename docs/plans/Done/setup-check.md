@@ -1,6 +1,6 @@
 # Setup check: a read-only look at Claude Code's setup (2026-11-16)
 
-> Split on 2026-11-21: the done items moved to [Done/setup-check-done.md](Done/setup-check-done.md). This file keeps the open items.
+> Record. Restructured 2026-11-21: the open items of this plan are carried into the live files in start at [00-current-work.md](../00-current-work.md). The finished items are in the section at the end.
 
 Status (2026-11-16): built, uncommitted. Core tests pass (14 new). Not yet seen on screen.
 
@@ -41,3 +41,10 @@ These shapes are read from the files on this machine, not from a documented sche
 - Whether a hook or a server works: the check only looks for the files. Running them is out of scope for a read-only check.
 - Whether a command name on PATH resolves in the same way the Claude Code process resolves it. The check uses the app's PATH.
 - The arguments of a hook command that are not absolute paths: a relative script path is not checked, because there is no fixed folder to check it against.
+
+## Done items (from the split of 2026-11-21)
+
+## Steps
+- [x] `SetupCheck` in Core (`Core/Health/SetupCheck.cs`): settings, hooks, `~/.claude.json` servers (user and project scope), remote servers, `CLAUDE.md`.
+- [x] Tests (`tests/.../Health/SetupCheckTests.cs`, 14): missing files are warnings; broken JSON is a problem; no hooks and no servers are OK; a hook whose program exists is OK; a missing script is a problem; a program found on a given PATH is OK, and a missing one is a problem; a quoted path with spaces is one program; a missing MCP program is a problem; a remote server is listed, not contacted; project servers are checked; `CLAUDE.md` present is OK.
+- [x] Dialog (`App/SetupCheckDialog.cs`) and the button (`App/SessionWindow.SetupCheck.cs`, `SessionWindow.xaml`).

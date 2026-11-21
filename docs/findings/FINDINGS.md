@@ -350,7 +350,7 @@ Each finding has an ID (F1, F2, ...), the date, what was tested, the evidence, a
 
 ## F53 Phase 1 of the review: lost writes, adoption, start failures, close and resume (built and tested by code and unit tests, 2026-11-15; live sessions not run)
 
-Source: the review in `docs/plans/review-2026-11-15.md`, Phase 1 only. Phases 2 to 4 wait for the owner.
+Source: the review in `docs/plans/Done/review-2026-11-15.md`, Phase 1 only. Phases 2 to 4 wait for the owner.
 
 - **Stores:** every change to `state.json` and `runs.json` reads the file again under a named lock (`FileLock`), changes it, and writes it to a temporary file with its own name, then moves it over. A file that cannot be read throws `StoreUnreadableException` and is not overwritten. Verified by `ACorruptStateFileIsLeftAloneAndNothingIsStarted`.
 - **Supervisor pass:** writes only the records it changed for its own sessions, under the lock. A session the owner forgot during the pass stays forgotten. Verified by `ARecordForgottenDuringAPassStaysForgotten`.
@@ -371,7 +371,7 @@ Not verified: the close and resume flows with real sessions, the Trust fallback 
 
 ## F54 Phase 2 of the review: the cuts that need no owner answer, and the close message (built and tested by unit tests, 2026-11-16; live sessions not run)
 
-Source: the review in `docs/plans/review-2026-11-15.md`, Phase 2. Only the cuts with no open question were made.
+Source: the review in `docs/plans/Done/review-2026-11-15.md`, Phase 2. Only the cuts with no open question were made.
 
 - **Phase 1 re-checked:** committed as 51b51e7, which is in HEAD (8ac81ae). I read the code at HEAD, and the Core suite there passes 269 tests (the 51b51e7 commit message said 242). Start-failure, lost-write, adoption, listing, resume-prompt and timeout items are in the code; see the review's checkboxes for the file references.
 - **Close:** a session that is idle (`done`) or unlisted is closed without a stop, and the status line now says "Closed ... Nothing was stopped" instead of "Stopped". The plan's rule was "stop unless unlisted"; question 6 of the review decides whether idle sessions should be stopped too.
@@ -380,7 +380,7 @@ Source: the review in `docs/plans/review-2026-11-15.md`, Phase 2. Only the cuts 
 - **Assistant parked by the owner (2026-11-16):** the idea is valid and can be deferred. Not cut; the code stays.
 - **Not cut, waiting for the owner:** the legacy run with `ovc-` names and `--workdir`/`--task` (question 1), the spike (question 8), and one supervisor host (question 4).
 - **Summary levels kept (owner, 2026-11-16):** all three stay. The 6,000-character cap on the start text cuts Complete short. The planned fix is a Summaries folder, with the path in the start text instead of the summary. It is recorded in the review's Phase 2 and not built; it waits for Phase 3 under the freeze.
-- **Status lines:** the README and `docs/plans/setup-and-sessions.md` no longer say "design only". The README points at the review.
+- **Status lines:** the README and `docs/plans/Done/setup-and-sessions.md` no longer say "design only". The README points at the review.
 
 Result: 248 Core tests pass (269 minus the 21 tests of the removed code). The supervisor builds. The app build shows five warnings. Two nullable warnings in `RunPlan.cs:139-140` and two CS8601 warnings in `MainWindow.xaml.cs` and `SessionWindow.SelfTest.cs` are not from this pass (those files are unchanged from HEAD). The fifth, an un-awaited `Dispatcher.BeginInvoke` at `TranscriptView.cs:83` (CS4014), is in the owner's uncommitted change.
 
@@ -388,7 +388,7 @@ Not verified: the close flow with a real session, the Assistant and legacy cuts 
 
 ## F55 Tabs reorder, and the pane splits in two: a terminal moves between parents and keeps its process (built and tested with counters, 2026-11-16; no Claude session used)
 
-Source: `docs/plans/tabs-and-panes.md`, T1 and T2.
+Source: `docs/plans/window.md`, T1 and T2.
 
 - **The spike (the gate of T2):** `--selftest <json> --selftest-mode move` moves a running terminal (the counter of F45) from the pane to a second grid in the same window and back. Result: process alive; ticks 4 before the move, 10 in the second grid, 16 back; a key sent in each place came back; width 831, then 416, then 831. So a terminal can change parent inside one window. This replaces "nothing is moved between parents" (F45) for moves inside the window.
 - **T1 reorder:** a tab is dragged along its strip and changes places with a tab when the pointer passes that tab's middle. The order of the session tabs is saved in `tabs.json` beside the state file. Verified by unit tests (`TabOrderTests`: move, arrange, drop place, save and read). The drag itself was not driven on screen.
@@ -406,7 +406,7 @@ Not verified:
 
 ## F56 Phase 2 of the review: the legacy run is cut (built and tested by unit tests, 2026-11-16; live sessions not run)
 
-Source: the review in `docs/plans/review-2026-11-15.md`, Phase 2.
+Source: the review in `docs/plans/Done/review-2026-11-15.md`, Phase 2.
 
 - **End of the live run (owner, 2026-11-16, "end the run"):** `ovc-planner` was stopped with `claude stop` (its conversation is kept). `state.json` and `runs.json` were set to `[]`. Backups are in the scratchpad (`*.20261116-084158.bak`).
 - **Cut:** `RunPlan.Legacy`; `RunStore.MigrateLegacyIfNeeded` and `LegacyRunId`; `SessionSpec.PlannerName`, `CoderName` and the default-spec helpers; the supervisor's `--workdir` and `--task` and its migration call; the window's migration call; `scripts/Demo-Handoff.ps1`, which used the removed options.
@@ -478,7 +478,7 @@ Source: the brief-templates batch from the planner (git-fb), with the owner's de
 ## F62 `claude --bg` refuses a folder that has not been trusted (checked 2026-11-17)
 
 - **The fact:** `claude --bg --model haiku --effort low --name gate-plain "<prompt>"` in a new scratch git repo exited 1 with "Workspace not trusted. Run claude in <folder> once and accept the trust prompt, then retry." Nothing started (`agents --json --all` was the same before and after).
-- **Effect:** the worktree-per-coder gate (`docs/plans/additions-2026-11-17.md` item 3) could not run `--bg -w`. Trusting a folder takes an interactive `claude` run that writes `~/.claude.json`, which only the owner does. To finish the gate, the owner trusts one throwaway repo, then the gate is rerun.
+- **Effect:** the worktree-per-coder gate (`docs/plans/Done/additions-2026-11-17.md` item 3) could not run `--bg -w`. Trusting a folder takes an interactive `claude` run that writes `~/.claude.json`, which only the owner does. To finish the gate, the owner trusts one throwaway repo, then the gate is rerun.
 - **Fits the existing trust step:** Bullshark already skips runs in untrusted folders and shows a Trust step (`TrustGate`), so this is the same rule seen from the CLI side.
 
 ## F63 `claude daemon status` says "not running" while `agents --json --all` still lists sessions as working or blocked (checked 2026-11-17, `claude` 2.1.326; Bullshark shows listed working or blocked sessions as stale while it is down, and starts and resumes go ahead)

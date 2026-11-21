@@ -14,7 +14,7 @@ are named at the end and get their own plans.
 
 - The ideas list of 2026-11-16 (other tools were surveyed; the owner asked for "visualise, search, organise").
 - The owner, 2026-11-16: "session names are not great". Today a title is the first message the owner typed (`SessionTitle`).
-- The Fable review, `docs/plans/review-2026-11-15.md`. Its idea "cache the history index by path, size and time" is slice L6
+- The Fable review, `docs/plans/Done/review-2026-11-15.md`. Its idea "cache the history index by path, size and time" is slice L6
   here. Its Phase 1 is built (commit 51b51e7). Its Phases 2 to 4 are open, and it asks for a freeze on new CLI switches,
   worktrees, the orchestrator and new patterns until its Phase 3 run passes. This plan stays inside that freeze: it starts no
   session, calls no model, and changes nothing in the supervisor, the stores `state.json` and `runs.json`, or the CLI calls. Its
@@ -118,6 +118,8 @@ Decided while building (2026-11-16; accepted by the planner, git-fb):
 
 ## Steps
 
+The on-screen checks of L2 to L5 are in [live-run-checklist.md](live-run-checklist.md), section C6 (library), not repeated here. Parked ideas from the table at the end of this plan are in [docs/later/ideas.md](../later/ideas.md).
+
 ### L1 Free facts from the transcripts (Core)
 
 Check: `dotnet test` passes. Checked 2026-11-16: `dotnet test tests/OpenTail.Bullshark.Core.Tests --filter "FullyQualifiedName!~Live"`
@@ -133,10 +135,6 @@ Real folder, read-only, `scripts/Check-Titles.ps1`, 2026-11-16 (7 seconds):
 
 ### L2 The rail shows them (App)
 
-- [ ] The transcript view's heading and the resume prompt's heading use the same title. By code reading only: both read
-      `digest.Title`. Not seen on screen: a transcript opens with a click, and clicks were not simulated.
-- [ ] Checked on screen with a temporary state folder: a session with an `ai-title`, one without, and a subagent row. Partly: an
-      `ai-title` row and a row without one were seen. No subagent row is in the screenshot.
 
 Check: the screenshot shows the three rows; the titles of the first two differ as expected. Result, 2026-11-16 (a scratch
 state folder, `--no-pass`, `--shot`): the row "OpenTail.Bullshark review..." (session 29b84a3b, has an `ai-title`) and the row
@@ -151,32 +149,12 @@ Check: `dotnet test` passes. Checked 2026-11-16: the Core suite passes 270 with 
 
 ### L4 Organise in the rail (App)
 
-- [ ] The row menu and the edit dialog (D-L10), on history rows and on live session rows. Not on folders, headings or failed starts.
-      Built: `RowMenu` and `EditMark` in `SessionWindow.Library.cs`; the dialog is `LibraryEditDialog.cs`. Not seen: the menu and the
-      dialog need clicks, which are for the owner. Decision to confirm: Pin and Archive are on history rows only. A live session is
-      not archived from the rail, so the live row's menu offers Edit only.
-- [ ] Titles use `TitleFor`; tags show on the second line; the note shows in the tooltip. Seen: "Plan for L4" in the Pinned group, in
-      the dark and the light theme. Built, not seen: the tags on the second line are cut at the default rail width. They, and the note,
-      are at the top of the row's tooltip, which needs a hover (for the owner).
-- [ ] The colour bar on the rail row and on the tab (D-L11), in both themes. Seen: the rail row's bar (Blue) in the dark and the light
-      theme. Built, not seen: the tab's top bar (`DrawStrip`), because a tab needs a click. The Red session is not in the visible part
-      of the list.
-- [ ] Checked on screen with a temporary state folder: rename, pin, unpin, archive, the Archived filter, unarchive, a tag, a note, a
-      colour in the dark and the light theme; then close and reopen the window and see them again. Seen: the Archived filter; a colour
-      in both themes; a fresh start reads `library.json` and shows the Pinned group, which is the reopen. Not done: rename, pin, unpin,
-      archive, unarchive, a tag, a note and a colour changed by clicks (for the owner). Their writes are unit-tested in
-      `SessionLibraryTests`.
 
 Check: the on-screen list is not complete; the boxes above say what is. `scripts\Test-Library.ps1` passes 6 of 6 with no clicks
 (2026-11-16, scratch state folders).
 
 ### L5 Search and lineage
 
-- [ ] `SearchView` shows "matched its name, tags or note" for a match with no messages. Built (`SearchView.cs`). Not seen: a search needs
-      typing, which is for the owner.
-- [ ] The rail tooltip says "continues: <title>". The transcript view shows "Continued from…" and "Continued in…" links. Built
-      (`ContinuesTip`, `ShowLineage`, `LineageLink`). Not seen: a hover and a transcript click are needed, and no continuation exists yet
-      to show the links.
 
 Check: `dotnet test` passes: 287 with the Live tests filtered out (2026-11-16). One real resume is not run. Its box waits for the owner's
 word. The on-screen boxes above are unticked until a click or a hover is checked.
@@ -207,24 +185,3 @@ Reading every transcript took 3.6 s for 137 files (830 MB), measured 2026-11-16 
   `ContextMenu` in the rail, which suggests it does; it is checked on screen in L4.
 - Whether a full resume writes to the same transcript file (F20 is open).
 - The on-screen checks need a session with each record type in the scratch copy.
-
-## Other ideas, each for its own plan
-
-Not part of this plan. The order is the assistant's recommendation.
-
-| Idea | Note |
-|---|---|
-| Attention board and alerts: cards for running, waiting, blocked; a Windows notification | the review's Phase 4 and D10. Waits for the review's Phase 3. |
-| Hooks in place of polling | a new Claude Code surface (hooks in settings), not checked yet. Decide it with S9, after the review's freeze. |
-| Activity panel (README P6): per prompt, the tools called, which failed, how long the turn took | reads transcripts only. `turn_duration` is already read. Per-tool duration and the failure flag are not checked in the format yet. |
-| Context meter on each live row | the context size is already known per session. The window size per model must be verified before a percentage is shown. |
-| Reorder tabs, split the pane, a second window | see `docs/plans/tabs-and-panes.md`. |
-| Launch profiles: a folder, a pattern and its models as a one-click start | touches run start, so it waits for the review's Phase 3. Setup already remembers models per pattern. |
-| Session timeline with the compaction marks and the cache going cold | reads transcripts only. `compact_boundary` gives the marks. |
-| Files touched, and "which sessions changed this file" | `FilesWritten` is already in the digest. |
-| Search inside tool calls | `HistorySearch` leaves them out on purpose; it would be a switch on the search. |
-| Usage view by day, folder and model | in tokens, not money (F17). The ledger has the data. |
-| History as a tool for the sessions themselves (MCP) | new surface; decide after the freeze. |
-| Export one session to HTML | see `docs/later/claude-scrollback.md`. |
-| Fork from a point; a worktree per coder with diff review | under the review's freeze. Fork is not verified against the CLI. |
-| Message queue; brief library | needs the nudge rule (D5), which the review lists as unused code. |

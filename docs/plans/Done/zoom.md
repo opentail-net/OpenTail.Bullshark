@@ -1,6 +1,6 @@
 # Zoom of the session text (2026-11-16)
 
-> Split on 2026-11-21: the done items moved to [Done/zoom-done.md](Done/zoom-done.md). This file keeps the open items.
+> Record. Restructured 2026-11-21: the open items of this plan are carried into the live files in start at [00-current-work.md](../00-current-work.md). The finished items are in the section at the end.
 
 Status (2026-11-16): built and checked. The transcripts and the terminals both zoom, from the control in the bottom right and from Ctrl+plus, Ctrl+minus and Ctrl+0. The terminal zoom needed a theme (see "Terminal text" below); it was found by reading the library's compiled code. Committed with the zoom work.
 
@@ -63,3 +63,13 @@ The package is WPF-UI.Terminal 1.0.39 over Microsoft.Terminal.Wpf 1.25. The sour
 
 1. The palette is Windows Terminal's default, written in. A user with a different Windows Terminal scheme would see the default palette, not theirs. The library's own default colours were not read, because they are not exposed.
 2. Only the 16 Campbell colours and the greys are exact. The 256-colour cube follows the xterm values. Claude Code's output was not checked with 256 colours on screen.
+
+## Done items (from the split of 2026-11-21)
+
+## Steps
+- [x] Core `ZoomLevel` (steps, nearest, up and down, slider position, scale) and `ZoomKeys.FromVirtualKey`, with tests (`tests/.../Zoom/ZoomLevelTests.cs`).
+- [x] `UiFile` and `ZoomStore`: `ui.json` with the zoom; the theme keeps the zoom.
+- [x] Bottom-right control (`SessionWindow.xaml`, `SessionWindow.Zoom.cs`); the slider, the buttons and the percentage show the zoom.
+- [x] Transcript zoom (`TranscriptView.ApplyZoom`). Checked on screen at 200%: the transcript text and the turn lines double in size; the rail stays the same.
+- [x] Terminal zoom (`TerminalColours`, `ApplyZoomTo`). Checked on screen: the colours are right at 100%, and the text grew with four Ctrl+= presses.
+- [x] Keys in the window (`OnPanePreviewKeyDown`). Checked as above.
