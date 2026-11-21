@@ -4,9 +4,10 @@ namespace OpenTail.Bullshark.Core.Library;
 
 /// <summary>
 /// One group of the rail's History section when it is grouped by tag (features batch G4): the tag in lower case, or null for the sessions with
-/// no tag, and the group's sessions, newest first (main sessions before subagents, as <see cref="HistoryOrder"/> orders them).
+/// no tag, and the group's sessions in the order the grouping was given (for the Claude rail, newest first, main sessions before subagents, as
+/// <see cref="HistoryOrder"/> orders them). Generic so the Codex rail can group its own session summaries (tags P5).
 /// </summary>
-public sealed record TagGroup(string? Tag, IReadOnlyList<SessionDigest> Sessions);
+public sealed record TagGroup<T>(string? Tag, IReadOnlyList<T> Sessions);
 
 /// <summary>
 /// The past sessions grouped by their tags (features batch G4). Pure: the marks are looked up by session id. A session with several tags is in
@@ -15,32 +16,43 @@ public sealed record TagGroup(string? Tag, IReadOnlyList<SessionDigest> Sessions
 /// </summary>
 public static class TagGrouping
 {
-    /// <summary>The groups of the sessions. Empty when there are no sessions. A group is listed only when it has a session.</summary>
-    public static IReadOnlyList<TagGroup> Groups(IEnumerable<SessionDigest> sessions, Func<string, LibraryEntry?> marksOf)
+    /// <summary>The groups of the Claude history sessions, ordered as <see cref="HistoryOrder"/> orders them. Empty when there are no sessions.</summary>
+    public static IReadOnlyList<TagGroup<SessionDigest>> Groups(IEnumerable<SessionDigest> sessions, Func<string, LibraryEntry?> marksOf) =>
+        Groups(sessions, digest => digest.SessionId, marksOf, HistoryOrder.Sorted);
+
+    /// <summary>
+    /// The groups of any sessions. <paramref name="idOf"/> gives the id that keys a session's mark, and <paramref name="order"/> orders the sessions
+    /// before they are grouped, so each group keeps that order. Empty when there are no sessions. A group is listed only when it has a session.
+    /// </summary>
+    public static IReadOnlyList<TagGroup<T>> Groups<T>(
+        IEnumerable<T> sessions,
+        Func<T, string> idOf,
+        Func<string, LibraryEntry?> marksOf,
+        Func<IEnumerable<T>, IEnumerable<T>> order)
     {
-        var byTag = new Dictionary<string, List<SessionDigest>>(StringComparer.Ordinal);
-        var untagged = new List<SessionDigest>();
-        foreach (var digest in HistoryOrder.Sorted(sessions))
+        var byTag = new Dictionary<string, List<T>>(StringComparer.Ordinal);
+        var untagged = new List<T>();
+        foreach (var session in order(sessions))
         {
-            var tags = TagsOf(marksOf(digest.SessionId));
+            var tags = TagsOf(marksOf(idOf(session)));
             if (tags.Count == 0)
             {
-                untagged.Add(digest);
+                untagged.Add(session);
                 continue;
             }
             foreach (var tag in tags)
             {
                 if (!byTag.TryGetValue(tag, out var list)) byTag[tag] = list = [];
-                list.Add(digest);
+                list.Add(session);
             }
         }
 
         var groups = byTag
             .OrderByDescending(pair => pair.Value.Count)
             .ThenBy(pair => pair.Key, StringComparer.Ordinal)
-            .Select(pair => new TagGroup(pair.Key, pair.Value))
+            .Select(pair => new TagGroup<T>(pair.Key, pair.Value))
             .ToList();
-        if (untagged.Count > 0) groups.Add(new TagGroup(null, untagged));
+        if (untagged.Count > 0) groups.Add(new TagGroup<T>(null, untagged));
         return groups;
     }
 

@@ -124,11 +124,11 @@ public partial class SessionWindow
 
     private void UpdateFilterMark()
     {
-        // Under Codex the label shows Codex's tag and "all": the Claude view and the grouping do not apply to the Codex rail (tags P5).
+        // Under Codex the label shows Codex's tag and "all": the Claude view does not apply to the Codex rail (tags P5). The grouping does (G-D4).
         var codex = IsCodexActive;
         var tag = codex ? ActiveCodexTagFilter : ActiveTagFilter;
         var view = codex ? "all" : _filter.ToString().ToLowerInvariant();
-        var grouping = !codex && _groupByTag ? " · by tag" : string.Empty;
+        var grouping = _groupByTag ? " · by tag" : string.Empty;
         FilterMark.Text = $"show: {view}{(tag is null ? string.Empty : " · #" + tag)}{grouping} ▾";
         // The label may be cut with an ellipsis when the tag is long, so the tooltip names the tag in full.
         FilterBox.ToolTip = tag is null ? "Choose what the rail shows" : $"Choose what the rail shows (tag filter #{tag})";
@@ -154,8 +154,8 @@ public partial class SessionWindow
 
     /// <summary>
     /// Rebuilds the dropdown each time it opens, so it lists the tags as the marks are now. Under Claude: the views, then a separator, the tags in
-    /// use with their counts (a tick on the one in use), "Clear tag filter" when one is set, and the grouping. Under Codex: only Codex's tags
-    /// (<see cref="AddCodexTagItems"/>, tags P5).
+    /// use with their counts (a tick on the one in use), "Clear tag filter" when one is set, and the grouping. Under Codex: Codex's tags
+    /// (<see cref="AddCodexTagItems"/>, tags P5), then the same grouping.
     /// </summary>
     private void RebuildTagMenu()
     {
@@ -164,6 +164,7 @@ public partial class SessionWindow
         if (IsCodexActive)
         {
             AddCodexTagItems(_filterMenu);
+            AddGroupingItems(_filterMenu);
             return;
         }
         foreach (var view in _viewItems) _filterMenu.Items.Add(view);
@@ -194,14 +195,22 @@ public partial class SessionWindow
             }
         }
 
-        // The grouping of the History section (features batch G4): folders or tags, with a tick on the one in use.
-        _filterMenu.Items.Add(new Separator());
-        _filterMenu.Items.Add(new MenuItem { Header = "Group by", IsEnabled = false, Padding = new Thickness(10, 4, 16, 4) });
+        AddGroupingItems(_filterMenu);
+    }
+
+    /// <summary>
+    /// The grouping entries of the dropdown (features batch G4): folders or tags, with a tick on the one in use. The same under Claude and under
+    /// Codex (tags P5), since one setting groups both rails.
+    /// </summary>
+    private void AddGroupingItems(ContextMenu menu)
+    {
+        menu.Items.Add(new Separator());
+        menu.Items.Add(new MenuItem { Header = "Group by", IsEnabled = false, Padding = new Thickness(10, 4, 16, 4) });
         foreach (var (label, byTag) in new[] { ("Folder", false), ("Tag", true) })
         {
             var item = new MenuItem { Header = label, IsCheckable = true, IsChecked = _groupByTag == byTag, Padding = new Thickness(10, 4, 16, 4) };
             item.Click += (_, _) => ChooseGrouping(byTag);
-            _filterMenu.Items.Add(item);
+            menu.Items.Add(item);
         }
     }
 

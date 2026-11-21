@@ -1,10 +1,12 @@
 # Codex resume screen, screenshots (steps R7 of docs/plans/provider-codex-2026-11-21.md). A copy of the pattern of Test-NewScreens.ps1, for the two
-# screens of the Codex resume dialog: "From the last turns" (dark) and "From a Codex summary" with Make summary pressed (light).
+# screens of the Codex resume dialog: "From the last turns" (dark) and "From a Codex summary" with Make summary pressed (light), and the Codex
+# history grouped by tag (dark, --rail-group tag: tags P5).
 #
 # Everything the App reads is a scratch fixture, built by this script in -Out:
 #   - a state folder (the App's state.json and ui.json; ui.json picks Codex as the window's provider);
 #   - a test .claude folder (empty) and a git repo (the folder the Codex session names);
-#   - a Codex home (CODEX_HOME for the App process only) with one synthetic rollout: two exchanges and one injected context message;
+#   - a Codex home (CODEX_HOME for the App process only) with one synthetic rollout: two exchanges and one injected context message
+#     (the tag screen adds a second synthetic rollout and the Codex tags of both, written for that screen only);
 #   - a stand-in codex.cmd (first on PATH for these runs only). It prints a fixed three-line summary and reads its prompt from standard input.
 #     It is the only codex the App can reach here, so no real Codex session starts and no real codex exec call is made;
 #   - the claude stand-in of Test-NewScreens.ps1 (it lists no sessions and starts nothing).
@@ -53,13 +55,24 @@ New-Item -ItemType Directory -Force -Path $state, $claudeHome, $codexHome, $repo
 "@ | Set-Content -LiteralPath "$tools\gen\gen.csproj" -Encoding UTF8
 
 @'
+using OpenTail.Bullshark.Core.Library;
+using OpenTail.Bullshark.Core.Providers;
 using OpenTail.Bullshark.Core.Supervisor;
 
-// Scratch state for the screenshots: no run and no record, so the state files only say so. Usage: gen <stateFolder>.
+// Scratch state for the screenshots: no run and no record, so the state files only say so. Usage: gen <stateFolder> [tags].
 var stateFolder = args[0];
 Directory.CreateDirectory(stateFolder);
 new RunStore(Path.Combine(stateFolder, "runs.json")).Save([]);
 new StateStore(Path.Combine(stateFolder, "state.json")).Save(new Dictionary<string, SessionRecord>(StringComparer.Ordinal));
+// The tag screen only: the owner's Codex marks with tags, in library.json beside the state file. Synthetic tags and ids.
+if (args.Length > 1 && args[1] == "tags")
+{
+    SessionLibrary.Beside(Path.Combine(stateFolder, "state.json")).UpdateProvider(ProviderId.Codex, entries =>
+    {
+        entries["019e2000-0000-7000-8000-00000000c0de"] = new LibraryEntry(Tags: ["demo", "screenshot"]);
+        entries["019e2000-0000-7000-8000-00000000c0df"] = new LibraryEntry(Tags: ["screenshot"]);
+    });
+}
 '@ | Set-Content -LiteralPath "$tools\gen\Program.cs" -Encoding UTF8
 
 @"
@@ -128,11 +141,24 @@ New-Item -ItemType Directory -Force -Path $rolloutDir | Out-Null
 $rolloutLines = $records | ForEach-Object { $_ | ConvertTo-Json -Compress -Depth 8 }
 [IO.File]::WriteAllLines((Join-Path $rolloutDir "rollout-2026-11-21T09-00-00-$sessionId.jsonl"), [string[]]$rolloutLines, $utf8)
 
+# The tag screen's second session (written for that screen only, below): a short exchange with its own id.
+$secondId = '019e2000-0000-7000-8000-00000000c0df'
+$secondRecords = @(
+    @{ timestamp = '2026-11-21T09:05:00.000Z'; type = 'session_meta'; payload = @{ id = $secondId; cwd = $repo; source = 'cli' } },
+    @{ timestamp = '2026-11-21T09:05:01.000Z'; type = 'turn_context'; payload = @{ turn_id = 't1'; cwd = $repo; model = 'gpt-6-luna'; effort = 'medium' } },
+    @{ timestamp = '2026-11-21T09:05:02.000Z'; type = 'response_item'; payload = @{ type = 'message'; role = 'user'; content = @(@{ type = 'input_text'; text = 'Check the screenshot fixture.' }) } },
+    @{ timestamp = '2026-11-21T09:05:04.000Z'; type = 'response_item'; payload = @{ type = 'message'; role = 'assistant'; content = @(@{ type = 'output_text'; text = 'The screenshot fixture is checked.' }) } }
+)
+$secondRollout = Join-Path $rolloutDir "rollout-2026-11-21T09-05-00-$secondId.jsonl"
+$secondLines = $secondRecords | ForEach-Object { $_ | ConvertTo-Json -Compress -Depth 8 }
+
 # Each screen: a theme for the window, the options that open the screen, and a name for its PNG. The ui.json names Codex as the provider, so the
 # window reads the Codex history on start (the provider key of ProviderChoice).
 $screens = @(
     @{ Name = 'codex-resume-tail-dark'; Theme = 'Dark'; Options = @('--codex-resume') },
-    @{ Name = 'codex-resume-summary-light'; Theme = 'Light'; Options = @('--codex-resume', 'summary'); Summary = $true }
+    @{ Name = 'codex-resume-summary-light'; Theme = 'Light'; Options = @('--codex-resume', 'summary'); Summary = $true },
+    # The Codex rail grouped by tag (--rail-group tag): two sessions, the first with two tags, so it is under both tag groups.
+    @{ Name = 'codex-rail-tag-dark'; Theme = 'Dark'; Options = @('--rail-group', 'tag'); Tags = $true }
 )
 
 $originalPath = $env:PATH
@@ -146,6 +172,17 @@ try {
         $env:FAKECLAUDE_LOG = "$tools\calls.log"
         Set-Content -LiteralPath "$state\ui.json" -Value ('{"railTheme": "' + $screen.Theme + '", "provider": "codex"}') -Encoding UTF8
         Set-Content -LiteralPath "$state\heartbeat.json" -Value ('{"at": "' + (Get-Date).ToUniversalTime().ToString('o') + '", "pass": 7}') -Encoding UTF8
+        # The tag screen's fixture only: the second session and the Codex tags. Every screen starts without them, so the others see what they saw before.
+        Remove-Item -LiteralPath (Join-Path $state 'library.json'), $secondRollout -ErrorAction SilentlyContinue
+        if ($screen.Tags) {
+            [IO.File]::WriteAllLines($secondRollout, [string[]]$secondLines, $utf8)
+            & dotnet "$tools\gen\out\gen.dll" $state tags | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                Write-Output "FAIL ${name}: the tag fixture was not written (the fixture generator failed)"
+                $failed++
+                continue
+            }
+        }
         $png = Join-Path $shots "$name.png"
         $argList = @('--state', "$state\state.json", '--no-pass', '--workdir', $repo, '--claude-home', $claudeHome,
             '--shot', $png, '--shot-after', '9') + $screen.Options
@@ -160,8 +197,10 @@ try {
         # The App's log beside the state file: the history was read, and the step the screen names ran.
         $logPath = Join-Path $state 'logs\app.log'
         $log = if (Test-Path -LiteralPath $logPath) { Get-Content -LiteralPath $logPath -Raw } else { '' }
-        $historyOk = $log -match 'codex history read: 1 sessions'
-        $stepOk = if ($screen.Summary) { $log -match 'codex summary made: \d' } else { $log -match 'codex start text built: \d' }
+        $expectedSessions = if ($screen.Tags) { 2 } else { 1 }
+        $historyOk = $log -match "codex history read: $expectedSessions sessions"
+        # The grouping is not logged (tag text stays out of the log), so the tag screen's step is its picture, which a person looks at.
+        $stepOk = if ($screen.Summary) { $log -match 'codex summary made: \d' } elseif ($screen.Tags) { $true } else { $log -match 'codex start text built: \d' }
         if ($process.ExitCode -eq 0 -and $pictureOk -and $historyOk -and $stepOk) {
             Write-Output "PASS ${name}: exit 0, history read, the step ran, $png"
         } else {
