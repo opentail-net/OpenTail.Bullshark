@@ -153,6 +153,14 @@ Probes: a net11.0 console app in the session scratchpad (structure only: line co
 - **Open point (review finding 8):** a Codex tab whose process has exited stays open, and a resume of that session id only activates the dead tab; the owner must close it first.
 - **Open point (review finding 9):** a resume whose session folder is missing falls back silently to the window's working directory; the status text does not say so.
 
+## Stage D1-D2 decisions (2026-11-21, owner's direction)
+
+- **Platform rule (owner):** each platform's sessions are summarised only by that platform's own model. Claude sessions: the existing Haiku path (`claude -p`). Codex sessions: Codex's model through the owner's ChatGPT login. No cross-platform model calls. A user choice of model is a later feature, not now.
+- **Codex model (verified 2026-11-21 with a tiny call):** `gpt-6-luna` is accepted with the ChatGPT login (reply "ok", exit 0). `gpt-6.2-sol` and `gpt-6-sol` are rejected for ChatGPT accounts ("not supported when using Codex with a ChatGPT account"), before any model run. The CLI prints "Model metadata for `gpt-6-luna` not found" in some runs, so output quality is unverified. The earlier Sol default was wrong for this account.
+- **Call shape:** `codex exec -m gpt-6-luna --ephemeral -s read-only`, prompt on stdin, run in the session's own folder (already trusted by the owner's Codex use; `--skip-git-repo-check` is NOT used because it saves trust for the folder), final message read from stdout, a timeout, and cancellation. `--ephemeral` keeps the call out of Codex history (checked: rollouts stayed at 63, the session index unchanged).
+- **D1 (library, App):** the App reads the active provider's view of the library, and writes through `UpdateAll` with that provider's key. Claude's view is unchanged. Codex rows get names, tags, notes and archive under `codex:<id>`.
+- **D2 (summary, Core first):** `CodexSummarizer` builds the input from the transcript (user and assistant text, tool names; bounded size), runs the call above, and returns the text. No transcript text is logged. Tests use a fake runner; a real call is an owner check. The App UI for the summary is a later decision.
+
 ## Risks
 - R1 Core gains its first packages (zstd, maybe SQLite): licence, size, trimming, supply-chain review. Mitigation: B1/B2 first; prefer BCL/no-SQLite if it works.
 - R2 Codex file formats are unpromised and change (the `_5` in `state_5.sqlite` suggests versioned schemas; not verified). Mitigation: a version/format check, skip-on-unknown, fixtures, "Codex history may be incomplete" state.
