@@ -1,0 +1,237 @@
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+using OpenTail.Bullshark.Core.Claude;
+using OpenTail.Bullshark.Core.Codex;
+using OpenTail.Bullshark.Core.Providers;
+using OpenTail.Bullshark.Core.Resume;
+
+namespace OpenTail.Bullshark.App;
+
+/// <summary>
+/// The Codex resume screen (steps R6 and R7, decisions R-D1 to R-D10). "Resume…" on a Codex row opens <see cref="CodexResumePrompt"/>, which shows the
+/// start text of each way of continuing before anything starts. One method builds that text for the preview and for the start, so the text shown is
+/// the text sent. A summary is made only when the owner presses Make summary (one <c>codex exec</c> call, R-D3). Start opens a new terminal tab that
+/// runs PowerShell 7 with the text in a file (R3). In full is the existing resume, <see cref="ResumeCodex"/>, which is not changed.
+/// </summary>
+public partial class SessionWindow
+{
+    /// <summary>True while the Codex resume screen is open or its start runs. A second request is refused with a status line, as <c>_resuming</c> is.</summary>
+    private bool _codexResuming;
+
+    /// <summary>True once the <c>--codex-resume</c> screenshot has opened the screen, so it opens once.</summary>
+    private bool _codexResumeShotOpened;
+
+    /// <summary>
+    /// Opens the Codex resume screen for a session (R6). Nothing starts until the owner presses Start. A session whose folder is missing is refused
+    /// here; the full resume (<see cref="ResumeCodex"/>) keeps its own behaviour.
+    /// </summary>
+    private void ResumeCodexScreen(SessionSummary session) => ShowCodexResume(session, forScreenshot: false, screenshotSummary: false);
+
+    /// <summary>
+    /// Opens the screen as a dialog the owner answers, or, for the screenshot option only, shows it without an answer and takes the picture of it
+    /// (<c>_shotDialog</c>, as the shortcut sheet does). With <paramref name="screenshotSummary"/>, the summary mode is chosen and Make summary is
+    /// pressed once when the screen has loaded.
+    /// </summary>
+    private void ShowCodexResume(SessionSummary session, bool forScreenshot, bool screenshotSummary)
+    {
+        if (_codexResuming)
+        {
+            SetStatus("A Codex resume is already open or running. Wait for it to finish.");
+            return;
+        }
+        var folder = session.Folder;
+        if (folder is not { Length: > 0 } || !Directory.Exists(folder))
+        {
+            SetStatus("Not resumed: the session's folder is missing.");
+            return;
+        }
+        RemoveOldStartsQuietly();
+
+        var title = CodexRowTitle(MarkOf(ProviderId.Codex, session.Key.SessionId)?.Name, session);
+        var turns = session.UserMessages is { } count ? $"{count} {(count == 1 ? "turn" : "turns")}" : "turns not counted";
+        var facts = $"{turns} · last active {AgeOf(session.LastActivity)} · in {folder}";
+        var dialog = new CodexResumePrompt($"Resume: {title}", facts, Palette,
+            (choice, kept, ct) => BuildCodexStartTextAsync(session, folder, choice, kept, ct))
+        {
+            Owner = this,
+        };
+
+        _codexResuming = true;
+        if (forScreenshot)
+        {
+            _shotDialog = dialog;
+            if (screenshotSummary) dialog.Loaded += (_, _) => dialog.MakeSummaryForScreenshot();
+            dialog.Show();
+            return;
+        }
+        try
+        {
+            SetStatus("Choose how to continue. Nothing runs until you press Start.");
+            dialog.ShowDialog();
+            if (dialog.Choice is not { } choice)
+            {
+                SetStatus("Not resumed.");
+                return;
+            }
+            if (choice.Mode == CodexResumeMode.Full)
+            {
+                ResumeCodex(session);
+                return;
+            }
+            StartCodexFromText(session, folder, choice, dialog.PreviewText);
+        }
+        finally
+        {
+            _codexResuming = false;
+        }
+    }
+
+    /// <summary>
+    /// Deletes the start files that are more than a day old (R-D8, R3). A folder or file that cannot be read is logged, and the screen opens all the same.
+    /// </summary>
+    private void RemoveOldStartsQuietly()
+    {
+        try
+        {
+            var removed = CodexStartLauncher.RemoveOldStarts(
+                CodexStartLauncher.StartsFolderBeside(_options.StatePath), TimeSpan.FromDays(1), DateTimeOffset.Now);
+            if (removed > 0) AppLog.Write($"old codex start files removed: {removed}");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            AppLog.Write($"old codex start files not removed: {ex.GetType().Name}");
+        }
+    }
+
+    /// <summary>
+    /// The start text of a Codex resume for a choice, built by one method for the preview and for the start. The messages are read off the UI thread.
+    /// For a summary, the summary is made (one Codex call) unless the kept one is for the level; it is saved as a file. The last turns are copied
+    /// (<see cref="CodexResumeText.Tail"/>) and the text is composed (<see cref="CodexResumeText.Compose"/>). A session with no messages gives an empty
+    /// text and makes no call. A failure is logged by type and message only, shown in the screen, and never escapes this method. A cancellation passes
+    /// through to the screen, which is quiet about it.
+    /// </summary>
+    private async Task<CodexPreview> BuildCodexStartTextAsync(
+        SessionSummary session, string folder, CodexResumeChoice choice, KeptSummary? kept, CancellationToken ct)
+    {
+        var provider = _codex ??= new CodexProvider();
+        var sessionId = session.Key.SessionId;
+        try
+        {
+            var lines = await Task.Run(() => CodexTurns.ReadSession(provider.Paths, sessionId, ct), ct);
+            AppLog.Write($"codex start text: {lines.Count} messages read");
+            if (lines.Count == 0) return new CodexPreview(string.Empty, null);
+
+            KeptSummary? summary = null;
+            if (choice.Level is { } level)
+            {
+                if (kept is not null && kept.MatchesLevel(level))
+                {
+                    summary = kept;
+                }
+                else
+                {
+                    var made = await new CodexSummarizer(new ProcessCliRunner("cmd.exe"))
+                        .SummariseSessionAsync(provider.Paths, sessionId, folder, level, ct);
+                    AppLog.Write($"codex summary made: {made.Length:N0} characters");
+                    var saved = await SaveCodexSummaryFileAsync(session, level, made);
+                    summary = new KeptSummary(level, made, Saved: saved);
+                }
+            }
+
+            var tail = CodexResumeText.Tail(lines, choice.Turns);
+            var start = CodexResumeText.Compose(summary?.Text, choice.Level, tail, choice.Turns, sessionId);
+            AppLog.Write($"codex start text built: {start.Length:N0} characters");
+            return new CodexPreview(start, summary);
+        }
+        catch (Exception ex) when (ex is CodexSummaryException or ArgumentException or FileNotFoundException or IOException
+                                       or UnauthorizedAccessException or NotSupportedException)
+        {
+            AppLog.Write($"codex start text not built: {ex.GetType().Name}: {ex.Message}");
+            var problem = ex is CodexSummaryException
+                ? $"The summary was not made: {ex.Message}."
+                : $"The start text could not be built: {ex.Message}.";
+            SetStatus($"Not started: {problem}");
+            return new CodexPreview(string.Empty, null, problem);
+        }
+    }
+
+    /// <summary>
+    /// Keeps a summary as a file in the Summaries folder beside the state file, as Claude's summaries are kept (<see cref="SummaryFiles"/>). The file's
+    /// name and path are not logged: the session's title can hold the owner's words. A file that cannot be written is logged by type, and the
+    /// summary is still used. Returns true when the file was written.
+    /// </summary>
+    private async Task<bool> SaveCodexSummaryFileAsync(SessionSummary session, SummaryLevel level, string summary)
+    {
+        var folder = SummaryFiles.FolderBeside(_options.StatePath);
+        var title = CodexRowTitle(MarkOf(ProviderId.Codex, session.Key.SessionId)?.Name, session);
+        var id = session.Key.SessionId;
+        try
+        {
+            await Task.Run(() => SummaryFiles.Save(folder, title, level, id, summary, DateTimeOffset.Now));
+            AppLog.Write($"codex summary saved as a file: {summary.Length:N0} characters");
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            AppLog.Write($"codex summary not saved as a file: {ex.GetType().Name}");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Starts the text the preview showed, in a new Codex terminal tab (R6). The text is <paramref name="text"/>, as shown: it is not built again. The tab
+    /// runs PowerShell 7 (<c>pwsh.exe</c>) with the text in a file in the Starts folder (R3), in the session's folder. Without PowerShell 7 nothing starts;
+    /// the preview's Copy is the way out. The new session makes a model turn when it starts, so the status line says so.
+    /// </summary>
+    private void StartCodexFromText(SessionSummary session, string folder, CodexResumeChoice choice, string? text)
+    {
+        if (text is not { Length: > 0 })
+        {
+            SetStatus("Not started: there is no start text to send.");
+            return;
+        }
+        if (CodexStartLauncher.FindPwsh() is null)
+        {
+            SetStatus("Not started: PowerShell 7 (pwsh.exe) is not on PATH. The start text is in the preview: use Copy and start Codex yourself.");
+            return;
+        }
+
+        string command;
+        try
+        {
+            var path = CodexStartLauncher.WriteStart(CodexStartLauncher.StartsFolderBeside(_options.StatePath), text, DateTimeOffset.Now);
+            command = CodexStartLauncher.CommandLine(folder, path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            AppLog.Write($"codex start file not written: {ex.GetType().Name}");
+            SetStatus($"Not started: the start text could not be written ({ex.GetType().Name}).");
+            return;
+        }
+
+        var title = CodexRowTitle(MarkOf(ProviderId.Codex, session.Key.SessionId)?.Name, session);
+        OpenCodexTab("new-" + Guid.NewGuid().ToString("N"), "Codex: resume of " + title, command, folder);
+        var how = choice.Level is { } level
+            ? $"a Codex summary ({level.ToString().ToLowerInvariant()}) and the last {choice.Turns} turns"
+            : $"the last {choice.Turns} turns";
+        SetStatus($"Started a Codex session from {how}. It starts with a model turn.");
+    }
+
+    /// <summary>
+    /// The screenshot option (<c>--codex-resume</c>, test only): once the Codex history has loaded, the resume screen opens on its first session, and
+    /// <c>--shot</c> takes the picture of it. With <c>summary</c>, the screen opens in the summary mode and presses Make summary once. Nothing else
+    /// opens it.
+    /// </summary>
+    private void OpenCodexResumeForShot()
+    {
+        if (!_options.CodexResume || _codexResumeShotOpened) return;
+        _codexResumeShotOpened = true;
+        if (_codexSessions.Count == 0)
+        {
+            AppLog.Write("codex resume screenshot: no Codex session in the history");
+            return;
+        }
+        ShowCodexResume(_codexSessions[0], forScreenshot: true, screenshotSummary: _options.CodexResumeSummary);
+    }
+}

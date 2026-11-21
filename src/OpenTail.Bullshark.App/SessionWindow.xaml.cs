@@ -1020,7 +1020,11 @@ public sealed record LaunchOptions(
     /// <summary>--soak-seconds: the interval of the soak log line, in seconds (perf batch Q1). 0 turns the periodic line off; the start and close lines stay.</summary>
     int SoakSeconds = SessionWindow.DefaultSoakSeconds,
     /// <summary>--rail-scroll (test only): the rail is scrolled to this offset after the first pass, so the soak log shows whether a rebuild resets it (perf batch Q5).</summary>
-    double RailScrollTo = 0)
+    double RailScrollTo = 0,
+    /// <summary>--codex-resume (test only): once the Codex history has loaded, the Codex resume screen opens on its first session, for the screenshots.</summary>
+    bool CodexResume = false,
+    /// <summary>--codex-resume summary (test only): that screen opens in the summary mode and presses Make summary once, for the screenshots.</summary>
+    bool CodexResumeSummary = false)
 {
     /// <summary>The folder of the transcripts: the owner's, unless a test home is given (--claude-home).</summary>
     public string ProjectsRoot => ClaudeHome is null ? TranscriptReader.DefaultProjectsRoot : TestHome.ProjectsRootUnder(ClaudeHome);
@@ -1069,6 +1073,8 @@ public sealed record LaunchOptions(
                 case "--rail-scroll": railScroll = double.Parse(args[++i], inv); break;
             }
         }
+        // --codex-resume takes an optional value, summary (test only): the flag's position is read here, not in the switch above.
+        var codexResumeAt = Array.IndexOf(args, "--codex-resume");
         var defaultState = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenTail.Bullshark", "state.json");
         return new LaunchOptions(
@@ -1091,7 +1097,9 @@ public sealed record LaunchOptions(
             FindText: findText,
             SearchText: searchText,
             SoakSeconds: soakSeconds,
-            RailScrollTo: railScroll);
+            RailScrollTo: railScroll,
+            CodexResume: codexResumeAt >= 0,
+            CodexResumeSummary: codexResumeAt >= 0 && codexResumeAt + 1 < args.Length && args[codexResumeAt + 1] == "summary");
     }
 }
 

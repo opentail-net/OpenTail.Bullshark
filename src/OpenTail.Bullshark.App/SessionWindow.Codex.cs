@@ -353,6 +353,7 @@ public partial class SessionWindow
         var id = session.Key.SessionId;
         var mark = MarkOf(ProviderId.Codex, id) ?? new LibraryEntry();
         var menu = StyledMenu();
+        menu.Items.Add(MenuItemFor("Resume…", () => ResumeCodexScreen(session)));
         menu.Items.Add(MenuItemFor("Resume in a terminal tab", () => ResumeCodex(session)));
         menu.Items.Add(MenuItemFor(mark.Pinned ? "Unpin" : "Pin", () => SetCodexPinned(id, !mark.Pinned)));
         menu.Items.Add(MenuItemFor(mark.Archived ? "Unarchive" : "Archive", () => SetCodexArchived(id, !mark.Archived)));
@@ -386,6 +387,7 @@ public partial class SessionWindow
             _codexRead = true;
             _codexFailed = false;
             AppLog.Write($"codex history read: {_codexSessions.Count} sessions");
+            OpenCodexResumeForShot();
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
