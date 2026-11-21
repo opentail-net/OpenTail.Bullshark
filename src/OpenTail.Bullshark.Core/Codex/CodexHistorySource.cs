@@ -8,7 +8,8 @@ namespace OpenTail.Bullshark.Core.Codex;
 /// <summary>
 /// Codex's history as the neutral summaries (stage C1, C-D1). It reads <c>session_index.jsonl</c> (names) from the home folder, then every
 /// rollout under the history root, one line at a time. Rules: a file that cannot be opened or decoded, or holds no JSON object line, is
-/// skipped and counted (<see cref="SkippedFiles"/>); a line that is not JSON is skipped and counted (<see cref="SkippedLines"/>); an unknown
+/// skipped and counted (<see cref="SkippedFiles"/>); a line that is not JSON, or longer than 16 MB, is skipped and counted
+/// (<see cref="SkippedLines"/>); an unknown
 /// record type is ignored; a field not found is null, never zero. The list is empty on net10.0 (C-D2): no compressed rollout can be read there.
 /// </summary>
 public sealed class CodexHistorySource(ProviderPaths paths) : IHistorySource
@@ -27,7 +28,7 @@ public sealed class CodexHistorySource(ProviderPaths paths) : IHistorySource
     /// <summary>Lines skipped by the last <see cref="ListAsync"/>: a line that is not JSON, in a readable rollout or in the index.</summary>
     public int SkippedLines { get; private set; }
 
-    /// <summary>The Codex sessions, one per rollout. Runs on a background thread; honours the token between files.</summary>
+    /// <summary>The Codex sessions, one per rollout. Runs on a background thread; honours the token between files and between lines.</summary>
     public Task<IReadOnlyList<SessionSummary>> ListAsync(CancellationToken ct) => Task.Run(() => List(ct), ct);
 
     private IReadOnlyList<SessionSummary> List(CancellationToken ct)
@@ -61,12 +62,15 @@ public sealed class CodexHistorySource(ProviderPaths paths) : IHistorySource
         {
             using var reader = new StreamReader(
                 new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete), Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
-            string? line;
-            while ((line = reader.ReadLine()) is not null)
+            foreach (var line in RolloutReader.Lines(reader, ct))
             {
-                ct.ThrowIfCancellationRequested();
-                if (line.Trim().Length == 0) continue;
-                using var document = RolloutReader.TryParseObject(line);
+                if (line.Overlong)
+                {
+                    SkippedLines++;
+                    continue;
+                }
+                if (string.IsNullOrWhiteSpace(line.Text)) continue;
+                using var document = RolloutReader.TryParseObject(line.Text);
                 if (document is null)
                 {
                     SkippedLines++;
@@ -74,7 +78,9 @@ public sealed class CodexHistorySource(ProviderPaths paths) : IHistorySource
                 }
                 var id = RolloutReader.StringOf(document.RootElement, "id");
                 var name = RolloutReader.StringOf(document.RootElement, "thread_name");
-                if (id is not null && name is not null) names[id] = name;
+                // The index name gets the same title rule as a first user message: white space made single, then cut (F-B, F-C).
+                var title = Cut(Collapse(name));
+                if (id is not null && title is not null) names[id] = title;
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -95,12 +101,16 @@ public sealed class CodexHistorySource(ProviderPaths paths) : IHistorySource
         try
         {
             using var reader = RolloutReader.Open(path);
-            string? line;
-            while ((line = reader.ReadLine()) is not null)
+            foreach (var line in RolloutReader.Lines(reader, ct))
             {
-                ct.ThrowIfCancellationRequested();
-                if (line.Trim().Length == 0) continue;
-                using var document = RolloutReader.TryParseObject(line);
+                // An overlong line is counted as a bad line, and its text was never stored (F-D).
+                if (line.Overlong)
+                {
+                    badLines++;
+                    continue;
+                }
+                if (string.IsNullOrWhiteSpace(line.Text)) continue;
+                using var document = RolloutReader.TryParseObject(line.Text);
                 if (document is null)
                 {
                     badLines++;
@@ -138,8 +148,25 @@ public sealed class CodexHistorySource(ProviderPaths paths) : IHistorySource
             facts.Model);
     }
 
-    private static string? Cut(string? text) =>
-        text is null || text.Length <= MaxTitleLength ? text : text[..MaxTitleLength];
+    /// <summary>
+    /// The text cut to <see cref="MaxTitleLength"/> characters. A cut never splits a surrogate pair: when the first dropped character is a
+    /// low surrogate, the cut is one character earlier, so no lone high surrogate is left at the end.
+    /// </summary>
+    private static string? Cut(string? text)
+    {
+        if (text is null || text.Length <= MaxTitleLength) return text;
+        var end = MaxTitleLength;
+        if (char.IsLowSurrogate(text[end])) end--;
+        return text[..end];
+    }
+
+    /// <summary>The text with every run of white space (new lines included) made one space and the ends trimmed; null when nothing is left.</summary>
+    private static string? Collapse(string? text)
+    {
+        if (text is null) return null;
+        var collapsed = WhiteSpace.Replace(text, " ").Trim();
+        return collapsed.Length == 0 ? null : collapsed;
+    }
 
     /// <summary>The text of a user message: its string content, or the text parts of its content list, with the white space made single.</summary>
     private static string? MessageText(JsonElement payload)
@@ -165,8 +192,7 @@ public sealed class CodexHistorySource(ProviderPaths paths) : IHistorySource
         {
             return null;
         }
-        var collapsed = WhiteSpace.Replace(text, " ").Trim();
-        return collapsed.Length == 0 ? null : collapsed;
+        return Collapse(text);
     }
 
     /// <summary>

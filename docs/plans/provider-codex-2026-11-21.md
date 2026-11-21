@@ -150,6 +150,8 @@ Probes: a net11.0 console app in the session scratchpad (structure only: line co
   3. Insights and Settings still show Claude data under Codex. Hide them, or label them?
   4. A folder whose path ends in a backslash (a drive root such as `C:\`) cannot start a Codex session: the backslash would escape the closing quote, so the command is refused. A fix needs a different quoting rule; not done.
   5. The app-side tab layout is written as `claude:<id>` (A5); bare ids are still read. Codex tabs are not restored after a restart (C-D5).
+- **Open point (review finding 8):** a Codex tab whose process has exited stays open, and a resume of that session id only activates the dead tab; the owner must close it first.
+- **Open point (review finding 9):** a resume whose session folder is missing falls back silently to the window's working directory; the status text does not say so.
 
 ## Risks
 - R1 Core gains its first packages (zstd, maybe SQLite): licence, size, trimming, supply-chain review. Mitigation: B1/B2 first; prefer BCL/no-SQLite if it works.

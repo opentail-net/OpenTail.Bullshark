@@ -15,9 +15,25 @@ public sealed class CodexTerminalOpenerTests
     private readonly CodexTerminalOpener _opener = new();
 
     [Fact]
-    public void ANewSessionRunsCodexInTheFolderInQuotes()
+    public void ANewSessionRunsCodexThroughCmdInTheFolderInQuotes()
     {
-        Assert.Equal("codex -C \"C:\\Work\\Synthetic Folder\"", _opener.NewCommandLine("C:\\Work\\Synthetic Folder"));
+        // codex is a .cmd shim on this machine, so the line goes through cmd.exe (no codex.exe to start directly).
+        Assert.Equal("cmd.exe /d /c codex -C \"C:\\Work\\Synthetic Folder\"", _opener.NewCommandLine("C:\\Work\\Synthetic Folder"));
+    }
+
+    [Fact]
+    public void AFolderWithAnAmpersandAndACaretIsQuotedAndKept()
+    {
+        // Inside the double quotes cmd.exe takes & and ^ as text, so the folder is accepted and carried unchanged.
+        Assert.Equal("cmd.exe /d /c codex -C \"C:\\Work\\R&D ^ Synthetic\"", _opener.NewCommandLine("C:\\Work\\R&D ^ Synthetic"));
+    }
+
+    [Fact]
+    public void AFolderWithAPercentSignIsRefused()
+    {
+        // cmd.exe expands %NAME% even inside quotes, so a percent sign is refused rather than passed on.
+        Assert.Throws<ArgumentException>(() => _opener.NewCommandLine("C:\\Work\\100%\\Synthetic"));
+        Assert.Throws<ArgumentException>(() => _opener.NewCommandLine("C:\\Work\\%USERNAME%"));
     }
 
     [Theory]
@@ -41,9 +57,9 @@ public sealed class CodexTerminalOpenerTests
     }
 
     [Fact]
-    public void AResumeRunsCodexResumeWithTheId()
+    public void AResumeRunsCodexResumeThroughCmdWithTheId()
     {
-        Assert.Equal($"codex resume {Id}", _opener.ResumeCommandLine(Id));
+        Assert.Equal($"cmd.exe /d /c codex resume {Id}", _opener.ResumeCommandLine(Id));
     }
 
     [Theory]
@@ -78,6 +94,6 @@ public sealed class CodexTerminalOpenerTests
         Assert.True(ProviderFeatures.Has<IHistorySource>(provider));
         Assert.False(ProviderFeatures.Has<ISupervisedLauncher>(provider));
         Assert.False(ProviderFeatures.Has<ILiveSource>(provider));
-        Assert.Equal($"codex resume {Id}", provider.ResumeCommandLine(Id));
+        Assert.Equal($"cmd.exe /d /c codex resume {Id}", provider.ResumeCommandLine(Id));
     }
 }

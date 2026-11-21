@@ -9,12 +9,19 @@ namespace OpenTail.Bullshark.Core.Codex;
 /// Opens Codex rollouts for reading, a line at a time (stage C1, C2), and holds the JSON helpers both readers share. A
 /// <c>.jsonl.zst</c> rollout is decoded as a stream with the BCL's <c>ZstandardStream</c>, which exists in net11.0 only (B1, C-D2): on
 /// net10.0 a compressed rollout cannot be opened, and <see cref="CanDecodeCompressed"/> is false. Nothing is decompressed to a file. The
-/// file is opened with sharing, so a Codex process that is still writing it is not blocked.
+/// file is opened with sharing, so a Codex process that is still writing it is not blocked. Lines are read through <see cref="Lines"/>, which
+/// caps the length of one line (F-D) and checks the cancellation token before each line.
 /// </summary>
 internal static class RolloutReader
 {
     /// <summary>The options of the folder walk: sub-folders are searched, and a folder the user cannot open is skipped, not fatal.</summary>
     public static readonly EnumerationOptions Walk = new() { RecurseSubdirectories = true, IgnoreInaccessible = true };
+
+    /// <summary>
+    /// The longest line read into memory, in characters: 16 MB (F-D). A longer line is read to its line break without being stored, and it
+    /// is reported as <see cref="RolloutLine.Overlong"/>.
+    /// </summary>
+    public const int MaxLineLength = 16 * 1024 * 1024;
 
     /// <summary>The UUID at the end of a rollout's file name (<c>rollout-&lt;timestamp&gt;-&lt;uuid&gt;</c>), without the extension.</summary>
     private static readonly Regex UuidAtEnd = new(
@@ -85,6 +92,23 @@ internal static class RolloutReader
         }
     }
 
+    /// <summary>
+    /// The lines of a text reader, one at a time. The token is checked before each line, so a cancelled listing stops between lines. Line
+    /// breaks are <c>\n</c>, <c>\r</c> or <c>\r\n</c>, as in <see cref="TextReader.ReadLine"/>; a last line without a break is a line, and
+    /// an empty input has none. A line longer than <see cref="MaxLineLength"/> characters is read to its break and not stored: it comes back
+    /// as <see cref="RolloutLine.Overlong"/> with empty text.
+    /// </summary>
+    public static IEnumerable<RolloutLine> Lines(TextReader reader, CancellationToken ct)
+    {
+        var splitter = new LineSplitter(reader);
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (!splitter.Next(out var text, out var overlong)) yield break;
+            yield return new RolloutLine(text, overlong);
+        }
+    }
+
     /// <summary>The record as a JSON object, or null when the line is not one (not JSON, or JSON that is not an object).</summary>
     public static JsonDocument? TryParseObject(string line)
     {
@@ -117,5 +141,85 @@ internal static class RolloutReader
         return text is not null && DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var at)
             ? at
             : null;
+    }
+
+    /// <summary>One line from <see cref="Lines"/>: its text, or <see cref="Overlong"/> when the line passed the cap and its text was discarded.</summary>
+    public readonly record struct RolloutLine(string Text, bool Overlong);
+
+    /// <summary>The chunked reader behind <see cref="Lines"/>: it fills a buffer from the reader and cuts lines out of it.</summary>
+    private sealed class LineSplitter(TextReader reader)
+    {
+        private readonly char[] _chunk = new char[8192];
+        private readonly StringBuilder _text = new();
+
+        /// <summary>The next unread index in <see cref="_chunk"/>.</summary>
+        private int _next;
+
+        /// <summary>The number of valid characters in <see cref="_chunk"/>; zero at the end of the input.</summary>
+        private int _end;
+
+        /// <summary>True when the last line ended with <c>\r</c>, so a <c>\n</c> right after it belongs to that same break.</summary>
+        private bool _skipLineFeed;
+
+        /// <summary>Reads the next line. False at the end of the input, with no line.</summary>
+        public bool Next(out string text, out bool overlong)
+        {
+            _text.Clear();
+            overlong = false;
+            var consumed = false;
+            while (true)
+            {
+                if (_next == _end)
+                {
+                    _end = reader.Read(_chunk, 0, _chunk.Length);
+                    _next = 0;
+                    if (_end == 0)
+                    {
+                        text = overlong ? string.Empty : _text.ToString();
+                        return consumed;
+                    }
+                }
+
+                if (_skipLineFeed)
+                {
+                    _skipLineFeed = false;
+                    if (_chunk[_next] == '\n')
+                    {
+                        _next++;
+                        continue;
+                    }
+                }
+
+                var start = _next;
+                var stop = start;
+                while (stop < _end && _chunk[stop] is not ('\n' or '\r')) stop++;
+                if (stop > start)
+                {
+                    consumed = true;
+                    if (!overlong)
+                    {
+                        if (_text.Length + (stop - start) > MaxLineLength)
+                        {
+                            overlong = true;
+                            _text.Clear();
+                        }
+                        else
+                        {
+                            _text.Append(_chunk, start, stop - start);
+                        }
+                    }
+                }
+
+                if (stop < _end)
+                {
+                    // A line break ends the line and is consumed; a '\r' may be followed by the '\n' of the same break.
+                    _skipLineFeed = _chunk[stop] == '\r';
+                    _next = stop + 1;
+                    text = overlong ? string.Empty : _text.ToString();
+                    return true;
+                }
+                _next = stop;
+            }
+        }
     }
 }

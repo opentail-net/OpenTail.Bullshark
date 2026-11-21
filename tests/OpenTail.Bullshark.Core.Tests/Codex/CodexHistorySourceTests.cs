@@ -1,3 +1,5 @@
+using System.Collections;
+using System.Text;
 using OpenTail.Bullshark.Core.Codex;
 using OpenTail.Bullshark.Core.Providers;
 using Xunit;
@@ -78,6 +80,22 @@ public sealed class CodexHistorySourceTests : IDisposable
         cancelled.Cancel();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => source.ListAsync(cancelled.Token));
+    }
+
+    [Fact]
+    public void ACancelledLineReaderStopsBetweenLines()
+    {
+        // F-D: the token is checked before each line, not only before each file. Cancelling after the first line makes the next step throw.
+        // RolloutReader is internal and Core has no InternalsVisibleTo, so it is reached by reflection (as IndexCacheFieldTests does).
+        var reader = typeof(CodexHistorySource).Assembly.GetType("OpenTail.Bullshark.Core.Codex.RolloutReader", throwOnError: true)!;
+        using var cancellation = new CancellationTokenSource();
+        var lines = (IEnumerable)reader.GetMethod("Lines")!.Invoke(null, new object[] { new StringReader("one\ntwo\nthree\n"), cancellation.Token })!;
+        var enumerator = lines.GetEnumerator();
+
+        Assert.True(enumerator.MoveNext());
+        cancellation.Cancel();
+
+        Assert.Throws<OperationCanceledException>(() => enumerator.MoveNext());
     }
 }
 
@@ -187,6 +205,134 @@ public sealed class CodexHistorySourceReadingTests : IDisposable
         Assert.Equal(2, source.SkippedFiles);
         // The good rollout has its own one non-JSON line (see CodexHome.Standard); the two bad files add none.
         Assert.Equal(1, source.SkippedLines);
+    }
+
+    [Fact]
+    public async Task AnIndexNameWithANewLineAndLongTextIsOneLineCutAt80Characters()
+    {
+        // F-B: the index name gets the first-message rule, white space made single and then cut to 80 characters.
+        _home.WriteIndex("{\"id\":\"" + CodexHome.SessionId + "\",\"thread_name\":\"First\\nSecond " + new string('b', 200) + "\"}");
+        _home.WritePlain(CodexHome.NameFor(CodexHome.SessionId), CodexHome.Standard(CodexHome.SessionId));
+
+        var session = Assert.Single(await Source().ListAsync(CancellationToken.None));
+
+        var expected = "First Second " + new string('b', CodexHistorySource.MaxTitleLength - "First Second ".Length);
+        Assert.Equal(expected, session.Title);
+        Assert.DoesNotContain('\n', session.Title!);
+        Assert.True(session.Title!.Length <= CodexHistorySource.MaxTitleLength);
+    }
+
+    [Fact]
+    public async Task ACutThatWouldSplitAnEmojiLeavesNoLoneHighSurrogate()
+    {
+        // F-C: an emoji (a surrogate pair) at positions 79 and 80. A cut at 80 would leave the high surrogate alone at the end.
+        var text = new string('a', 79) + "\U0001F600" + "bbbb";
+        _home.WritePlain(CodexHome.NameFor(CodexHome.SessionId), new[]
+        {
+            CodexHome.Meta(CodexHome.SessionId),
+            CodexHome.Message("2026-11-20T10:00:02.000Z", "user", text),
+        });
+
+        var session = Assert.Single(await Source().ListAsync(CancellationToken.None));
+
+        Assert.Equal(new string('a', 79), session.Title);
+        Assert.False(char.IsHighSurrogate(session.Title![^1]));
+    }
+
+    [Fact]
+    public async Task ALineLongerThanTheCapIsSkippedAndCountedAndTheLinesAfterItAreRead()
+    {
+        // F-D: a line of 16 MB + 1 characters is discarded unread and counted as a skipped line. The message in it must not be counted, and
+        // the line after it is read. The cap is RolloutReader.MaxLineLength (16 MB, in characters).
+        const int cap = 16 * 1024 * 1024;
+        const string prefix = "{\"timestamp\":\"2026-11-20T10:00:02.000Z\",\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"";
+        const string suffix = "\"}]}}";
+        var path = _home.PathFor(CodexHome.NameFor(CodexHome.SessionId));
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        using (var writer = new StreamWriter(path, append: false, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false)))
+        {
+            writer.WriteLine(CodexHome.Meta(CodexHome.SessionId));
+            writer.Write(prefix);
+            var block = new string('x', 1024 * 1024);
+            var remaining = cap + 1 - prefix.Length - suffix.Length;
+            while (remaining > 0)
+            {
+                var take = Math.Min(block.Length, remaining);
+                writer.Write(block.AsSpan(0, take));
+                remaining -= take;
+            }
+            writer.WriteLine(suffix);
+            writer.WriteLine(CodexHome.Message("2026-11-20T10:00:06.000Z", "user", "After the long line"));
+        }
+        var source = Source();
+
+        var session = Assert.Single(await source.ListAsync(CancellationToken.None));
+
+        Assert.Equal("After the long line", session.Title);
+        Assert.Equal(1, session.UserMessages);
+        Assert.Equal(1, source.SkippedLines);
+        Assert.Equal(0, source.SkippedFiles);
+    }
+
+    [Fact]
+    public async Task ATruncatedCompressedRolloutDoesNotStopTheListing()
+    {
+        // F-E (a): the first half of a valid compressed rollout ends in the middle of a frame. The listing must not throw; the file is either
+        // skipped and counted, or listed with the counts it had. The good rollout is listed either way.
+        _home.WritePlain(CodexHome.NameFor(CodexHome.SessionId), CodexHome.Standard(CodexHome.SessionId));
+        var truncatedPath = _home.WriteCompressed(CodexHome.NameFor(CodexHome.SecondId), CodexHome.Standard(CodexHome.SecondId));
+        var whole = File.ReadAllBytes(truncatedPath);
+        File.WriteAllBytes(truncatedPath, whole[..(whole.Length / 2)]);
+        var source = Source();
+
+        var sessions = await source.ListAsync(CancellationToken.None);
+
+        Assert.Contains(sessions, session => session.Key == new SessionKey(ProviderId.Codex, CodexHome.SessionId));
+        Assert.Equal(2, sessions.Count + source.SkippedFiles);
+    }
+
+    [Fact]
+    public async Task AMalformedLineInTheMiddleIsSkippedAndTheLinesAroundItAreRead()
+    {
+        // F-E (b): one line of JSON cut short sits between two good records. It is counted once; both neighbours are read.
+        _home.WritePlain(CodexHome.NameFor(CodexHome.SessionId), new[]
+        {
+            CodexHome.Meta(CodexHome.SessionId),
+            CodexHome.Message("2026-11-20T10:00:02.000Z", "user", "Before the bad line"),
+            "{\"timestamp\":\"2026-11-20T10:00:03.000Z\",\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"Broken",
+            CodexHome.Message("2026-11-20T10:00:04.000Z", "assistant", "After the bad line"),
+        });
+
+        var source = Source();
+        var session = Assert.Single(await source.ListAsync(CancellationToken.None));
+
+        Assert.Equal("Before the bad line", session.Title);
+        Assert.Equal(1, session.UserMessages);
+        Assert.Equal(1, session.AssistantMessages);
+        Assert.Equal(1, source.SkippedLines);
+        Assert.Equal(0, source.SkippedFiles);
+    }
+
+    [Fact]
+    public async Task AnUnknownRecordTypeIsIgnoredAndIsNotASkippedLine()
+    {
+        // F-E (c): a record type the reader does not know changes nothing in the counts and is not a skipped line.
+        _home.WritePlain(CodexHome.NameFor(CodexHome.SessionId), new[]
+        {
+            CodexHome.Meta(CodexHome.SessionId),
+            CodexHome.Message("2026-11-20T10:00:02.000Z", "user", "Hello"),
+            CodexHome.Record("2026-11-20T10:00:03.000Z", "record_type_not_known_yet", "{\"x\":[1,2]}"),
+            CodexHome.Message("2026-11-20T10:00:04.000Z", "assistant", "Hi"),
+        });
+        var source = Source();
+
+        var session = Assert.Single(await source.ListAsync(CancellationToken.None));
+
+        Assert.Equal("Hello", session.Title);
+        Assert.Equal(1, session.UserMessages);
+        Assert.Equal(1, session.AssistantMessages);
+        Assert.Equal(0, source.SkippedLines);
+        Assert.Equal(0, source.SkippedFiles);
     }
 }
 #endif

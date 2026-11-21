@@ -483,7 +483,9 @@ public partial class SessionWindow : Window
 
             var failed = PassSnapshot.FailedStarts(records.Values);
             RetryButton.Visibility = failed > 0 && ClaudeSupervision ? Visibility.Visible : Visibility.Collapsed;
-            var parts = PassSnapshot.StatusParts(DateTime.Now, actions, plan.Waiting, failed, _storeProblem, plan.Problem, read.DaemonStatusNotice, _drift?.StatusText);
+            // Under Codex no Trust step is shown, so the "see the Trust step" count is replaced by the Codex text, which says how to answer (F-F).
+            var parts = PassSnapshot.StatusParts(DateTime.Now, actions, ClaudeSupervision ? plan.Waiting : 0, failed, _storeProblem, plan.Problem, read.DaemonStatusNotice, _drift?.StatusText).ToList();
+            if (!ClaudeSupervision && plan.UntrustedRoots.Count > 0) parts.Insert(parts.Count - 1, CodexTrustWait(plan.UntrustedRoots));
 
             // A search owns the status line while it runs or while its results are shown: the pass's summary waits for it to end.
             if (_searchMatches is null && SearchBusy.Visibility != Visibility.Visible)
@@ -738,10 +740,18 @@ public partial class SessionWindow : Window
 
     /// <summary>
     /// Opens the Trust step for an untrusted repository root: an interactive `claude` in that root, in the pane. The owner
-    /// answers the prompt there. One step per root.
+    /// answers the prompt there. One step per root. Under Codex no step is started and the selection does not move (F-F): the Claude
+    /// run stays pending, and the status line says that the owner answers it by switching the provider to Claude. This is the only
+    /// place a trust terminal is created, so every caller (the pass and the setup page) is covered.
     /// </summary>
     private void ShowTrustStep(string root, bool select)
     {
+        if (!ClaudeSupervision)
+        {
+            SetStatus(CodexTrustWait([root]));
+            return;
+        }
+
         var key = FolderKey.From(root);
         if (!_trustSteps.TryGetValue(key, out var step))
         {
@@ -764,6 +774,16 @@ public partial class SessionWindow : Window
             _selected = new RailTag(RailKind.Trust, key);
             ShowOnly(step.Terminal);
         }
+    }
+
+    /// <summary>
+    /// The status text for Claude runs that wait for trust while Codex is shown (F-F). No Trust step is started under Codex, so the text
+    /// names the folder and says how to answer the prompt: by switching the provider to Claude.
+    /// </summary>
+    private static string CodexTrustWait(IReadOnlyList<string> roots)
+    {
+        var more = roots.Count > 1 ? $" and {roots.Count - 1} more" : string.Empty;
+        return $"a Claude run waits for trust on {roots[0]}{more}; answer the trust prompt by switching the provider to Claude";
     }
 
     /// <summary>Removes a Trust step and ends its Claude. Trust is already recorded when this is called.</summary>
