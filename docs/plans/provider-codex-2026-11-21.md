@@ -63,7 +63,7 @@ Stage A item A1 produces `provider-seam-map-2026-11-21.md`: one row per `Claude*
 
 ### Stage A: the seam, Claude only (pure refactor; no new behaviour)
 - [x] A1 Write the map above. Done 2026-11-21: [provider-seam-map-2026-11-21.md](provider-seam-map-2026-11-21.md) (282 rows; 119 code, 163 text; rules are a first pass by identifier, to confirm before A2). *Why:* the plan's size claims (48 files) are counts, not a design.
-- [ ] A2 Add `Core/Providers`: `ProviderId`, `SessionKey`, a neutral `SessionSummary` (R-2), `IHistorySource`, `ITranscriptReader`, `ITerminalOpener`, `ISupervisedLauncher` (Claude only), `ILiveSource` (optional), `ProviderPaths`. Capabilities are the interfaces a provider implements (R-8). **Written after stage B**, so it reflects what Codex really offers. *Why:* the contracts table, as code; keep them small and read-only where possible.
+- [x] A2 (written 2026-11-21, after B) Add `Core/Providers`: `ProviderId`, `SessionKey`, a neutral `SessionSummary` (R-2), `IHistorySource`, `ITranscriptReader`, `ITerminalOpener`, `ISupervisedLauncher` (Claude only), `ILiveSource` (optional), `ProviderPaths`. Capabilities are the interfaces a provider implements (R-8). **Written after stage B** (src/OpenTail.Bullshark.Core/Providers: `ProviderId`, `SessionKey`, `SessionSummary`, `ProviderPaths`, `IHistorySource`, `ITranscriptReader`, `TranscriptPage`, `ITerminalOpener`, `ISupervisedLauncher` and `ILiveSource` as markers, `IProvider`; Core builds, 0 warnings). *Why:* the contracts table, as code; keep them small and read-only where possible.
 - [ ] A3 `ClaudeProvider` wraps the existing classes with **no change to their logic**. *Why:* existing tests must pass untouched.
 - [ ] A4 The window holds an `ActiveProvider`; rail, search, storage and palette go through it. A tab records the provider that opened it. *Why:* "open tabs unaffected" is a property of the tab, not of the dropdown.
 - [ ] A5 `SessionKey` everywhere a bare id is used (R-3); the library migrates in place after a one-time backup copy (R-4). *Why:* tags and notes must survive the key change.
@@ -111,7 +111,20 @@ Probes: a net11.0 console app in the session scratchpad (structure only: line co
 - **O1 (zstd):** Codex history works on net11.0 with no package. On net10.0 it needs either a package (ZstdSharp.Port, MIT to confirm, not checked) or a net11-only Codex history (compile-time guard). Recommended: net11-only Codex history for now, so Core gains no package. Owner decides.
 - **O2 (SQLite):** not needed for stage C. Recommended: read rollouts and `session_index.jsonl` (no package). The `threads` table adds titles and flags only, and can come later with a package if the owner wants it.
 - **Live rows:** none in stage C (as the plan says). Identity (B6) must be proven before any tab is tied to a thread.
-- **Dependency cost:** acceptable with those two defaults. A2 and C are not started: O5 asks for a stop after B for a diff-size look, and this run follows that.
+- **Dependency cost:** acceptable with those two defaults. A2 and C are not started at that point (see the decisions below).
+
+### B4 decisions (2026-11-21; the owner was away, so the orchestrator settled these; the owner may overrule any of them)
+- **O1 (decided): Codex history only in net11.0 builds, with no package in Core.** Evidence: B1, `ZstandardStream` decodes rollouts on net11.0 with no package and does not exist on net10.0. Reason: Core has no packages today, and a zstd package on net10.0 is a supply-chain and licence review for an optional provider. Codex is compiled in under `#if NET11_0_OR_GREATER`; on net10.0 the dropdown offers Claude only. Revisit if the owner needs Codex on net10.0.
+- **O2 (decided): no SQLite in stage A or C.** Evidence: B2, there is no BCL SQLite and the state files need a package. Stage C reads rollouts (`session_meta`, `turn_context`, `response_item`, `event_msg`) and `session_index.jsonl` (ids, names, update times). Costs accepted: Codex archive and pin flags are not seen (the library's own flags still apply), and titles come from the session index or the first user message in the rollout.
+- **O4 (decided): yes**, a plain terminal tab is part of C3, one mechanism for Codex tabs.
+- **O5 (decided): proceed.** Stage A runs now (A2 done here; A3 to A6 by a coder batch), then the Sonnet review named in the plan. Stage C follows the review.
+- **B6 (decided): stage C does not tie a tab to a thread id.** Evidence: B5/B6 probe, `thread/start` returns the new thread's id at once (status idle), but no rollout file and no `threads` row exist until a first turn (scratch `CODEX_HOME`, 0 rows after `thread/start`). A tab's id therefore cannot be read back at creation without a turn. Codex tabs are window-owned terminals with no thread link and no live-row claim. Resume from history is by id (`codex resume <id>`), which works for saved threads.
+
+### Stage C amendments from B4
+- C1 reads rollouts and `session_index.jsonl` only (O2). Pure parsing of synthetic fixtures; no SQLite.
+- C3 opens terminal tabs with no thread link (B6); history rows are the only Codex rows that carry an id.
+- C2 page reads use the in-memory line index that B1b requires; no plaintext copy on disk.
+
 
 ## Risks
 - R1 Core gains its first packages (zstd, maybe SQLite): licence, size, trimming, supply-chain review. Mitigation: B1/B2 first; prefer BCL/no-SQLite if it works.
@@ -122,10 +135,10 @@ Probes: a net11.0 console app in the session scratchpad (structure only: line co
 - R6 Scope: product name and README say Claude Code supervision. Wording changes only after C works (design-notes question 1).
 
 ## Open decisions for the owner
-- O1/O2: accept new packages in Core (zstd, SQLite) if the spike needs them? Default: only if B1/B2 find no BCL route; Microsoft.Data.Sqlite MIT, ZstdSharp.Port MIT (both to confirm).
+- O1/O2 (settled 2026-11-21 by the orchestrator, see the B4 decisions): no package in Core; Codex history net11.0-only; no SQLite.
 - O3: **decided (owner, 2026-11-21): no downgrade support;** in-place migration with a one-time backup copy (R-4).
-- O4: do tier 0 (plain "New terminal" tab) now, as part of C3, since Codex live rows need it anyway (default yes, one mechanism).
-- O5: stop after B for a diff-size look, as the 2026-11-19 design suggested (default yes).
+- O4 (settled 2026-11-21): yes, a plain terminal tab is part of C3.
+- O5 (settled 2026-11-21): proceed with stage A after B; the Sonnet review follows A.
 
 ## Delegation and review
 - Orchestrator (this session) writes the map (A1) and the interfaces (A2) itself: they are the contracts. Haiku coder gets A3-A6 as one batch with tests, then B (spike, report only), then C as one batch.
