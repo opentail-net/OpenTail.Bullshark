@@ -97,8 +97,9 @@ public partial class SessionWindow
     }
 
     /// <summary>
-    /// The rail under Codex: a header with its reload mark, "New Codex session…", the empty state of the live part (Codex has none), then the history
-    /// grouped by folder, newest folder first. Replaces the Claude rows; the Claude tabs are kept in step by <see cref="SyncSessionTabs"/>.
+    /// The rail under Codex: a header with its reload mark, "New Codex session…", the empty state of the live part (Codex has none), then the
+    /// pinned sessions (parity P4), then the history grouped by folder, newest folder first. Replaces the Claude rows; the Claude tabs are kept in
+    /// step by <see cref="SyncSessionTabs"/>.
     /// </summary>
     private void RefreshCodexRail(IReadOnlyDictionary<string, SessionRecord> stored)
     {
@@ -141,6 +142,7 @@ public partial class SessionWindow
             }
             else
             {
+                if (CodexPinned() is { Count: > 0 } pinned) section.Items.Add(CodexPinnedItem(pinned));
                 foreach (var folder in CodexFolders()) section.Items.Add(CodexFolderItem(folder));
                 if (CodexArchived() is { Count: > 0 } archived) section.Items.Add(CodexArchivedItem(archived));
             }
@@ -155,10 +157,13 @@ public partial class SessionWindow
     /// <summary>A folder of Codex sessions: its working folder, or "" for the sessions whose rollouts name none.</summary>
     private sealed record CodexFolder(string Folder, IReadOnlyList<SessionSummary> Sessions);
 
-    /// <summary>The Codex folders, newest first. The sessions in each are newest first too. Archived sessions are left out: they are in the Archived group.</summary>
+    /// <summary>
+    /// The Codex folders, newest first. The sessions in each are newest first too. Archived sessions are left out: they are in the Archived group.
+    /// A pinned session is left out too: it is listed in the Pinned group only (parity P4).
+    /// </summary>
     private IReadOnlyList<CodexFolder> CodexFolders() =>
         _codexSessions
-            .Where(session => !IsCodexArchived(session))
+            .Where(session => !IsCodexArchived(session) && !InCodexPinnedGroup(session))
             .GroupBy(session => session.Folder ?? string.Empty, StringComparer.OrdinalIgnoreCase)
             .Select(group => new CodexFolder(group.Key, group.OrderByDescending(s => s.LastActivity ?? DateTimeOffset.MinValue).ToList()))
             .OrderByDescending(folder => folder.Sessions[0].LastActivity ?? DateTimeOffset.MinValue)
@@ -166,6 +171,32 @@ public partial class SessionWindow
 
     /// <summary>True when the owner archived a Codex session (its codex: entry, D1).</summary>
     private bool IsCodexArchived(SessionSummary session) => MarkOf(ProviderId.Codex, session.Key.SessionId)?.Archived == true;
+
+    /// <summary>
+    /// True when a Codex session is listed in the Pinned group rather than its folder: pinned and not archived (parity P4). The pin is the owner's
+    /// codex: entry (D1), never Claude's. The Claude filter does not apply: the Codex rail has no filter of its own (its box is hidden), so the
+    /// group shows whichever Claude filter is set.
+    /// </summary>
+    private bool InCodexPinnedGroup(SessionSummary session) =>
+        MarkOf(ProviderId.Codex, session.Key.SessionId) is { Pinned: true, Archived: false };
+
+    /// <summary>The Codex sessions in the Pinned group, newest first (parity P4).</summary>
+    private IReadOnlyList<SessionSummary> CodexPinned() =>
+        _codexSessions.Where(InCodexPinnedGroup).OrderByDescending(s => s.LastActivity ?? DateTimeOffset.MinValue).ToList();
+
+    /// <summary>
+    /// The pinned Codex sessions, in one group at the top of the Codex history, before the folders (parity P4, as the Claude Pinned group). Each row
+    /// is a Codex row, so its menu unpins it. The group's expansion is kept the way the Claude group's is.
+    /// </summary>
+    private TreeViewItem CodexPinnedItem(IReadOnlyList<SessionSummary> pinned)
+    {
+        const string key = "codex-pinned";
+        var item = NewItem(Label("Pinned", bold: true), new RailTag(RailKind.Heading, key),
+            "Codex sessions you pinned. Each one is listed here only.");
+        item.IsExpanded = _expanded.GetValueOrDefault(key, true);
+        foreach (var session in pinned) item.Items.Add(CodexRow(session));
+        return item;
+    }
 
     /// <summary>The archived Codex sessions, newest first, or an empty list.</summary>
     private IReadOnlyList<SessionSummary> CodexArchived() =>
@@ -234,17 +265,28 @@ public partial class SessionWindow
         return $"Codex session {id[..Math.Min(8, id.Length)]}";
     }
 
-    /// <summary>The right-click menu of a Codex row (D1): resume, archive or unarchive, and the edit dialog for the name, tags, note and colour.</summary>
+    /// <summary>
+    /// The right-click menu of a Codex row (D1): resume, pin or unpin, archive or unarchive, and the edit dialog for the name, tags, note and colour.
+    /// The pin order is the Claude row's (Library.cs RowMenu): Pin before Archive.
+    /// </summary>
     private ContextMenu CodexRowMenu(SessionSummary session, string title)
     {
         var id = session.Key.SessionId;
         var mark = MarkOf(ProviderId.Codex, id) ?? new LibraryEntry();
         var menu = StyledMenu();
         menu.Items.Add(MenuItemFor("Resume in a terminal tab", () => ResumeCodex(session)));
+        menu.Items.Add(MenuItemFor(mark.Pinned ? "Unpin" : "Pin", () => SetCodexPinned(id, !mark.Pinned)));
         menu.Items.Add(MenuItemFor(mark.Archived ? "Unarchive" : "Archive", () => SetCodexArchived(id, !mark.Archived)));
         menu.Items.Add(MenuItemFor("Edit…", () => EditMarkOf(ProviderId.Codex, id, title)));
         return menu;
     }
+
+    /// <summary>
+    /// Pins or unpins a Codex session. The change is written under its codex: key (D1), so Claude's marks are not touched. Unlike
+    /// <see cref="SessionWindow.SetPinned"/>, which writes Claude's (parity P4).
+    /// </summary>
+    private bool SetCodexPinned(string sessionId, bool pinned) =>
+        ChangeMarkOf(ProviderId.Codex, sessionId, mark => mark with { Pinned = pinned });
 
     /// <summary>Archives or unarchives a Codex session. The change is written under its codex: key (D1).</summary>
     private bool SetCodexArchived(string sessionId, bool archived) =>
