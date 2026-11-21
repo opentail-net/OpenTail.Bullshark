@@ -223,6 +223,10 @@ Not needed for the core. It is useful for recovery when a restart is not enough,
 - **One supervisor per state.** The window that holds the state's supervisor name runs the pass: starts, resumes, restarts and alerts. A second window on the same state only watches. It reads and draws, shows "Another OpenTail.Bullshark window supervises this state. This one only watches." under Needs you, and raises no toast and no sound. When the first window closes or is killed, the second takes over on a later pass. The sessions keep running in every case.
 - **Claude's folder.** Every path to a Claude file comes from one helper. With `CLAUDE_CONFIG_DIR` set, the app reads `.claude.json`, the transcripts and its archive from that folder, as Claude does (`.claude.json` tested with claude 2.1.328 on 2026-11-19). Without it, the app reads `~\.claude` and `~\.claude.json`. An archive made before the variable was set stays where it was, and is not listed.
 
+## Licence
+
+[PolyForm Strict 1.0.0](LICENSE.md). Personal and other noncommercial use is permitted; commercial use needs a separate licence from the licensor. The licence does not allow distributing the software or making changes or new works based on it. The code is public to be read and reviewed.
+
 ## Repo
 
 Folder: `C:\Git\split\OpenTail.Bullshark` (next to the other `OpenTail.*` projects). Git repo with remote `origin` = `github.com/opentail-net/OpenTail.Bullshark`, branch `main`.
