@@ -349,6 +349,19 @@ Session library, the on-screen boxes of L2 to L5 (the steps themselves are in se
 
 - [ ] LW6 running: a flagged session that is still running after its reset gets the row text "running: open it to continue" and one toast "Limit reset … can continue. Open it.", and is not started.
 
+### C13. Codex provider (stage C; not seen on screen yet)
+
+Codex is installed on this machine as a `.cmd` shim, so a Codex tab starts through `cmd.exe /d /c`. None of these has been run on screen.
+
+- [ ] Dropdown: "Claude | Codex" at the top of the rail. Choosing Codex swaps the rail to Codex history grouped by folder, and the Claude rows, Needs you, limits, the filter and search go away with an empty-state line. Choosing Claude again brings them back, and tabs already open stay in place.
+- [ ] "New Codex session…": the folder dialog opens; a Codex tab runs `codex -C` in the folder and the Codex screen appears in the tab. Check that the cmd.exe wrapper really starts Codex (the shim) and that the tab shows its own screen.
+- [ ] Double-click a Codex history row: a tab runs `codex resume <id>`. A second double-click on the same row activates that tab; no second process starts.
+- [ ] The "+" tab under Codex starts a Codex session, not Claude's run setup.
+- [ ] Closing a Codex tab: does the Codex process end with the terminal? (open point 1 in the plan.)
+- [ ] Setup check under Codex: one item, "codex found" with its path, or a problem if it is missing.
+- [ ] Under Codex, a Claude run that is due on an untrusted folder does not open a Claude terminal; the status line says it waits for trust, and switching to Claude answers it.
+- [ ] Restart the window: Codex tabs are not restored (expected; plan C-D5).
+
 ## D. After the run
 
 
