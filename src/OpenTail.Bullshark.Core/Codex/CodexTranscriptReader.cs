@@ -30,7 +30,8 @@ public sealed class CodexTranscriptReader(ProviderPaths paths) : ITranscriptRead
         }, ct);
     }
 
-    private static void RequireSafeId(string sessionId)
+    /// <summary>Refuses an id that could widen the search (see the class summary). Internal so a summary of a session checks its id the same way (S3).</summary>
+    internal static void RequireSafeId(string sessionId)
     {
         if (string.IsNullOrWhiteSpace(sessionId)
             || sessionId.IndexOfAny(UnsafeIdCharacters) >= 0
@@ -41,8 +42,11 @@ public sealed class CodexTranscriptReader(ProviderPaths paths) : ITranscriptRead
         }
     }
 
-    /// <summary>The rollout for the id: a file whose name ends with it, else the first rollout whose session record has it. Null when none.</summary>
-    private string? FindRollout(string sessionId)
+    /// <summary>
+    /// The rollout for the id: a file whose name ends with it, else the first rollout whose session record has it. Null when none. Internal so the
+    /// summaries find a rollout the same way as the transcript reader (S3); the caller checks the id with <see cref="RequireSafeId"/> first.
+    /// </summary>
+    internal string? FindRollout(string sessionId)
     {
         if (!Directory.Exists(paths.HistoryRoot)) return null;
         var files = RolloutReader.Files(paths.HistoryRoot);
