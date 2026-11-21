@@ -27,6 +27,8 @@ public sealed class CodexTerminalOpener : ITerminalOpener
             throw new ArgumentException("The folder is empty.", nameof(folder));
         if (folder.Contains('"'))
             throw new ArgumentException("The folder has a double quote, so it cannot be put in the command line.", nameof(folder));
+        if (folder.Contains('!'))
+            throw new ArgumentException("The folder has an exclamation mark, which cmd.exe expands when delayed expansion is on, so no command line is built.", nameof(folder));
         if (folder.Contains('%'))
             throw new ArgumentException("The folder has a percent sign, which cmd.exe would expand, so no command line is built.", nameof(folder));
         if (folder.Any(char.IsControl))

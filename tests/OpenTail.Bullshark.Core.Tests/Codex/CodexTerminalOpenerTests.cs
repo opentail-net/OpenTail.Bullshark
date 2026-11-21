@@ -36,6 +36,13 @@ public sealed class CodexTerminalOpenerTests
         Assert.Throws<ArgumentException>(() => _opener.NewCommandLine("C:\\Work\\%USERNAME%"));
     }
 
+    [Fact]
+    public void AFolderWithAnExclamationMarkIsRefused()
+    {
+        // cmd.exe expands !NAME! when delayed expansion is on (a registry setting on the machine), so an exclamation mark is refused too.
+        Assert.Throws<ArgumentException>(() => _opener.NewCommandLine("C:\\Work\\hello!"));
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
