@@ -128,6 +128,18 @@ Probes: a net11.0 console app in the session scratchpad (structure only: line co
 - C2 page reads use the in-memory line index that B1b requires; no plaintext copy on disk.
 
 
+## Stage C decisions (2026-11-21, orchestrator; owner absent, owner may overrule)
+
+- **C-D1 History source:** Codex history is the rollouts under `sessions` (zstd or plain) and `session_index.jsonl` (id, name, update time). No SQLite (O2). Title: the index name, else the first user message, cut to 80 characters. Folder: `session_meta.cwd`, else the last `turn_context.cwd`. Model: the last `turn_context.model`. Counts (user and assistant messages) are read from `response_item.role`. Any field not found is null, never zero.
+- **C-D2 zstd:** `ZstandardStream` only under `#if NET11_0_OR_GREATER` (O1). On net10.0 Codex history is empty and the dropdown does not offer Codex; no package is added.
+- **C-D3 cache:** none in C. Measure the owner's folder first (B1: about 0.3 s for the largest rollout); add a stat-keyed cache only if the rail is slow.
+- **C-D4 no transcript view and no search for Codex in C.** A Codex history row's action is resume in a terminal tab (C-D5). The Codex transcript reader (`ReadPageAsync`, contract in A2) is implemented in Core and tested; the App view and Codex search are open items for later and are not built.
+- **C-D5 terminal tabs:** a new Codex tab runs `codex -C "<folder>"`; a resume runs `codex resume <id>` with `-C "<folder>"`. Paths are quoted. The tab is owned by the window and has no thread link (B6). Codex tabs are **not restored after a restart** (no persisted provider state in C).
+- **C-D6 dropdown:** "Claude | Codex" at the top of the rail, remembered in `ui.json` as `"provider": "claude"` or `"codex"`, default Claude. Under Codex the rail lists Codex history grouped by folder; no supervised live rows, no limits, no trust step, no magic rename, no storage archive, no search. Tabs already open stay with their own provider (A4). Empty states say why (for example "Codex has no background sessions").
+- **C-D7 setup check:** a Codex check (`codex` found on PATH; its version) in its own function. It is shown only when Codex is selected, so the Claude check's output does not change.
+- **C-D8 review should-fix items, done in C:** (1) a tab's keys come from the tab's own provider (`KeyOf(OpenTab)`); (2) a library migration that cannot write logs one line and returns the entries in memory, and a test covers a read-only file.
+- **C-D9 no change for Claude:** the default is Claude; with Claude selected the rail, tabs, library and checks behave as before. The existing tests must pass unchanged.
+
 ## Risks
 - R1 Core gains its first packages (zstd, maybe SQLite): licence, size, trimming, supply-chain review. Mitigation: B1/B2 first; prefer BCL/no-SQLite if it works.
 - R2 Codex file formats are unpromised and change (the `_5` in `state_5.sqlite` suggests versioned schemas; not verified). Mitigation: a version/format check, skip-on-unknown, fixtures, "Codex history may be incomplete" state.
