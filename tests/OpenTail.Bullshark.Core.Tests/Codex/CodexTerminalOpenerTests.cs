@@ -64,6 +64,23 @@ public sealed class CodexTerminalOpenerTests
     }
 
     [Fact]
+    public void ANewSessionWithAModelAddsDashMAfterTheFolder()
+    {
+        Assert.Equal("cmd.exe /d /c codex -C \"C:\\Work\\Synthetic Folder\" -m gpt-6-luna", _opener.NewCommandLine("C:\\Work\\Synthetic Folder", "gpt-6-luna"));
+        Assert.Equal(_opener.NewCommandLine("C:\\Work\\Synthetic Folder"), _opener.NewCommandLine("C:\\Work\\Synthetic Folder", null));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("GPT-6-Luna")]
+    [InlineData("gpt-6 --yolo")]
+    [InlineData("gpt-6 & calc")]
+    public void ABadModelIsRefusedByTheTerminalOpener(string model)
+    {
+        Assert.Throws<ArgumentException>(() => _opener.NewCommandLine("C:\\Work\\Synthetic Folder", model));
+    }
+
+    [Fact]
     public void AResumeRunsCodexResumeThroughCmdWithTheId()
     {
         Assert.Equal($"cmd.exe /d /c codex resume {Id}", _opener.ResumeCommandLine(Id));

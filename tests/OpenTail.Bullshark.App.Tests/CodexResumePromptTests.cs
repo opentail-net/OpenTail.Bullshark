@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using OpenTail.Bullshark.Core.Codex;
 using OpenTail.Bullshark.Core.Resume;
 
 namespace OpenTail.Bullshark.App.Tests;
@@ -318,6 +319,90 @@ public sealed class CodexResumePromptTests
 
             Assert.Null(prompt.Choice);
             Assert.Null(prompt.PreviewText);
+        });
+    }
+
+    /// <summary>A model list of synthetic ids, as the window would hand it over.</summary>
+    private static Task<CodexModelReading> ModelsOf(params CodexModelEntry[] entries) =>
+        Task.FromResult(new CodexModelReading(entries, Hidden: 0, Dropped: 0, CodexModelProblem.None));
+
+    private static CodexResumePrompt NewPromptWithModels(Task<CodexModelReading> models)
+    {
+        EnsureAppResources();
+        return new CodexResumePrompt(
+            "Resume: an example session",
+            "2 turns · last active 1 day ago · in C:\\Work\\example",
+            RailPalette.DarkPalette,
+            TailPreview,
+            models);
+    }
+
+    [Fact]
+    public void TheModelRowIsShownForTheNewSessionModesAndNotForInFull()
+    {
+        UiThread.Run(() =>
+        {
+            var prompt = NewPromptWithModels(ModelsOf(new CodexModelEntry("example-default", "Example Default", IsDefault: true)));
+            var row = Named<UIElement>(prompt, "ModelBlock");
+
+            Assert.Equal(Visibility.Visible, row.Visibility);
+
+            Named<RadioButton>(prompt, "FullChoice").IsChecked = true;
+            Assert.Equal(Visibility.Collapsed, row.Visibility);
+
+            Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
+            Assert.Equal(Visibility.Visible, row.Visibility);
+        });
+    }
+
+    [Fact]
+    public void TheListFillsTheModelBoxWithTheDefaultSelectedAndStartSendsItsId()
+    {
+        UiThread.Run(() =>
+        {
+            var prompt = NewPromptWithModels(ModelsOf(
+                new CodexModelEntry("example-default", "Example Default", IsDefault: true),
+                new CodexModelEntry("example-other", "Example Other", IsDefault: false)));
+            var box = Named<ComboBox>(prompt, "ModelBox");
+
+            Assert.Equal(2, box.Items.Count);
+            Assert.Equal("example-default", ((ComboBoxItem)box.SelectedItem).Tag);
+
+            Click(Named<Button>(prompt, "StartButton"));
+
+            Assert.Equal("example-default", prompt.Choice!.Model);
+        });
+    }
+
+    [Fact]
+    public void WhenTheListCouldNotBeReadTheOnlyEntryPassesNoModel()
+    {
+        UiThread.Run(() =>
+        {
+            var prompt = NewPromptWithModels(Task.FromResult(
+                new CodexModelReading([], 0, 0, CodexModelProblem.ExitedWithoutReply)));
+            var box = Named<ComboBox>(prompt, "ModelBox");
+
+            Assert.Equal(1, box.Items.Count);
+            Assert.Contains("ExitedWithoutReply", Named<TextBlock>(prompt, "ModelNote").Text);
+
+            Click(Named<Button>(prompt, "StartButton"));
+
+            Assert.NotNull(prompt.Choice);
+            Assert.Null(prompt.Choice!.Model);
+        });
+    }
+
+    [Fact]
+    public void InFullTheModelIsNotNeededSoStartDoesNotWaitForTheList()
+    {
+        UiThread.Run(() =>
+        {
+            var prompt = NewPromptWithModels(new TaskCompletionSource<CodexModelReading>().Task);
+
+            Assert.False(Named<Button>(prompt, "StartButton").IsEnabled);
+            Named<RadioButton>(prompt, "FullChoice").IsChecked = true;
+            Assert.True(Named<Button>(prompt, "StartButton").IsEnabled);
         });
     }
 }

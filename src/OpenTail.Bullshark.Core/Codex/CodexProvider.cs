@@ -43,6 +43,9 @@ public sealed class CodexProvider : IProvider, IHistorySource, ITranscriptReader
     /// <summary>The command of a new Codex tab, in <paramref name="folder"/> (C3).</summary>
     public string NewCommandLine(string folder) => _opener.NewCommandLine(folder);
 
+    /// <summary>The command of a new Codex tab with <c>-m &lt;model&gt;</c> when <paramref name="model"/> is set (P9); null keeps Codex's default.</summary>
+    public string NewCommandLine(string folder, string? model) => _opener.NewCommandLine(folder, model);
+
     /// <summary>The command that resumes a saved Codex session by its UUID (C3).</summary>
     public string ResumeCommandLine(string sessionId) => _opener.ResumeCommandLine(sessionId);
 }

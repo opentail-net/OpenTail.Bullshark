@@ -21,8 +21,16 @@ public sealed class CodexTerminalOpener : ITerminalOpener
     /// <c>%NAME%</c> even inside quotes) and no control character, and not end with a backslash (a backslash before the closing quote would
     /// escape it). An ampersand or a caret is inside the quotes and is taken as text. Otherwise <see cref="ArgumentException"/>.
     /// </summary>
-    public string NewCommandLine(string folder)
+    public string NewCommandLine(string folder) => NewCommandLine(folder, null);
+
+    /// <summary>
+    /// The same line with <c>-m &lt;model&gt;</c> after the folder (P9, decision M-D5), when <paramref name="model"/> is set. The model must pass
+    /// <see cref="CodexModelList.IsValidModelId"/>, or <see cref="ArgumentException"/>. Null gives the line without <c>-m</c>.
+    /// </summary>
+    public string NewCommandLine(string folder, string? model)
     {
+        if (model is not null && !CodexModelList.IsValidModelId(model))
+            throw new ArgumentException("The model id has a character outside lower-case letters, digits, dots and hyphens.", nameof(model));
         if (string.IsNullOrWhiteSpace(folder))
             throw new ArgumentException("The folder is empty.", nameof(folder));
         if (folder.Contains('"'))
@@ -35,7 +43,9 @@ public sealed class CodexTerminalOpener : ITerminalOpener
             throw new ArgumentException("The folder has a control character, so it cannot be put in the command line.", nameof(folder));
         if (folder.EndsWith('\\'))
             throw new ArgumentException("The folder ends with a backslash, which would escape the closing quote.", nameof(folder));
-        return $"cmd.exe /d /c codex -C \"{folder}\"";
+        return model is null
+            ? $"cmd.exe /d /c codex -C \"{folder}\""
+            : $"cmd.exe /d /c codex -C \"{folder}\" -m {model}";
     }
 
     /// <summary>

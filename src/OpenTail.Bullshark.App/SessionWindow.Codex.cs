@@ -489,16 +489,26 @@ public partial class SessionWindow
         OpenCodexTab(id, CodexRowTitle(MarkOf(ProviderId.Codex, id)?.Name, session), command, folder);
     }
 
-    /// <summary>"New Codex session…": asks for a folder, then opens <c>codex -C</c> there in a terminal tab (C3, C4). Cancel starts nothing.</summary>
+    /// <summary>
+    /// "New Codex session…": asks for a folder, then the model (P9, M-D4 b), then opens <c>codex -C</c> there in a terminal tab (C3, C4). Cancel at either
+    /// step starts nothing. Codex's default is used when the model list could not be read.
+    /// </summary>
     private void NewCodexSession()
     {
         var dialog = new Microsoft.Win32.OpenFolderDialog { Title = "Choose the folder for the Codex session" };
         if (dialog.ShowDialog(this) != true) return;
         var folder = dialog.FolderName;
+        var modelDialog = new CodexModelPrompt($"New Codex session in {LeafOf(folder)}", Palette, CodexModels()) { Owner = this };
+        modelDialog.ShowDialog();
+        if (!modelDialog.Accepted)
+        {
+            SetStatus("Not started.");
+            return;
+        }
         string command;
         try
         {
-            command = (_codex ??= new CodexProvider()).NewCommandLine(folder);
+            command = (_codex ??= new CodexProvider()).NewCommandLine(folder, modelDialog.Model);
         }
         catch (ArgumentException ex)
         {

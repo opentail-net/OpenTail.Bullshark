@@ -23,6 +23,26 @@ public partial class SessionWindow
     private bool _codexResumeShotOpened;
 
     /// <summary>
+    /// The models the account is offered (P9, M-D1): read once per window run, on first use, and kept. The read is off the UI thread and never fails
+    /// (a problem is in the reading); the same reading serves the resume screen and the new-session dialog.
+    /// </summary>
+    private Task<CodexModelReading>? _codexModels;
+
+    /// <summary>The model list of this window run (see <see cref="_codexModels"/>): started on the first call, and the same task after that.</summary>
+    private Task<CodexModelReading> CodexModels() => _codexModels ??= ReadCodexModelsAsync();
+
+    /// <summary>
+    /// Reads the model list through <c>codex app-server</c> off the UI thread, and logs its counts and problem type only (never the ids or the reply).
+    /// </summary>
+    private async Task<CodexModelReading> ReadCodexModelsAsync()
+    {
+        var reading = await Task.Run(() => new CodexModelList().ReadAsync(CancellationToken.None));
+        AppLog.Write(
+            $"codex model list read: {reading.Models.Count} models, {reading.Hidden} hidden, {reading.Dropped} dropped, problem {reading.Problem}");
+        return reading;
+    }
+
+    /// <summary>
     /// Opens the Codex resume screen for a session (R6). Nothing starts until the owner presses Start. A session whose folder is missing is refused
     /// here; the full resume (<see cref="ResumeCodex"/>) keeps its own behaviour.
     /// </summary>
@@ -52,7 +72,7 @@ public partial class SessionWindow
         var turns = session.UserMessages is { } count ? $"{count} {(count == 1 ? "turn" : "turns")}" : "turns not counted";
         var facts = $"{turns} · last active {AgeOf(session.LastActivity)} · in {folder}";
         var dialog = new CodexResumePrompt($"Resume: {title}", facts, Palette,
-            (choice, kept, ct) => BuildCodexStartTextAsync(session, folder, choice, kept, ct))
+            (choice, kept, ct) => BuildCodexStartTextAsync(session, folder, choice, kept, ct), CodexModels())
         {
             Owner = this,
         };
@@ -196,12 +216,18 @@ public partial class SessionWindow
             SetStatus("Not started: PowerShell 7 (pwsh.exe) is not on PATH. The start text is in the preview: use Copy and start Codex yourself.");
             return;
         }
+        // The model is checked before the start file is written (P9, M-D5): a refused model leaves no text on disk.
+        if (choice.Model is { } model && !CodexModelList.IsValidModelId(model))
+        {
+            SetStatus("Not started: the model name is not valid.");
+            return;
+        }
 
         string command;
         try
         {
             var path = CodexStartLauncher.WriteStart(CodexStartLauncher.StartsFolderBeside(_options.StatePath), text, DateTimeOffset.Now);
-            command = CodexStartLauncher.CommandLine(folder, path);
+            command = CodexStartLauncher.CommandLine(folder, path, choice.Model);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
         {

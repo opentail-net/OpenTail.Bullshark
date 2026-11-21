@@ -166,6 +166,9 @@ $secondLines = $secondRecords | ForEach-Object { $_ | ConvertTo-Json -Compress -
 # window reads the Codex history on start (the provider key of ProviderChoice).
 $screens = @(
     @{ Name = 'codex-resume-tail-dark'; Theme = 'Dark'; Options = @('--codex-resume') },
+    # The model row of the resume screen (P9, M-D3): the stand-in codex answers app-server with nothing, so the model list cannot be read and the one
+    # entry "Codex's default" shows with its note. The App's log must say the list was read with no models, and the reason's type.
+    @{ Name = 'codex-resume-model-dark'; Theme = 'Dark'; Options = @('--codex-resume'); Model = $true },
     @{ Name = 'codex-resume-summary-light'; Theme = 'Light'; Options = @('--codex-resume', 'summary'); Summary = $true },
     # The Codex rail grouped by tag (--rail-group tag): two sessions, the first with two tags, so it is under both tag groups.
     @{ Name = 'codex-rail-tag-dark'; Theme = 'Dark'; Options = @('--rail-group', 'tag'); Tags = $true },
@@ -227,7 +230,7 @@ try {
         $expectedSessions = if ($screen.Tags) { 2 } else { 1 }
         $historyOk = $log -match "codex history read: $expectedSessions sessions"
         # The grouping is not logged (tag text stays out of the log), so the tag screen's step is its picture, which a person looks at.
-        $stepOk = if ($screen.Summary) { $log -match 'codex summary made: \d' } elseif ($screen.Tags) { $true } elseif ($screen.Archived) { $log -match 'codex view at start: archived' } elseif ($screen.Transcript) { $log -match 'codex transcript read: 4 messages' } elseif ($screen.Search) { $log -match 'codex search: 1 of 1 sessions match' } else { $log -match 'codex start text built: \d' }
+        $stepOk = if ($screen.Model) { $log -match 'codex model list read: 0 models, 0 hidden, 0 dropped, problem ExitedWithoutReply' } elseif ($screen.Summary) { $log -match 'codex summary made: \d' } elseif ($screen.Tags) { $true } elseif ($screen.Archived) { $log -match 'codex view at start: archived' } elseif ($screen.Transcript) { $log -match 'codex transcript read: 4 messages' } elseif ($screen.Search) { $log -match 'codex search: 1 of 1 sessions match' } else { $log -match 'codex start text built: \d' }
         if ($process.ExitCode -eq 0 -and $pictureOk -and $historyOk -and $stepOk) {
             Write-Output "PASS ${name}: exit 0, history read, the step ran, $png"
         } else {

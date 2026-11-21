@@ -102,8 +102,15 @@
                        Text="Word for word, messages only, and at most about 4,000 tokens. The oldest turn goes first." />
         </StackPanel>
 
-        <TextBlock Style="{StaticResource Muted}" Margin="0,12,0,0"
-                   Text="The new session starts with Codex's configured model. The model is not chosen here." />
+        <!-- The model of the new session (P9). Not shown for In full, which runs codex resume. The list is read once per window run (see the code-behind). -->
+        <StackPanel x:Name="ModelBlock" Margin="22,0,0,0">
+            <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                <TextBlock Text="Model" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <ComboBox x:Name="ModelBox" MinWidth="280" VerticalContentAlignment="Center"
+                          AutomationProperties.Name="Model of the new Codex session" />
+            </StackPanel>
+            <TextBlock x:Name="ModelNote" Style="{StaticResource Muted}" Margin="0,4,0,0" />
+        </StackPanel>
 
         <TextBlock x:Name="CostText" Style="{StaticResource Muted}" Margin="0,14,0,0" />
         <Button x:Name="MakeSummaryButton" Content="Make summary" Click="MakeSummary_Click" HorizontalAlignment="Left" Margin="0,8,0,0"

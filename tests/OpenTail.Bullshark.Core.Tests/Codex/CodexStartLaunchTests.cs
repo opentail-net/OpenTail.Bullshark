@@ -98,6 +98,49 @@ public sealed class CodexStartLaunchTests
         }
     }
 
+    [Fact]
+    public void TheLaunchWithAModelPassesDashMTheModelAndThenTheText()
+    {
+        var pwsh = CodexStartLauncher.FindPwsh();
+        if (pwsh is null)
+        {
+            Assert.Fail(NoPwshMessage);
+            return;
+        }
+
+        var root = NewRoot();
+        try
+        {
+            var recorder = WriteRecorder(root, pwsh);
+            var shimFolder = Directory.CreateDirectory(Path.Combine(root, "ps")).FullName;
+            File.WriteAllText(Path.Combine(shimFolder, "codex.ps1"), recorder + "\r\n", new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+
+            var promptPath = CodexStartLauncher.WriteStart(Path.Combine(root, "starts"), Prompt, DateTimeOffset.Now);
+            var argsOut = Path.Combine(root, "args.json");
+            var run = Launch(pwsh, CodexStartLauncher.CommandLine(root, promptPath, "gpt-6-luna"), shimFolder + ";" + OriginalPath(), argsOut, promptPath);
+
+            var problems = new List<string>();
+            if (run.TimedOut) problems.Add("the launch did not end within 60 seconds");
+            else
+            {
+                if (run.ExitCode != 0) problems.Add($"the launch exited with code {run.ExitCode}");
+                if (!File.Exists(argsOut)) problems.Add("the shim recorded nothing");
+                else
+                {
+                    var args = JsonSerializer.Deserialize<string[]>(File.ReadAllText(argsOut, Encoding.UTF8)) ?? Array.Empty<string>();
+                    if (args.Length != 3 || args[0] != "-m" || args[1] != "gpt-6-luna" || args[2] != Prompt)
+                        problems.Add($"expected -m, the model and the text; {args.Length} arguments arrived");
+                }
+                if (File.Exists(promptPath)) problems.Add("the start file was not removed");
+            }
+            Assert.True(problems.Count == 0, string.Join("; ", problems));
+        }
+        finally
+        {
+            DeleteFolder(root);
+        }
+    }
+
     private static string NewRoot()
     {
         var root = Path.Combine(Path.GetTempPath(), "bullshark-launch-" + Guid.NewGuid().ToString("N"));

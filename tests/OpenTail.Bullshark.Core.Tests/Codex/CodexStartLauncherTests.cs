@@ -244,6 +244,39 @@ public sealed class CodexStartLauncherTests
         Assert.Equal(Path.Combine(Directory.GetCurrentDirectory(), "Starts"), CodexStartLauncher.StartsFolderBeside("state.json"));
     }
 
+    [Fact]
+    public void WithoutAModelTheShimRunsWithoutDashM()
+    {
+        var script = DecodeScript(CodexStartLauncher.CommandLine("C:\\Work", "C:\\Work\\Starts\\prompt.txt", null)).Split('\n');
+
+        Assert.Equal(7, script.Length);
+        Assert.Equal("& $shim.Source $prompt", script[6]);
+        Assert.DoesNotContain("-m", string.Join("\n", script));
+    }
+
+    [Fact]
+    public void WithAModelTheShimRunsWithDashMAndTheModelBeforeTheText()
+    {
+        var script = DecodeScript(CodexStartLauncher.CommandLine("C:\\Work", "C:\\Work\\Starts\\prompt.txt", "gpt-5.6-terra")).Split('\n');
+
+        Assert.Equal(7, script.Length);
+        Assert.Equal("& $shim.Source -m 'gpt-5.6-terra' $prompt", script[6]);
+        Assert.Equal(ExpectedScript("C:\\Work", "C:\\Work\\Starts\\prompt.txt").Replace("& $shim.Source $prompt", "& $shim.Source -m 'gpt-5.6-terra' $prompt"),
+            DecodeScript(CodexStartLauncher.CommandLine("C:\\Work", "C:\\Work\\Starts\\prompt.txt", "gpt-5.6-terra")));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("GPT-6-Luna")]
+    [InlineData("gpt 6")]
+    [InlineData("gpt-6'; calc; '")]
+    [InlineData("-x")]
+    [InlineData("gpt-6\n")]
+    public void ABadModelIsRefusedBeforeAnyScriptIsBuilt(string model)
+    {
+        Assert.Throws<ArgumentException>(() => CodexStartLauncher.CommandLine("C:\\Work", "C:\\Work\\Starts\\prompt.txt", model));
+    }
+
     private static string WriteFile(string folder, string name, DateTimeOffset written)
     {
         Directory.CreateDirectory(folder);

@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using OpenTail.Bullshark.Core.Codex;
 using OpenTail.Bullshark.Core.Resume;
 
 namespace OpenTail.Bullshark.App;
@@ -22,8 +23,11 @@ public enum CodexResumeMode
     Summary,
 }
 
-/// <summary>The choice made in the Codex resume screen. Level is set only for a summary; Turns is the number kept verbatim (0 for In full).</summary>
-public sealed record CodexResumeChoice(CodexResumeMode Mode, SummaryLevel? Level, int Turns);
+/// <summary>
+/// The choice made in the Codex resume screen. Level is set only for a summary; Turns is the number kept verbatim (0 for In full). Model is the model
+/// id the new session is started with (P9), or null for Codex's own default (also the case for In full, which sends no model).
+/// </summary>
+public sealed record CodexResumeChoice(CodexResumeMode Mode, SummaryLevel? Level, int Turns, string? Model = null);
 
 /// <summary>
 /// What the screen's preview callback gives: the start text (empty when the session has no messages), the summary it made or reused (null for
@@ -46,12 +50,17 @@ public partial class CodexResumePrompt : Window
     private string? _previewText;
     private KeptSummary? _kept;
 
+    /// <summary>True once the model list is in (or none was asked for). Start of a new session waits for it; In full does not need it.</summary>
+    private bool _modelsReady;
+
     /// <param name="heading">The heading: the session's name.</param>
     /// <param name="facts">The line under the heading: turns, last activity and folder.</param>
     /// <param name="palette">The theme, as the rest of the window's dialogs use it.</param>
     /// <param name="previewAsync">Makes the start text for a choice. It is given the summary kept for the choice (or null), and returns the text and the summary it used.</param>
+    /// <param name="models">The model list, read off the UI thread. The model box shows that it is loading until the list is in, and Start waits for it (except In full). Null: no list, so Codex's default.</param>
     public CodexResumePrompt(string heading, string facts, RailPalette palette,
-        Func<CodexResumeChoice, KeptSummary?, CancellationToken, Task<CodexPreview>>? previewAsync = null)
+        Func<CodexResumeChoice, KeptSummary?, CancellationToken, Task<CodexPreview>>? previewAsync = null,
+        Task<CodexModelReading>? models = null)
     {
         InitializeComponent();
         _previewAsync = previewAsync;
@@ -85,7 +94,48 @@ public partial class CodexResumePrompt : Window
         TurnsBox.TextChanged += (_, _) => OnChoiceChanged();
 
         OnChoiceChanged();
+
+        if (models is null)
+        {
+            _modelsReady = true;
+            ModelNote.Text = CodexModelChoices.Fill(ModelBox, null);
+            Refresh();
+        }
+        else
+        {
+            ModelBox.Items.Add(new ComboBoxItem { Content = "Reading the model list...", IsEnabled = false });
+            ModelBox.SelectedIndex = 0;
+            ModelNote.Text = "Reading the model list. Start waits for it.";
+            _ = LoadModelsAsync(models);
+        }
     }
+
+    /// <summary>
+    /// Fills the model box when the list is read (off the UI thread, by the window). A list that cannot be read gives the one entry "Codex's default",
+    /// and the note says why (M-D3). Never throws: the read's own failures are problems in the reading, and any other failure is the same entry.
+    /// </summary>
+    private async Task LoadModelsAsync(Task<CodexModelReading> models)
+    {
+        CodexModelReading reading;
+        try
+        {
+            reading = await models;
+        }
+        catch (Exception ex)
+        {
+            AppLog.Write($"codex model list not read in the screen: {ex.GetType().Name}");
+            reading = new CodexModelReading([], 0, 0, CodexModelProblem.Unexpected);
+        }
+        ModelNote.Text = CodexModelChoices.Fill(ModelBox, reading);
+        _modelsReady = true;
+        Refresh();
+    }
+
+    /// <summary>The model id on screen for a new session, or null for Codex's default (the one entry of a list that could not be read).</summary>
+    private string? SelectedModel() => CodexModelChoices.SelectedModel(ModelBox);
+
+    /// <summary>Start is allowed when the model is known: In full sends no model, so it never waits for the list.</summary>
+    private bool ModelReady(CodexResumeMode mode) => mode == CodexResumeMode.Full || _modelsReady;
 
     /// <summary>The choice, or null when the owner cancelled.</summary>
     public CodexResumeChoice? Choice { get; private set; }
@@ -128,8 +178,8 @@ public partial class CodexResumePrompt : Window
             return new CodexResumeChoice(CodexResumeMode.Full, null, 0);
         }
         turnsValid = valid;
-        if (TailChoice.IsChecked == true) return new CodexResumeChoice(CodexResumeMode.LastTurns, null, turns);
-        if (SummaryChoice.IsChecked == true) return new CodexResumeChoice(CodexResumeMode.Summary, SelectedLevel(), turns);
+        if (TailChoice.IsChecked == true) return new CodexResumeChoice(CodexResumeMode.LastTurns, null, turns, SelectedModel());
+        if (SummaryChoice.IsChecked == true) return new CodexResumeChoice(CodexResumeMode.Summary, SelectedLevel(), turns, SelectedModel());
         return null;
     }
 
@@ -173,7 +223,10 @@ public partial class CodexResumePrompt : Window
         Enable(MakeSummaryButton, free && mode == CodexResumeMode.Summary && turnsValid);
         var previewReady = _previewText is not null;
         Enable(CopyButton, free && previewReady);
-        Enable(StartButton, free && CodexResumeRules.CanStart(mode, previewReady, KeptMatches(choice)));
+        var modelRow = mode != CodexResumeMode.Full;
+        ModelBlock.Visibility = modelRow ? Visibility.Visible : Visibility.Collapsed;
+        Enable(ModelBox, free && modelRow && _modelsReady);
+        Enable(StartButton, free && ModelReady(mode) && CodexResumeRules.CanStart(mode, previewReady, KeptMatches(choice)));
     }
 
     private static void Enable(UIElement element, bool enabled)
@@ -324,6 +377,7 @@ public partial class CodexResumePrompt : Window
     {
         var choice = Selected(out _);
         if (choice is null || _busy) return;
+        if (!ModelReady(choice.Mode)) return;
         if (!CodexResumeRules.CanStart(choice.Mode, _previewText is not null, KeptMatches(choice))) return;
         Choice = choice;
         PreviewText = choice.Mode == CodexResumeMode.Full ? null : _previewText;
