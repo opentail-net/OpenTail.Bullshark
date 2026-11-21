@@ -83,7 +83,9 @@ public partial class SetupView : UserControl
 
         FolderBox.ItemsSource = SuggestedFolders(stateFile);
 
-        PatternBox.SelectedIndex = 0;
+        // The pattern the page opens on is solo (the owner's default, 2026-11-21): one session plans and implements, with no peer. The choice is
+        // not saved, so each opening starts on solo; the other patterns are one click away.
+        PatternBox.SelectedItem = PatternSpec.Shipped.First(pattern => pattern.Kind == PatternKind.Solo);
         _loading = false;
         LoadPattern();
     }
