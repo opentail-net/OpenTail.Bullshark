@@ -114,7 +114,5 @@ Decided, not open (for the record): toasts are built (the Windows package questi
 
 ## Doc fixes still to make
 
-- **README.md**: it has uncommitted edits from another session, so it was not touched. Its Plans table and the convention line still describe the old layout. Its coder-mode lines disagree (`auto` in one place, `acceptEdits` in another; see the desktop ideas record). Fix both after its edits are committed.
-- **Code comments** in src, tests and scripts still cite plan paths (a grep for `docs/plans/` finds them). Not changed in this pass: some of those files have uncommitted edits from another session. Update them after those are committed.
-- **limit-wake-2026-11-20.md**: its live items LW1 to LW6 are copied into checklist section C12 (LW4 is in cli-gates G7). Point its "add live items" step at the checklist once its edits are committed.
-- **provider-seam-design-2026-11-19.md**: its status line names the research file in its new place in [docs/research](../research/).
+- **limit-wake-2026-11-20.md**: its live items LW1 to LW6 are copied into checklist section C12 (LW4 is in cli-gates G7). Its step "add live items to docs/plans/live-run-checklist.md" should point at the checklist now. The file is in progress elsewhere, so it has not been edited here.
+- Done in this pass: the README Plans section (points at this file and the Done folder), the README coder-mode lines (they agree: `auto`), the code-comment pointers (commit 2a72328), and the provider seam design's research path.
