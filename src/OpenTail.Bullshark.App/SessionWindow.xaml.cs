@@ -6,6 +6,8 @@ using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Cache;
 using OpenTail.Bullshark.Core.Claude;
 using OpenTail.Bullshark.Core.Folders;
+using OpenTail.Bullshark.Core.Health;
+using OpenTail.Bullshark.Core.Providers;
 using OpenTail.Bullshark.Core.Setup;
 using OpenTail.Bullshark.Core.Supervisor;
 using OpenTail.Bullshark.Core.Storage;
@@ -25,11 +27,25 @@ namespace OpenTail.Bullshark.App;
 public partial class SessionWindow : Window
 {
     private readonly LaunchOptions _options;
+
+    /// <summary>
+    /// The provider the window shows (R-8, stage A4). Claude is the only one in stage A, built on the window's own folders, so the window behaves as
+    /// before. A tab records the provider that opened it (<see cref="OpenTab.Provider"/>).
+    /// </summary>
+    private readonly IProvider _activeProvider;
+
+    /// <summary>The window's provider as Claude's: the history and digests the rail reads (R-2). Only Claude exists in stage A.</summary>
+    private ClaudeProvider ActiveClaude =>
+        _activeProvider as ClaudeProvider ?? throw new InvalidOperationException("The active provider has no Claude history in stage A.");
+
+    /// <summary>The key of a session in the window's dictionaries (R-3): the active provider and the session id.</summary>
+    private SessionKey KeyOf(string sessionId) => new(_activeProvider.Id, sessionId);
+
     private readonly ClaudeCli _cli = new(new ProcessCliRunner());
     private readonly StateStore _store;
     private readonly RunStore _runStore;
     private readonly SupervisorLoop _loop;
-    private readonly Dictionary<string, ExtendedTerminalControl> _terminals = new();
+    private readonly Dictionary<SessionKey, ExtendedTerminalControl> _terminals = new();
     /// <summary>Session ids that are not valid short ids, each logged once (F4).</summary>
     private readonly HashSet<string> _badSessionIds = new(StringComparer.Ordinal);
 
@@ -150,6 +166,7 @@ public partial class SessionWindow : Window
         // (2026-11-19). Under a test host the window only reads and draws, whatever options it was given.
         if (!options.NoPass && RunningUnderTest.Is) options = options with { NoPass = true };
         _options = options;
+        _activeProvider = new ClaudeProvider(new ProviderPaths(options.ClaudeHome ?? ClaudePaths.ConfigDir(), options.ProjectsRoot, options.ArchiveRoot));
         InitializeComponent();
         // The Insights page hosts the four views that were tabs of their own (2026-11-18). It is made before InitRail, which draws the theme into it.
         _insights = new InsightsView(_away, _night, _limits, _timeline, _storage) { Visibility = Visibility.Hidden };
@@ -623,7 +640,7 @@ public partial class SessionWindow : Window
     /// </summary>
     private ExtendedTerminalControl? EnsureTerminal(SessionRecord record)
     {
-        if (_terminals.TryGetValue(record.SessionId, out var existing)) return existing;
+        if (_terminals.TryGetValue(KeyOf(record.SessionId), out var existing)) return existing;
 
         // The split self-test runs a counter in place of each session, so it needs no Claude session. Otherwise the id must be a valid short
         // id, or no terminal is made for the session (F4): the line is not built from a bad id, and the message is logged once per id.
@@ -641,7 +658,7 @@ public partial class SessionWindow : Window
             LogConPTYOutput = SelfTestCommand is not null,
             Visibility = Visibility.Hidden,
         };
-        _terminals[record.SessionId] = terminal;
+        _terminals[KeyOf(record.SessionId)] = terminal;
         Pane.Children.Add(terminal);
         ConfigureTerminal(terminal);
         return terminal;

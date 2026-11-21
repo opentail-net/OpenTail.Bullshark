@@ -340,8 +340,8 @@ public partial class SessionWindow
                         leftTab = sessions.First(t => !ReferenceEquals(t, rightTab));
                         ActivateTab(leftTab);
                         MoveToRight(rightTab);
-                        _terminals.TryGetValue(leftTab.Key, out leftTerm);
-                        _terminals.TryGetValue(rightTab.Key, out rightTerm);
+                        _terminals.TryGetValue(KeyOf(leftTab.Key), out leftTerm);
+                        _terminals.TryGetValue(KeyOf(rightTab.Key), out rightTerm);
                     }
                 }
                 if (step == 1 && elapsed >= 8 && leftTerm is not null && rightTerm is not null)

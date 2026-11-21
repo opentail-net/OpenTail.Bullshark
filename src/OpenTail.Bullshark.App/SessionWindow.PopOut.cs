@@ -32,7 +32,7 @@ public partial class SessionWindow
             SetStatus("Not opened: the session id is not a valid id, so it cannot be attached.");
             return;
         }
-        if (_terminals.TryGetValue(sessionId, out var terminal) && terminal.ConPTYTerm is { } connection)
+        if (_terminals.TryGetValue(KeyOf(sessionId), out var terminal) && terminal.ConPTYTerm is { } connection)
         {
             // Ctrl+Z drops "claude attach" back to its shell, which detaches it cleanly; the session keeps running. Wait for that before
             // the new window attaches, so the session never has two clients.
@@ -64,7 +64,7 @@ public partial class SessionWindow
     {
         _detached.Remove(window);
         if (_closingWindows) return;
-        _hiddenSessions.Remove(sessionId);
+        _hiddenSessions.Remove(KeyOf(sessionId));
         RefreshRail();
         _ = ShowRailItemAsync(new RailTag(RailKind.Session, sessionId));
     }

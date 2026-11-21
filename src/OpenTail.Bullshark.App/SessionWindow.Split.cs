@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using OpenTail.Bullshark.Core.Providers;
 using OpenTail.Bullshark.Core.Tabs;
 using Wpf.Ui.Terminal;
 
@@ -19,7 +20,7 @@ public partial class SessionWindow
     private const double MinPaneWidth = 200;
 
     /// <summary>The sessions whose tab is in the right pane, by session id. Their terminals are children of PaneB.</summary>
-    private readonly HashSet<string> _rightSessions = new(StringComparer.Ordinal);
+    private readonly HashSet<SessionKey> _rightSessions = new();
 
     /// <summary>The sessions that were at the right when the window last closed. A session's tab goes back there when it first opens.</summary>
     private IReadOnlyList<string> _savedRight = [];
@@ -34,7 +35,7 @@ public partial class SessionWindow
 
     private bool SplitOpen => PaneB.Visibility == Visibility.Visible;
 
-    private bool IsRight(OpenTab tab) => tab.Kind == TabKind.Session && _rightSessions.Contains(tab.Key);
+    private bool IsRight(OpenTab tab) => tab.Kind == TabKind.Session && _rightSessions.Contains(KeyOf(tab.Key));
 
     /// <summary>
     /// The terminal a paste goes to: the one whose native window has the keyboard focus, else the one shown last. WPF's own
@@ -92,7 +93,7 @@ public partial class SessionWindow
     private void MoveToRight(OpenTab tab)
     {
         if (tab.Kind != TabKind.Session || IsRight(tab)) return;
-        if (!_terminals.TryGetValue(tab.Key, out var terminal))
+        if (!_terminals.TryGetValue(KeyOf(tab.Key), out var terminal))
         {
             SetStatus("Not moved: this session has no terminal yet.");
             return;
@@ -121,7 +122,7 @@ public partial class SessionWindow
         (terminal.Parent as Panel)?.Children.Remove(terminal);
         terminal.Visibility = Visibility.Hidden;
         PaneB.Children.Add(terminal);
-        _rightSessions.Add(sessionId);
+        _rightSessions.Add(KeyOf(sessionId));
         OpenSplit();
     }
 
@@ -131,8 +132,8 @@ public partial class SessionWindow
     /// </summary>
     private void MoveToLeft(OpenTab tab, bool activate = true)
     {
-        if (!_rightSessions.Remove(tab.Key)) return;
-        if (_terminals.TryGetValue(tab.Key, out var terminal))
+        if (!_rightSessions.Remove(KeyOf(tab.Key))) return;
+        if (_terminals.TryGetValue(KeyOf(tab.Key), out var terminal))
         {
             if (ReferenceEquals(_shownRight, terminal)) _shownRight = null;
             if (ReferenceEquals(_focusTerminal, terminal)) _focusTerminal = null;
@@ -171,7 +172,7 @@ public partial class SessionWindow
         }
 
         if (_activeTabRight is null || !rightTabs.Contains(_activeTabRight)) _activeTabRight = rightTabs[0];
-        if (_terminals.TryGetValue(_activeTabRight.Key, out var terminal) && !ReferenceEquals(_shownRight, terminal))
+        if (_terminals.TryGetValue(KeyOf(_activeTabRight.Key), out var terminal) && !ReferenceEquals(_shownRight, terminal))
             ShowInRight(terminal);
     }
 

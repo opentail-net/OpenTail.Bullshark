@@ -5,6 +5,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Claude;
+using OpenTail.Bullshark.Core.Providers;
 using OpenTail.Bullshark.Core.Supervisor;
 using OpenTail.Bullshark.Core.Tabs;
 using Wpf.Ui.Terminal;
@@ -19,7 +20,7 @@ namespace OpenTail.Bullshark.App;
 /// </summary>
 public partial class SessionWindow
 {
-    private enum TabKind
+    internal enum TabKind
     {
         Session,
         Setup,
@@ -38,12 +39,18 @@ public partial class SessionWindow
         Settings,
     }
 
-    private sealed class OpenTab(TabKind kind, string key, string title)
+    internal sealed class OpenTab(TabKind kind, string key, string title, ProviderId? provider = null)
     {
         public TabKind Kind { get; } = kind;
 
         /// <summary>The session id for session and transcript tabs; "setup" for the setup tab.</summary>
         public string Key { get; } = key;
+
+        /// <summary>
+        /// The provider that opened the tab (stage A4). It is kept when the window's provider changes: an open tab stays with its own provider.
+        /// Claude when none is given.
+        /// </summary>
+        public ProviderId Provider { get; } = provider ?? ProviderId.Claude;
 
         public string Title { get; set; } = title;
 
@@ -63,7 +70,7 @@ public partial class SessionWindow
     private readonly List<OpenTab> _tabs = new();
 
     /// <summary>Sessions whose tab the owner closed. Their tab stays closed until the owner selects the session in the rail.</summary>
-    private readonly HashSet<string> _hiddenSessions = new(StringComparer.Ordinal);
+    private readonly HashSet<SessionKey> _hiddenSessions = new();
     private OpenTab? _activeTab;
 
     /// <summary>Called when the rail selection changes: a session or a transcript gets its tab, and a folder shows the setup tab.</summary>
@@ -72,7 +79,7 @@ public partial class SessionWindow
         switch (tag.Kind)
         {
             case RailKind.Session:
-                _hiddenSessions.Remove(tag.Key);
+                _hiddenSessions.Remove(KeyOf(tag.Key));
                 SetActive(TabFor(TabKind.Session, tag.Key, () => TitleOfSession(tag.Key)));
                 break;
 
@@ -102,7 +109,7 @@ public partial class SessionWindow
 
     private OpenTab AddTab(TabKind kind, string key, string title)
     {
-        var tab = new OpenTab(kind, key, title);
+        var tab = new OpenTab(kind, key, title, _activeProvider.Id);
         _tabs.Add(tab);
         return tab;
     }
@@ -128,7 +135,7 @@ public partial class SessionWindow
                 if (railItem is not null) railItem.IsSelected = true;
                 // Shown here too: selecting a rail item that is already selected raises no event, and the pane would keep
                 // whatever it showed (for example the setup).
-                if (_terminals.TryGetValue(tab.Key, out var terminal)) ShowOnly(terminal);
+                if (_terminals.TryGetValue(KeyOf(tab.Key), out var terminal)) ShowOnly(terminal);
                 break;
 
             case TabKind.Transcript:
@@ -174,7 +181,7 @@ public partial class SessionWindow
         var index = _tabs.IndexOf(tab);
         var next = TabPolicy.ActiveAfterClose(_tabs.ToList(), index, IsRight);
         _tabs.Remove(tab);
-        if (tab.Kind == TabKind.Session) _hiddenSessions.Add(tab.Key);
+        if (tab.Kind == TabKind.Session) _hiddenSessions.Add(KeyOf(tab.Key));
         if (tab.Kind == TabKind.Search) ClearSearchFilter();
         if (!ReferenceEquals(_activeTab, tab))
         {
@@ -343,7 +350,7 @@ public partial class SessionWindow
     /// <summary>Takes a session's terminal out of the pane and detaches it, the way the window's close detaches every terminal.</summary>
     private void DetachTerminal(string sessionId)
     {
-        if (!_terminals.Remove(sessionId, out var terminal)) return;
+        if (!_terminals.Remove(KeyOf(sessionId), out var terminal)) return;
         if (ReferenceEquals(_shown, terminal)) ShowOnly(_setup);
         if (ReferenceEquals(_shownRight, terminal)) _shownRight = null;
         if (ReferenceEquals(_focusTerminal, terminal)) _focusTerminal = null;
@@ -402,12 +409,12 @@ public partial class SessionWindow
         // New tabs open in the order the owner last left them (T1); a session with no saved place goes after those, by name.
         foreach (var record in TabOrder.Arrange(records.OrderBy(r => r.Name, StringComparer.Ordinal), r => r.SessionId, _savedTabOrder))
         {
-            if (_hiddenSessions.Contains(record.SessionId)) continue;
+            if (_hiddenSessions.Contains(KeyOf(record.SessionId))) continue;
             if (!_tabs.Any(t => t.Kind == TabKind.Session && SameId(t.Key, record.SessionId)))
             {
                 AddTab(TabKind.Session, record.SessionId, record.Name);
                 // A session that was at the right when the window last closed opens there again (T2).
-                if (_savedRight.Contains(record.SessionId) && _terminals.TryGetValue(record.SessionId, out var terminal))
+                if (_savedRight.Contains(record.SessionId) && _terminals.TryGetValue(KeyOf(record.SessionId), out var terminal))
                     PlaceRight(record.SessionId, terminal);
             }
         }
@@ -420,7 +427,7 @@ public partial class SessionWindow
                 _tabs.Remove(tab);
                 if (ReferenceEquals(_activeTab, tab)) _activeTab = null;
                 if (ReferenceEquals(_activeTabRight, tab)) _activeTabRight = null;
-                _rightSessions.Remove(tab.Key);
+                _rightSessions.Remove(KeyOf(tab.Key));
                 continue;
             }
             tab.Title = record.Name;

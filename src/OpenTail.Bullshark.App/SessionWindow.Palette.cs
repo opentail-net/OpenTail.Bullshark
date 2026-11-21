@@ -184,7 +184,7 @@ public partial class SessionWindow
     /// </summary>
     private void GoToSession(string sessionId, string title)
     {
-        _hiddenSessions.Remove(sessionId);
+        _hiddenSessions.Remove(KeyOf(sessionId));
         var tab = TabFor(TabKind.Session, sessionId, () => title);
         ActivateTab(tab);
     }

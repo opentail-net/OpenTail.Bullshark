@@ -666,7 +666,7 @@ public partial class SessionWindow
         RefreshRail();
         try
         {
-            var index = await Task.Run(() => TranscriptIndex.Build(_options.ProjectsRoot, _options.IndexCachePath, AppLog.Write));
+            var index = await Task.Run(() => ActiveClaude.BuildIndex(_options.IndexCachePath, AppLog.Write));
             var facts = await Task.Run(() => ReadHistoryFacts(index.Sessions));
             _history = index.Sessions.ToList();
             _historyFacts = facts;
@@ -799,7 +799,7 @@ public partial class SessionWindow
     {
         switch (tag.Kind)
         {
-            case RailKind.Session when _terminals.TryGetValue(tag.Key, out var terminal):
+            case RailKind.Session when _terminals.TryGetValue(KeyOf(tag.Key), out var terminal):
                 ShowOnly(terminal);
                 break;
 
