@@ -177,6 +177,25 @@ public sealed class CodexHistorySourceReadingTests : IDisposable
     }
 
     [Fact]
+    public async Task InjectedContextIsNeitherTheTitleNorACountedMessage()
+    {
+        // R-D5: injected context at the start of a session is not the owner's message. The title and the count leave it out, as the summary and the
+        // start text do (synthetic text only).
+        _home.WritePlain(CodexHome.NameFor(CodexHome.SessionId), new[]
+        {
+            CodexHome.Meta(CodexHome.SessionId),
+            CodexHome.Message("2026-11-20T10:00:02.000Z", "user", "<environment_context>synthetic context</environment_context>"),
+            CodexHome.Message("2026-11-20T10:00:03.000Z", "user", "The real question"),
+            CodexHome.Message("2026-11-20T10:00:04.000Z", "assistant", "An answer"),
+        });
+
+        var session = Assert.Single(await Source().ListAsync(CancellationToken.None));
+
+        Assert.Equal("The real question", session.Title);
+        Assert.Equal(1, session.UserMessages);
+    }
+
+    [Fact]
     public async Task ASessionWithoutAnIdUsesTheUuidInItsFileName()
     {
         // No id in the session record: the key is the UUID at the end of the file name.

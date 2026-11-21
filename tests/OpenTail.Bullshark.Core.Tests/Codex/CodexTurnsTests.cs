@@ -123,4 +123,65 @@ public sealed class CodexTurnsTests
     {
         Assert.Empty(CodexTurns.FromRollout(Array.Empty<string>()));
     }
+
+    [Fact]
+    public void ReadSessionGivesTheMessagesOfTheRolloutFoundByItsId()
+    {
+        using var home = new CodexHome();
+        home.WritePlain(CodexHome.NameFor(CodexHome.SessionId), CodexHome.Standard(CodexHome.SessionId));
+
+        var turns = CodexTurns.ReadSession(home.Paths(), CodexHome.SessionId, CancellationToken.None);
+
+        Assert.Equal(new[] { "you", "codex", "you" }, turns.Select(t => t.Kind).ToArray());
+        Assert.Equal(new[] { 1, 2, 3 }, turns.Select(t => t.Number).ToArray());
+        Assert.Equal(new[] { CodexHome.FirstMessage, "Done", "Second question" }, turns.Select(t => t.Text).ToArray());
+    }
+
+    [Fact]
+    public void ReadSessionFindsARolloutWhoseNameHasNoIdByItsSessionRecord()
+    {
+        using var home = new CodexHome();
+        home.WritePlain("rollout-plain.jsonl", CodexHome.Standard(CodexHome.SecondId));
+
+        var turns = CodexTurns.ReadSession(home.Paths(), CodexHome.SecondId, CancellationToken.None);
+
+        Assert.Equal(3, turns.Count);
+    }
+
+    [Fact]
+    public void ReadSessionRefusesAnUnsafeIdBeforeAnyFileIsRead()
+    {
+        using var home = new CodexHome();
+
+        Assert.Throws<ArgumentException>(() => CodexTurns.ReadSession(home.Paths(), "../" + CodexHome.SessionId, CancellationToken.None));
+        Assert.Throws<ArgumentException>(() => CodexTurns.ReadSession(home.Paths(), "*", CancellationToken.None));
+    }
+
+    [Fact]
+    public void ReadSessionOfASessionWithNoRolloutIsFileNotFound()
+    {
+        using var home = new CodexHome();
+        home.WritePlain(CodexHome.NameFor(CodexHome.SessionId), CodexHome.Standard(CodexHome.SessionId));
+
+        Assert.Throws<FileNotFoundException>(() => CodexTurns.ReadSession(home.Paths(), CodexHome.SecondId, CancellationToken.None));
+    }
+
+    [Fact]
+    public void ReadSessionOfAHomeWithNoSessionsFolderIsFileNotFound()
+    {
+        using var home = new CodexHome();
+
+        Assert.Throws<FileNotFoundException>(() => CodexTurns.ReadSession(home.Paths(), CodexHome.SessionId, CancellationToken.None));
+    }
+
+    [Fact]
+    public void ReadSessionStopsWhenItIsCancelled()
+    {
+        using var home = new CodexHome();
+        home.WritePlain(CodexHome.NameFor(CodexHome.SessionId), CodexHome.Standard(CodexHome.SessionId));
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+
+        Assert.Throws<OperationCanceledException>(() => CodexTurns.ReadSession(home.Paths(), CodexHome.SessionId, cancelled.Token));
+    }
 }

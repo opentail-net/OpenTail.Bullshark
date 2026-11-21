@@ -27,6 +27,13 @@ public static class CodexStartLauncher
     private static readonly Regex StartFileName = new(@"\A[0-9]{8}-[0-9]{6}-[0-9a-f]{8}\.txt\z", RegexOptions.CultureInvariant);
 
     /// <summary>
+    /// The Starts folder that goes with a state file: a folder named <c>Starts</c> beside it, as <c>SummaryFiles.FolderBeside</c> does for the
+    /// Summaries folder. A scratch run with its own state file keeps its own Starts folder.
+    /// </summary>
+    public static string StartsFolderBeside(string statePath) =>
+        Path.Combine(Path.GetDirectoryName(Path.GetFullPath(statePath))!, "Starts");
+
+    /// <summary>
     /// Writes the start text to a new file in <paramref name="startsFolder"/> (created when missing), as UTF-8 without a byte-order mark, and returns
     /// the file's full path. The name is the local time of <paramref name="now"/> with eight hex digits of a new GUID, so a file is never overwritten.
     /// An IO failure is thrown to the caller.

@@ -227,6 +227,23 @@ public sealed class CodexStartLauncherTests
         Assert.Equal(0, CodexStartLauncher.RemoveOldStarts(Path.Combine(temp.Folder, "missing"), TimeSpan.Zero, Now));
     }
 
+    [Fact]
+    public void TheStartsFolderIsNamedStartsAndSitsBesideTheStateFile()
+    {
+        var state = Path.Combine(Path.GetTempPath(), "bullshark-state", "state.json");
+
+        var folder = CodexStartLauncher.StartsFolderBeside(state);
+
+        Assert.Equal("Starts", Path.GetFileName(folder));
+        Assert.Equal(Path.GetDirectoryName(Path.GetFullPath(state)), Path.GetDirectoryName(folder));
+    }
+
+    [Fact]
+    public void TheStartsFolderOfARelativeStatePathIsInTheCurrentFolder()
+    {
+        Assert.Equal(Path.Combine(Directory.GetCurrentDirectory(), "Starts"), CodexStartLauncher.StartsFolderBeside("state.json"));
+    }
+
     private static string WriteFile(string folder, string name, DateTimeOffset written)
     {
         Directory.CreateDirectory(folder);

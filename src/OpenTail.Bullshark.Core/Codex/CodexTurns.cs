@@ -1,4 +1,5 @@
 using OpenTail.Bullshark.Core.Activity;
+using OpenTail.Bullshark.Core.Providers;
 
 namespace OpenTail.Bullshark.Core.Codex;
 
@@ -23,5 +24,21 @@ public static class CodexTurns
             turns.Add(new TranscriptLine(turns.Count + 1, message.Label, message.Time, message.Text, Collapsed: false));
         }
         return turns;
+    }
+
+    /// <summary>
+    /// The messages of one session, read from its rollout (step R1b). The rollout is found by its id (<see cref="CodexTranscriptReader"/>), read
+    /// line by line, and its overlong lines are left out. The id is checked first, so an id that could widen the search throws
+    /// <see cref="ArgumentException"/>; a session with no rollout throws <see cref="FileNotFoundException"/>. The file is read on the calling thread:
+    /// callers run it off the UI thread.
+    /// </summary>
+    public static List<TranscriptLine> ReadSession(ProviderPaths paths, string sessionId, CancellationToken ct)
+    {
+        CodexTranscriptReader.RequireSafeId(sessionId);
+        var path = new CodexTranscriptReader(paths).FindRollout(sessionId)
+            ?? throw new FileNotFoundException($"No rollout for session {sessionId}.", sessionId + ".jsonl");
+        using var reader = RolloutReader.Open(path);
+        var lines = RolloutReader.Lines(reader, ct).Where(line => !line.Overlong).Select(line => line.Text);
+        return FromRollout(lines);
     }
 }

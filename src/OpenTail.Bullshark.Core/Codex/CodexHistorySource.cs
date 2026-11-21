@@ -267,8 +267,13 @@ public sealed class CodexHistorySource(ProviderPaths paths) : IHistorySource
                     var role = RolloutReader.StringOf(payload, "role");
                     if (role == "user")
                     {
-                        UserMessages++;
-                        FirstUserText ??= MessageText(payload);
+                        // Injected context (R-D5) is not the owner's message: it is left out of the count and of the title, as the summary and the
+                        // start text leave it out. A user record with no text is not counted either.
+                        if (MessageText(payload) is { } text && !CodexMessages.IsInjectedContext(text))
+                        {
+                            UserMessages++;
+                            FirstUserText ??= text;
+                        }
                     }
                     else if (role == "assistant")
                     {
