@@ -148,7 +148,7 @@ Probes: a net11.0 console app in the session scratchpad (structure only: line co
   1. Closing a Codex tab closes its terminal without asking. Whether the Codex process ends with the terminal is not verified; the window's close also disposes every terminal. Keep, or ask first?
   2. When the last tab closes, the window still opens the Claude setup page as its empty-pane fallback, under Codex too. It starts nothing until Start is pressed. Hide it under Codex, or keep it?
   3. Insights and Settings still show Claude data under Codex. Hide them, or label them?
-  4. A folder whose path ends in a backslash (a drive root such as `C:\`) cannot start a Codex session: the backslash would escape the closing quote, so the command is refused. A fix needs a different quoting rule; not done.
+  4. A folder whose path ends in a backslash (a drive root such as `C:`) cannot start a Codex session: the backslash would escape the closing quote, so the command is refused. A fix needs a different quoting rule; not done.
   5. The app-side tab layout is written as `claude:<id>` (A5); bare ids are still read. Codex tabs are not restored after a restart (C-D5).
 
 ## Risks
