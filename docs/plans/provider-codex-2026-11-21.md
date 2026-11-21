@@ -245,6 +245,8 @@ Probes: a net11.0 console app in the session scratchpad (structure only: line co
 - **Counts:** Core.Tests 2408 on net11.0 and 2395 on net10.0; App.Tests 106 on each target; all exit 0. The one App build warning is the existing CS8601 at `MainWindow.xaml.cs:23`.
 - **Not run:** a real `codex` anywhere. The summary and the new-session launch were tested with stand-ins only.
 - **Closing (earlier open item, now closed by reading the code):** closing the dialog cancels a running summary. `CodexResumePrompt.OnClosed` cancels the request, the callback gets the token, and `ProcessCliRunner` kills the process tree on cancel. The dialog is modal, so the window cannot close first.
+- **Owner, 2026-11-21:** "The restart from summary worked for real." (A real new session started from a summary, through the launcher.)
+- **Owner's screen request, 2026-11-21:** Make Summary on the right of its own row, in yellow. Not committed: the owner said the colour was bad, and the change was reverted. The button keeps its committed look. The colour is still open, waiting for the owner's choice.
 - **Owner checks:** a real summary; a real new session (a model turn); whether `codex resume <id>` restores the chat; whether real transcripts contain the injected-context prefixes (R-D5 is still an assumption).
 
 ## Risks
