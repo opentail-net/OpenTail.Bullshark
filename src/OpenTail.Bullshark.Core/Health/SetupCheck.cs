@@ -329,8 +329,11 @@ public static class SetupCheck
     /// <summary>True when a name is found as a file in one of the PATH folders, with a Windows program extension when it has none.</summary>
     private static bool OnPath(string program, string pathVariable) => FindOnPath(program, pathVariable) is not null;
 
-    /// <summary>The full path of the first PATH folder holding the name (with a program extension when it has none), or null.</summary>
-    private static string? FindOnPath(string program, string pathVariable)
+    /// <summary>
+    /// The full path of the first PATH folder holding the name, or null. A name with no extension is tried with
+    /// <paramref name="programExtensions"/> (for example <c>.exe</c>), or with PATHEXT when none is given (the Claude check).
+    /// </summary>
+    internal static string? FindOnPath(string program, string pathVariable, IEnumerable<string>? programExtensions = null)
     {
         var names = new List<string>();
         if (Path.HasExtension(program))
@@ -339,7 +342,7 @@ public static class SetupCheck
         }
         else
         {
-            var extensions = (Environment.GetEnvironmentVariable("PATHEXT") ?? ".COM;.EXE;.BAT;.CMD")
+            var extensions = programExtensions ?? (Environment.GetEnvironmentVariable("PATHEXT") ?? ".COM;.EXE;.BAT;.CMD")
                 .Split(';', StringSplitOptions.RemoveEmptyEntries);
             foreach (var extension in extensions) names.Add(program + extension);
         }
@@ -387,6 +390,6 @@ public static class SetupCheck
         return name.Length == 0 ? projectPath : name;
     }
 
-    private static string Clip(string text, int max = MaxDetail) =>
+    internal static string Clip(string text, int max = MaxDetail) =>
         text.Length <= max ? text : text[..max] + "…";
 }

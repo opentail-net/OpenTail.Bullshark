@@ -51,6 +51,11 @@ public sealed class SessionLibrary
 {
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
 
+    /// <summary>Process-wide record of the one-time migration (C-D8): the copy made for each file, and the files whose failure was logged. Guarded by its own lock.</summary>
+    private static readonly object MigrationRecords = new();
+    private static readonly Dictionary<string, string> BackupsThisRun = new(StringComparer.Ordinal);
+    private static readonly HashSet<string> FailuresLogged = new(StringComparer.Ordinal);
+
     private readonly string _path;
     private readonly Action<string> _log;
     private bool _nullEntryLogged;
@@ -156,8 +161,11 @@ public sealed class SessionLibrary
     /// </summary>
     /// <remarks>
     /// A file whose keys are bare session ids (written before stage A5) is migrated here, under the lock its caller holds (owner decision O3,
-    /// no downgrade). First a copy of the file is written beside it, named <c>library.json.bak-yyyyMMdd-HHmmss</c> (the copy is made once, and an older
-    /// copy is never overwritten), then every key is written as <c>claude:&lt;id&gt;</c>, atomically. A file already in the new format is not written.
+    /// no downgrade). First a copy of the file is written beside it, named <c>library.json.bak-yyyyMMdd-HHmmss</c> (an older copy is never
+    /// overwritten), then every key is written as <c>claude:&lt;id&gt;</c>, atomically. A file already in the new format is not written.
+    /// If the copy or the write fails with an <see cref="IOException"/> or <see cref="UnauthorizedAccessException"/> (a read-only file, for
+    /// example), the read does not throw: it logs one line for the file (once per process) and returns the entries as they are, with the bare
+    /// keys read as Claude's (C-D8). The next read tries the write again, and a backup made in this process is not made again.
     /// </remarks>
     private Dictionary<SessionKey, LibraryEntry> Read()
     {
@@ -200,26 +208,81 @@ public sealed class SessionLibrary
             entries[SessionKey.Parse(pair.Key)] = pair.Value;
         }
 
-        if (hasBareKeys)
+        if (hasBareKeys) MigrateInPlace(entries);
+        return entries;
+    }
+
+    /// <summary>
+    /// Keeps a copy of the file, then writes the entries in the new format (C-D8). The copy is made once per process: a backup this process
+    /// made and that still exists is reused, so a file that cannot be written does not gain a new copy on every read. A failure is logged
+    /// once per process and the entries are returned as they are (the caller keeps them in memory).
+    /// </summary>
+    private void MigrateInPlace(Dictionary<SessionKey, LibraryEntry> entries)
+    {
+        var key = MigrationKey(_path);
+        try
         {
-            // Silent on purpose: the copy beside the file is the record of the change (the one log line of a null entry stays the only one).
-            BackUpBeforeMigration();
+            var backup = BackupMadeThisRun(key);
+            if (backup is null || !File.Exists(backup))
+            {
+                backup = BackUpBeforeMigration();
+                RecordBackup(key, backup);
+            }
+            // A successful migration logs nothing: the copy beside the file is the record of the change.
             Write(entries);
         }
-        return entries;
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            if (LogFailureOnce(key)) _log($"library: could not migrate ({_path}): {ex.Message}; marks are shown as they are on disk");
+        }
     }
 
     /// <summary>
     /// Copies the library as it is now, to a name that does not exist yet: <c>library.json.bak-yyyyMMdd-HHmmss</c>, with <c>-2</c>, <c>-3</c> and so on
     /// added when that name is taken. A copy is never overwritten and the original is never moved. A copy that fails throws, and nothing is migrated.
     /// </summary>
-    private void BackUpBeforeMigration()
+    /// <returns>The full path of the copy.</returns>
+    private string BackUpBeforeMigration()
     {
         var directory = Path.GetDirectoryName(Path.GetFullPath(_path))!;
         var stem = Path.GetFileName(_path) + ".bak-" + DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
         var target = Path.Combine(directory, stem);
         for (var n = 2; File.Exists(target); n++) target = Path.Combine(directory, stem + "-" + n.ToString(CultureInfo.InvariantCulture));
         File.Copy(_path, target, overwrite: false);
+        return target;
+    }
+
+    /// <summary>The key of a library file in the migration records: its full path, case ignored on Windows (as <see cref="FileLock"/> does).</summary>
+    private static string MigrationKey(string path)
+    {
+        var full = Path.GetFullPath(path);
+        return OperatingSystem.IsWindows() ? full.ToUpperInvariant() : full;
+    }
+
+    /// <summary>The copy this process made for the file, or null. The record is per process, so a new process makes its own copy.</summary>
+    private static string? BackupMadeThisRun(string key)
+    {
+        lock (MigrationRecords)
+        {
+            return BackupsThisRun.TryGetValue(key, out var backup) ? backup : null;
+        }
+    }
+
+    private static void RecordBackup(string key, string backup)
+    {
+        lock (MigrationRecords)
+        {
+            BackupsThisRun[key] = backup;
+        }
+    }
+
+    /// <summary>True the first time a failure is seen for the file in this process: the failure is logged once, not on every read.</summary>
+    private static bool LogFailureOnce(string key)
+    {
+        lock (MigrationRecords)
+        {
+            return FailuresLogged.Add(key);
+        }
     }
 
     private void Write(IReadOnlyDictionary<SessionKey, LibraryEntry> entries)

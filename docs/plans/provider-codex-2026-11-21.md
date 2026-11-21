@@ -82,12 +82,12 @@ Stage A item A1 produces `provider-seam-map-2026-11-21.md`: one row per `Claude*
 - [ ] B4 Decide from B1-B6, record in this plan, and amend A2 and C (neutral summary, identity, interfaces). Stop here if the dependency cost is not acceptable.
 
 ### Stage C: Codex provider, read-only + terminal launch
-- [ ] C1 `CodexHistorySource` (list, digest, skip bad files, cache keyed by stat, as round 10-12).
-- [ ] C2 `CodexTranscriptReader` (view, find) and search; label "Codex only".
+- [x] C1 `CodexHistorySource` (list, digest, skip bad files, cache keyed by stat, as round 10-12). *Core built 2026-11-21 (coder):* summaries from rollouts and `session_index.jsonl`; skipped files and lines counted; no cache (C-D3). Tests: `CodexHistorySourceTests` (4, both targets) + `CodexHistorySourceReadingTests` (6, net11.0).
+- [x] C2 `CodexTranscriptReader` (view, find) and search; label "Codex only". *Core part built 2026-11-21 (coder):* `ReadPageAsync` with clamping and refused ids; no find, no search and no App view (C-D4 leaves them open). Tests: `CodexTranscriptReaderTests` (13 cases on both targets; the compressed case pages on net11.0 and is refused on net10.0).
 - [ ] C3 `CodexTerminalOpener`: a new tab runs `codex -C <dir> [-m ..]`; resume runs `codex resume <id>`. The tab is **owned by the window and tied to a thread id only if B found a reliable capture** (R-1). **No matching by cwd and time**, and no live-row claim otherwise. No supervisor, no `--bg`.
 - [ ] C4 Dropdown at the top of the rail (name, remembered in ui.json, default Claude). Hidden features per flags; the empty states say why ("Codex has no background sessions").
-- [ ] C5 Setup check: `codex` on PATH and version, with the same wording rules as the Claude check.
-- [ ] C6 Tests: reader on synthetic fixtures, drift (unknown line type -> skipped, not fatal), dropdown swap keeps tabs, keys.
+- [x] C5 Setup check: `codex` on PATH and version, with the same wording rules as the Claude check. *Core built 2026-11-21 (coder):* `codex.exe`/`.cmd`/`.ps1` on PATH; the version is not read (out of scope: it would start codex on each refresh). Tests: `CodexSetupCheckTests` (4). The C-D7 "shown only when Codex is selected" is App work.
+- [x] C6 Tests: reader on synthetic fixtures, drift (unknown line type -> skipped, not fatal), dropdown swap keeps tabs, keys. *Core part built 2026-11-21 (coder):* Codex fixtures (a)-(h) in `tests/.../Codex/`; library tolerance (i) in `Library/LibraryReadOnlyMigrationTests` (3, C-D8). Counts for the Core part: 30 new on net11.0, 24 on net10.0. The dropdown and the App tests are not in this part.
 - Check: tests, then screenshots with a scratch state; one real run by the owner (Codex is installed here, so the owner can open a real history).
 
 ### Stage D: Codex extras (each optional, own decision)
