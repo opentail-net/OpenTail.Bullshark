@@ -15,6 +15,46 @@
             <Setter Property="Padding" Value="20,7" />
             <Setter Property="Margin" Value="0,0,8,0" />
         </Style>
+        <!-- Make summary: the Start button's shape, hover and disabled look, in the attention yellow (the palette's Attention colours, one yellow in both themes). -->
+        <Style x:Key="YellowGo" TargetType="Button" BasedOn="{StaticResource GoButton}">
+            <Setter Property="Background" Value="{DynamicResource PromptAttention}" />
+            <Setter Property="Foreground" Value="{DynamicResource PromptAttentionText}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource PromptAttention}" />
+            <Setter Property="Padding" Value="14,7" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid>
+                            <Border x:Name="Ring" CornerRadius="9" BorderThickness="2" BorderBrush="Transparent" Margin="-2" />
+                            <Border x:Name="Frame" Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="{DynamicResource UiRadius}" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                  TextElement.Foreground="{TemplateBinding Foreground}" />
+                            </Border>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Frame" Property="Background" Value="{DynamicResource PromptAttentionHover}" />
+                                <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource PromptAttentionHover}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Frame" Property="Background" Value="{DynamicResource PromptAttentionPressed}" />
+                                <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource PromptAttentionPressed}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Ring" Property="BorderBrush" Value="{DynamicResource UiAccent}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45" />
+                                <Setter Property="Cursor" Value="Arrow" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
 
         <Style TargetType="RadioButton">
             <Setter Property="Foreground" Value="{DynamicResource PromptText}" />
@@ -113,7 +153,7 @@
         </StackPanel>
 
         <TextBlock x:Name="CostText" Style="{StaticResource Muted}" Margin="0,14,0,0" />
-        <Button x:Name="MakeSummaryButton" Content="Make summary" Click="MakeSummary_Click" HorizontalAlignment="Left" Margin="0,8,0,0"
+        <Button x:Name="MakeSummaryButton" Content="Make summary" Click="MakeSummary_Click" HorizontalAlignment="Right" Margin="0,8,0,0" Style="{StaticResource YellowGo}"
                 ToolTip="Makes the summary now (one Codex call) and keeps it for Start. Nothing else makes it." AutomationProperties.Name="Make summary" />
 
         <!-- The start text, shown before anything starts. Hidden until a text is made, and hidden again when the choice changes. -->

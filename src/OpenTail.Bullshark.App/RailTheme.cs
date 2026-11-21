@@ -69,6 +69,18 @@ public sealed record RailPalette(string Panel, string Background, string Text, s
 
     public string HighlightText => IsLight ? "#101418" : "#FFFFFF";
 
+    /// <summary>
+    /// The attention yellow of the Codex resume screen's Make summary button (owner's request, 2026-11-21). One yellow in both themes, with dark text, so the
+    /// button reads on the light and the dark panels alike. Its hover and pressed shades are slightly lighter and darker.
+    /// </summary>
+    public string Attention => "#EDB407";
+
+    public string AttentionHover => "#F5C42A";
+
+    public string AttentionPressed => "#D49F06";
+
+    public string AttentionText => "#1A1A1A";
+
     /// <summary>The warning colour: a label to check (the Changes tab's big-deletion flags, features batch G2). The setup check's warning colours.</summary>
     /// <summary>Light 4.85:1 on the light panels (was 4.34:1 at #9A6B00, under the 4.5:1 for small text). Dark 9.5:1 on the background.</summary>
     public string Warn => IsLight ? "#8A5F00" : "#E0B341";

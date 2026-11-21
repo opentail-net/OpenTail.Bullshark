@@ -75,6 +75,10 @@ public partial class CodexResumePrompt : Window
         Resources["PromptGoHover"] = RailPalette.Brush(palette.GoHover);
         Resources["PromptGoPressed"] = RailPalette.Brush(palette.GoPressed);
         Resources["PromptGoText"] = RailPalette.Brush(palette.GoText);
+        Resources["PromptAttention"] = RailPalette.Brush(palette.Attention);
+        Resources["PromptAttentionHover"] = RailPalette.Brush(palette.AttentionHover);
+        Resources["PromptAttentionPressed"] = RailPalette.Brush(palette.AttentionPressed);
+        Resources["PromptAttentionText"] = RailPalette.Brush(palette.AttentionText);
 
         Heading.Text = heading;
         Facts.Text = facts;

@@ -170,6 +170,7 @@ $screens = @(
     # entry "Codex's default" shows with its note. The App's log must say the list was read with no models, and the reason's type.
     @{ Name = 'codex-resume-model-dark'; Theme = 'Dark'; Options = @('--codex-resume'); Model = $true },
     @{ Name = 'codex-resume-summary-light'; Theme = 'Light'; Options = @('--codex-resume', 'summary'); Summary = $true },
+    @{ Name = 'codex-resume-summary-dark'; Theme = 'Dark'; Options = @('--codex-resume', 'summary'); Summary = $true },
     # The Codex rail grouped by tag (--rail-group tag): two sessions, the first with two tags, so it is under both tag groups.
     @{ Name = 'codex-rail-tag-dark'; Theme = 'Dark'; Options = @('--rail-group', 'tag'); Tags = $true },
     # The Codex rail on its Archived view (--codex-view archived, parity P11): the one session is archived, so the view lists it in its folder.
@@ -214,8 +215,11 @@ try {
             }
         }
         $png = Join-Path $shots "$name.png"
+        # The resume screen opens after the history is read, and a summary may be made first: it is taken later than the others (the picture
+        # can otherwise be taken before the dialog exists, which left the picture unwritten).
+        $shotAfter = if ($screen.Options -contains '--codex-resume') { '15' } else { '9' }
         $argList = @('--state', "$state\state.json", '--no-pass', '--workdir', $repo, '--claude-home', $claudeHome,
-            '--shot', $png, '--shot-after', '9') + $screen.Options
+            '--shot', $png, '--shot-after', $shotAfter) + $screen.Options
         $process = Start-Process -FilePath $Exe -ArgumentList $argList -PassThru -WorkingDirectory $repo
         if (-not $process.WaitForExit(60000)) {
             Stop-Process -Id $process.Id -Force

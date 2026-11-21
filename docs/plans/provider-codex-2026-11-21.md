@@ -246,7 +246,7 @@ Probes: a net11.0 console app in the session scratchpad (structure only: line co
 - **Not run:** a real `codex` anywhere. The summary and the new-session launch were tested with stand-ins only.
 - **Closing (earlier open item, now closed by reading the code):** closing the dialog cancels a running summary. `CodexResumePrompt.OnClosed` cancels the request, the callback gets the token, and `ProcessCliRunner` kills the process tree on cancel. The dialog is modal, so the window cannot close first.
 - **Owner, 2026-11-21:** "The restart from summary worked for real." (A real new session started from a summary, through the launcher.)
-- **Owner's screen request, 2026-11-21:** Make Summary on the right of its own row, in yellow. Not committed: the owner said the colour was bad, and the change was reverted. The button keeps its committed look. The colour is still open, waiting for the owner's choice.
+- **Owner's screen request, 2026-11-21:** Make Summary on the right of its own row, in yellow. Two earlier yellows were rejected by the owner ("not great", then "pants"). The final one is the gold of the owner's Claude Code "auto mode on" text, sampled from the owner's image (`#EDB407`): palette `Attention` (with hover, pressed and text shades in `RailTheme.cs`), the Start button's shape (`YellowGo`), dark text. The owner said it was "better on white". Screens pass in light and dark (`codex-resume-summary-light`, `codex-resume-summary-dark`). The button keeps its row; nothing else moved.
 - **Owner checks:** a real summary; a real new session (a model turn); whether `codex resume <id>` restores the chat; whether real transcripts contain the injected-context prefixes (R-D5 is still an assumption).
 
 ## Risks
