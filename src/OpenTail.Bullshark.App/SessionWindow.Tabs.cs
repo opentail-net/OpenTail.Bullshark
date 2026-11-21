@@ -539,8 +539,8 @@ public partial class SessionWindow
             content.Children.Add(close);
 
             // A session's colour is a bar along the top of its tab (D-L11). Tabs without one keep no edge.
-            // The marks are Claude's library: a Codex tab has none.
-            var edge = (tab.Kind is (TabKind.Session or TabKind.Transcript)) && tab.Provider == ProviderId.Claude ? TabEdgeBrush(tab.Key) : null;
+            // The colour is the tab's provider's mark (D1): Claude's for a Claude tab, the codex: entry for a Codex tab.
+            var edge = tab.Kind is (TabKind.Session or TabKind.Transcript) ? TabEdgeBrush(tab.Provider, tab.Key) : null;
             var border = new Border
             {
                 // The edge keeps its 2 px whether or not the tab has a colour, so coloured tabs are not taller (D-L11).

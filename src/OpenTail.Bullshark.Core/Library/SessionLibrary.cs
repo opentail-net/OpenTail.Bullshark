@@ -43,7 +43,8 @@ public sealed record LibraryEntry(
 
 /// <summary>
 /// The owner's marks on past sessions, kept in <c>library.json</c> beside the state file, keyed by <see cref="SessionKey"/> text
-/// (<c>claude:&lt;id&gt;</c>; D-L2, R-3). <see cref="Load()"/> and <see cref="Update"/> are Claude's bare-id view of the same file. It follows
+/// (<c>claude:&lt;id&gt;</c>; D-L2, R-3). <see cref="Load()"/> and <see cref="Update"/> are Claude's bare-id view of the same file; <see cref="ProviderView"/>
+/// and <see cref="UpdateProvider"/> give the same view and write for any provider (D1, <c>codex:&lt;id&gt;</c>). It follows
 /// <see cref="RunStore"/>: every change is read again under the file lock and written atomically. A file that cannot be read throws
 /// <see cref="StoreUnreadableException"/> and is not overwritten. The rail shows without the marks in that case (D-L3).
 /// </summary>
@@ -79,7 +80,7 @@ public sealed class SessionLibrary
     public IReadOnlyDictionary<string, LibraryEntry> Load() => Load(FileLock.DefaultWait);
 
     /// <summary>The same Claude view, waiting at most <paramref name="wait"/> for the lock (reliability batch R7). A lock not free in time throws <see cref="TimeoutException"/>.</summary>
-    public IReadOnlyDictionary<string, LibraryEntry> Load(TimeSpan wait) => ClaudeView(LoadAll(wait));
+    public IReadOnlyDictionary<string, LibraryEntry> Load(TimeSpan wait) => ProviderView(LoadAll(wait), ProviderId.Claude);
 
     /// <summary>All entries by their key, for every provider. Takes the lock, and migrates a file with bare keys first (see <see cref="Read"/>).</summary>
     public IReadOnlyDictionary<SessionKey, LibraryEntry> LoadAll(TimeSpan wait)
@@ -89,15 +90,24 @@ public sealed class SessionLibrary
     }
 
     /// <summary>
-    /// Applies a change to the Claude entries, under the file lock. The file is read again inside the lock first, so a change another process
-    /// made is kept. Other providers' entries are kept as they are. Entries left with nothing set are removed before the write.
+    /// Applies a change to the Claude entries, under the file lock: the Claude view of <see cref="UpdateProvider"/>. Other providers' entries
+    /// are kept as they are.
     /// </summary>
-    public void Update(Action<Dictionary<string, LibraryEntry>> change) => UpdateAll(entries =>
+    public void Update(Action<Dictionary<string, LibraryEntry>> change) => UpdateProvider(ProviderId.Claude, change);
+
+    /// <summary>
+    /// Applies a change to one provider's entries, under the file lock (D1: Codex's marks use this with <see cref="ProviderId.Codex"/>). The file is
+    /// read again inside the lock first, so a change another process made is kept. The entries of the other providers are kept as they are, and a
+    /// session id under two providers is two entries. Entries left with nothing set are removed before the write.
+    /// </summary>
+    /// <param name="provider">The provider whose view is changed.</param>
+    /// <param name="change">Changes the view (a copy keyed by session id); the view then replaces that provider's entries.</param>
+    public void UpdateProvider(ProviderId provider, Action<Dictionary<string, LibraryEntry>> change) => UpdateAll(entries =>
     {
-        var claude = ClaudeView(entries);
-        change(claude);
-        foreach (var key in entries.Keys.Where(key => key.Provider == ProviderId.Claude).ToList()) entries.Remove(key);
-        foreach (var pair in claude) entries[new SessionKey(ProviderId.Claude, pair.Key)] = pair.Value;
+        var view = ProviderView(entries, provider);
+        change(view);
+        foreach (var key in entries.Keys.Where(key => key.Provider == provider).ToList()) entries.Remove(key);
+        foreach (var pair in view) entries[new SessionKey(provider, pair.Key)] = pair.Value;
     });
 
     /// <summary>
@@ -113,13 +123,17 @@ public sealed class SessionLibrary
         Write(entries);
     }
 
-    /// <summary>The Claude entries of a keyed view, by session id (a copy: a change to it is not made to the source).</summary>
-    private static Dictionary<string, LibraryEntry> ClaudeView(IReadOnlyDictionary<SessionKey, LibraryEntry> entries)
+    /// <summary>
+    /// One provider's entries of a keyed view, by session id: the bare-id view that the rail's rows and the Core helpers
+    /// (<see cref="MagicCandidates"/>, <see cref="TagIndex"/>) take. A copy: a change to it is not made to the source. Other providers' entries
+    /// are left out, so the same session id under two providers gives two views, each with its own entry.
+    /// </summary>
+    public static Dictionary<string, LibraryEntry> ProviderView(IReadOnlyDictionary<SessionKey, LibraryEntry> entries, ProviderId provider)
     {
         var view = new Dictionary<string, LibraryEntry>(StringComparer.Ordinal);
         foreach (var pair in entries)
         {
-            if (pair.Key.Provider == ProviderId.Claude) view[pair.Key.SessionId] = pair.Value;
+            if (pair.Key.Provider == provider) view[pair.Key.SessionId] = pair.Value;
         }
         return view;
     }

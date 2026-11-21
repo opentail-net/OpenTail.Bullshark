@@ -18,8 +18,14 @@ public partial class SessionWindow
 {
     private SessionLibrary _library = null!;
 
-    /// <summary>The marks as they were last read. Replaced, never edited in place.</summary>
+    /// <summary>
+    /// Claude's marks as they were last read, by session id. Replaced, never edited in place. Every Claude path reads these, whatever the
+    /// dropdown shows: the background ones (limit wake, magic rename, the Claude tab titles) are not Codex's.
+    /// </summary>
     private Dictionary<string, LibraryEntry> _marks = new(StringComparer.Ordinal);
+
+    /// <summary>Codex's marks as they were last read, by session id: the codex: entries of the same file (D1). The Codex rows read these.</summary>
+    private Dictionary<string, LibraryEntry> _codexMarks = new(StringComparer.Ordinal);
 
     /// <summary>Why library.json cannot be read, or null when it can (D-L3). While it is set, no mark is shown and nothing is written.</summary>
     private string? _libraryError;
@@ -40,7 +46,10 @@ public partial class SessionWindow
         try
         {
             // The UI thread waits briefly for the lock (reliability batch R7). A busy file keeps the marks shown until the next read.
-            _marks = new Dictionary<string, LibraryEntry>(_library.Load(UiFile.UiWait), StringComparer.Ordinal);
+            // One read gives both providers' views (D1): Claude's, as before, and Codex's for the Codex rows.
+            var all = _library.LoadAll(UiFile.UiWait);
+            _marks = SessionLibrary.ProviderView(all, ProviderId.Claude);
+            _codexMarks = SessionLibrary.ProviderView(all, ProviderId.Codex);
             _libraryError = null;
             ReadBusy.Note(false);
         }
@@ -51,6 +60,7 @@ public partial class SessionWindow
         catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
             _marks = new Dictionary<string, LibraryEntry>(StringComparer.Ordinal);
+            _codexMarks = new Dictionary<string, LibraryEntry>(StringComparer.Ordinal);
             if (_libraryError is null)
             {
                 AppLog.Write($"library not read: {ex.Message}");
@@ -61,6 +71,12 @@ public partial class SessionWindow
     }
 
     private LibraryEntry? MarkOf(string sessionId) => _marks.TryGetValue(sessionId, out var entry) ? entry : null;
+
+    /// <summary>The marks of one provider as last read (D1): Codex's for a Codex row, Claude's for everything else.</summary>
+    private Dictionary<string, LibraryEntry> MarksOf(ProviderId provider) => provider == ProviderId.Codex ? _codexMarks : _marks;
+
+    /// <summary>A session's mark under one provider's key, or null (D1).</summary>
+    private LibraryEntry? MarkOf(ProviderId provider, string sessionId) => MarksOf(provider).TryGetValue(sessionId, out var entry) ? entry : null;
 
     /// <summary>A past session's title as the owner sees it (D-L1): the owner's name when there is one, else the transcript's title.</summary>
     private string DisplayTitle(SessionDigest digest)
@@ -88,18 +104,33 @@ public partial class SessionWindow
     /// <summary>Keeps the tab titles in step with the owner's names, which can change while a tab is open. Reads the records once.</summary>
     private void RefreshTabTitles()
     {
-        // A Codex tab keeps the title it was opened with: its session is not in the Claude records (C4).
+        // The Claude tabs follow the Claude marks and records, as before (C4).
         var tabs = _tabs.Where(t => t.Provider == ProviderId.Claude && t.Kind is (TabKind.Session or TabKind.Transcript)).ToList();
-        if (tabs.Count == 0) return;
-        var records = ReadRecords().Values.ToList();
-        foreach (var tab in tabs) tab.Title = TitleOfSessionNow(tab.Key, records);
+        if (tabs.Count > 0)
+        {
+            var records = ReadRecords().Values.ToList();
+            foreach (var tab in tabs) tab.Title = TitleOfSessionNow(tab.Key, records);
+        }
+        // A Codex tab follows its history row's title (the owner's name, else the Codex title) while the session is in the history (D1). A tab
+        // of a new session keeps its title until the session is listed.
+        foreach (var tab in _tabs.Where(t => t.Provider == ProviderId.Codex && t.Kind == TabKind.Session).ToList())
+        {
+            if (_codexSessions.FirstOrDefault(s => SameId(s.Key.SessionId, tab.Key)) is { } session)
+                tab.Title = CodexRowTitle(MarkOf(ProviderId.Codex, tab.Key)?.Name, session);
+        }
     }
 
     /// <summary>
     /// Changes one session's mark and writes the file under its lock. A file that cannot be read is not written: the status line
     /// says so, and the marks stay as they were (D-L3). Returns true when the file was written.
     /// </summary>
-    private bool ChangeMark(string sessionId, Func<LibraryEntry, LibraryEntry> change)
+    private bool ChangeMark(string sessionId, Func<LibraryEntry, LibraryEntry> change) => ChangeMarkOf(ProviderId.Claude, sessionId, change);
+
+    /// <summary>
+    /// <see cref="ChangeMark"/> under one provider's key (D1): a Codex row writes its codex: entry, a Claude row writes Claude's. The same checks and
+    /// the same refresh apply to both.
+    /// </summary>
+    private bool ChangeMarkOf(ProviderId provider, string sessionId, Func<LibraryEntry, LibraryEntry> change)
     {
         if (_libraryError is not null)
         {
@@ -108,11 +139,7 @@ public partial class SessionWindow
         }
         try
         {
-            _library.Update(entries =>
-            {
-                var current = entries.TryGetValue(sessionId, out var found) ? found : new LibraryEntry();
-                entries[sessionId] = change(current);
-            });
+            ApplyMark(_library, provider, sessionId, change);
         }
         catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
@@ -126,6 +153,17 @@ public partial class SessionWindow
         RefreshTabTitles();
         return true;
     }
+
+    /// <summary>
+    /// The one write of a mark (D1): under the file lock, one session's entry under one provider is changed. Static, so a test can run it on a
+    /// temporary library. A change that leaves the entry empty removes it (<see cref="SessionLibrary.UpdateProvider"/>).
+    /// </summary>
+    internal static void ApplyMark(SessionLibrary library, ProviderId provider, string sessionId, Func<LibraryEntry, LibraryEntry> change) =>
+        library.UpdateProvider(provider, entries =>
+        {
+            var current = entries.TryGetValue(sessionId, out var found) ? found : new LibraryEntry();
+            entries[sessionId] = change(current);
+        });
 
     public void SetPinned(string sessionId, bool pinned) => ChangeMark(sessionId, mark => mark with { Pinned = pinned });
 
@@ -161,13 +199,16 @@ public partial class SessionWindow
         ChangeMark(sessionId, mark => mark with { Colour = string.IsNullOrEmpty(colour) ? null : colour });
 
     /// <summary>The name, tags, note, colour and plan file from the edit dialog, in one write.</summary>
-    public void SetDetails(string sessionId, LibraryEntry details) => ChangeMark(sessionId, mark => WithName(mark, details.Name) with
+    public void SetDetails(string sessionId, LibraryEntry details) => ChangeMark(sessionId, mark => WithDetails(mark, details));
+
+    /// <summary>The edit dialog's fields set on a mark. Shared by Claude's rows and Codex's (D1).</summary>
+    private static LibraryEntry WithDetails(LibraryEntry mark, LibraryEntry details) => WithName(mark, details.Name) with
     {
         Tags = details.Tags ?? [],
         Note = string.IsNullOrWhiteSpace(details.Note) ? null : details.Note.Trim(),
         Colour = string.IsNullOrEmpty(details.Colour) ? null : details.Colour,
         PlanFile = PlanProgress.PathOf(details.PlanFile),
-    });
+    };
 
     /// <summary>
     /// The plan counts of a session's plan file, read through the cache, or null when the session has no plan file or it cannot be read (plan
@@ -242,10 +283,13 @@ public partial class SessionWindow
         };
     }
 
-    /// <summary>The brush of a session's colour on the tab's edge, or null for none.</summary>
-    private Brush? TabEdgeBrush(string sessionId)
+    /// <summary>The brush of a session's colour on the tab's edge, or null for none. Claude's colour.</summary>
+    private Brush? TabEdgeBrush(string sessionId) => TabEdgeBrush(ProviderId.Claude, sessionId);
+
+    /// <summary>The brush of a session's colour under one provider's key, on the tab's edge (D1), or null for none.</summary>
+    private Brush? TabEdgeBrush(ProviderId provider, string sessionId)
     {
-        var hex = Palette.ColourHex(MarkOf(sessionId)?.Colour);
+        var hex = Palette.ColourHex(MarkOf(provider, sessionId)?.Colour);
         return hex is null ? null : RailPalette.Brush(hex);
     }
 
@@ -271,17 +315,22 @@ public partial class SessionWindow
     }
 
     /// <summary>Opens the edit dialog and writes what it returns in one change. Nothing is written when it is cancelled.</summary>
-    private void EditMark(string sessionId, string fallbackTitle)
+    private void EditMark(string sessionId, string fallbackTitle) => EditMarkOf(ProviderId.Claude, sessionId, fallbackTitle);
+
+    /// <summary>
+    /// <see cref="EditMark"/> for one provider's row (D1): the dialog shows that provider's mark, and its result is written under that provider's key.
+    /// </summary>
+    private void EditMarkOf(ProviderId provider, string sessionId, string fallbackTitle)
     {
         if (_libraryError is not null)
         {
             SetStatus($"Not edited: the library cannot be read ({_libraryError}).");
             return;
         }
-        var mark = MarkOf(sessionId) ?? new LibraryEntry();
+        var mark = MarkOf(provider, sessionId) ?? new LibraryEntry();
         var dialog = new LibraryEditDialog(mark, fallbackTitle, Palette) { Owner = this };
         if (dialog.ShowDialog() != true || dialog.Result is not { } details) return;
-        SetDetails(sessionId, details);
+        ChangeMarkOf(provider, sessionId, current => WithDetails(current, details));
     }
 
     private ContextMenu StyledMenu()

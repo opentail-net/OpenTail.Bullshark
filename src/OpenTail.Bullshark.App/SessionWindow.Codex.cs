@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using OpenTail.Bullshark.Core.Codex;
+using OpenTail.Bullshark.Core.Library;
 using OpenTail.Bullshark.Core.Providers;
 using OpenTail.Bullshark.Core.Supervisor;
 using Wpf.Ui.Terminal;
@@ -141,6 +142,7 @@ public partial class SessionWindow
             else
             {
                 foreach (var folder in CodexFolders()) section.Items.Add(CodexFolderItem(folder));
+                if (CodexArchived() is { Count: > 0 } archived) section.Items.Add(CodexArchivedItem(archived));
             }
         }
         finally
@@ -153,13 +155,34 @@ public partial class SessionWindow
     /// <summary>A folder of Codex sessions: its working folder, or "" for the sessions whose rollouts name none.</summary>
     private sealed record CodexFolder(string Folder, IReadOnlyList<SessionSummary> Sessions);
 
-    /// <summary>The Codex folders, newest first. The sessions in each are newest first too.</summary>
+    /// <summary>The Codex folders, newest first. The sessions in each are newest first too. Archived sessions are left out: they are in the Archived group.</summary>
     private IReadOnlyList<CodexFolder> CodexFolders() =>
         _codexSessions
+            .Where(session => !IsCodexArchived(session))
             .GroupBy(session => session.Folder ?? string.Empty, StringComparer.OrdinalIgnoreCase)
             .Select(group => new CodexFolder(group.Key, group.OrderByDescending(s => s.LastActivity ?? DateTimeOffset.MinValue).ToList()))
             .OrderByDescending(folder => folder.Sessions[0].LastActivity ?? DateTimeOffset.MinValue)
             .ToList();
+
+    /// <summary>True when the owner archived a Codex session (its codex: entry, D1).</summary>
+    private bool IsCodexArchived(SessionSummary session) => MarkOf(ProviderId.Codex, session.Key.SessionId)?.Archived == true;
+
+    /// <summary>The archived Codex sessions, newest first, or an empty list.</summary>
+    private IReadOnlyList<SessionSummary> CodexArchived() =>
+        _codexSessions.Where(IsCodexArchived).OrderByDescending(s => s.LastActivity ?? DateTimeOffset.MinValue).ToList();
+
+    /// <summary>
+    /// The archived Codex sessions, in one collapsed group at the end of the history (D1). Their rows are muted, and each row's menu unarchives it,
+    /// so an archive is seen and reversed here (the rail has no Archived view under Codex).
+    /// </summary>
+    private TreeViewItem CodexArchivedItem(IReadOnlyList<SessionSummary> archived)
+    {
+        var item = NewItem(Label($"Archived ({archived.Count})", bold: true), new RailTag(RailKind.Heading, "codex-archived"),
+            "Codex sessions you archived. Each one is listed here only. Its menu unarchives it.");
+        item.IsExpanded = false;
+        foreach (var session in archived) item.Items.Add(CodexRow(session));
+        return item;
+    }
 
     private TreeViewItem CodexFolderItem(CodexFolder folder)
     {
@@ -173,17 +196,21 @@ public partial class SessionWindow
         return item;
     }
 
-    /// <summary>One Codex session. Its action is the resume in a terminal tab: from its menu, or a double click (C3).</summary>
+    /// <summary>
+    /// One Codex session (D1 for its name, tags, note, colour and archive). Its action is the resume in a terminal tab: from its menu, or a double
+    /// click (C3). The second line has the model; the third the time and the tags.
+    /// </summary>
     private TreeViewItem CodexRow(SessionSummary session)
     {
         var id = session.Key.SessionId;
-        var title = string.IsNullOrWhiteSpace(session.Title) ? $"Codex session {id[..Math.Min(8, id.Length)]}" : session.Title;
-        var item = NewItem(TwoLine(title, session.Model ?? string.Empty, RelativeTime(session.LastActivity)),
+        var mark = MarkOf(ProviderId.Codex, id);
+        var title = CodexRowTitle(mark?.Name, session);
+        var line = TwoLine(title, session.Model ?? string.Empty, RelativeTime(session.LastActivity) + TagsSuffix(mark));
+        var item = NewItem(ColourEdge(line, mark?.Colour),
             new RailTag(RailKind.CodexSession, id, Detail: session.Folder),
-            "Double click, or the menu, to resume it in a terminal tab.");
-        var resume = new MenuItem { Header = "Resume in a terminal tab" };
-        resume.Click += (_, _) => ResumeCodex(session);
-        item.ContextMenu = new ContextMenu { Items = { resume } };
+            NoteTip(mark) + "Double click, or the menu, to resume it in a terminal tab.");
+        if (mark?.Archived == true) item.Opacity = 0.55;
+        item.ContextMenu = CodexRowMenu(session, title);
         item.MouseDoubleClick += (_, e) =>
         {
             e.Handled = true;
@@ -191,6 +218,34 @@ public partial class SessionWindow
         };
         return item;
     }
+
+    /// <summary>
+    /// A Codex row's title (D1): the owner's name when there is one, else the title from the history (C1), else "Codex session" and the first eight
+    /// characters of the id. The order is the same as a Claude row's (SessionLibrary.TitleFor).
+    /// </summary>
+    internal static string CodexRowTitle(string? name, SessionSummary session)
+    {
+        if (!string.IsNullOrWhiteSpace(name)) return name.Trim();
+        if (!string.IsNullOrWhiteSpace(session.Title)) return session.Title;
+        var id = session.Key.SessionId;
+        return $"Codex session {id[..Math.Min(8, id.Length)]}";
+    }
+
+    /// <summary>The right-click menu of a Codex row (D1): resume, archive or unarchive, and the edit dialog for the name, tags, note and colour.</summary>
+    private ContextMenu CodexRowMenu(SessionSummary session, string title)
+    {
+        var id = session.Key.SessionId;
+        var mark = MarkOf(ProviderId.Codex, id) ?? new LibraryEntry();
+        var menu = StyledMenu();
+        menu.Items.Add(MenuItemFor("Resume in a terminal tab", () => ResumeCodex(session)));
+        menu.Items.Add(MenuItemFor(mark.Archived ? "Unarchive" : "Archive", () => SetCodexArchived(id, !mark.Archived)));
+        menu.Items.Add(MenuItemFor("Edit…", () => EditMarkOf(ProviderId.Codex, id, title)));
+        return menu;
+    }
+
+    /// <summary>Archives or unarchives a Codex session. The change is written under its codex: key (D1).</summary>
+    private bool SetCodexArchived(string sessionId, bool archived) =>
+        ChangeMarkOf(ProviderId.Codex, sessionId, mark => mark with { Archived = archived });
 
     /// <summary>
     /// Loads the Codex history off the UI thread (C1). Nothing is written. A failed read keeps the list it had and says so in the status line.
@@ -247,7 +302,7 @@ public partial class SessionWindow
             return;
         }
         var folder = session.Folder is { } path && Directory.Exists(path) ? path : _options.WorkDir;
-        OpenCodexTab(id, session.Title ?? $"Codex session {id[..Math.Min(8, id.Length)]}", command, folder);
+        OpenCodexTab(id, CodexRowTitle(MarkOf(ProviderId.Codex, id)?.Name, session), command, folder);
     }
 
     /// <summary>"New Codex session…": asks for a folder, then opens <c>codex -C</c> there in a terminal tab (C3, C4). Cancel starts nothing.</summary>
