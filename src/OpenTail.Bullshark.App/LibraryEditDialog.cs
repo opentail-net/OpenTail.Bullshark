@@ -20,6 +20,7 @@ public sealed class LibraryEditDialog : Window
     private readonly TextBox _plan;
     private readonly TextBlock _planError;
     private readonly ComboBox _colour;
+    private readonly string _fallbackTitle;
 
     public LibraryEditDialog(LibraryEntry current, string fallbackTitle, RailPalette palette)
     {
@@ -35,8 +36,16 @@ public sealed class LibraryEditDialog : Window
 
         var panel = new StackPanel { Margin = new Thickness(16) };
 
-        panel.Children.Add(Caption($"Name. Blank shows the title from the transcript: {fallbackTitle}", palette));
-        _name = Box(current.Name ?? string.Empty, palette);
+        panel.Children.Add(Caption("Name. It starts as the title shown now: change it, or clear it to show the title from the transcript.", palette));
+        // The box starts with the name shown now, so an edit is a change of a word, not a retype. With no name of the owner's, that is the title from
+        // the transcript; Save does not turn it into a name of the owner's unless it was changed (see NameToSave).
+        _name = Box(string.IsNullOrEmpty(current.Name) ? fallbackTitle : current.Name, palette);
+        _fallbackTitle = fallbackTitle;
+        Loaded += (_, _) =>
+        {
+            _name.Focus();
+            _name.SelectAll();
+        };
         panel.Children.Add(_name);
 
         panel.Children.Add(Caption("Tags, separated by spaces or commas. Written in lower case.", palette));
@@ -113,7 +122,7 @@ public sealed class LibraryEditDialog : Window
 
         var colour = _colour.SelectedItem is ComboBoxItem item && item.Tag is string tag && tag.Length > 0 ? tag : null;
         Result = new LibraryEntry(
-            Name: _name.Text,
+            Name: NameToSave(_name.Text, _current.Name, _fallbackTitle),
             Pinned: _current.Pinned,
             Archived: _current.Archived,
             Tags: SessionLibrary.TagsOf(_tags.Text),
@@ -122,6 +131,14 @@ public sealed class LibraryEditDialog : Window
             PlanFile: plan);
         DialogResult = true;
     }
+
+    /// <summary>
+    /// The name Save keeps. The box starts with the title shown now, so a name of the owner's is stored only when the text differs from it: an
+    /// untouched box over the transcript's title (the session had no name of the owner's) stays blank, and the title keeps following the transcript.
+    /// A cleared box is blank too. A session that already had a name keeps whatever the box holds.
+    /// </summary>
+    internal static string NameToSave(string text, string? currentName, string fallbackTitle) =>
+        string.IsNullOrEmpty(currentName) && string.Equals(text, fallbackTitle, StringComparison.Ordinal) ? string.Empty : text;
 
     /// <summary>Chooses a plan file with the system's open dialog. The path goes in the box; the file is read only after Save.</summary>
     private void BrowsePlan()
