@@ -79,3 +79,15 @@ Each row says what the example does with Copilot. None of them reads Copilot's s
 - Codex runs its shim through `cmd.exe /d /c` (`CodexTerminalOpener.cs:47,60`); Copilot's terminal and summary calls do the same.
 - A bare `copilot --session-id` start was not run against the owner's real home. The 5 folders with only `workspace.yaml` may come from earlier starts; they are the owner's files and are **not** deleted.
 - `SessionSummary` has no git or branch fields (`Providers/SessionSummary.cs:7-17`).
+
+## Probe results (2026-11-22, scratch folders only; names and counts only, no session text)
+
+- **Summary route (one model call, the file route):** `copilot -p "<short prompt>"` in a scratch working folder that holds `transcript.txt`, with `--config-dir` and `--log-dir` in scratch, `--sync-session=off`, `--output-format text`, `--silent`, `--no-ask-user`, `--no-custom-instructions`, `--disable-builtin-mcps` and `--available-tools=view`. Exit 0; the reply was the one word in the file; the only tool called was `view`; the owner's `session-state` stayed at 52 folders; sign-in worked from the scratch config; 1 premium request on the default model `mai-code-2-flash`. The scratch folder was removed.
+- **Stdin is not a prompt source:** `-p` requires a value (`error: a value is required for '--prompt <text>'`). An earlier stdin attempt most likely made no call; its output was not kept, so this is inferred.
+- **`--config-dir` is deprecated** (stderr warning naming `COPILOT_HOME`). Kept for now; see plan R-C8.
+- **Unknown resume id** (`-p`, scratch config, no model call): exit 1, `No session, task, or name matched '<id>'`, and the CLI's own options for resuming by id, by name or with the picker. `--name=<name>` names a new session.
+- **No-tools flag syntax:** `--available-tools=view` is accepted; `none`, empty and `[]` also parse, but their meaning is not verified, so only `view` is used.
+- **Version read** (`--version --no-auto-update`): bundled version; the top level of `~/.copilot` did not change; the package cache was not checked.
+- **Which copy runs:** `where copilot` lists the WinGet `copilot.exe` first, then npm `copilot` and `copilot.cmd`.
+- **Fields (counts only):** 47 of 47 user messages carry `transformedContent`, with a length different from `content` in each case (what it holds was not read). Of 52 `workspace.yaml` files, 47 have a non-empty `name`; none has `user_named` true (so `name` is generated); 5 folders have no `events.jsonl`. `session.title_changed` is absent from the local folders.
+- **Not run:** P-C1 (session id at launch needs a pseudo-terminal, which Git Bash does not provide); P-C8 (a fake-shim launch test, to be written with the launcher in stage G1.7).
