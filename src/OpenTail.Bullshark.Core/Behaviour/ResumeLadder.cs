@@ -3,7 +3,7 @@ namespace OpenTail.Bullshark.Core.Behaviour;
 /// <summary>
 /// The steps a Codex resume can take when the owner's saved session id is looked for (R7, concept note C). <see cref="Saved"/> is the saved id, and it is
 /// used whenever its rollout is found. Otherwise the step is the picker (the default fallback, shown to the owner), or the newest session in the same
-/// folder when <c>resume.allowNewestInFolder</c> is on and a candidate resolves, or a refusal.
+/// folder when <c>resume.allowNewestInFolder</c> is on and a candidate resolves.
 /// </summary>
 public enum ResumeStep
 {
@@ -45,7 +45,7 @@ public static class ResumeLadder
     /// <summary>The label of the newest-in-folder step when the earliest of several tied candidates is taken (<c>resume.ambiguous</c> "earliest").</summary>
     public const string NewestTiedLabel = "Resumed the earliest of several sessions tied as newest in this folder (not the saved one).";
 
-    /// <summary>The label of the refusal, when more than one candidate ties at the top rank and <c>resume.ambiguous</c> is "refuse".</summary>
+    /// <summary>The label of the picker step when more than one candidate ties at the top rank and <c>resume.ambiguous</c> is "refuse".</summary>
     public const string TiedPickerLabel = "More than one session in this folder matches; the Codex picker is open.";
 
     /// <summary>
