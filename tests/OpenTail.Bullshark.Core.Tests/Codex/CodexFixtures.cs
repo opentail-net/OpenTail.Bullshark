@@ -31,13 +31,35 @@ internal sealed class CodexHome : IDisposable
     /// <summary>The rollout file name for a session id: a timestamp and the id, as Codex writes them.</summary>
     public static string NameFor(string id) => "rollout-2026-11-20T10-00-00-" + id + ".jsonl";
 
+    /// <summary>A UUIDv7 text (version nibble 7) whose first 48 bits are <paramref name="unixMillis"/>. Synthetic: the time and the tail are made up.</summary>
+    public static string UuidV7(long unixMillis, string tail = "000000000001")
+    {
+        var hex = unixMillis.ToString("x12");
+        return hex[..8] + "-" + hex[8..] + "-7000-8000-" + tail;
+    }
+
     /// <summary>The path under sessions for a file name (the folder layout YYYY\MM\DD that Codex uses).</summary>
-    public string PathFor(string fileName) => Path.Combine(Sessions, "2026", "11", "20", fileName);
+    public string PathFor(string fileName) => PathOn(new DateOnly(2026, 11, 20), fileName);
+
+    /// <summary>The path under sessions for a file name in the dated folder of <paramref name="day"/> (YYYY\MM\DD, zero-padded).</summary>
+    public string PathOn(DateOnly day, string fileName) => Path.Combine(
+        Sessions, day.ToString("yyyy", System.Globalization.CultureInfo.InvariantCulture),
+        day.ToString("MM", System.Globalization.CultureInfo.InvariantCulture),
+        day.ToString("dd", System.Globalization.CultureInfo.InvariantCulture), fileName);
 
     /// <summary>Writes plain lines as a rollout file.</summary>
     public string WritePlain(string fileName, IEnumerable<string> lines)
     {
         var path = PathFor(fileName);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllLines(path, lines);
+        return path;
+    }
+
+    /// <summary>Writes plain lines as a rollout file in the dated folder of <paramref name="day"/>.</summary>
+    public string WritePlainOn(DateOnly day, string fileName, IEnumerable<string> lines)
+    {
+        var path = PathOn(day, fileName);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllLines(path, lines);
         return path;

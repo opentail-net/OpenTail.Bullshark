@@ -17,6 +17,9 @@ internal static class RolloutReader
     /// <summary>The options of the folder walk: sub-folders are searched, and a folder the user cannot open is skipped, not fatal.</summary>
     public static readonly EnumerationOptions Walk = new() { RecurseSubdirectories = true, IgnoreInaccessible = true };
 
+    /// <summary>The options of a listing of one folder: sub-folders are not searched, and a folder the user cannot open is skipped, not fatal.</summary>
+    public static readonly EnumerationOptions OneFolder = new() { RecurseSubdirectories = false, IgnoreInaccessible = true };
+
     /// <summary>
     /// The longest line read into memory, in characters: 16 MB (F-D). A longer line is read to its line break without being stored, and it
     /// is reported as <see cref="RolloutLine.Overlong"/>.
@@ -64,6 +67,18 @@ internal static class RolloutReader
     public static List<string> Files(string historyRoot) =>
         new DirectoryInfo(historyRoot)
             .EnumerateFiles("rollout-*", Walk)
+            .Where(file => IsRolloutName(file.Name))
+            .Select(file => file.FullName)
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    /// <summary>
+    /// The rollouts directly in one folder, in path order: sub-folders are not searched. A folder the user cannot open gives none, not an error,
+    /// as in <see cref="Walk"/>. The caller checks that the folder exists.
+    /// </summary>
+    public static List<string> FilesIn(string folder) =>
+        new DirectoryInfo(folder)
+            .EnumerateFiles("rollout-*", OneFolder)
             .Where(file => IsRolloutName(file.Name))
             .Select(file => file.FullName)
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)

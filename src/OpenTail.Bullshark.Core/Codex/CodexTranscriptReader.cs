@@ -1,3 +1,4 @@
+using System.Globalization;
 using OpenTail.Bullshark.Core.Providers;
 
 namespace OpenTail.Bullshark.Core.Codex;
@@ -45,15 +46,67 @@ public sealed class CodexTranscriptReader(ProviderPaths paths) : ITranscriptRead
     /// <summary>
     /// The rollout for the id: a file whose name ends with it, else the first rollout whose session record has it. Null when none. Internal so the
     /// summaries find a rollout the same way as the transcript reader (S3); the caller checks the id with <see cref="RequireSafeId"/> first.
+    /// An id that is a UUIDv7 is first looked for in the dated folders of its start day and the days either side of it (see
+    /// <see cref="InDayFolders"/>). Only the full search, which checks every rollout under the root, can return null.
     /// </summary>
     internal string? FindRollout(string sessionId)
     {
         if (!Directory.Exists(paths.HistoryRoot)) return null;
+        if (CodexSessionTime.TryStartFromId(sessionId, out var start))
+        {
+            var near = InDayFolders(sessionId, start);
+            if (near is not null) return near;
+        }
         var files = RolloutReader.Files(paths.HistoryRoot);
-        var byName = files.FirstOrDefault(path =>
-            RolloutReader.StemOf(Path.GetFileName(path)).EndsWith("-" + sessionId, StringComparison.OrdinalIgnoreCase));
+        var byName = files.FirstOrDefault(path => NamedForId(path, sessionId));
         return byName ?? files.FirstOrDefault(path => SessionIdOf(path) == sessionId);
     }
+
+    /// <summary>
+    /// The first rollout whose name ends with the id, looked for only in the folders of the start day, the day before and the day after (the
+    /// local calendar day, as Codex names its folders; the neighbours cover a day boundary). Null when none is there, which proves nothing about
+    /// the rest of the archive: the caller then runs the full search.
+    /// </summary>
+    private string? InDayFolders(string sessionId, DateTimeOffset start)
+    {
+        if (!TryDaysNear(start, out var days)) return null;
+        foreach (var day in days)
+        {
+            var folder = DayFolder(day);
+            if (!Directory.Exists(folder)) continue;
+            var match = RolloutReader.FilesIn(folder).FirstOrDefault(path => NamedForId(path, sessionId));
+            if (match is not null) return match;
+        }
+        return null;
+    }
+
+    /// <summary>The start day (local calendar date) and the days either side of it, the start day first. False when a neighbour cannot be named.</summary>
+    private static bool TryDaysNear(DateTimeOffset start, out DateOnly[] days)
+    {
+        try
+        {
+            var day = DateOnly.FromDateTime(start.ToLocalTime().DateTime);
+            days = [day, day.AddDays(-1), day.AddDays(1)];
+            return true;
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            // A time at the very edge of the calendar: no neighbouring folder can be named, so the caller does the full search.
+            days = [];
+            return false;
+        }
+    }
+
+    /// <summary>The dated folder of a day under the history root: <c>YYYY\MM\DD</c>, zero-padded.</summary>
+    private string DayFolder(DateOnly day) => Path.Combine(
+        paths.HistoryRoot,
+        day.ToString("yyyy", CultureInfo.InvariantCulture),
+        day.ToString("MM", CultureInfo.InvariantCulture),
+        day.ToString("dd", CultureInfo.InvariantCulture));
+
+    /// <summary>True when the rollout's file name, without its extension, ends with <c>-</c> and the id (case-insensitive, as the file-name search always was).</summary>
+    private static bool NamedForId(string path, string sessionId) =>
+        RolloutReader.StemOf(Path.GetFileName(path)).EndsWith("-" + sessionId, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>The id of the first session record in a rollout, read up to that record. Null when the file has none or cannot be read.</summary>
     private static string? SessionIdOf(string path)
