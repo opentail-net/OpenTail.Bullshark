@@ -29,6 +29,20 @@ public static class CopilotResumeRules
     /// <summary>The line shown while a summary is made, when another press would start a second call (G3.2): it waits for the first.</summary>
     public const string SummaryRunning = "A Copilot summary is already being made. Wait for it to finish.";
 
+    /// <summary>
+    /// The status line of a start when copilot.ps1 is not on PATH: the start runs the shim, and copilot.exe alone cannot take the text. The text is in the
+    /// preview, so the owner can copy it and start Copilot by hand.
+    /// </summary>
+    public const string NoShimOnPath =
+        "Not started: copilot.ps1 is not on PATH, so a start from text cannot run. Only copilot.exe was found. The start text is in the preview: use Copy and start Copilot yourself.";
+
+    /// <summary>
+    /// The line when a summary would be made by a window that does not hold the single-instance guard for the state file. The start-up sweep of the scratch
+    /// folders runs only in the window that holds the guard, so this window's summary folder could be removed by another window; the summary is refused.
+    /// </summary>
+    public const string SummaryNeedsGuard =
+        "Summaries are not made from this window: it does not hold the lock for this state file, so another window may be using its scratch folders. Open the session from the window that holds the lock.";
+
     /// <summary>The line under the turns box when the box is not a valid number.</summary>
     public static readonly string TurnsMessage = $"Enter a whole number from 0 to {MaxTurns} for the turns.";
 

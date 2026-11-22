@@ -152,6 +152,13 @@ public partial class SessionWindow
                 }
                 else
                 {
+                    // Only the window that holds the single-instance guard sweeps the scratch folders at start-up. A summary made here could have its
+                    // folder swept by another window, so it is refused. The kept summary above is not refused.
+                    if (_supervisor is null)
+                    {
+                        SetStatus(CopilotResumeRules.SummaryNeedsGuard);
+                        return new CopilotPreview(string.Empty, null, CopilotResumeRules.SummaryNeedsGuard);
+                    }
                     if (_copilotSummaryRunning)
                     {
                         SetStatus(CopilotResumeRules.SummaryRunning);
@@ -238,6 +245,12 @@ public partial class SessionWindow
         if (CopilotStartLauncher.FindPwsh() is null)
         {
             SetStatus("Not started: PowerShell 7 (pwsh.exe) is not on PATH. The start text is in the preview: use Copy and start Copilot yourself.");
+            return;
+        }
+        // The start runs copilot.ps1 (the launcher's script). The terminal's own copilot may be copilot.exe, so the file is not written when the shim is missing.
+        if (CopilotStartLauncher.FindShim() is null)
+        {
+            SetStatus(CopilotResumeRules.NoShimOnPath);
             return;
         }
 

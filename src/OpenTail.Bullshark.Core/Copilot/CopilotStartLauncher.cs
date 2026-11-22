@@ -6,8 +6,8 @@ namespace OpenTail.Bullshark.Core.Copilot;
 
 /// <summary>
 /// Starts a new Copilot session with a start text (G1.7, G-D14). The text is written to a new file in the Starts folder. A terminal tab runs the line
-/// from <see cref="CommandLine"/>: a PowerShell 7 script that checks for the Copilot PowerShell shim (<c>copilot.ps1</c>), reads the file, deletes it,
-/// sets the session's folder and runs <c>copilot.ps1 -i &lt;text&gt; --sync-session=off</c>. The text never goes on a <c>cmd.exe</c> command line.
+/// from <see cref="CommandLine"/>: a PowerShell 7 script that checks for the Copilot PowerShell shim (<c>copilot.ps1</c>), reads the file, sets the session's
+/// folder, deletes the file and runs <c>copilot.ps1 -i &lt;text&gt; --sync-session=off</c>. The text never goes on a <c>cmd.exe</c> command line.
 /// The line holds only the script in base64. Windows PowerShell 5.1 is not used: it drops the double quotes of an argument passed to a script.
 /// This copies the Codex launcher's encoding and rules (Codex R3); only the shim name, the call and the wording differ.
 /// </summary>
@@ -51,8 +51,9 @@ public static class CopilotStartLauncher
     /// The command line of a terminal tab that starts Copilot with the text in <paramref name="promptPath"/>:
     /// <c>pwsh.exe -NoProfile -ExecutionPolicy Bypass -EncodedCommand &lt;base64&gt;</c>. The base64 is the UTF-16LE script. When the shim is missing the script
     /// writes a line that says where the text is kept and exits with 1, leaving the prompt file in place. Otherwise it reads the prompt file as UTF-8,
-    /// deletes it, sets the location to <paramref name="folder"/> and runs <c>copilot.ps1 -i &lt;text&gt; --sync-session=off</c>. Single quotes in every path
-    /// are doubled. A path that is blank, or has a control character or a line break, throws <see cref="ArgumentException"/>.
+    /// sets the location to <paramref name="folder"/>, deletes the prompt file and runs <c>copilot.ps1 -i &lt;text&gt; --sync-session=off</c>. The location
+    /// is set before the file is deleted, so a folder that is missing stops the script with the text still kept. Single quotes in every path are doubled.
+    /// A path that is blank, or has a control character or a line break, throws <see cref="ArgumentException"/>.
     /// </summary>
     public static string CommandLine(string folder, string promptPath)
     {
@@ -65,8 +66,8 @@ public static class CopilotStartLauncher
             "$shim = Get-Command copilot -CommandType ExternalScript -ErrorAction SilentlyContinue | Select-Object -First 1",
             "if ($null -eq $shim) { Write-Output 'Copilot PowerShell shim (copilot.ps1) not found. The start text is kept in: " + Quoted(promptPath) + "'; exit 1 }",
             $"$prompt = [System.IO.File]::ReadAllText('{Quoted(promptPath)}', [System.Text.Encoding]::UTF8)",
-            $"Remove-Item -LiteralPath '{Quoted(promptPath)}' -Force",
             $"Set-Location -LiteralPath '{Quoted(folder)}'",
+            $"Remove-Item -LiteralPath '{Quoted(promptPath)}' -Force",
             $"& $shim.Source -i $prompt {CopilotTerminalOpener.SyncOff}");
         return Prefix + Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
     }
@@ -84,6 +85,23 @@ public static class CopilotStartLauncher
         foreach (var folder in searchPath.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             var candidate = Path.Combine(folder.Trim('"'), "pwsh.exe");
+            if (File.Exists(candidate)) return Path.GetFullPath(candidate);
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// The full path of <c>copilot.ps1</c> in the folders of <paramref name="searchPath"/> (a PATH value, searched in order, as <see cref="FindPwsh(string?)"/>
+    /// searches), or null when it is in none of them or the value is blank. Null means the PATH of this process. A start from text needs the shim: the
+    /// launcher's script finds it with Get-Command, so a <c>copilot.exe</c> alone does not count.
+    /// </summary>
+    public static string? FindShim(string? searchPath = null)
+    {
+        var pathValue = searchPath ?? Environment.GetEnvironmentVariable("PATH");
+        if (string.IsNullOrWhiteSpace(pathValue)) return null;
+        foreach (var folder in pathValue.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var candidate = Path.Combine(folder.Trim('"'), "copilot.ps1");
             if (File.Exists(candidate)) return Path.GetFullPath(candidate);
         }
         return null;

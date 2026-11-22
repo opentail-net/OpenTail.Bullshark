@@ -156,4 +156,18 @@ public sealed class CopilotResumeRulesTests
     {
         Assert.Equal("A Copilot summary is already being made. Wait for it to finish.", CopilotResumeRules.SummaryRunning);
     }
+
+    [Fact]
+    public void TheNoShimLineNamesCopilotPs1AndSaysTheTextIsInThePreview()
+    {
+        Assert.Contains("copilot.ps1", CopilotResumeRules.NoShimOnPath);
+        Assert.Contains("preview", CopilotResumeRules.NoShimOnPath);
+    }
+
+    [Fact]
+    public void TheSummaryNeedsGuardLineIsSetAndSaysItWantsTheLock()
+    {
+        Assert.False(string.IsNullOrWhiteSpace(CopilotResumeRules.SummaryNeedsGuard));
+        Assert.Contains("lock", CopilotResumeRules.SummaryNeedsGuard);
+    }
 }

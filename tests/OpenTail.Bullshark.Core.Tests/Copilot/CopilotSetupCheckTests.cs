@@ -49,6 +49,8 @@ public sealed class CopilotSetupCheckTests : IDisposable
         Directory.CreateDirectory(folder);
         var file = Path.Combine(folder, fileName);
         File.WriteAllText(file, string.Empty);
+        // A start from text needs copilot.ps1 on PATH, so the row is Ok only with it: every case has one.
+        File.WriteAllText(Path.Combine(folder, "copilot.ps1"), string.Empty);
         var runner = new FakeCliRunner(_ => new CliResult(0, "GitHub Copilot CLI version 1.0.34.\n", string.Empty, TimedOut: false));
 
         var item = Assert.Single(await CopilotSetupCheck.RunAsync(runner, folder));
@@ -80,6 +82,7 @@ public sealed class CopilotSetupCheckTests : IDisposable
         var folder = Path.Combine(_dir, "bin");
         Directory.CreateDirectory(folder);
         File.WriteAllText(Path.Combine(folder, "copilot.exe"), string.Empty);
+        File.WriteAllText(Path.Combine(folder, "copilot.ps1"), string.Empty);
         var runner = new FakeCliRunner(_ => new CliResult(0, "no digits here", string.Empty, TimedOut: false));
 
         var item = Assert.Single(await CopilotSetupCheck.RunAsync(runner, folder));
@@ -115,5 +118,36 @@ public sealed class CopilotSetupCheckTests : IDisposable
 
         Assert.Equal(SetupState.Warning, item.State);
         Assert.Contains("timed out", item.Detail);
+    }
+
+    [Fact]
+    public async Task ACopilotExeWithNoPs1OnThePathIsAWarningThatSaysAStartFromTextIsNotPossible()
+    {
+        var folder = Path.Combine(_dir, "bin");
+        Directory.CreateDirectory(folder);
+        File.WriteAllText(Path.Combine(folder, "copilot.exe"), string.Empty);
+        var runner = new FakeCliRunner(_ => new CliResult(0, "GitHub Copilot CLI version 1.0.34.\n", string.Empty, TimedOut: false));
+
+        var item = Assert.Single(await CopilotSetupCheck.RunAsync(runner, folder));
+
+        Assert.Equal(SetupState.Warning, item.State);
+        Assert.StartsWith("copilot.ps1 is not on PATH: a start from text is not possible; the version shown is that of copilot.exe", item.Detail);
+        Assert.Contains("bundled version 1.0.34", item.Detail);
+    }
+
+    [Fact]
+    public async Task WithCopilotPs1OnThePathBesideCopilotExeTheRowIsOkAndDoesNotWarn()
+    {
+        var folder = Path.Combine(_dir, "bin");
+        Directory.CreateDirectory(folder);
+        File.WriteAllText(Path.Combine(folder, "copilot.exe"), string.Empty);
+        File.WriteAllText(Path.Combine(folder, "copilot.ps1"), string.Empty);
+        var runner = new FakeCliRunner(_ => new CliResult(0, "GitHub Copilot CLI version 1.0.34.\n", string.Empty, TimedOut: false));
+
+        var item = Assert.Single(await CopilotSetupCheck.RunAsync(runner, folder));
+
+        Assert.Equal(SetupState.Ok, item.State);
+        Assert.DoesNotContain("not on PATH", item.Detail);
+        Assert.Contains("bundled version 1.0.34", item.Detail);
     }
 }

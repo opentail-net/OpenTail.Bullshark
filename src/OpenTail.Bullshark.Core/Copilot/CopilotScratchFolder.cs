@@ -32,9 +32,17 @@ public static class CopilotScratchFolder
     /// </summary>
     public static readonly TimeSpan StartupAge = TimeSpan.Zero;
 
-    /// <summary>The attempts made to delete a folder that a file lock holds, and the pause before each retry.</summary>
+    /// <summary>The attempts <see cref="Delete"/> makes on a folder that a file lock holds. The pause before each retry is <see cref="RetryPause"/>.</summary>
     private const int DeleteAttempts = 5;
 
+    /// <summary>
+    /// The attempts <see cref="DeleteAsync"/> makes. The cleanup of a cancelled call runs while its process tree may still be ending, and it does not wait
+    /// for that, so it retries longer: 15 attempts with <see cref="RetryPause"/> between them wait 14 pauses, about 2.8 seconds in all. This bound is a
+    /// choice, not a measured time.
+    /// </summary>
+    private const int AsyncDeleteAttempts = 15;
+
+    /// <summary>The pause before each retry of a file lock, in <see cref="Delete"/> and <see cref="DeleteAsync"/>.</summary>
     private static readonly TimeSpan RetryPause = TimeSpan.FromMilliseconds(200);
 
     /// <summary>The scratch parent for a state file: <c>CopilotScratch</c> in the state file's folder.</summary>
@@ -88,8 +96,9 @@ public static class CopilotScratchFolder
     }
 
     /// <summary>
-    /// The same rules as <see cref="Delete"/>, with the pause before a retry awaited, so the caller's thread is not blocked. It takes no cancellation
-    /// token: the cleanup must run even after the call was cancelled.
+    /// The same rules as <see cref="Delete"/>, with the pause before a retry awaited, so the caller's thread is not blocked, and with
+    /// <see cref="AsyncDeleteAttempts"/> attempts in place of <see cref="DeleteAttempts"/>. It takes no cancellation token: the cleanup must run even
+    /// after the call was cancelled.
     /// </summary>
     public static async Task<bool> DeleteAsync(string folder)
     {
@@ -103,7 +112,7 @@ public static class CopilotScratchFolder
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
-                if (attempt >= DeleteAttempts) return false;
+                if (attempt >= AsyncDeleteAttempts) return false;
                 await Task.Delay(RetryPause);
             }
         }
