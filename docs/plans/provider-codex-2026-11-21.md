@@ -258,6 +258,8 @@ Probes: a net11.0 console app in the session scratchpad (structure only: line co
 - R6 Scope: product name and README say Claude Code supervision. Wording changes only after C works (design-notes question 1).
 
 ## Open decisions for the owner
+
+- **Research, 2026-11-22** (`docs/research/examples-learnings-2026-11-22.md`): (a) licence approach for outside code: reimplement ideas only (the default), or allow agent-manager's Apache-2.0 code with attribution (the other three are GPL or non-standard, so not copyable); (b) which cheap items to plan, of the ten small ones in that note. Nothing from that note is scheduled or built.
 - O1/O2 (settled 2026-11-21 by the orchestrator, see the B4 decisions): no package in Core; Codex history net11.0-only; no SQLite.
 - O3: **decided (owner, 2026-11-21): no downgrade support;** in-place migration with a one-time backup copy (R-4).
 - O4 (settled 2026-11-21): yes, a plain terminal tab is part of C3.
