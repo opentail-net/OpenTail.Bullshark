@@ -174,7 +174,7 @@ public partial class SessionWindow
     private void AcknowledgeNeed(string name)
     {
         _escalation.Acknowledge(name);
-        AppLog.Write($"needs you: {name} acknowledged");
+        AppLog.Write("needs you: a session acknowledged");
     }
 
     /// <summary>The owner snoozed a waiting session for a span: no re-alert until then, and one at the end if it still waits.</summary>
@@ -182,7 +182,7 @@ public partial class SessionWindow
     {
         var until = DateTimeOffset.Now + span;
         _escalation.Snooze(name, until);
-        AppLog.Write($"needs you: {name} snoozed until {until:HH:mm}");
+        AppLog.Write($"needs you: a session snoozed until {until:HH:mm}");
     }
 
     /// <summary>
@@ -283,13 +283,13 @@ public partial class SessionWindow
         if (plan.LogsOnly)
         {
             // In quiet hours the waits are logged, and nothing sounds, flashes or pops up. The rail still lists them.
-            foreach (var waiting in gained) AppLog.Write($"needs you (quiet hours): {waiting.Name}");
-            foreach (var again in due) AppLog.Write($"needs you (again, {again.Again}, quiet hours): {again.Item.Name}");
+            foreach (var _ in gained) AppLog.Write("needs you (quiet hours): a session is waiting");
+            foreach (var again in due) AppLog.Write($"needs you (again, {again.Again}, quiet hours): a session is waiting");
             return;
         }
 
-        if (gained.Count > 0) AppLog.Write($"needs you: {string.Join(", ", gained.Select(g => g.Name))}");
-        foreach (var again in due) AppLog.Write($"needs you (again, {again.Again}): {again.Item.Name}");
+        if (gained.Count > 0) AppLog.Write($"needs you: {gained.Count} session(s) waiting");
+        foreach (var again in due) AppLog.Write($"needs you (again, {again.Again}): a session is waiting");
         SystemSounds.Asterisk.Play();
         var handle = new WindowInteropHelper(this).Handle;
         if (handle != IntPtr.Zero && plan.Flashes) TaskbarFlash.UntilFocused(handle);
@@ -343,7 +343,7 @@ public partial class SessionWindow
         // Quiet hours (night batch N4): no toast for these either. The ready and limit lines still go to the log, marked as quiet.
         if (quiet)
         {
-            if (readyNew.Count > 0) AppLog.Write($"ready for review (quiet hours): {string.Join(", ", readyNew.Select(item => item.Name))}");
+            if (readyNew.Count > 0) AppLog.Write($"ready for review (quiet hours): {readyNew.Count} session(s)");
             if (limitsReset.Count > 0) AppLog.Write($"usage limit reset (quiet hours): {string.Join(", ", limitsReset)}");
             return;
         }
@@ -353,7 +353,7 @@ public partial class SessionWindow
         if (readyAlerting.Count > 0 && AnnouncePolicy.SilentToastShown(_passSettings, ToastCategory.Ready, IsActive, quiet))
         {
             var names = readyAlerting.Select(item => item.Name).ToList();
-            AppLog.Write($"ready for review: {string.Join(", ", names)}");
+            AppLog.Write($"ready for review: {names.Count} session(s)");
             ToastNotifier.ShowReady(names, readyAlerting[0].SessionId);
         }
         if (limitsReset.Count > 0 && AnnouncePolicy.SilentToastShown(_passSettings, ToastCategory.LimitReset, IsActive, quiet))
