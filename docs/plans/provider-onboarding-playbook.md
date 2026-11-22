@@ -95,3 +95,7 @@ Write `docs/plans/provider-<cli>-<date>.md` with these parts, in order:
 - **Single-instance lock:** it is per state file, so scratch folders beside that file are safe to clean at start-up only in the window that holds the lock.
 - **Coders' counts:** rerun them. A coder's count can come from a wrong target.
 - **Pre-existing flake:** `Trust\ClaudeTrustRetryTests.cs` can abort a net11.0 run with an IOException (file in use). Rerun once; do not change it in a provider task.
+
+## Next target: opencode (owner, 2026-11-23)
+
+The owner's next onboarding is **opencode**, by this same process, once the current refactor and the continue feature are done. Research on 2026-11-19 (`docs/research/other-ai-tools-research-2026-11-19.md`) records that opencode is MIT-licensed, keeps its sessions in a SQLite database whose schema changed in v2, and exposes an HTTP API (session list, event stream, OpenAPI document). That makes it the first target where the **custom route** matters: its state is best read through its server, not from files, so the stages above must be applied with a server-based history source and no scratch-folder summary unless its API needs one. Start with the stage 1 research on its server API and licence, and probe on a scratch data folder only.
