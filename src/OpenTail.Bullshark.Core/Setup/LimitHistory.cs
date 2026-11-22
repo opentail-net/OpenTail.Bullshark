@@ -75,7 +75,7 @@ public static class LimitHistory
     /// are Claude's limit hits and keep their own rule (per message, in the five hours before the hit): Codex usage never enters them.
     /// <paramref name="codexHistoryRoot"/> is the Codex history folder; null leaves Codex out of the report. Its rollouts are read as
     /// <see cref="CodexUsageReader.ReadFolder"/> does, and <paramref name="codexMemo"/> (the caller's, one per window; null for none) keeps the
-    /// finished ones between reads. The count of rollouts this build could not decode is <see cref="LimitsReport.CodexSkipped"/>.
+    /// finished ones between reads. The count of compressed rollouts not decoded because decoding is switched off is <see cref="LimitsReport.CodexSkipped"/>; damaged rollouts are counted as unreadable instead.
     /// </para>
     /// </summary>
     public static LimitsReport ReadReportWithCache(

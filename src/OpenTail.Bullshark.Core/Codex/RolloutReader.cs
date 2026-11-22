@@ -178,7 +178,9 @@ internal static class RolloutReader
         }
 
         /// <summary>True for a failure to translate: anything other than an IOException or a cancellation, which keep their own types.</summary>
-        private static bool IsDecoderFailure(Exception ex) => ex is not (IOException or OperationCanceledException);
+        // Memory exhaustion and a disposed stream are not damage in the file, so they pass through unchanged (review of Z4).
+        private static bool IsDecoderFailure(Exception ex) =>
+            ex is not (IOException or OperationCanceledException or OutOfMemoryException or ObjectDisposedException);
     }
 
     /// <summary>
