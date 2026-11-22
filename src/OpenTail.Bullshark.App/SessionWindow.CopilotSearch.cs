@@ -18,7 +18,7 @@ public partial class SessionWindow
     private const string CopilotSearchKey = "copilot-search";
 
     /// <summary>The results of a Copilot search, shown in the Copilot results tab (<see cref="TabKind.CopilotSearchResults"/>).</summary>
-    private readonly CopilotSearchView _copilotSearch = new() { Visibility = Visibility.Hidden };
+    private readonly ProviderSearchView _copilotSearch = new ProviderSearchView("Copilot") { Visibility = Visibility.Hidden };
 
     /// <summary>Puts the Copilot results view in the pane and connects it: a result opens its Copilot transcript.</summary>
     private void InitCopilotSearch()
@@ -60,12 +60,12 @@ public partial class SessionWindow
     /// <summary>
     /// The Copilot sessions a query matches, newest first, as the results view's rows. Archived and pinned sessions are searched too.
     /// </summary>
-    private List<CopilotSearchRow> CopilotSearchRows(string query) =>
+    private List<ProviderSearchRow> CopilotSearchRows(string query) =>
         _copilotSessions
             .Select(session => (session, mark: MarkOf(ProviderId.Copilot, session.Key.SessionId)))
-            .Where(pair => CopilotSearch.Matches(query, pair.session.Title, pair.mark?.Name, pair.mark?.Tags, pair.mark?.Note))
+            .Where(pair => ProviderSearch.Matches(query, pair.session.Title, pair.mark?.Name, pair.mark?.Tags, pair.mark?.Note))
             .OrderByDescending(pair => pair.session.LastActivity ?? DateTimeOffset.MinValue)
-            .Select(pair => new CopilotSearchRow(
+            .Select(pair => new ProviderSearchRow(
                 pair.session,
                 CopilotRowTitle(pair.mark?.Name, pair.session),
                 string.IsNullOrEmpty(pair.session.Folder) ? "No folder named" : LeafOf(pair.session.Folder),

@@ -4,14 +4,15 @@ using OpenTail.Bullshark.Core.Activity;
 namespace OpenTail.Bullshark.App;
 
 /// <summary>
-/// The pure parts of the Codex transcript view (parity P7, decisions T-D1, T-D2 and T-D5): the cap, the count and cap lines, the scope line, the time
-/// label and the plain-text copy. No window is made, so these are tested alone.
+/// The pure parts of a provider's transcript view (parity P7, decisions T-D1, T-D2 and T-D5): the cap, the count and cap lines, the scope line, the time
+/// label and the plain-text copy. No window is made, so these are tested alone. Codex and Copilot share them; each message's label is the one its reader gives.
 /// </summary>
-public static class CodexTranscriptText
+public static class ProviderTranscriptText
 {
     /// <summary>
     /// The most messages the view holds (T-D5). The view keeps its messages in memory and draws each one, so a very long session is cut here and the
-    /// view says so, which keeps a long session from freezing the window. A longer session shows its first messages only.
+    /// view says so, which keeps a long session from freezing the window. A longer session shows its first messages only. The Copilot reader caps its
+    /// read at the same number (CopilotTranscriptReader.MaxMessages, 5000).
     /// </summary>
     public const int MaxMessages = 5000;
 
@@ -30,7 +31,7 @@ public static class CodexTranscriptText
         total > shown ? $"Showing the first {Number(shown)} of {Number(total)} messages." : null;
 
     /// <summary>
-    /// The copy of the messages: each as "you: text" or "codex: text", the blocks separated by a blank line. Empty for no messages. The text of a message
+    /// The copy of the messages: each as "label: text" (the label is the reader's, for example "you"), the blocks separated by a blank line. Empty for no messages. The text of a message
     /// keeps its own line breaks.
     /// </summary>
     public static string PlainText(IReadOnlyList<TranscriptLine> lines)

@@ -7,26 +7,30 @@ using OpenTail.Bullshark.Core.Providers;
 namespace OpenTail.Bullshark.App;
 
 /// <summary>
-/// One result of a search of past Codex sessions, as the results view shows it: the title as the Codex row shows it, the folder's name and its full path
+/// One result of a search of past sessions, as the results view shows it: the title as the provider's row shows it, the folder's name and its full path
 /// (null when the rollouts name none), the relative time, and whether the owner archived the session.
 /// </summary>
-internal sealed record CodexSearchRow(SessionSummary Session, string Title, string FolderName, string? FolderPath, string When, bool Archived);
+internal sealed record ProviderSearchRow(SessionSummary Session, string Title, string FolderName, string? FolderPath, string When, bool Archived);
 
 /// <summary>
-/// The results of a search of past Codex sessions (parity P6): one block per session, in the order the window gives (newest first). Each block has the
-/// session's title, its folder, its relative time and "archived" when it is. A click on the title, or Enter on it, opens the session's Codex transcript
-/// (it does not resume the session). The look follows <see cref="SearchView"/>, Claude's results view, which is not changed.
+/// The results of a search of past sessions of one provider (parity P6): one block per session, in the order the window gives (newest first). Each block
+/// has the session's title, its folder, its relative time and "archived" when it is. A click on the title, or Enter on it, opens the session's transcript
+/// (it does not resume the session). The provider's name is a parameter, and it shows in the wording ("Codex" or "Copilot").
+/// The look follows <see cref="SearchView"/>, Claude's results view, which is not changed.
 /// </summary>
-internal sealed class CodexSearchView : UserControl
+internal sealed class ProviderSearchView : UserControl
 {
+    private readonly string _providerName;
     private readonly TextBlock _heading = new();
     private readonly StackPanel _list = new();
     private RailPalette _palette = RailPalette.DarkPalette;
     private string _query = string.Empty;
-    private IReadOnlyList<CodexSearchRow> _rows = [];
+    private IReadOnlyList<ProviderSearchRow> _rows = [];
 
-    public CodexSearchView()
+    /// <param name="providerName">The provider's name as the wording shows it, for example "Codex" or "Copilot".</param>
+    public ProviderSearchView(string providerName)
     {
+        _providerName = providerName;
         var root = new DockPanel { Margin = new Thickness(16, 12, 16, 12) };
         _heading.FontSize = 13;
         _heading.FontWeight = FontWeights.SemiBold;
@@ -39,7 +43,7 @@ internal sealed class CodexSearchView : UserControl
         ApplyTheme(_palette);
     }
 
-    /// <summary>Raised with the session a click or Enter on a result names. The window opens its Codex transcript.</summary>
+    /// <summary>Raised with the session a click or Enter on a result names. The window opens its transcript.</summary>
     public event Action<SessionSummary>? OpenRequested;
 
     /// <summary>Colours the view from the rail's palette, and redraws what is shown in it.</summary>
@@ -50,8 +54,8 @@ internal sealed class CodexSearchView : UserControl
         Render();
     }
 
-    /// <summary>Shows the results of a query. An empty list says that no Codex session matches the query.</summary>
-    public void ShowResults(string query, IReadOnlyList<CodexSearchRow> rows)
+    /// <summary>Shows the results of a query. An empty list says that no session of the provider matches the query.</summary>
+    public void ShowResults(string query, IReadOnlyList<ProviderSearchRow> rows)
     {
         _query = query;
         _rows = rows;
@@ -63,12 +67,12 @@ internal sealed class CodexSearchView : UserControl
         _list.Children.Clear();
         _heading.Foreground = RailPalette.Brush(_palette.Text);
         _heading.Text = _rows.Count == 0
-            ? $"No Codex session matches \"{_query}\"."
-            : $"{_rows.Count} Codex session(s) match \"{_query}\", newest first.";
+            ? $"No {_providerName} session matches \"{_query}\"."
+            : $"{_rows.Count} {_providerName} session(s) match \"{_query}\", newest first.";
         foreach (var row in _rows) _list.Children.Add(Block(row));
     }
 
-    private UIElement Block(CodexSearchRow row)
+    private UIElement Block(ProviderSearchRow row)
     {
         var session = row.Session;
         var head = new StackPanel();
@@ -80,12 +84,12 @@ internal sealed class CodexSearchView : UserControl
             TextWrapping = TextWrapping.Wrap,
             Cursor = Cursors.Hand,
             Foreground = RailPalette.Brush(_palette.Text),
-            ToolTip = "Open the Codex transcript. This does not resume the session.",
+            ToolTip = $"Open the {_providerName} transcript. This does not resume the session.",
         };
         titleText.MouseLeftButtonUp += (_, _) => OpenRequested?.Invoke(session);
         head.Children.Add(titleText);
 
-        // The folder, the relative time, then "archived" in the muted text, as the Codex row's second line gives them.
+        // The folder, the relative time, then "archived" in the muted text, as the provider's row's second line gives them.
         var parts = new[] { row.FolderName, row.When, row.Archived ? "archived" : null };
         head.Children.Add(new TextBlock
         {
@@ -103,7 +107,7 @@ internal sealed class CodexSearchView : UserControl
             CornerRadius = new CornerRadius(4),
             Padding = new Thickness(12, 9, 12, 9),
             Margin = new Thickness(0, 0, 0, 8),
-            Child = KeyboardRow.Wrap(head, _palette, $"{row.Title}, {row.FolderName}. Open the Codex transcript.", () => OpenRequested?.Invoke(session)),
+            Child = KeyboardRow.Wrap(head, _palette, $"{row.Title}, {row.FolderName}. Open the {_providerName} transcript.", () => OpenRequested?.Invoke(session)),
         };
     }
 }

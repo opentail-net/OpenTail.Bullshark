@@ -19,7 +19,7 @@ public partial class SessionWindow
     private const string CodexSearchKey = "codex-search";
 
     /// <summary>The results of a Codex search, shown in the Codex results tab (<see cref="TabKind.CodexSearchResults"/>).</summary>
-    private readonly CodexSearchView _codexSearch = new() { Visibility = Visibility.Hidden };
+    private readonly ProviderSearchView _codexSearch = new ProviderSearchView("Codex") { Visibility = Visibility.Hidden };
 
     /// <summary>True once the <c>--codex-search</c> screenshot has set the box, so it is set once.</summary>
     private bool _codexSearchShotSet;
@@ -66,12 +66,12 @@ public partial class SessionWindow
     /// The Codex sessions a query matches, newest first, as the results view's rows (S6-D1). Archived and pinned sessions are searched too (S6-D2). Each
     /// row's title, folder and time are those of the Codex row. Subagent sessions are searched as the rail lists them.
     /// </summary>
-    private List<CodexSearchRow> CodexSearchRows(string query) =>
+    private List<ProviderSearchRow> CodexSearchRows(string query) =>
         _codexSessions
             .Select(session => (session, mark: MarkOf(ProviderId.Codex, session.Key.SessionId)))
-            .Where(pair => CodexSearch.Matches(query, pair.session.Title, pair.mark?.Name, pair.mark?.Tags, pair.mark?.Note))
+            .Where(pair => ProviderSearch.Matches(query, pair.session.Title, pair.mark?.Name, pair.mark?.Tags, pair.mark?.Note))
             .OrderByDescending(pair => pair.session.LastActivity ?? DateTimeOffset.MinValue)
-            .Select(pair => new CodexSearchRow(
+            .Select(pair => new ProviderSearchRow(
                 pair.session,
                 CodexRowTitle(pair.mark?.Name, pair.session),
                 string.IsNullOrEmpty(pair.session.Folder) ? "No folder named" : LeafOf(pair.session.Folder),

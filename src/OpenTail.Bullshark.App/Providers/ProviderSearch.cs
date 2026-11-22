@@ -1,12 +1,12 @@
 namespace OpenTail.Bullshark.App;
 
 /// <summary>
-/// The search of past Codex sessions (parity P6, first step, decisions S6-D1). A session matches a query when every word of the query appears, without
+/// The search of past sessions of a provider, Codex or Copilot (parity P6, first step, decisions S6-D1). A session matches a query when every word of the query appears, without
 /// case, in one of its fields: its title (the index name or the first message), the owner's name for it, one of its tags (with or without the leading
 /// '#'), or its note. The words may be in different fields. Message text is not searched: that is the second step, which waits for owner decision O3.
-/// Pure: the window passes the fields in, so the rule is tested without a window (CodexSearchTests).
+/// Pure: the window passes the fields in, so the rule is tested without a window (CodexSearchTests and CopilotSearchTests).
 /// </summary>
-internal static class CodexSearch
+internal static class ProviderSearch
 {
     /// <summary>
     /// True when every word of <paramref name="query"/> is in one of the fields. The query is split at white space, and a query with no word (null, empty or

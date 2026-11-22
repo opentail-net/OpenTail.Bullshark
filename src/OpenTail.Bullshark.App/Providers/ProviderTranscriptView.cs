@@ -8,12 +8,12 @@ using OpenTail.Bullshark.Core.Activity;
 namespace OpenTail.Bullshark.App;
 
 /// <summary>
-/// The read-only transcript of one Codex session (parity P7, decisions T-D2 and T-D5). A header with the session's title, the message count and a Copy
+/// The read-only transcript of one session of a provider (parity P7, decisions T-D2 and T-D5). A header with the session's title, the message count and a Copy
 /// button; the scope line (messages only); the messages in order, each with its label, its local time and its text (selectable and wrapped); and the cap
 /// line at the end when the session is longer than the cap. It reads nothing itself: the window reads the session off the UI thread and gives it the
 /// messages. Its colours follow the rail's theme. Claude's transcript view is a different control and is not changed.
 /// </summary>
-public sealed class CodexTranscriptView : UserControl
+public sealed class ProviderTranscriptView : UserControl
 {
     private readonly TextBlock _title = new()
     {
@@ -34,7 +34,7 @@ public sealed class CodexTranscriptView : UserControl
         FontSize = 11,
         TextWrapping = TextWrapping.Wrap,
         Margin = new Thickness(0, 0, 0, 10),
-        Text = CodexTranscriptText.ScopeLine,
+        Text = ProviderTranscriptText.ScopeLine,
     };
 
     /// <summary>What shows in place of the messages: the reading line, the reason it could not be read, or "no messages". Null when messages show.</summary>
@@ -59,7 +59,7 @@ public sealed class CodexTranscriptView : UserControl
     private string? _noticeText;
     private IReadOnlyList<TranscriptLine> _lines = [];
 
-    public CodexTranscriptView()
+    public ProviderTranscriptView()
     {
         _copy.Click += Copy_Click;
 
@@ -113,8 +113,8 @@ public sealed class CodexTranscriptView : UserControl
     {
         _titleText = title;
         _lines = shown;
-        _countText = CodexTranscriptText.MessageCount(total);
-        _capText = CodexTranscriptText.CapNote(total, shown.Count);
+        _countText = ProviderTranscriptText.MessageCount(total);
+        _capText = ProviderTranscriptText.CapNote(total, shown.Count);
         _noticeText = total == 0 ? "This session has no messages." : null;
         _copyNote.Text = string.Empty;
         Render();
@@ -157,7 +157,7 @@ public sealed class CodexTranscriptView : UserControl
     }
 
     /// <summary>
-    /// The messages as one document: a paragraph per message, its label (the owner's in the find blue of the search view, Codex's in the text colour),
+    /// The messages as one document: a paragraph per message, its label (the owner's in the find blue of the search view, the assistant's in the text colour),
     /// its local time, and its text with each line break kept.
     /// </summary>
     private FlowDocument BuildDocument()
@@ -178,7 +178,7 @@ public sealed class CodexTranscriptView : UserControl
             var owned = line.Kind == "you";
             var paragraph = new Paragraph { Margin = new Thickness(0, 0, 0, 12) };
             paragraph.Inlines.Add(new Run(line.Kind) { FontWeight = FontWeights.SemiBold, Foreground = owned ? owner : text });
-            var time = CodexTranscriptText.TimeLabel(line.Time);
+            var time = ProviderTranscriptText.TimeLabel(line.Time);
             if (time.Length > 0) paragraph.Inlines.Add(new Run("  " + time) { FontSize = 11, Foreground = muted });
             paragraph.Inlines.Add(new LineBreak());
             var parts = line.Text.Replace("\r\n", "\n").Split('\n');
@@ -198,8 +198,8 @@ public sealed class CodexTranscriptView : UserControl
         if (_lines.Count == 0) return;
         try
         {
-            Clipboard.SetText(CodexTranscriptText.PlainText(_lines));
-            _copyNote.Text = $"Copied {CodexTranscriptText.MessageCount(_lines.Count)}.";
+            Clipboard.SetText(ProviderTranscriptText.PlainText(_lines));
+            _copyNote.Text = $"Copied {ProviderTranscriptText.MessageCount(_lines.Count)}.";
         }
         catch (ExternalException)
         {

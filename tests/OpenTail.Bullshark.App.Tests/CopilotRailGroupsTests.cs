@@ -8,7 +8,7 @@ namespace OpenTail.Bullshark.App.Tests;
 /// Copilot's Group by tag (tags P5): a session with two tags is in both tag groups, a session with no tag is in the "No tag" group, an archived or
 /// pinned session is in no tag group under All (the Archived and Pinned groups list it), the Copilot tag filter applies before the grouping, and a subagent
 /// comes last in its group. The views (parity P11): each view lists its own sessions, the tag filter applies to all of them, and Archived groups the
-/// archived sessions by tag. Synthetic summaries and marks only; the window is not built here (see <see cref="CopilotRailGroups"/>).
+/// archived sessions by tag. Synthetic summaries and marks only; the window is not built here (see <see cref="ProviderRailGroups"/>).
 /// </summary>
 public sealed class CopilotRailGroupsTests
 {
@@ -34,7 +34,7 @@ public sealed class CopilotRailGroupsTests
             ["single"] = new(Tags: ["auth"]),
         };
 
-        var groups = CopilotRailGroups.ByTag(sessions, Marks(marks), tagFilter: null);
+        var groups = ProviderRailGroups.ByTag(sessions, Marks(marks), tagFilter: null);
 
         Assert.Equal(["auth", "login"], groups.Select(g => g.Tag).ToList());
         Assert.Equal(new[] { "multi", "single" }, Ids(groups.Single(g => g.Tag == "auth")));
@@ -51,7 +51,7 @@ public sealed class CopilotRailGroupsTests
             ["blank"] = new(Tags: ["  "]),
         };
 
-        var groups = CopilotRailGroups.ByTag(sessions, Marks(marks), tagFilter: null);
+        var groups = ProviderRailGroups.ByTag(sessions, Marks(marks), tagFilter: null);
 
         Assert.Equal(["cache", null], groups.Select(g => g.Tag).ToList());
         // No mark (bare) and a blank tag (blank) both hold no tag; the newer one comes first.
@@ -70,12 +70,12 @@ public sealed class CopilotRailGroupsTests
             ["open"] = new(Tags: ["demo"]),
         };
 
-        var groups = CopilotRailGroups.ByTag(sessions, Marks(marks), tagFilter: null);
+        var groups = ProviderRailGroups.ByTag(sessions, Marks(marks), tagFilter: null);
 
         Assert.Equal(new[] { "open" }, Ids(Assert.Single(groups)));
-        Assert.False(CopilotRailGroups.InHistoryGroups(new LibraryEntry(Archived: true), tagFilter: null));
-        Assert.False(CopilotRailGroups.InHistoryGroups(new LibraryEntry(Pinned: true), tagFilter: null));
-        Assert.True(CopilotRailGroups.InHistoryGroups(null, tagFilter: null));
+        Assert.False(ProviderRailGroups.InHistoryGroups(new LibraryEntry(Archived: true), tagFilter: null));
+        Assert.False(ProviderRailGroups.InHistoryGroups(new LibraryEntry(Pinned: true), tagFilter: null));
+        Assert.True(ProviderRailGroups.InHistoryGroups(null, tagFilter: null));
     }
 
     [Fact]
@@ -89,7 +89,7 @@ public sealed class CopilotRailGroupsTests
             ["both"] = new(Tags: ["demo", "other"]),
         };
 
-        var groups = CopilotRailGroups.ByTag(sessions, Marks(marks), tagFilter: "demo");
+        var groups = ProviderRailGroups.ByTag(sessions, Marks(marks), tagFilter: "demo");
 
         // A session without the filter tag is in no group, so the other-only tag has no group. The both session keeps its other tag's group.
         Assert.Equal(["demo", "other"], groups.Select(g => g.Tag).ToList());
@@ -108,7 +108,7 @@ public sealed class CopilotRailGroupsTests
             ["new"] = new(Tags: ["t"]),
         };
 
-        var group = Assert.Single(CopilotRailGroups.ByTag(sessions, Marks(marks), tagFilter: null));
+        var group = Assert.Single(ProviderRailGroups.ByTag(sessions, Marks(marks), tagFilter: null));
 
         Assert.Equal(new[] { "new", "old", "sub" }, Ids(group));
     }
@@ -125,7 +125,7 @@ public sealed class CopilotRailGroupsTests
             ["d"] = new(Tags: ["alpha"]),
         };
 
-        var groups = CopilotRailGroups.ByTag(sessions, Marks(marks), tagFilter: null);
+        var groups = ProviderRailGroups.ByTag(sessions, Marks(marks), tagFilter: null);
 
         Assert.Equal(["beta", "alpha", "zeta", null], groups.Select(g => g.Tag).ToList());
         Assert.Equal(new[] { "e" }, Ids(groups[3]));
@@ -140,23 +140,23 @@ public sealed class CopilotRailGroupsTests
         var pinnedArchived = new LibraryEntry(Pinned: true, Archived: true);
 
         // All: every session is listed; a pinned one in the Pinned group, an archived one in the Archived group (pinned or not).
-        Assert.Equal(CopilotPlace.FolderGroups, CopilotRailGroups.PlaceOf(RailFilter.All, plain, null));
-        Assert.Equal(CopilotPlace.FolderGroups, CopilotRailGroups.PlaceOf(RailFilter.All, null, null));
-        Assert.Equal(CopilotPlace.PinnedGroup, CopilotRailGroups.PlaceOf(RailFilter.All, pinned, null));
-        Assert.Equal(CopilotPlace.ArchivedGroup, CopilotRailGroups.PlaceOf(RailFilter.All, archived, null));
-        Assert.Equal(CopilotPlace.ArchivedGroup, CopilotRailGroups.PlaceOf(RailFilter.All, pinnedArchived, null));
+        Assert.Equal(ProviderPlace.FolderGroups, ProviderRailGroups.PlaceOf(RailFilter.All, plain, null));
+        Assert.Equal(ProviderPlace.FolderGroups, ProviderRailGroups.PlaceOf(RailFilter.All, null, null));
+        Assert.Equal(ProviderPlace.PinnedGroup, ProviderRailGroups.PlaceOf(RailFilter.All, pinned, null));
+        Assert.Equal(ProviderPlace.ArchivedGroup, ProviderRailGroups.PlaceOf(RailFilter.All, archived, null));
+        Assert.Equal(ProviderPlace.ArchivedGroup, ProviderRailGroups.PlaceOf(RailFilter.All, pinnedArchived, null));
 
         // History: no archived session; a pinned one in the Pinned group; the rest in the folders.
-        Assert.Equal(CopilotPlace.FolderGroups, CopilotRailGroups.PlaceOf(RailFilter.History, plain, null));
-        Assert.Equal(CopilotPlace.PinnedGroup, CopilotRailGroups.PlaceOf(RailFilter.History, pinned, null));
-        Assert.Equal(CopilotPlace.NotListed, CopilotRailGroups.PlaceOf(RailFilter.History, archived, null));
-        Assert.Equal(CopilotPlace.NotListed, CopilotRailGroups.PlaceOf(RailFilter.History, pinnedArchived, null));
+        Assert.Equal(ProviderPlace.FolderGroups, ProviderRailGroups.PlaceOf(RailFilter.History, plain, null));
+        Assert.Equal(ProviderPlace.PinnedGroup, ProviderRailGroups.PlaceOf(RailFilter.History, pinned, null));
+        Assert.Equal(ProviderPlace.NotListed, ProviderRailGroups.PlaceOf(RailFilter.History, archived, null));
+        Assert.Equal(ProviderPlace.NotListed, ProviderRailGroups.PlaceOf(RailFilter.History, pinnedArchived, null));
 
         // Archived: only the archived sessions, in the folders, pinned or not (Claude's Archived filter lists a pinned archived session in its folder).
-        Assert.Equal(CopilotPlace.NotListed, CopilotRailGroups.PlaceOf(RailFilter.Archived, plain, null));
-        Assert.Equal(CopilotPlace.NotListed, CopilotRailGroups.PlaceOf(RailFilter.Archived, pinned, null));
-        Assert.Equal(CopilotPlace.FolderGroups, CopilotRailGroups.PlaceOf(RailFilter.Archived, archived, null));
-        Assert.Equal(CopilotPlace.FolderGroups, CopilotRailGroups.PlaceOf(RailFilter.Archived, pinnedArchived, null));
+        Assert.Equal(ProviderPlace.NotListed, ProviderRailGroups.PlaceOf(RailFilter.Archived, plain, null));
+        Assert.Equal(ProviderPlace.NotListed, ProviderRailGroups.PlaceOf(RailFilter.Archived, pinned, null));
+        Assert.Equal(ProviderPlace.FolderGroups, ProviderRailGroups.PlaceOf(RailFilter.Archived, archived, null));
+        Assert.Equal(ProviderPlace.FolderGroups, ProviderRailGroups.PlaceOf(RailFilter.Archived, pinnedArchived, null));
     }
 
     [Fact]
@@ -170,13 +170,13 @@ public sealed class CopilotRailGroupsTests
         // A session without the filter tag is listed under no view, and a session with no mark holds no tag.
         foreach (var view in new[] { RailFilter.All, RailFilter.History, RailFilter.Archived })
         {
-            Assert.Equal(CopilotPlace.NotListed, CopilotRailGroups.PlaceOf(view, other, "demo"));
-            Assert.Equal(CopilotPlace.NotListed, CopilotRailGroups.PlaceOf(view, null, "demo"));
+            Assert.Equal(ProviderPlace.NotListed, ProviderRailGroups.PlaceOf(view, other, "demo"));
+            Assert.Equal(ProviderPlace.NotListed, ProviderRailGroups.PlaceOf(view, null, "demo"));
         }
-        Assert.Equal(CopilotPlace.FolderGroups, CopilotRailGroups.PlaceOf(RailFilter.All, demo, "demo"));
-        Assert.Equal(CopilotPlace.ArchivedGroup, CopilotRailGroups.PlaceOf(RailFilter.All, demoArchived, "demo"));
-        Assert.Equal(CopilotPlace.PinnedGroup, CopilotRailGroups.PlaceOf(RailFilter.History, demoPinned, "demo"));
-        Assert.Equal(CopilotPlace.FolderGroups, CopilotRailGroups.PlaceOf(RailFilter.Archived, demoArchived, "demo"));
+        Assert.Equal(ProviderPlace.FolderGroups, ProviderRailGroups.PlaceOf(RailFilter.All, demo, "demo"));
+        Assert.Equal(ProviderPlace.ArchivedGroup, ProviderRailGroups.PlaceOf(RailFilter.All, demoArchived, "demo"));
+        Assert.Equal(ProviderPlace.PinnedGroup, ProviderRailGroups.PlaceOf(RailFilter.History, demoPinned, "demo"));
+        Assert.Equal(ProviderPlace.FolderGroups, ProviderRailGroups.PlaceOf(RailFilter.Archived, demoArchived, "demo"));
     }
 
     [Fact]
@@ -191,7 +191,7 @@ public sealed class CopilotRailGroupsTests
             ["pinnedArchived"] = new(Tags: ["t"], Pinned: true, Archived: true),
         };
 
-        var group = Assert.Single(CopilotRailGroups.ByTag(sessions, Marks(marks), tagFilter: null, RailFilter.Archived));
+        var group = Assert.Single(ProviderRailGroups.ByTag(sessions, Marks(marks), tagFilter: null, RailFilter.Archived));
 
         Assert.Equal(new[] { "archived", "pinnedArchived" }, Ids(group));
     }

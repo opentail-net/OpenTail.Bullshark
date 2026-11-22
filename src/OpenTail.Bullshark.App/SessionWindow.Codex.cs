@@ -125,7 +125,7 @@ public partial class SessionWindow
     /// <summary>
     /// The rail under Codex: a header with its reload mark, "New Codex session…", the empty state of the live part (Codex has none), then the
     /// pinned sessions (parity P4), then the history grouped by folder, newest folder first, or by tag under Group by tag (tags P5). The view in use
-    /// (All, History or Archived, parity P11) decides which of these are listed (<see cref="CodexRailGroups.PlaceOf"/>). Replaces the
+    /// (All, History or Archived, parity P11) decides which of these are listed (<see cref="ProviderRailGroups.PlaceOf"/>). Replaces the
     /// Claude rows; the Claude tabs are kept in step by <see cref="SyncSessionTabs"/>.
     /// </summary>
     private void RefreshCodexRail(IReadOnlyDictionary<string, SessionRecord> stored)
@@ -211,13 +211,13 @@ public partial class SessionWindow
     /// The Codex folders under the view in use, newest first. The sessions in each are newest first too. Under All and History a folder holds the
     /// sessions that are neither archived nor pinned: an archived one is in the Archived group, a pinned one in the Pinned group only (parity P4). Under
     /// Archived a folder holds the archived sessions (parity P11). With a Codex tag filter, a session without the tag is left out, so a folder with none
-    /// left is not listed (tags P5). The rule is <see cref="CodexRailGroups.PlaceOf"/>, shared with the tag groups.
+    /// left is not listed (tags P5). The rule is <see cref="ProviderRailGroups.PlaceOf"/>, shared with the tag groups.
     /// </summary>
     private IReadOnlyList<CodexFolder> CodexFolders() =>
         _codexSessions
-            .Where(session => CodexPlaceOf(session) == CodexPlace.FolderGroups)
+            .Where(session => CodexPlaceOf(session) == ProviderPlace.FolderGroups)
             .GroupBy(session => session.Folder ?? string.Empty, StringComparer.OrdinalIgnoreCase)
-            .Select(group => new CodexFolder(group.Key, CodexRailGroups.Sorted(group).ToList()))
+            .Select(group => new CodexFolder(group.Key, ProviderRailGroups.Sorted(group).ToList()))
             .OrderByDescending(folder => folder.Sessions[0].LastActivity ?? DateTimeOffset.MinValue)
             .ToList();
 
@@ -226,20 +226,20 @@ public partial class SessionWindow
     /// nowhere. The Codex marks decide it, and the Codex tag filter applies first (tags P5). The pin and the archive are the owner's codex: entries (D1),
     /// never Claude's, and Claude's filter does not apply (the Codex rail has no filter of its own).
     /// </summary>
-    private CodexPlace CodexPlaceOf(SessionSummary session) =>
-        CodexRailGroups.PlaceOf(_codexView, MarkOf(ProviderId.Codex, session.Key.SessionId), ActiveCodexTagFilter);
+    private ProviderPlace CodexPlaceOf(SessionSummary session) =>
+        ProviderRailGroups.PlaceOf(_codexView, MarkOf(ProviderId.Codex, session.Key.SessionId), ActiveCodexTagFilter);
 
     /// <summary>The Codex sessions in the Pinned group, newest first (parity P4), under the view in use: All and History only (parity P11).</summary>
     private IReadOnlyList<SessionSummary> CodexPinned() =>
-        _codexSessions.Where(session => CodexPlaceOf(session) == CodexPlace.PinnedGroup)
+        _codexSessions.Where(session => CodexPlaceOf(session) == ProviderPlace.PinnedGroup)
             .OrderByDescending(s => s.LastActivity ?? DateTimeOffset.MinValue).ToList();
 
     /// <summary>
     /// The Codex tag groups under Group by tag (tags P5): the sessions the view in use lists in the folders (parity P11), with the Codex tag filter
-    /// applied first. The groups are those of <see cref="CodexRailGroups.ByTag"/>, with the Codex marks.
+    /// applied first. The groups are those of <see cref="ProviderRailGroups.ByTag"/>, with the Codex marks.
     /// </summary>
     private IReadOnlyList<TagGroup<SessionSummary>> CodexTagGroups() =>
-        CodexRailGroups.ByTag(_codexSessions, id => MarkOf(ProviderId.Codex, id), ActiveCodexTagFilter, _codexView);
+        ProviderRailGroups.ByTag(_codexSessions, id => MarkOf(ProviderId.Codex, id), ActiveCodexTagFilter, _codexView);
 
     /// <summary>
     /// One Codex tag group (tags P5): "#tag (N)", or "No tag (N)" for the sessions with no tag, as a Claude tag group is named. A session with several tags
@@ -278,7 +278,7 @@ public partial class SessionWindow
     /// Archived lists its sessions in the folders (parity P11).
     /// </summary>
     private IReadOnlyList<SessionSummary> CodexArchived() =>
-        _codexSessions.Where(session => CodexPlaceOf(session) == CodexPlace.ArchivedGroup)
+        _codexSessions.Where(session => CodexPlaceOf(session) == ProviderPlace.ArchivedGroup)
             .OrderByDescending(s => s.LastActivity ?? DateTimeOffset.MinValue).ToList();
 
     /// <summary>The tag the Codex rail filters by, or null. Nothing is filtered while library.json cannot be read (D-L3).</summary>

@@ -13,13 +13,13 @@ namespace OpenTail.Bullshark.App;
 /// <summary>
 /// The read-only transcript of a past Codex session (parity P7, decisions T-D1 to T-D5). "View transcript" on a Codex row's menu opens it as a tab of its own
 /// (<see cref="TabKind.CodexTranscript"/>, keyed by the session's id). The messages are read by <see cref="CodexTurns.ReadSession"/> off the UI thread, and
-/// the view holds at most <see cref="CodexTranscriptText.MaxMessages"/> of them. Nothing from the transcript is logged: the count and the exception type only.
+/// the view holds at most <see cref="ProviderTranscriptText.MaxMessages"/> of them. Nothing from the transcript is logged: the count and the exception type only.
 /// Claude's transcript tab is not used and not changed.
 /// </summary>
 public partial class SessionWindow
 {
     /// <summary>The Codex transcript views, by the key of their tab. A view leaves this map when its tab closes (<see cref="RemoveCodexTranscript"/>).</summary>
-    private readonly Dictionary<SessionKey, CodexTranscriptView> _codexTranscripts = new();
+    private readonly Dictionary<SessionKey, ProviderTranscriptView> _codexTranscripts = new();
 
     /// <summary>True once the <c>--codex-transcript</c> screenshot has opened a transcript, so it opens once.</summary>
     private bool _codexTranscriptShotOpened;
@@ -40,7 +40,7 @@ public partial class SessionWindow
             return;
         }
 
-        var view = new CodexTranscriptView { Visibility = Visibility.Hidden };
+        var view = new ProviderTranscriptView { Visibility = Visibility.Hidden };
         view.ApplyTheme(Palette);
         view.ShowReading(title);
         var tab = AddTab(TabKind.CodexTranscript, id, title, ProviderId.Codex);
@@ -55,13 +55,13 @@ public partial class SessionWindow
     /// Reads a session's messages off the UI thread and gives them to its view, capped (T-D5). A failure shows its reason in the tab and in the status
     /// line, and is logged by type only. A cancellation is not expected here: the read is not cancelled when the tab closes, and its result is then not shown.
     /// </summary>
-    private async Task LoadCodexTranscriptAsync(CodexTranscriptView view, string sessionId, string title)
+    private async Task LoadCodexTranscriptAsync(ProviderTranscriptView view, string sessionId, string title)
     {
         var provider = _codex ??= new CodexProvider();
         try
         {
             var lines = await Task.Run(() => CodexTurns.ReadSession(provider.Paths, sessionId, CancellationToken.None));
-            view.ShowMessages(title, CodexTranscriptText.Capped(lines), lines.Count);
+            view.ShowMessages(title, ProviderTranscriptText.Capped(lines), lines.Count);
             AppLog.Write($"codex transcript read: {lines.Count} messages");
         }
         catch (Exception ex) when (ex is ArgumentException or FileNotFoundException or IOException or UnauthorizedAccessException or NotSupportedException)

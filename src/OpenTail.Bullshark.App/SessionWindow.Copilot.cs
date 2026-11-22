@@ -58,7 +58,7 @@ public partial class SessionWindow
     /// <summary>
     /// The rail under Copilot: a header with its reload mark, "New Copilot session…", the note that live sessions are not shown, the empty state or the
     /// failure, then the pinned sessions (parity P4), the folders or tag groups, and the archived group. The view in use decides which of these are listed
-    /// (<see cref="CopilotRailGroups.PlaceOf"/>). Replaces the Claude rows; the Claude tabs are kept in step by <see cref="SyncSessionTabs"/>.
+    /// (<see cref="ProviderRailGroups.PlaceOf"/>). Replaces the Claude rows; the Claude tabs are kept in step by <see cref="SyncSessionTabs"/>.
     /// </summary>
     private void RefreshCopilotRail(IReadOnlyDictionary<string, SessionRecord> stored)
     {
@@ -143,33 +143,33 @@ public partial class SessionWindow
 
     /// <summary>
     /// The Copilot folders under the view in use, newest first. The sessions in each are newest first too. Under All and History a folder holds the sessions
-    /// that are neither archived nor pinned (parity P4); under Archived, the archived sessions (parity P11). The rule is <see cref="CopilotRailGroups.PlaceOf"/>.
+    /// that are neither archived nor pinned (parity P4); under Archived, the archived sessions (parity P11). The rule is <see cref="ProviderRailGroups.PlaceOf"/>.
     /// </summary>
     private IReadOnlyList<CopilotFolder> CopilotFolders() =>
         _copilotSessions
-            .Where(session => CopilotPlaceOf(session) == CopilotPlace.FolderGroups)
+            .Where(session => CopilotPlaceOf(session) == ProviderPlace.FolderGroups)
             .GroupBy(session => session.Folder ?? string.Empty, StringComparer.OrdinalIgnoreCase)
-            .Select(group => new CopilotFolder(group.Key, CopilotRailGroups.Sorted(group).ToList()))
+            .Select(group => new CopilotFolder(group.Key, ProviderRailGroups.Sorted(group).ToList()))
             .OrderByDescending(folder => folder.Sessions[0].LastActivity ?? DateTimeOffset.MinValue)
             .ToList();
 
     /// <summary>Where a Copilot session is listed under the view in use (parity P11): read from its Copilot mark, with the Copilot tag filter first.</summary>
-    private CopilotPlace CopilotPlaceOf(SessionSummary session) =>
-        CopilotRailGroups.PlaceOf(_copilotView, MarkOf(ProviderId.Copilot, session.Key.SessionId), ActiveCopilotTagFilter);
+    private ProviderPlace CopilotPlaceOf(SessionSummary session) =>
+        ProviderRailGroups.PlaceOf(_copilotView, MarkOf(ProviderId.Copilot, session.Key.SessionId), ActiveCopilotTagFilter);
 
     /// <summary>The Copilot sessions in the Pinned group, newest first (parity P4).</summary>
     private IReadOnlyList<SessionSummary> CopilotPinned() =>
-        _copilotSessions.Where(session => CopilotPlaceOf(session) == CopilotPlace.PinnedGroup)
+        _copilotSessions.Where(session => CopilotPlaceOf(session) == ProviderPlace.PinnedGroup)
             .OrderByDescending(s => s.LastActivity ?? DateTimeOffset.MinValue).ToList();
 
     /// <summary>The archived Copilot sessions of the All view, newest first (D1). Under the other views the list is empty.</summary>
     private IReadOnlyList<SessionSummary> CopilotArchived() =>
-        _copilotSessions.Where(session => CopilotPlaceOf(session) == CopilotPlace.ArchivedGroup)
+        _copilotSessions.Where(session => CopilotPlaceOf(session) == ProviderPlace.ArchivedGroup)
             .OrderByDescending(s => s.LastActivity ?? DateTimeOffset.MinValue).ToList();
 
     /// <summary>The Copilot tag groups under Group by tag (tags P5), with the Copilot marks.</summary>
     private IReadOnlyList<TagGroup<SessionSummary>> CopilotTagGroups() =>
-        CopilotRailGroups.ByTag(_copilotSessions, id => MarkOf(ProviderId.Copilot, id), ActiveCopilotTagFilter, _copilotView);
+        ProviderRailGroups.ByTag(_copilotSessions, id => MarkOf(ProviderId.Copilot, id), ActiveCopilotTagFilter, _copilotView);
 
     /// <summary>One Copilot tag group (tags P5): "#tag (N)", or "No tag (N)" for the sessions with no tag.</summary>
     private TreeViewItem CopilotTagItem(TagGroup<SessionSummary> group, bool expandByDefault)
