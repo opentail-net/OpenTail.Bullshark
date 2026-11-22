@@ -72,6 +72,24 @@ Write `docs/plans/provider-<cli>-<date>.md` with these parts, in order:
 - Owner decisions are recorded with their defaults, and the owner's acceptance is recorded with its date.
 - Commit each stage locally with the attribution lines. **Push only on the owner's approval**, and say how many commits a push would send (the branch may hold earlier work).
 
+## The shared kit (as built by the refactor, 2026-11-23)
+
+Use these pieces where a new CLI fits them. Each one was extracted only where the Codex and Copilot code matched, and each has the gate that proved it.
+
+- **Core, start launch:** `Providers/CliStartLauncher.cs` (the start-file writer, the cleanup, the PATH search for `pwsh.exe` and the shim, the quoting, and the script builder with the folder set before the prompt file is deleted). A provider passes its shim name, its display name and its final call.
+- **Core, command lines:** `Providers/CommandLineRules.cs` (folder refusals, the `-C` option, the `cmd.exe /d /c` wrapper, the session-id shape). The reader path-safety checks stay with the readers.
+- **Core, summaries:** `Providers/Summary/` (the input cap and cut, the level texts with the CLI's phrase, and the process run that keeps each provider's exception type). The route stays per provider: stdin with a session folder, or a scratch folder with a file.
+- **Core, resume text:** `Resume/ProviderResumeText.cs` (the turns, the tail, the cut, the header with the CLI's phrase).
+- **Core, transcript limit:** `Providers/TranscriptLimits.cs` (the one cap every reader and view uses).
+- **Core, continue (C1):** `Continue/` (the modes, the scope, the resume-mode policy, and the chooser).
+- **App, lists and views:** `App/Providers/` (the rail grouping, the search and its view, the transcript text and view).
+- **App, resume:** `App/Providers/ProviderResumeRules.cs` (the rules, with a `ProviderResumeWording` record of the CLI's words).
+- **App, window:** `App/Providers/SessionWindow.ProviderTerminal.cs` and `ProviderTerminalRules.cs` (the exit watch, the terminal tab open, and the row menu).
+
+Kept per provider, deliberately: the reader and writer of each CLI's files, the CLI's flags and its route, the summary's exception type (the App catches it by type), the model step where a CLI has one, the dialog layouts, and the tab close and rail row, which still differ.
+
+**The rule for the next CLI:** before adding any piece, check on paper that the new CLI fits the seam (the interfaces in `Core/Providers/Capabilities.cs`) and the kit's pieces above. Use a piece only where its behaviour is the same; where it differs, keep the route in the provider and write down why. Then run the stage gates above: byte-identical user strings, unchanged existing tests, and full-name App targets.
+
 ## Checklist for the next CLI
 
 - [ ] Installed here: version, every shim (exe, cmd, ps1), and which one a shell runs first.
