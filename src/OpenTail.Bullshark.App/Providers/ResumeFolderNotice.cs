@@ -17,10 +17,10 @@ public static class ResumeFolderNotice
     public static string? For(string? folder, bool folderExists)
     {
         if (string.IsNullOrWhiteSpace(folder))
-            return "The session has no folder on record, so it cannot be started. Summary and last turns can still be previewed.";
+            return "The session has no folder on record, so it cannot be started. Start is blocked.";
         return folderExists
             ? null
-            : $"The session's folder is missing: {folder}. Start needs it, so it is blocked. Summary and last turns can still be previewed.";
+            : $"The session's folder is missing: {folder}. Start needs it, so it is blocked.";
     }
 
     /// <summary>True when the notice blocks Start: any notice does, and no notice (null) does not.</summary>

@@ -56,7 +56,7 @@ public partial class SessionWindow
 
         var title = CopilotRowTitle(MarkOf(ProviderId.Copilot, id)?.Name, session);
         var turns = session.UserMessages is { } count ? $"{count} {(count == 1 ? "turn" : "turns")}" : "turns not counted";
-        var facts = $"{turns} · last active {AgeOf(session.LastActivity)} · in {folder}";
+        var facts = $"{turns} · last active {AgeOf(session.LastActivity)} · {FolderFact.For(folder)}";
         var dialog = new CopilotResumePrompt($"Resume: {title}", facts, Palette,
             (choice, kept, ct) => BuildCopilotStartTextAsync(session, choice, kept, ct, choice.Target), initialMode, folder, FolderExists(folder))
         {

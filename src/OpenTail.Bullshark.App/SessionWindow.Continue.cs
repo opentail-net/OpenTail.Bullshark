@@ -45,7 +45,7 @@ public partial class SessionWindow
         }
     }
 
-    /// <summary>One Continue: the scope's sessions, the decision, then the open tab, the folder check and the resume screen.</summary>
+    /// <summary>One Continue: the scope's sessions, the decision, then the open tab, the list check and the resume screen.</summary>
     private async Task ContinueOnceAsync()
     {
         // Archived sessions are left out by their marks. Without the marks (an unreadable library) an archived session could be picked, so nothing is.
@@ -118,8 +118,9 @@ public partial class SessionWindow
             return;
         }
 
-        // The refusal is the one the screen would give, so no screen is opened for a session it would refuse.
-        var refusal = ContinueFolderRefusal(picked, isClaudeDigest: digest is not null);
+        // The refusal is the one the screen would give for its list, so no screen is opened for a session it would refuse. A missing folder is not refused
+        // here: the screen opens and shows the folder notice, which blocks Start.
+        var refusal = ContinueScreenRefusal(picked);
         if (refusal is not null)
         {
             SetStatus(refusal);
@@ -188,20 +189,12 @@ public partial class SessionWindow
         digest.LastModel);
 
     /// <summary>
-    /// The refusal of a folder that the resume screen would refuse, or null when the screen may open. Copilot's rule is its screen's own (listed in the rail,
-    /// and the folder exists). For Claude and Codex, a folder that is missing is refused with the screens' texts; Claude's screen also names a folder that
-    /// its transcript does not give.
+    /// The refusal that Continue gives before the session's resume screen opens, or null when the screen may open (<see cref="ContinueDecision.ScreenRefusal"/>).
+    /// Only a Copilot session that is not in the Copilot list is refused, with the screen's own text. A missing folder, or one that is not on record, is not
+    /// refused here: the screen opens and shows the folder notice, which blocks Start. Each screen's Start checks its folder again.
     /// </summary>
-    private string? ContinueFolderRefusal(SessionSummary session, bool isClaudeDigest)
-    {
-        var folder = session.Folder;
-        if (session.Key.Provider == ProviderId.Copilot)
-            return CopilotResumeRules.RefusalFor(IsCopilotListed(session.Key.SessionId), folder, FolderExists(folder));
-        if (FolderExists(folder)) return null;
-        return isClaudeDigest && folder is null
-            ? "Not resumed: the session's folder is not in its transcript."
-            : "Not resumed: the session's folder is missing.";
-    }
+    private string? ContinueScreenRefusal(SessionSummary session) =>
+        ContinueDecision.ScreenRefusal(session.Key.Provider, IsCopilotListed(session.Key.SessionId), CopilotRailText.NotListed);
 
     /// <summary>Shows the open tab of a session of the given provider. True when there was one to show.</summary>
     private bool ShowOpenContinueTab(ProviderId provider, string id) =>

@@ -10,7 +10,7 @@ namespace OpenTail.Bullshark.App.Tests;
 public sealed class ResumeFolderNoticeTests
 {
     private const string NoFolderText =
-        "The session has no folder on record, so it cannot be started. Summary and last turns can still be previewed.";
+        "The session has no folder on record, so it cannot be started. Start is blocked.";
 
     [Fact]
     public void ANullFolderHasNoFolderOnRecordWhetherOrNotItExists()
@@ -29,10 +29,10 @@ public sealed class ResumeFolderNoticeTests
     }
 
     [Fact]
-    public void AMissingFolderNamesTheFolderAndSaysWhatIsStillPossible()
+    public void AMissingFolderNamesTheFolderAndSaysStartIsBlocked()
     {
         Assert.Equal(
-            "The session's folder is missing: C:\\Work\\gone. Start needs it, so it is blocked. Summary and last turns can still be previewed.",
+            "The session's folder is missing: C:\\Work\\gone. Start needs it, so it is blocked.",
             ResumeFolderNotice.For("C:\\Work\\gone", folderExists: false));
     }
 

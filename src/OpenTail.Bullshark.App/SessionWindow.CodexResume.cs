@@ -70,7 +70,7 @@ public partial class SessionWindow
 
         var title = CodexRowTitle(MarkOf(ProviderId.Codex, session.Key.SessionId)?.Name, session);
         var turns = session.UserMessages is { } count ? $"{count} {(count == 1 ? "turn" : "turns")}" : "turns not counted";
-        var facts = $"{turns} · last active {AgeOf(session.LastActivity)} · in {folder}";
+        var facts = $"{turns} · last active {AgeOf(session.LastActivity)} · {FolderFact.For(folder)}";
         var dialog = new CodexResumePrompt($"Resume: {title}", facts, Palette,
             (choice, kept, ct) => BuildCodexStartTextAsync(session, folder, choice, kept, ct, choice.Target), CodexModels(), initialMode,
             folder, FolderExists(folder))
@@ -188,6 +188,14 @@ public partial class SessionWindow
                 }
                 else
                 {
+                    // Codex runs its summary in the session's folder, so with the folder missing no call is made (SummaryFolderRule). The refusal is
+                    // reported as a failed summary is: the status line and the preview.
+                    if (SummaryFolderRule.Refusal(FolderExists(folder)) is { } folderRefusal)
+                    {
+                        AppLog.Write("codex summary not made: the folder is missing, no call");
+                        SetStatus($"Not started: {folderRefusal}");
+                        return new CodexPreview(string.Empty, null, folderRefusal);
+                    }
                     var made = await new CodexSummarizer(new ProcessCliRunner("cmd.exe"))
                         .SummariseSessionAsync(provider.Paths, sessionId, folder, level, ct);
                     AppLog.Write($"codex summary made: {made.Length:N0} characters");

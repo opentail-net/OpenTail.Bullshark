@@ -156,4 +156,23 @@ public sealed class ContinueDecisionTests
             "Continue: An example title (Codex). Opening its resume screen from the last turns. Nothing starts until you confirm it there.",
             ContinueDecision.PickedText("An example title", ProviderId.Codex, ContinueMode.LastTurns));
     }
+
+    [Fact]
+    public void ClaudeAndCodexScreensOpenWhateverTheCopilotListSays()
+    {
+        Assert.Null(ContinueDecision.ScreenRefusal(ProviderId.Claude, copilotListed: false, CopilotRailText.NotListed));
+        Assert.Null(ContinueDecision.ScreenRefusal(ProviderId.Codex, copilotListed: false, CopilotRailText.NotListed));
+    }
+
+    [Fact]
+    public void AListedCopilotSessionOpensItsScreen()
+    {
+        Assert.Null(ContinueDecision.ScreenRefusal(ProviderId.Copilot, copilotListed: true, CopilotRailText.NotListed));
+    }
+
+    [Fact]
+    public void AnUnlistedCopilotSessionIsRefusedWithTheListText()
+    {
+        Assert.Equal(CopilotRailText.NotListed, ContinueDecision.ScreenRefusal(ProviderId.Copilot, copilotListed: false, CopilotRailText.NotListed));
+    }
 }

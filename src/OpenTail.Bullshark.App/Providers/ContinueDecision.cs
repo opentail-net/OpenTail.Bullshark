@@ -31,6 +31,17 @@ public sealed record ContinueDecision(SessionSummary? Session, ContinueMode? Mod
         return new ContinueDecision(session, ResumeModePolicy.Resolve(remembered, settings.DefaultMode));
     }
 
+    /// <summary>
+    /// The refusal that Continue gives before a session's resume screen opens, or null when the screen may open. Only a Copilot session that is not in the
+    /// Copilot list is refused, with <paramref name="notListed"/>. A missing folder is not refused here: the screen opens and shows the folder notice, which
+    /// blocks Start, and each screen's Start checks its folder again.
+    /// </summary>
+    /// <param name="provider">The session's provider.</param>
+    /// <param name="copilotListed">True when the session's id is in the Copilot list the rail shows. Only a Copilot session reads it.</param>
+    /// <param name="notListed">The refusal of a Copilot session that is not in the list.</param>
+    public static string? ScreenRefusal(ProviderId provider, bool copilotListed, string notListed) =>
+        provider == ProviderId.Copilot && !copilotListed ? notListed : null;
+
     /// <summary>The provider's name as the status line gives it.</summary>
     public static string NameOf(ProviderId provider) =>
         provider == ProviderId.Claude ? "Claude"

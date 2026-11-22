@@ -75,14 +75,12 @@ public partial class SessionWindow
     private async Task ResumeOnceAsync(SessionDigest digest, ContinueMode? initialMode = null)
     {
         SetStatus($"Reading session {ShortId(digest.SessionId)}…");
-        var (lines, folder) = await Task.Run(() => ResumeSource.Load(digest.FilePath));
-        if (folder is null)
-        {
-            SetStatus("Not resumed: the session's folder is not in its transcript.");
-            return;
-        }
+        var (lines, transcriptFolder) = await Task.Run(() => ResumeSource.Load(digest.FilePath));
+        // A transcript with no folder gives an empty folder. The screen opens with the notice that the session has no folder on record, and Start is
+        // blocked. The start checks below refuse a missing folder too (the summary guard in BuildStartTextAsync, and SetupPlan.Validate).
+        var folder = transcriptFolder ?? string.Empty;
 
-        var facts = $"{digest.Turns} {(digest.Turns == 1 ? "turn" : "turns")} · last active {AgeOf(digest.LastActivity)} · in {folder}";
+        var facts = $"{digest.Turns} {(digest.Turns == 1 ? "turn" : "turns")} · last active {AgeOf(digest.LastActivity)} · {FolderFact.For(folder)}";
         var defaults = SavedSolo();
         // The folder is checked when the screen opens, as the Codex and Copilot screens check theirs: a missing folder is shown on the screen and blocks
         // Start (the Start-time checks still run). A folder that is not trusted is not shown here: its Start refuses, as before.
