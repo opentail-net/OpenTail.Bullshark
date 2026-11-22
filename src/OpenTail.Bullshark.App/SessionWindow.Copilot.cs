@@ -7,8 +7,6 @@ using OpenTail.Bullshark.Core.Behaviour;
 using OpenTail.Bullshark.Core.Library;
 using OpenTail.Bullshark.Core.Providers;
 using OpenTail.Bullshark.Core.Supervisor;
-using Wpf.Ui.Terminal;
-using Wpf.Ui.Terminal.Internals;
 
 namespace OpenTail.Bullshark.App;
 
@@ -265,14 +263,13 @@ public partial class SessionWindow
     {
         var id = session.Key.SessionId;
         var mark = MarkOf(ProviderId.Copilot, id) ?? new LibraryEntry();
-        var menu = StyledMenu();
-        menu.Items.Add(MenuItemFor("Resume…", () => ResumeCopilotScreen(session)));
-        menu.Items.Add(MenuItemFor("Resume in a terminal tab", () => ResumeCopilot(session)));
-        menu.Items.Add(MenuItemFor("View transcript", () => OpenCopilotTranscript(session)));
-        menu.Items.Add(MenuItemFor(mark.Pinned ? "Unpin" : "Pin", () => SetCopilotPinned(id, !mark.Pinned)));
-        menu.Items.Add(MenuItemFor(mark.Archived ? "Unarchive" : "Archive", () => SetCopilotArchived(id, !mark.Archived)));
-        menu.Items.Add(MenuItemFor("Edit…", () => EditMarkOf(ProviderId.Copilot, id, title)));
-        return menu;
+        return ProviderRowMenu(
+            ("Resume…", () => ResumeCopilotScreen(session)),
+            ("Resume in a terminal tab", () => ResumeCopilot(session)),
+            ("View transcript", () => OpenCopilotTranscript(session)),
+            (mark.Pinned ? "Unpin" : "Pin", () => SetCopilotPinned(id, !mark.Pinned)),
+            (mark.Archived ? "Unarchive" : "Archive", () => SetCopilotArchived(id, !mark.Archived)),
+            ("Edit…", () => EditMarkOf(ProviderId.Copilot, id, title)));
     }
 
     /// <summary>Pins or unpins a Copilot session. The change is written under its copilot: key (D1).</summary>
@@ -394,20 +391,7 @@ public partial class SessionWindow
     /// </summary>
     private OpenTab OpenCopilotTab(string id, string title, string command, string folder)
     {
-        var terminal = new ExtendedTerminalControl
-        {
-            StartupCommandLine = command,
-            WorkingDirectory = folder,
-            Visibility = Visibility.Hidden,
-        };
-        _terminals[new SessionKey(ProviderId.Copilot, id)] = terminal;
-        var tab = AddTab(TabKind.Session, id, title, ProviderId.Copilot);
-        // Watched before the control is shown: its process starts when the control loads, so the watch must be in place by then.
-        if (terminal.ConPTYTerm is { } term) WatchCopilotExit(tab, term);
-        Pane.Children.Add(terminal);
-        ConfigureTerminal(terminal);
-        SetActive(tab);
-        ShowOnly(terminal);
+        var tab = OpenProviderTab(CopilotTerminal, id, title, command, folder);
         SetStatus($"Copilot tab opened in {folder}.");
         return tab;
     }
