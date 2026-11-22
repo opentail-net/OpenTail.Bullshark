@@ -91,8 +91,9 @@ public partial class SessionWindow
     private IReadOnlyDictionary<string, RunBudget> BudgetsOf(
         IReadOnlyList<RunRecord> runs,
         IReadOnlyDictionary<string, SessionRecord> records,
-        IReadOnlyDictionary<string, string> paths) =>
-        RunBudget.ForRuns(runs, records, ReadRunWrites(runs, records, paths).SelectMany(read => read.Writes), DateTimeOffset.UtcNow);
+        IReadOnlyDictionary<string, string> paths,
+        bool clampBackwards) =>
+        RunBudget.ForRuns(runs, records, ReadRunWrites(runs, records, paths).SelectMany(read => read.Writes), DateTimeOffset.UtcNow, clampBackwards);
 
     /// <summary>
     /// The clashes and the budgets of every run, after a pass, for the sessions in <paramref name="records"/>. The budgets are kept for the
@@ -104,14 +105,15 @@ public partial class SessionWindow
         ReadClashes(
         IReadOnlyDictionary<string, SessionRecord> records,
         IReadOnlyDictionary<string, string> paths,
-        IReadOnlyList<AgentInfo> agents)
+        IReadOnlyList<AgentInfo> agents,
+        bool clampBackwards)
     {
         var (runs, runsProblem) = LoadRuns(_runStore);
         // Only the live sessions can clash: a finished session's shared file no longer needs the owner (round 5 item 7).
         var live = FileOverlap.LiveRecords(records, agents);
         var read = ReadRunWrites(runs, records, paths);
         var clashes = read.SelectMany(item => FileOverlap.Find(item.Run, live, item.Writes)).ToList();
-        var budgets = RunBudget.ForRuns(runs, records, read.SelectMany(item => item.Writes), DateTimeOffset.UtcNow);
+        var budgets = RunBudget.ForRuns(runs, records, read.SelectMany(item => item.Writes), DateTimeOffset.UtcNow, clampBackwards);
         return (clashes, budgets, runs, runsProblem);
     }
 

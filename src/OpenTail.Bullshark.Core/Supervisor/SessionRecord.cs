@@ -26,7 +26,13 @@ public sealed record SessionRecord(
     /// When the stale-blocked alert was raised (round 9 item 4). A lost session is held from a resume for an hour from this time, and no longer.
     /// It is read only while <see cref="LastAlert"/> is the stale-blocked alert. Files from before the field load as null.
     /// </summary>
-    DateTimeOffset? StaleBlockedAt = null);
+    DateTimeOffset? StaleBlockedAt = null,
+    /// <summary>
+    /// How many times the stored record has changed (R5). Only <see cref="StateStore"/> sets it: every write that changes the record makes it one
+    /// higher, under the file lock. A write made from an older read is ignored (see <see cref="StateStore.PutFrom"/>), so a late copy cannot
+    /// roll the record back. Files from before the field load as 0.
+    /// </summary>
+    long Version = 0);
 
 /// <summary>
 /// Reads and writes the state file. Every change goes through <see cref="Update"/>: the file is read again under the lock,
@@ -69,17 +75,73 @@ public sealed class StateStore
         return Read();
     }
 
+    /// <summary>How many whole-record writes <see cref="PutFrom"/> has ignored because the stored record was newer (R5). A count, never a name.</summary>
+    private long _staleWrites;
+
+    /// <summary>The number of whole-record writes ignored so far, because the stored record was newer than the record they were made from.</summary>
+    public long StaleWrites => Interlocked.Read(ref _staleWrites);
+
     /// <summary>
     /// Applies a change under the file lock. The file is read again inside the lock first. If it cannot be read, the change
-    /// is not applied and <see cref="StoreUnreadableException"/> is thrown.
+    /// is not applied and <see cref="StoreUnreadableException"/> is thrown. Every record the change alters gets a new
+    /// <see cref="SessionRecord.Version"/> (see <see cref="Stamp"/>): the only place a version changes.
     /// </summary>
     public void Update(Action<Dictionary<string, SessionRecord>> change)
     {
         using var _ = FileLock.Hold(_path);
-        var records = Read();
+        var read = Read();
+        var records = new Dictionary<string, SessionRecord>(read, StringComparer.Ordinal);
         change(records);
-        Write(records);
+        Write(Stamp(read, records));
     }
+
+    /// <summary>
+    /// Puts a whole record that was made from a read taken at <paramref name="readAt"/> (the <see cref="SessionRecord.Version"/> that read
+    /// had). The write's own version is <paramref name="readAt"/> plus one, and it is applied only when that is greater than the stored
+    /// version, that is, only when nothing was stored after that read. Otherwise the write is ignored and <see cref="StaleWrites"/> goes up,
+    /// and the stored record stays. Call it inside <see cref="Update"/>, with the records that callback holds.
+    /// </summary>
+    /// <returns>True when the record was put; false when the stored record is newer and the write was ignored.</returns>
+    public bool PutFrom(IDictionary<string, SessionRecord> records, string name, SessionRecord made, long readAt)
+    {
+        if (records.TryGetValue(name, out var stored) && readAt < stored.Version)
+        {
+            Interlocked.Increment(ref _staleWrites);
+            return false;
+        }
+        records[name] = made with { Version = readAt };
+        return true;
+    }
+
+    /// <summary>
+    /// The one place a record's version changes (R5). A record whose content did not change keeps its stored version exactly. A record whose
+    /// content changed gets one more than the higher of the stored version and the version it was made from, so it always moves forward and
+    /// a change bumps it once, however many times the callback set it.
+    /// </summary>
+    private static Dictionary<string, SessionRecord> Stamp(
+        IReadOnlyDictionary<string, SessionRecord> read,
+        Dictionary<string, SessionRecord> records)
+    {
+        foreach (var name in records.Keys.ToList())
+        {
+            var candidate = records[name];
+            if (read.TryGetValue(name, out var stored))
+            {
+                records[name] = SameContent(candidate, stored)
+                    ? stored
+                    : candidate with { Version = Math.Max(stored.Version, candidate.Version) + 1 };
+            }
+            else
+            {
+                records[name] = candidate with { Version = Math.Max(0, candidate.Version) + 1 };
+            }
+        }
+        return records;
+    }
+
+    /// <summary>True when two records hold the same content. The version is not content, and the restart times are compared by their values.</summary>
+    private static bool SameContent(SessionRecord a, SessionRecord b) =>
+        (a with { Version = b.Version, RestartTimes = b.RestartTimes }).Equals(b) && a.RestartTimes.SequenceEqual(b.RestartTimes);
 
     /// <summary>Removes one session's record, so the rail and the supervisor stop tracking it. Other records are kept.</summary>
     public void Forget(string name) => Update(records => records.Remove(name));

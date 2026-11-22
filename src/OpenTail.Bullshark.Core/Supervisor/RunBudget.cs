@@ -1,5 +1,6 @@
 using System.Globalization;
 using OpenTail.Bullshark.Core.Activity;
+using OpenTail.Bullshark.Core.Behaviour;
 
 namespace OpenTail.Bullshark.Core.Supervisor;
 
@@ -47,13 +48,14 @@ public sealed record RunSpend(long OutputTokens, TimeSpan Elapsed)
     /// <summary>
     /// The run's spend. A session is in the run when its spec's name has a state record with a session id (the run record holds no
     /// session ids). Each session counts once, from its transcript's usage, and the tokens of the sessions closed from the run are
-    /// kept on the run (round 9 item 1). A clock that runs backwards gives no time, not a negative one.
+    /// kept on the run (round 9 item 1). A clock that runs backwards gives no time, not a negative one, while <paramref name="clampBackwards"/> is set.
     /// </summary>
     public static RunSpend Of(
         RunRecord run,
         IReadOnlyDictionary<string, SessionRecord> records,
         IEnumerable<SessionWrites> writes,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        bool clampBackwards = true)
     {
         var list = writes.ToList();
         long output = run.ClosedOutputTokens;
@@ -63,7 +65,7 @@ public sealed record RunSpend(long OutputTokens, TimeSpan Elapsed)
             var found = list.FirstOrDefault(w => string.Equals(w.SessionId, record.SessionId, StringComparison.OrdinalIgnoreCase));
             output += found?.Usage?.Output ?? 0;
         }
-        return new RunSpend(output, ElapsedOf(run, records, now));
+        return new RunSpend(output, ElapsedOf(run, records, now, clampBackwards));
     }
 
     /// <summary>
@@ -78,9 +80,13 @@ public sealed record RunSpend(long OutputTokens, TimeSpan Elapsed)
     /// of its sessions that have a session id, and the first start the run kept when a session was closed (round 9 item 1). A run with no
     /// session started has run for nothing, so the time it waited for its start time, or the time before the window opened, never counts
     /// against a limit (round 6 item 3). A run that waits for its start time has run for nothing yet (round 5 item 3). A clock that runs
-    /// backwards gives no time, not a negative one.
+    /// backwards gives no time, not a negative one, while <paramref name="clampBackwards"/> is set (<see cref="StoredAge"/>).
     /// </summary>
-    public static TimeSpan ElapsedOf(RunRecord run, IReadOnlyDictionary<string, SessionRecord> records, DateTimeOffset now)
+    public static TimeSpan ElapsedOf(
+        RunRecord run,
+        IReadOnlyDictionary<string, SessionRecord> records,
+        DateTimeOffset now,
+        bool clampBackwards = true)
     {
         if (run.StartAt is { } startAt && startAt > now) return TimeSpan.Zero;
         DateTimeOffset? first = run.FirstStartedAt;
@@ -90,8 +96,7 @@ public sealed record RunSpend(long OutputTokens, TimeSpan Elapsed)
             if (first is null || record.StartedAt < first) first = record.StartedAt;
         }
         if (first is not { } started) return TimeSpan.Zero;
-        var elapsed = now - started;
-        return elapsed < TimeSpan.Zero ? TimeSpan.Zero : elapsed;
+        return StoredAge.Of(now, started, clampBackwards);
     }
 
     /// <summary>
@@ -100,12 +105,11 @@ public sealed record RunSpend(long OutputTokens, TimeSpan Elapsed)
     /// item 3, which counted a run from its start time even when no session had started. The spend uses
     /// <see cref="ElapsedOf(RunRecord, IReadOnlyDictionary{string, SessionRecord}, DateTimeOffset)"/>.
     /// </summary>
-    public static TimeSpan ElapsedOf(RunRecord run, DateTimeOffset now)
+    public static TimeSpan ElapsedOf(RunRecord run, DateTimeOffset now, bool clampBackwards = true)
     {
         if (run.StartAt is { } startAt && startAt > now) return TimeSpan.Zero;
         var origin = run.FirstStartedAt ?? (run.StartAt is { } start && start > run.CreatedAt ? start : run.CreatedAt);
-        var elapsed = now - origin;
-        return elapsed < TimeSpan.Zero ? TimeSpan.Zero : elapsed;
+        return StoredAge.Of(now, origin, clampBackwards);
     }
 }
 
@@ -172,13 +176,14 @@ public sealed record RunBudget(double Fraction, bool Notify = true, string? Told
         IEnumerable<RunRecord> runs,
         IReadOnlyDictionary<string, SessionRecord> records,
         IEnumerable<SessionWrites> writes,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        bool clampBackwards = true)
     {
         var all = writes.ToList();
         var budgets = new Dictionary<string, RunBudget>(StringComparer.Ordinal);
         foreach (var run in runs)
         {
-            if (For(run.Limits, RunSpend.Of(run, records, all, now)) is not { } budget) continue;
+            if (For(run.Limits, RunSpend.Of(run, records, all, now, clampBackwards)) is not { } budget) continue;
             foreach (var pair in ForSessions(run, records, budget)) budgets[pair.Key] = pair.Value;
         }
         return budgets;

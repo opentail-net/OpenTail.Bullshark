@@ -76,7 +76,7 @@ public partial class SessionWindow
                 CodexRowTitle(pair.mark?.Name, pair.session),
                 string.IsNullOrEmpty(pair.session.Folder) ? "No folder named" : LeafOf(pair.session.Folder),
                 string.IsNullOrEmpty(pair.session.Folder) ? null : pair.session.Folder,
-                RelativeTime(pair.session.LastActivity),
+                RelativeTime(pair.session.LastActivity, _behaviour.State.ClampClockBackwards),
                 pair.mark?.Archived == true))
             .ToList();
 

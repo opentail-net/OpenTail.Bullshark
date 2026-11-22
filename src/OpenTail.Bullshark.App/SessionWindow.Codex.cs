@@ -379,7 +379,7 @@ public partial class SessionWindow
         var mark = MarkOf(ProviderId.Codex, id);
         var title = CodexRowTitle(mark?.Name, session);
         // The third line: the time, the tags, then the plan figure "3/7" when the session has a plan file (parity P3).
-        var detail = RelativeTime(session.LastActivity) + TagsSuffix(mark);
+        var detail = RelativeTime(session.LastActivity, _behaviour.State.ClampClockBackwards) + TagsSuffix(mark);
         if (PlanFigure(ProviderId.Codex, id) is { } plan) detail = detail.Length == 0 ? plan : detail + " · " + plan;
         var line = TwoLine(title, session.Model ?? string.Empty, detail);
         var item = NewItem(ColourEdge(line, mark?.Colour),

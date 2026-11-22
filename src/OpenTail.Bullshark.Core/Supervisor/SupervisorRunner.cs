@@ -253,14 +253,19 @@ public sealed class SupervisorRunner
             .ToList();
         if (changed.Count == 0) return;
 
+        // Each change was made from the record as this pass read it. A record the owner or the other process changed since then is newer, and
+        // the pass's copy of it is ignored (R5), so an older copy never rolls it back. Only a count is logged.
+        var ignored = 0;
         _store.Update(current =>
         {
             foreach (var name in changed)
             {
                 if (before.ContainsKey(name) && !current.ContainsKey(name)) continue;
-                current[name] = after[name];
+                var readAt = before.TryGetValue(name, out var read) ? read.Version : 0;
+                if (!_store.PutFrom(current, name, after[name], readAt)) ignored++;
             }
         });
+        if (ignored > 0) _log($"state: {ignored} change(s) of this pass ignored: the stored record is newer");
     }
 
     private async Task Carry(

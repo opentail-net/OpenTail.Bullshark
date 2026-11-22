@@ -391,8 +391,15 @@ public partial class SessionWindow
         {
             if (originals.Count > 0)
                 _runStore.Update(runs => RunStore.WithSessionRestored(runs, originals, name, closedStart, closedOutput));
-            if (recordBefore is not null)
-                _store.Update(records => records[name] = recordBefore);
+            if (recordBefore is { } previous)
+            {
+                // Put back only if nothing newer was stored since the record was read before the close (R5): a newer one is kept.
+                _store.Update(records =>
+                {
+                    if (!_store.PutFrom(records, name, previous, previous.Version))
+                        AppLog.Write("restore after the failed close ignored: the stored record is newer");
+                });
+            }
         }
         catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {

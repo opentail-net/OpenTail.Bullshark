@@ -6,6 +6,7 @@ using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using OpenTail.Bullshark.Core.Activity;
+using OpenTail.Bullshark.Core.Behaviour;
 using OpenTail.Bullshark.Core.Cache;
 using OpenTail.Bullshark.Core.Claude;
 using OpenTail.Bullshark.Core.Folders;
@@ -967,7 +968,9 @@ public partial class SessionWindow
         var known = verdict is { State: not CacheState.Unknown } ? verdict : null;
 
         var mark = CacheRule.Mark(known?.State ?? CacheState.Unknown, running);
-        var ago = known is { } seen ? RelativeTime(DateTimeOffset.UtcNow - seen.Idle) : RelativeTime(fallback);
+        var ago = known is { } seen
+            ? RelativeTime(DateTimeOffset.UtcNow - seen.Idle, _behaviour.State.ClampClockBackwards)
+            : RelativeTime(fallback, _behaviour.State.ClampClockBackwards);
         var when = ago.Length == 0 ? string.Empty : ago + " ago";
         var head = string.Join(" ", new[] { mark, when }.Where(part => part.Length > 0));
         var line = string.IsNullOrEmpty(state) ? head : head + " · " + DaemonStatus.DisplayState(state);
@@ -1136,11 +1139,10 @@ public partial class SessionWindow
     }
 
     /// <summary>A relative time for a row: "17m", "3h", "2d", or the date for older items. Empty when unknown.</summary>
-    private static string RelativeTime(DateTimeOffset? when)
+    private static string RelativeTime(DateTimeOffset? when, bool clampBackwards = true)
     {
         if (when is null) return string.Empty;
-        var span = DateTimeOffset.UtcNow - when.Value;
-        if (span < TimeSpan.Zero) span = TimeSpan.Zero;
+        var span = StoredAge.Of(DateTimeOffset.UtcNow, when.Value, clampBackwards);
         return span.TotalMinutes < 60 ? $"{(int)span.TotalMinutes}m"
              : span.TotalHours < 24 ? $"{(int)span.TotalHours}h"
              : span.TotalDays < 30 ? $"{(int)span.TotalDays}d"

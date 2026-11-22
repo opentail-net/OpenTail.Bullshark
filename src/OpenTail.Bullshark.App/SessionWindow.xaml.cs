@@ -511,7 +511,9 @@ public partial class SessionWindow : Window
             var paths = new Dictionary<string, string>(_transcriptPaths, StringComparer.Ordinal);
             // The budgets read after the pass are kept for the next one, and the clashes are drawn from them (round 6 item 1). The runs read here
             // are the rail's and the merge checks' (round 12 B4): a runs.json that cannot be read shows its problem, as ReadRuns did.
-            var (clashes, budgets, runs, runsProblem) = await Task.Run(() => ReadClashes(records, paths, read.Agents));
+            // The clock setting is read here, on the window's thread, and passed in: the read runs on the pool (R5).
+            var clampBackwards = _behaviour.State.ClampClockBackwards;
+            var (clashes, budgets, runs, runsProblem) = await Task.Run(() => ReadClashes(records, paths, read.Agents, clampBackwards));
             _clashes = clashes;
             _runner.Budgets = budgets;
             if (runsProblem is not null) _storeProblem = runsProblem;
@@ -688,13 +690,14 @@ public partial class SessionWindow : Window
         // the known ones and the new ones. The cache is read under its lock (round 12 B3).
         var paths = new Dictionary<string, string>(known, StringComparer.Ordinal);
         foreach (var pair in newPaths) paths[pair.Key] = pair.Value;
-        var budgets = BudgetsOf(runs, records, paths);
         // The ui.json values the pass draws and announces with (perf and testability batch, Q2): one read, here on the pool thread.
         var uiReadable = UiFile.TryReadAllInBackground(_options.StatePath, out var uiRoot);
         var settings = uiReadable ? PassSettings.From(uiRoot) : null;
         // behaviour.json is read with ui.json (behaviour batch, R2). Its legacy re-alert value is ui.json's escalateMinutes, when the key is there.
         // A busy ui.json keeps the last behaviour values too, so the interval does not flicker to zero for one pass.
         var behaviour = uiReadable ? BehaviourStore.LoadBeside(_options.StatePath, uiRoot?[PassSettings.EscalateKey]) : null;
+        // The budgets take the clock setting from the behaviour read just above (R5).
+        var budgets = BudgetsOf(runs, records, paths, (behaviour?.Settings ?? BehaviourSettings.Defaults).State.ClampClockBackwards);
         return new PassReads(agents, passAgents, records, plan, facts, newPaths, budgets, recordsProblem ?? runsProblem, daemon, drift,
             daemonNotice, daemonStatusNotice, settings, behaviour);
     }
