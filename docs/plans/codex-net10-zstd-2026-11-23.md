@@ -15,7 +15,7 @@ Codex rollouts are zstd-compressed (62 of 63 local files; B1). The BCL's `Zstand
 
 ## Stages
 
-**Z0. Verify the package in a scratch project (outside the repository).** Compile against `ZstdSharp.Port` 0.8.8 on net10.0; decode a synthetic zstd stream produced on net11.0 with `ZstandardStream`; confirm the namespace and that `DecompressionStream` reads it in one pass. Gate: the round trip matches byte for byte. Nothing is written to the repository in Z0.
+**Z0. Verify the package in a scratch project (outside the repository).** **Done 2026-11-23: passed.** Scratch projects in the job folder (`tmp\z0`, outside the repository): a net11.0 project wrote a synthetic 25,490-byte text as a 539-byte stream with `ZstandardStream`; a net10.0 project with `ZstdSharp.Port` 0.8.8 decoded it with `ZstdSharp.DecompressionStream` in memory. Output: 25,490 bytes, matching the plain copy byte for byte (exit 0). The package restores and runs on net10.0. Nothing was written to the repository in Z0.
 
 **Z1. Core decoder seam.** `RolloutReader` (Core/Codex/RolloutReader.cs) opens a rollout through one private method: net11.0 uses `ZstandardStream`; net10.0 uses `DecompressionStream`. Both decode in memory; no temp file, no plaintext copy on disk (R-7, privacy). Plain `.jsonl` rollouts are unchanged. Tests:
 - The fixtures that generate compressed rollouts keep their net11.0 path. For net10.0, the compressed fixture bytes are generated once on net11.0 and stored as a synthetic base64 constant in `CodexFixtures.cs`, so net10.0 tests need no compressor.
