@@ -62,7 +62,11 @@ public partial class SessionWindow
         }
 
         var launch = await StartRunAsync(request);
-        if (launch is null) return;
+        if (launch is null)
+        {
+            SetStatus("Not started: the Claude run was refused (see the setup page).");
+            return;
+        }
         SetStatus(WithWarning(launch.Warning, CrossStartRoute.StartedLine(source, target)));
     }
 }

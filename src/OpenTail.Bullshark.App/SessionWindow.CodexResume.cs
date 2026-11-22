@@ -208,7 +208,7 @@ public partial class SessionWindow
         catch (Exception ex) when (ex is CodexSummaryException or ArgumentException or FileNotFoundException or IOException
                                        or UnauthorizedAccessException or NotSupportedException)
         {
-            AppLog.Write($"codex start text not built: {ex.GetType().Name}: {ex.Message}");
+            AppLog.Write($"codex start text not built: {ex.GetType().Name}");
             var problem = ex is CodexSummaryException
                 ? $"The summary was not made: {ex.Message}."
                 : $"The start text could not be built: {ex.Message}.";

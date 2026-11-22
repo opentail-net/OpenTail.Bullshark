@@ -182,12 +182,12 @@
                        Text="Word for word, with tool results on one line each, and at most about 4,000 tokens. The oldest turn goes first." />
         </StackPanel>
 
-        <TextBlock Style="{StaticResource Section}" Text="Model and effort for the session that continues" />
-        <StackPanel Orientation="Horizontal">
+        <TextBlock x:Name="ModelHeader" Style="{StaticResource Section}" Text="Model and effort for the session that continues" />
+        <StackPanel x:Name="ModelLine" Orientation="Horizontal">
             <TextBlock Text="Model" Width="60" VerticalAlignment="Center" Style="{StaticResource Muted}" />
             <WrapPanel x:Name="ModelRow" Orientation="Horizontal" />
         </StackPanel>
-        <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+        <StackPanel x:Name="EffortLine" Orientation="Horizontal" Margin="0,2,0,0">
             <TextBlock Text="Effort" Width="60" VerticalAlignment="Center" Style="{StaticResource Muted}" />
             <WrapPanel x:Name="EffortRow" Orientation="Horizontal" />
         </StackPanel>

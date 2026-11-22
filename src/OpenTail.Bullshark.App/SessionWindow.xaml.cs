@@ -1013,7 +1013,7 @@ public partial class SessionWindow : Window
         }
         catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
-            AppLog.Write($"run not written: {ex.Message}");
+            AppLog.Write($"run not written: {ex.GetType().Name}");
             _setup.ShowStarted($"Not started: {ex.Message}");
             _setup.RunFinished();
             return null;

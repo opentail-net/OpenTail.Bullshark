@@ -167,8 +167,14 @@ public partial class CodexResumePrompt : Window
     /// <summary>The model id on screen for a new session, or null for Codex's default (the one entry of a list that could not be read).</summary>
     private string? SelectedModel() => CodexModelChoices.SelectedModel(ModelBox);
 
-    /// <summary>Start is allowed when the model is known: In full sends no model, so it never waits for the list.</summary>
-    private bool ModelReady(CodexResumeMode mode) => mode == CodexResumeMode.Full || _modelsReady;
+    /// <summary>
+    /// Start is allowed when the model is known: In full sends no model, and a cross start (another platform, RS-D12) does not use it, so neither waits
+    /// for the list.
+    /// </summary>
+    private bool ModelReady(CodexResumeMode mode, bool cross) => cross || mode == CodexResumeMode.Full || _modelsReady;
+
+    /// <summary>True when the start on screen goes to another platform than Codex: the model is not used, so its row is hidden (RS-D12).</summary>
+    private static bool IsCross(CodexResumeChoice? choice) => choice is not null && !CrossModelRow.ShowsModel(ProviderId.Codex, choice.Target);
 
     /// <summary>The choice, or null when the owner cancelled.</summary>
     public CodexResumeChoice? Choice { get; private set; }
@@ -300,9 +306,9 @@ public partial class CodexResumePrompt : Window
         var previewReady = _previewText is not null;
         Enable(CopyButton, free && previewReady);
         var modelRow = mode != CodexResumeMode.Full;
-        ModelBlock.Visibility = modelRow ? Visibility.Visible : Visibility.Collapsed;
+        ModelBlock.Visibility = modelRow && !IsCross(choice) ? Visibility.Visible : Visibility.Collapsed;
         Enable(ModelBox, free && modelRow && _modelsReady);
-        Enable(StartButton, free && ModelReady(mode) && CodexResumeRules.CanStart(mode, previewReady, KeptMatches(choice)));
+        Enable(StartButton, free && ModelReady(mode, IsCross(choice)) && CodexResumeRules.CanStart(mode, previewReady, KeptMatches(choice)));
     }
 
     private static void Enable(UIElement element, bool enabled)
@@ -453,7 +459,7 @@ public partial class CodexResumePrompt : Window
     {
         var choice = Selected(out _);
         if (choice is null || _busy) return;
-        if (!ModelReady(choice.Mode)) return;
+        if (!ModelReady(choice.Mode, IsCross(choice))) return;
         if (!CodexResumeRules.CanStart(choice.Mode, _previewText is not null, KeptMatches(choice))) return;
         Choice = choice with { Remember = RememberBox.IsChecked == true, Target = StartTarget(choice.Mode) };
         PreviewText = choice.Mode == CodexResumeMode.Full ? null : _previewText;

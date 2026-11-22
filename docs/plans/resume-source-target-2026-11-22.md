@@ -119,3 +119,20 @@ A click-through was **not run** in AFK mode, for three reasons: it would start t
 | Citation: G-O5 date | Fixed: measured 2026-11-23. |
 
 Not checked by the reviewer, and to check at S3: whether existing tests assert the old titles, and what the real Codex and Copilot CLIs do with a long prompt. Neither process was run.
+
+## 10. Code review disposition (S4, 2026-11-22)
+
+Reviewed by a Sonnet reviewer over the range 2a7f0e9 to afcc4c3 (log: `resume-source-target-2026-11-22-code-review-notes.md`), then a should-fix pass.
+
+| Item | Disposition |
+|---|---|
+| Must: none | The owner's rules held on every path read. |
+| Should 1: a refused Claude-target run reported only on the setup page | Fixed: a status line too, also when the run store cannot write (`SessionWindow.CrossStart.cs`). |
+| Should 2: the cost line and the model rows on a cross target | Fixed: `CrossModelRow` hides the rows and states the target's own default; on the Codex screen the model is not required for a cross start. Copilot has no model row. |
+| Should 3: logs writing exception messages (paths) | Fixed on the cross path and on the Full resume path (the three lines that also logged a title and an id, now types only). **Not fixed, a separate decision:** 63 log lines in 38 App files write an exception message (`grep AppLog.Write` with `ex.Message`). They predate this work and cover screens outside resume. |
+| Should 4: `ArgumentException` from a whitespace summary not caught | Fixed on the Claude path; Codex and Copilot already catch it. |
+| Note: a Remember tick is written after a refused start | Kept: RS-D7 as written. The mark is the source's own mode. |
+| Note: folder checks and PATH scans on the UI thread | Kept: the same-platform starts do the same. |
+| Note: keyboard selection of a disabled ComboBox item | Not verified without a window: a check for S5. |
+
+Counts: App.Tests 527 on each full target (523 before), Core.Tests 3164 on each.

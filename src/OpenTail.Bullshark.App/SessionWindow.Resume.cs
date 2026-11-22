@@ -31,7 +31,7 @@ public partial class SessionWindow
         }
         catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
-            AppLog.Write($"patterns not read for a resume: {ex.Message}");
+            AppLog.Write($"patterns not read for a resume: {ex.GetType().Name}");
             return PatternStore.Defaults("solo");
         }
     }
@@ -58,7 +58,7 @@ public partial class SessionWindow
         catch (Exception ex)
         {
             // The callers do not await a resume, so an exception here would be lost: it is logged and the status line says so.
-            AppLog.Write($"resume failed: {ex}");
+            AppLog.Write($"resume failed: {ex.GetType().Name}");
             SetStatus($"Not resumed: {ex.Message}");
         }
         finally
@@ -231,7 +231,7 @@ public partial class SessionWindow
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            AppLog.Write($"resume in full failed: {ex.Message}");
+            AppLog.Write($"resume in full failed: {ex.GetType().Name}");
             return new FullResume($"Not resumed: {ex.Message}");
         }
 
@@ -244,7 +244,7 @@ public partial class SessionWindow
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            AppLog.Write($"resumed as {name} ({shortId}); its id was not read back in time: {ex.Message}");
+            AppLog.Write($"resumed in full; its id was not read back in time: {ex.GetType().Name}");
         }
 
         // The record first, then the run that keeps it alive. If the record cannot be written the session is running but not kept
@@ -256,7 +256,7 @@ public partial class SessionWindow
         }
         catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
-            AppLog.Write($"resumed {fullId ?? shortId} as {name} but it is not kept alive: {ex.Message}");
+            AppLog.Write($"resumed in full but it is not kept alive: {ex.GetType().Name}");
             return new FullResume(null, name, shortId, fullId, Recorded: false, RecordProblem: ex.Message, Warning: launch.Warning);
         }
 
@@ -413,8 +413,15 @@ public partial class SessionWindow
         }
         catch (ClaudeCliException ex)
         {
-            AppLog.Write($"summary not made: {ex.Message}");
+            AppLog.Write($"summary not made: {ex.GetType().Name}");
             SetStatus($"Not started: {ex.Message}");
+            return;
+        }
+        catch (ArgumentException ex)
+        {
+            // ProviderResumeText.ComposeFrom throws for a blank (whitespace) summary: no start text is made, and nothing starts.
+            AppLog.Write($"summary not used: {ex.GetType().Name}");
+            SetStatus("Not started: the summary could not be used.");
             return;
         }
         if (start.Refusal is { } targetRefusal)
@@ -475,7 +482,7 @@ public partial class SessionWindow
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            AppLog.Write($"summary not saved as a file: {ex.Message}");
+            AppLog.Write($"summary not saved as a file: {ex.GetType().Name}");
         }
     }
 

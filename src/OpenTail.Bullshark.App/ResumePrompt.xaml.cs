@@ -185,6 +185,9 @@ public partial class ResumePrompt : Window
     private ProviderId StartTarget(ResumeMode mode) =>
         ResumeTarget.ChosenTarget(ProviderId.Claude, RememberChoice.ModeOf(mode), ResumeTargetBox.SelectedOf(TargetBox, ProviderId.Claude));
 
+    /// <summary>True when the start on screen goes to another platform than Claude: the model and effort rows do not apply to it (RS-D12).</summary>
+    private static bool IsCross(ResumeChoice? choice) => choice is not null && !CrossModelRow.ShowsModel(ProviderId.Claude, choice.Target);
+
     /// <summary>
     /// Shows the target on screen (RS-D3, RS-D4, RS-O2): the chooser only in a summary, the line "Summary of ... session, new ... session" when the target
     /// is another platform, and the button that names the target.
@@ -236,9 +239,14 @@ public partial class ResumePrompt : Window
         LevelBlock.Visibility = SummaryChoice.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         TurnsBlock.Visibility = FullChoice.IsChecked == true ? Visibility.Collapsed : Visibility.Visible;
         ShowTarget(choice?.Target ?? ProviderId.Claude);
+        // RS-D12: a cross start runs at the target's own default model and effort, so the model and effort rows do not apply and are hidden.
+        var cross = IsCross(choice);
+        ModelHeader.Visibility = ModelLine.Visibility = EffortLine.Visibility = cross ? Visibility.Collapsed : Visibility.Visible;
 
         var sizes = turnsValid ? string.Empty : $" Enter a whole number from 0 to {MaxTurns} for the turns.";
-        var runs = choice is null ? string.Empty : $" The new session runs at {choice.Model} {choice.Effort}.";
+        var runs = choice is null ? string.Empty
+            : cross ? " " + CrossModelRow.CostLineForCross(choice.Target)
+            : $" The new session runs at {choice.Model} {choice.Effort}.";
         CostText.Text = _previewing
             ? (NeedsSummaryCall(choice) ? "Summarising: one model call…" : "Building the prompt…")
             : (choice?.Mode switch
