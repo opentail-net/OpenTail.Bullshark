@@ -53,7 +53,10 @@ public partial class SessionWindow
     /// (<c>_shotDialog</c>, as the shortcut sheet does). With <paramref name="screenshotSummary"/>, the summary mode is chosen and Make summary is
     /// pressed once when the screen has loaded.
     /// </summary>
-    private void ShowCodexResume(SessionSummary session, bool forScreenshot, bool screenshotSummary)
+    private void ShowCodexResume(SessionSummary session, bool forScreenshot, bool screenshotSummary) =>
+        FireAndForget.Observe(ShowCodexResumeAsync(session, forScreenshot, screenshotSummary), "Codex resume screen");
+
+    private async Task ShowCodexResumeAsync(SessionSummary session, bool forScreenshot, bool screenshotSummary)
     {
         if (_codexResuming)
         {
@@ -96,10 +99,10 @@ public partial class SessionWindow
             }
             if (choice.Mode == CodexResumeMode.Full)
             {
-                ResumeCodex(session);
+                await ResumeCodexAsync(session);
                 return;
             }
-            StartCodexFromText(session, folder, choice, dialog.PreviewText);
+            await StartCodexFromTextAsync(session, folder, choice, dialog.PreviewText);
         }
         finally
         {
@@ -204,7 +207,7 @@ public partial class SessionWindow
     /// runs PowerShell 7 (<c>pwsh.exe</c>) with the text in a file in the Starts folder (R3), in the session's folder. Without PowerShell 7 nothing starts;
     /// the preview's Copy is the way out. The new session makes a model turn when it starts, so the status line says so.
     /// </summary>
-    private void StartCodexFromText(SessionSummary session, string folder, CodexResumeChoice choice, string? text)
+    private async Task StartCodexFromTextAsync(SessionSummary session, string folder, CodexResumeChoice choice, string? text)
     {
         if (text is not { Length: > 0 })
         {
@@ -220,6 +223,14 @@ public partial class SessionWindow
         if (choice.Model is { } model && !CodexModelList.IsValidModelId(model))
         {
             SetStatus("Not started: the model name is not valid.");
+            return;
+        }
+
+        // The version check comes before the start file is written, so a refused start leaves no text on disk and no tab (R4).
+        var launch = await CodexLaunchCheckAsync();
+        if (launch.Refusal is { } refusal)
+        {
+            SetStatus(refusal);
             return;
         }
 
@@ -241,7 +252,7 @@ public partial class SessionWindow
         var how = choice.Level is { } level
             ? $"a Codex summary ({level.ToString().ToLowerInvariant()}) and the last {choice.Turns} turns"
             : $"the last {choice.Turns} turns";
-        SetStatus($"Started a Codex session from {how}. It starts with a model turn.");
+        SetStatus(WithWarning(launch.Warning, $"Started a Codex session from {how}. It starts with a model turn."));
     }
 
     /// <summary>

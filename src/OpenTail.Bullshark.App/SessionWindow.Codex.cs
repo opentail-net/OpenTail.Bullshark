@@ -464,16 +464,16 @@ public partial class SessionWindow
     /// Resumes a Codex session in a terminal tab: <c>codex resume &lt;id&gt;</c>, run in the session's folder (C3). A session whose tab is already open
     /// is shown and not started again, so one conversation has one process in this window.
     /// </summary>
-    private void ResumeCodex(SessionSummary session)
+    private void ResumeCodex(SessionSummary session) => FireAndForget.Observe(ResumeCodexAsync(session), "codex resume");
+
+    /// <summary>
+    /// The start of <see cref="ResumeCodex"/>. The version check runs before the tab is made (R4), and the open tab is looked for again after it, since
+    /// the check waits: a second request meanwhile shows the tab that the first one opened.
+    /// </summary>
+    private async Task ResumeCodexAsync(SessionSummary session)
     {
         var id = session.Key.SessionId;
-        var open = _tabs.FirstOrDefault(t => t.Kind == TabKind.Session && t.Provider == ProviderId.Codex && SameId(t.Key, id));
-        if (open is not null)
-        {
-            SetActive(open);
-            if (_terminals.TryGetValue(KeyOf(open), out var shown)) ShowOnly(shown);
-            return;
-        }
+        if (ShowOpenCodexTab(id)) return;
 
         string command;
         try
@@ -486,14 +486,36 @@ public partial class SessionWindow
             return;
         }
         var folder = session.Folder is { } path && Directory.Exists(path) ? path : _options.WorkDir;
+
+        var launch = await CodexLaunchCheckAsync();
+        if (launch.Refusal is { } refusal)
+        {
+            SetStatus(refusal);
+            return;
+        }
+        if (ShowOpenCodexTab(id)) return;
+
         OpenCodexTab(id, CodexRowTitle(MarkOf(ProviderId.Codex, id)?.Name, session), command, folder);
+        if (launch.Warning is { } warning) SetStatus(WithWarning(warning, StatusText.Text));
+    }
+
+    /// <summary>Shows the terminal tab of a Codex session that is already open in this window. True when there was one to show.</summary>
+    private bool ShowOpenCodexTab(string id)
+    {
+        var open = _tabs.FirstOrDefault(t => t.Kind == TabKind.Session && t.Provider == ProviderId.Codex && SameId(t.Key, id));
+        if (open is null) return false;
+        SetActive(open);
+        if (_terminals.TryGetValue(KeyOf(open), out var shown)) ShowOnly(shown);
+        return true;
     }
 
     /// <summary>
     /// "New Codex session…": asks for a folder, then the model (P9, M-D4 b), then opens <c>codex -C</c> there in a terminal tab (C3, C4). Cancel at either
     /// step starts nothing. Codex's default is used when the model list could not be read.
     /// </summary>
-    private void NewCodexSession()
+    private void NewCodexSession() => FireAndForget.Observe(NewCodexSessionAsync(), "new Codex session");
+
+    private async Task NewCodexSessionAsync()
     {
         var dialog = new Microsoft.Win32.OpenFolderDialog { Title = "Choose the folder for the Codex session" };
         if (dialog.ShowDialog(this) != true) return;
@@ -515,7 +537,14 @@ public partial class SessionWindow
             SetStatus($"Not started: {ex.Message}");
             return;
         }
+        var launch = await CodexLaunchCheckAsync();
+        if (launch.Refusal is { } refusal)
+        {
+            SetStatus(refusal);
+            return;
+        }
         OpenCodexTab("new-" + Guid.NewGuid().ToString("N"), $"Codex: {LeafOf(folder)}", command, folder);
+        if (launch.Warning is { } warning) SetStatus(WithWarning(warning, StatusText.Text));
     }
 
     /// <summary>

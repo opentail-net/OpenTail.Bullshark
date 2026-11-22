@@ -132,16 +132,18 @@ public partial class SessionWindow
         }
 
         RefreshRail();
-        SetStatus(start.SessionId is null
+        SetStatus(WithWarning(start.Warning, start.SessionId is null
             ? $"Resume of {ShortId(digest.SessionId)} started as {start.Name}; the session id will be picked up on the next pass."
-            : $"Resumed {ShortId(digest.SessionId)} in full as {start.Name}. It is kept alive: if it stops, the supervisor resumes it.");
+            : $"Resumed {ShortId(digest.SessionId)} in full as {start.Name}. It is kept alive: if it stops, the supervisor resumes it."));
     }
 
     /// <summary>
     /// What a full start gave: a refusal (the status text that says why, nothing was started), or a started session with its name, its short id, its
     /// full id (null when it was not read back in time) and whether its record and run were written (<see cref="RecordProblem"/> says why not).
     /// </summary>
-    private sealed record FullResume(string? Refusal, string? Name = null, string? ShortId = null, string? SessionId = null, bool Recorded = true, string? RecordProblem = null);
+    private sealed record FullResume(
+        string? Refusal, string? Name = null, string? ShortId = null, string? SessionId = null, bool Recorded = true, string? RecordProblem = null,
+        string? Warning = null);
 
     /// <summary>
     /// The guards and the start that continue a past session in full: a fresh listing, "already open in the rail", the folder check, a name, the start
@@ -176,6 +178,10 @@ public partial class SessionWindow
         {
             return new FullResume($"Not resumed: {check.Message}");
         }
+
+        // The version check comes before the name is made and the start (R4): a refused launch starts nothing and writes no record.
+        var launch = await ClaudeLaunchCheckAsync();
+        if (launch.Refusal is { } refusal) return new FullResume(refusal);
 
         var taken = ReadRecords().Keys.Concat(listing.Concat(_allAgents).Select(a => a.Name)).ToList();
         var name = "bullshark-resume-" + RunNames.NewRunId(taken);
@@ -221,10 +227,10 @@ public partial class SessionWindow
         catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
             AppLog.Write($"resumed {fullId ?? shortId} as {name} but it is not kept alive: {ex.Message}");
-            return new FullResume(null, name, shortId, fullId, Recorded: false, RecordProblem: ex.Message);
+            return new FullResume(null, name, shortId, fullId, Recorded: false, RecordProblem: ex.Message, Warning: launch.Warning);
         }
 
-        return new FullResume(null, name, shortId, fullId);
+        return new FullResume(null, name, shortId, fullId, Warning: launch.Warning);
     }
 
     /// <summary>The start text of a resume: the fitted text, the request that launches it, and the summary it carries (null for none).</summary>
@@ -322,8 +328,9 @@ public partial class SessionWindow
         var cut = fitted.CutCharacters > 0
             ? $" {fitted.CutCharacters:N0} characters were cut from the start text to fit the command line."
             : string.Empty;
-        await StartRunAsync(request);
-        SetStatus($"Resumed {ShortId(digest.SessionId)} from {how}, at {choice.Model} {choice.Effort}. The new session starts on the next pass.{cut}");
+        var launch = await StartRunAsync(request);
+        if (launch is null) return;
+        SetStatus(WithWarning(launch.Warning, $"Resumed {ShortId(digest.SessionId)} from {how}, at {choice.Model} {choice.Effort}. The new session starts on the next pass.{cut}"));
     }
 
     /// <summary>

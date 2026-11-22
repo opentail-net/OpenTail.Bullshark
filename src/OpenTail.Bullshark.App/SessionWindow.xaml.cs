@@ -227,7 +227,12 @@ public partial class SessionWindow : Window
         }
         InitLibrary(options.StatePath);
         LoadMagicAuto();
-        var runner = new SupervisorRunner(_cli, _store, TimeProvider.System, log: AppLog.Write) { Hold = _respawnHold };
+        var runner = new SupervisorRunner(_cli, _store, TimeProvider.System, log: AppLog.Write)
+        {
+            Hold = _respawnHold,
+            // A pass starts or resumes a session only when the installed claude may launch (R4).
+            LaunchRefusal = PassLaunchRefusalAsync,
+        };
         _loop = new SupervisorLoop(runner, _cli, _store, AppLog.Write);
         _runner = runner;
         // The timeline's log sits beside the state file, and the supervisor writes every action to it (additions item 5).
@@ -439,6 +444,7 @@ public partial class SessionWindow : Window
         var passToken = pass.Token;
         _lastPassStarted = DateTimeOffset.UtcNow;
         var passClock = System.Diagnostics.Stopwatch.StartNew();
+        _passLaunchNote = null;
         // Nothing between the flag and the try may throw: a flag left set stops every later pass without a word (review R2).
         try
         {
@@ -528,6 +534,8 @@ public partial class SessionWindow : Window
             // Under Codex no Trust step is shown, so the "see the Trust step" count is replaced by the Codex text, which says how to answer (F-F).
             var parts = PassSnapshot.StatusParts(DateTime.Now, actions, ClaudeSupervision ? plan.Waiting : 0, failed, _storeProblem, plan.Problem, read.DaemonStatusNotice, _drift?.StatusText).ToList();
             if (!ClaudeSupervision && plan.UntrustedRoots.Count > 0) parts.Insert(parts.Count - 1, CodexTrustWait(plan.UntrustedRoots));
+            // A start the version check refused, or a version that could not be read, is said first (R4).
+            if (_passLaunchNote is { } launchNote) parts.Insert(0, launchNote);
 
             // A search owns the status line while it runs or while its results are shown: the pass's summary waits for it to end.
             if (_searchMatches is null && SearchBusy.Visibility != Visibility.Visible)
@@ -953,9 +961,20 @@ public partial class SessionWindow : Window
     /// </summary>
     private async void OnRunRequested(SetupRequest request) => await StartRunAsync(request);
 
-    /// <summary>Writes a run from a request and starts its pass. Setup and resume both start runs this way.</summary>
-    private async Task StartRunAsync(SetupRequest request)
+    /// <summary>
+    /// Writes a run from a request and starts its pass. Setup and resume both start runs this way. The version check comes first, so a refused launch
+    /// writes no run (R4). Returns the check, which may carry a warning, when the run was written; null when nothing was written.
+    /// </summary>
+    private async Task<LaunchCheck?> StartRunAsync(SetupRequest request)
     {
+        var check = await ClaudeLaunchCheckAsync();
+        if (check.Refusal is { } refusal)
+        {
+            _setup.ShowStarted(refusal);
+            _setup.RunFinished();
+            return null;
+        }
+
         var taken = ReadRecords().Keys
             .Concat(RunStore.SpecsOf(ReadRuns()).Select(s => s.Name))
             .Concat(_agents.Concat(_allAgents).Select(a => a.Name))
@@ -970,7 +989,7 @@ public partial class SessionWindow : Window
             AppLog.Write($"run not written: {ex.Message}");
             _setup.ShowStarted($"Not started: {ex.Message}");
             _setup.RunFinished();
-            return;
+            return null;
         }
         AppLog.Write($"run {run.RunId} written: {run.Specs.Count} session(s) in {run.WorkingDirectory}");
         // A run that waits (a start time, or the usage limit's reset) does not start on the next pass, so the line says when it starts.
@@ -978,7 +997,7 @@ public partial class SessionWindow : Window
         var when = run.StartAt is { } startAt && RunStore.IsWaiting(run, now)
             ? $"They start at {StartTime.Describe(startAt, now)}."
             : _watching ? "The window that supervises this state starts them." : "They start on the next pass, within about 15 seconds.";
-        _setup.ShowStarted($"Run {run.RunId} written: {run.Specs.Count} session(s). {when}");
+        _setup.ShowStarted(WithWarning(check.Warning, $"Run {run.RunId} written: {run.Specs.Count} session(s). {when}"));
         try
         {
             await PassAndRefreshAsync();
@@ -987,6 +1006,7 @@ public partial class SessionWindow : Window
         {
             _setup.RunFinished();
         }
+        return check;
     }
 
     /// <summary>

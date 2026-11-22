@@ -54,6 +54,12 @@ public sealed class SupervisorRunner
     /// </summary>
     public RespawnHold? Hold { get; set; }
 
+    /// <summary>
+    /// Asked before each start and each resume (R4): the reason the launch is refused, or null when it may go on. A refused action is dropped the way a
+    /// held one is: no record is changed for it, and the next pass asks again. Null, the default, asks nothing.
+    /// </summary>
+    public Func<CancellationToken, Task<string?>>? LaunchRefusal { get; set; }
+
     public SupervisorRunner(
         ClaudeCli cli,
         StateStore store,
@@ -120,6 +126,9 @@ public sealed class SupervisorRunner
                     // by the next pass that is not held (round 8 item 3). The hold is read for each action, just before it is carried out, so a
                     // respawn that began during this pass holds the rest of it too (round 9 item 2).
                     if (Hold?.IsHeld == true && HeldByRespawn(action)) continue;
+                    // A start or a resume is refused while the installed claude may not launch (R4). It is dropped as a held one is.
+                    if (LaunchRefusal is not null && action is (SupervisorAction.Start or SupervisorAction.Resume)
+                        && await LaunchRefusal(cancellationToken) is not null) continue;
 
                     try
                     {
