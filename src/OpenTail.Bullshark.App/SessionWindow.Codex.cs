@@ -2,6 +2,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using OpenTail.Bullshark.Core.Behaviour;
 using OpenTail.Bullshark.Core.Codex;
 using OpenTail.Bullshark.Core.Library;
 using OpenTail.Bullshark.Core.Providers;
@@ -474,18 +475,21 @@ public partial class SessionWindow
     private void ResumeCodex(SessionSummary session) => FireAndForget.Observe(ResumeCodexAsync(session), "codex resume");
 
     /// <summary>
-    /// The start of <see cref="ResumeCodex"/>. The version check runs before the tab is made (R4), and the open tab is looked for again after it, since
-    /// the check waits: a second request meanwhile shows the tab that the first one opened.
+    /// The start of <see cref="ResumeCodex"/>. The version check runs before the tab is made (R4), and the open tab is looked for again after each wait,
+    /// since the checks wait: a second request meanwhile shows the tab that the first one opened. Then the resume ladder (R7): the saved id when its
+    /// rollout is found, else the picker, or the newest session in the folder when <c>resume.allowNewestInFolder</c> allows it, or a refusal. The step
+    /// and the label are logged by name and counts only; the label is the tab title (the newest and the picker tabs) and the status line.
     /// </summary>
     private async Task ResumeCodexAsync(SessionSummary session)
     {
         var id = session.Key.SessionId;
         if (ShowOpenCodexTab(id)) return;
 
+        var provider = _codex ??= new CodexProvider();
         string command;
         try
         {
-            command = (_codex ??= new CodexProvider()).ResumeCommandLine(id);
+            command = provider.ResumeCommandLine(id);
         }
         catch (ArgumentException)
         {
@@ -502,8 +506,60 @@ public partial class SessionWindow
         }
         if (ShowOpenCodexTab(id)) return;
 
-        OpenCodexTab(id, CodexRowTitle(MarkOf(ProviderId.Codex, id)?.Name, session), command, folder);
-        if (launch.Warning is { } warning) SetStatus(WithWarning(warning, StatusText.Text));
+        // A look that fails is a refusal, not a miss: a saved session that may be there is never replaced by another step.
+        bool found;
+        try
+        {
+            found = await Task.Run(() => provider.HasRollout(id));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            AppLog.Write($"codex resume not started: the saved session's file could not be looked for ({ex.GetType().Name})");
+            SetStatus(WithWarning(launch.Warning, "Not resumed: the saved session's file could not be looked for."));
+            return;
+        }
+        if (ShowOpenCodexTab(id)) return;
+
+        // The newest-in-folder candidates are the history's sessions in the folder that exists (the one the saved session was in), without the saved one.
+        var sameFolder = session.Folder is { } saved && Directory.Exists(saved) ? saved : null;
+        var candidates = CodexHistoryQuery.NewestInFolderCandidates(_codexSessions, sameFolder, id);
+        var choice = ResumeLadder.Decide(found, candidates.TopRankCount, candidates.NewestId, candidates.EarliestTopRankId, _behaviour.Resume);
+        AppLog.Write($"codex resume step {choice.Step}: saved file found {found}, {candidates.TopRankCount} candidates at the top rank");
+
+        switch (choice.Step)
+        {
+            case ResumeStep.Saved:
+                OpenCodexTab(id, CodexRowTitle(MarkOf(ProviderId.Codex, id)?.Name, session), command, folder).LadderStep = ResumeStep.Saved;
+                break;
+            case ResumeStep.Picker:
+                // The picker is not one conversation, so its tab has a unique key: it never stands in for the saved session's tab.
+                OpenCodexTab("picker-" + Guid.NewGuid().ToString("N"), choice.Label, provider.PickerCommandLine(), folder).LadderStep = ResumeStep.Picker;
+                break;
+            case ResumeStep.NewestInFolder:
+                // The candidate's own tab, keyed by its id, so one conversation keeps one tab (an open one is shown, not started again).
+                var newest = choice.CandidateId!;
+                if (ShowOpenCodexTab(newest))
+                {
+                    SetStatus(WithWarning(launch.Warning, choice.Label));
+                    return;
+                }
+                string newestCommand;
+                try
+                {
+                    newestCommand = provider.ResumeCommandLine(newest);
+                }
+                catch (ArgumentException)
+                {
+                    SetStatus(WithWarning(launch.Warning, "Not resumed: the newest session's id is not a valid Codex id."));
+                    return;
+                }
+                OpenCodexTab(newest, choice.Label, newestCommand, folder).LadderStep = ResumeStep.NewestInFolder;
+                break;
+            default:
+                SetStatus(WithWarning(launch.Warning, choice.Label));
+                return;
+        }
+        SetStatus(WithWarning(launch.Warning, choice.Label));
     }
 
     /// <summary>Shows the terminal tab of a Codex session that is already open in this window. True when there was one to show.</summary>
@@ -558,7 +614,7 @@ public partial class SessionWindow
     /// Opens a Codex terminal tab: a terminal that runs <paramref name="command"/> in <paramref name="folder"/>, owned by this window (C3). A Codex
     /// tab has no thread link (B6): its key is the id it was opened with, the session's id for a resume or a new unique id for a new session.
     /// </summary>
-    private void OpenCodexTab(string id, string title, string command, string folder)
+    private OpenTab OpenCodexTab(string id, string title, string command, string folder)
     {
         var terminal = new ExtendedTerminalControl
         {
@@ -575,6 +631,7 @@ public partial class SessionWindow
         SetActive(tab);
         ShowOnly(terminal);
         SetStatus($"Codex tab opened in {folder}.");
+        return tab;
     }
 
     /// <summary>
@@ -624,7 +681,8 @@ public partial class SessionWindow
     private void CodexProcessEnded(OpenTab tab, IProcess process)
     {
         var record = CodexExit.Classify(tab.ClosedByOwner, _appShuttingDown, exitCode: null);
-        AppLog.Write($"codex tab process ended: expected {record.Expected}; {record.Text}");
+        var step = tab.LadderStep is { } ladder ? $"resume step {ladder}; " : string.Empty;
+        AppLog.Write($"codex tab process ended: {step}expected {record.Expected}; {record.Text}");
         if (record.Expected) return;
         if (!_tabs.Contains(tab)) return;
         if (!_terminals.TryGetValue(KeyOf(tab), out var terminal) || !ReferenceEquals(terminal.ConPTYTerm?.Process, process)) return;

@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using OpenTail.Bullshark.Core.Activity;
+using OpenTail.Bullshark.Core.Behaviour;
 using OpenTail.Bullshark.Core.Claude;
 using OpenTail.Bullshark.Core.Providers;
 using OpenTail.Bullshark.Core.Supervisor;
@@ -79,6 +80,9 @@ public partial class SessionWindow
 
         /// <summary>True once this Codex tab's process has ended on its own (R6). The title then carries the ended suffix.</summary>
         public bool Ended { get; set; }
+
+        /// <summary>The resume ladder step that opened this Codex tab (R7), or null for a tab that was not a resume. Logged with an unexpected end.</summary>
+        public ResumeStep? LadderStep { get; set; }
     }
 
     /// <summary>The tab's tooltip: its title, and what the session waits for when the listing says so (round 7 item 3).</summary>

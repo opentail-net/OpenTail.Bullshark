@@ -59,4 +59,10 @@ public sealed class CodexTerminalOpener : ITerminalOpener
             throw new ArgumentException("The session id is not a UUID, so no resume command is built.", nameof(sessionId));
         return $"cmd.exe /d /c codex resume {sessionId}";
     }
+
+    /// <summary>
+    /// <c>cmd.exe /d /c codex resume</c>: the Codex picker, with no id, so the owner chooses the session (R7). It is the fallback of the resume ladder
+    /// when the saved id is not found. Run through <c>cmd.exe</c> for the same reason as <see cref="ResumeCommandLine"/>, in the folder the window sets.
+    /// </summary>
+    public string PickerCommandLine() => "cmd.exe /d /c codex resume";
 }

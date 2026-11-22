@@ -48,4 +48,17 @@ public sealed class CodexProvider : IProvider, IHistorySource, ITranscriptReader
 
     /// <summary>The command that resumes a saved Codex session by its UUID (C3).</summary>
     public string ResumeCommandLine(string sessionId) => _opener.ResumeCommandLine(sessionId);
+
+    /// <summary>The command of the Codex picker, <c>codex resume</c> with no id: the owner chooses the session (R7).</summary>
+    public string PickerCommandLine() => _opener.PickerCommandLine();
+
+    /// <summary>
+    /// True when a rollout is found for the saved id: the first check of the resume ladder (R7). It searches the history folders, so the caller runs it
+    /// off the UI thread. An id with a wildcard, a path separator, a colon or <c>..</c> throws <see cref="ArgumentException"/>, as the reader does.
+    /// </summary>
+    public bool HasRollout(string sessionId)
+    {
+        CodexTranscriptReader.RequireSafeId(sessionId);
+        return _reader.FindRollout(sessionId) is not null;
+    }
 }

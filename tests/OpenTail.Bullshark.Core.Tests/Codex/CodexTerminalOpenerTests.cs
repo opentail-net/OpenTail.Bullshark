@@ -108,6 +108,13 @@ public sealed class CodexTerminalOpenerTests
     }
 
     [Fact]
+    public void ThePickerRunsCodexResumeWithNoIdThroughCmd()
+    {
+        // The picker (R7): codex resume with no id, so the owner chooses. The window sets the folder.
+        Assert.Equal("cmd.exe /d /c codex resume", _opener.PickerCommandLine());
+    }
+
+    [Fact]
     public void TheCodexProviderOpensTerminalsButHasNoSupervisorOrLiveList()
     {
         var provider = new CodexProvider(new ProviderPaths("C:\\synthetic-codex-home", "C:\\synthetic-codex-home\\sessions", null));
@@ -119,5 +126,6 @@ public sealed class CodexTerminalOpenerTests
         Assert.False(ProviderFeatures.Has<ISupervisedLauncher>(provider));
         Assert.False(ProviderFeatures.Has<ILiveSource>(provider));
         Assert.Equal($"cmd.exe /d /c codex resume {Id}", provider.ResumeCommandLine(Id));
+        Assert.Equal("cmd.exe /d /c codex resume", provider.PickerCommandLine());
     }
 }
