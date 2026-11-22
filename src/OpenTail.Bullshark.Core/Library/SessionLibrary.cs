@@ -221,7 +221,7 @@ public sealed class SessionLibrary
             {
                 if (_nullEntryLogged) continue;
                 _nullEntryLogged = true;
-                _log($"library: an entry with no value is left out ({_path}); the next save drops it.");
+                _log("library: an entry with no value is left out; the next save drops it.");
                 continue;
             }
             hasBareKeys |= !SessionKey.HasProviderPrefix(pair.Key);
@@ -253,7 +253,7 @@ public sealed class SessionLibrary
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            if (LogFailureOnce(key)) _log($"library: could not migrate ({_path}): {ex.Message}; marks are shown as they are on disk");
+            if (LogFailureOnce(key)) _log($"library: could not migrate ({ex.GetType().Name}); marks are shown as they are on disk");
         }
     }
 

@@ -56,7 +56,7 @@ public static class UiSettingsFile
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            log($"ui.json not read: {ex.Message}");
+            log($"ui.json not read: {ex.GetType().Name}");
             return true;
         }
     }
@@ -82,7 +82,7 @@ public static class UiSettingsFile
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            log($"ui.json not read: {ex.Message}");
+            log($"ui.json not read: {ex.GetType().Name}");
             return true;
         }
     }
@@ -106,7 +106,7 @@ public static class UiSettingsFile
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or TimeoutException)
         {
-            log($"ui.json not saved: {ex.Message}");
+            log($"ui.json not saved: {ex.GetType().Name}");
             return false;
         }
     }
@@ -126,7 +126,7 @@ public static class UiSettingsFile
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or TimeoutException)
         {
-            log($"ui.json not saved: {ex.Message}");
+            log($"ui.json not saved: {ex.GetType().Name}");
             return false;
         }
     }
@@ -153,7 +153,7 @@ public static class UiSettingsFile
         }
         catch (JsonException ex)
         {
-            MoveAside(path, log, ex.Message);
+            MoveAside(path, log, ex.GetType().Name);
             return null;
         }
     }
@@ -172,7 +172,7 @@ public static class UiSettingsFile
         var bad = NextDamagedName(path, stamp);
         File.Move(path, bad, overwrite: false);
         PruneDamagedCopies(path);
-        log($"ui.json cannot be read ({reason}); it was moved to {bad}, and a new one is started.");
+        log($"ui.json cannot be read ({reason}); it was moved aside, and a new one is started.");
     }
 
     /// <summary>

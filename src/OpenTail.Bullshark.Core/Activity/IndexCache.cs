@@ -201,7 +201,7 @@ internal static class IndexCache
         }
         catch (Exception ex)
         {
-            log?.Invoke($"transcript index cache not used ({ex.GetType().Name}): {ex.Message}");
+            log?.Invoke($"transcript index cache not used ({ex.GetType().Name})");
             return null;
         }
     }
@@ -231,7 +231,7 @@ internal static class IndexCache
         }
         catch (Exception ex)
         {
-            log?.Invoke($"transcript index cache not saved ({ex.GetType().Name}): {ex.Message}");
+            log?.Invoke($"transcript index cache not saved ({ex.GetType().Name})");
         }
     }
 
@@ -365,13 +365,13 @@ internal static class IndexCache
                 }
                 catch (Exception ex)
                 {
-                    log?.Invoke($"transcript index cache temporary file not removed ({ex.GetType().Name}): {ex.Message}");
+                    log?.Invoke($"transcript index cache temporary file not removed ({ex.GetType().Name})");
                 }
             }
         }
         catch (Exception ex)
         {
-            log?.Invoke($"transcript index cache temporary files not swept ({ex.GetType().Name}): {ex.Message}");
+            log?.Invoke($"transcript index cache temporary files not swept ({ex.GetType().Name})");
         }
     }
 }

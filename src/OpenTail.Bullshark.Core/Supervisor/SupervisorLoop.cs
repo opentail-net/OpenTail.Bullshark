@@ -80,7 +80,7 @@ public sealed class SupervisorLoop
             catch (ClaudeCliException ex)
             {
                 // A session that has just gone cannot be read. The runner handles the restart; the next read is an hour away.
-                _log($"{session.Name}: output not readable this pass ({ex.Message})");
+                _log($"{session.Role}: output not readable this pass ({ex.GetType().Name})");
                 _expiringSoon = false;
                 _lastReading = new LoginReading(Readable: false, Remaining: null);
                 LastLogin = _lastReading;
@@ -91,7 +91,7 @@ public sealed class SupervisorLoop
             _expiringSoon = warning is { } remaining && LoginExpiry.IsExpiringSoon(remaining);
             _lastReading = new LoginReading(Readable: true, Remaining: warning);
             // The first session that shows the expiry says it for the account (the alert is limited to once an hour, see AlertLogin).
-            if (_expiringSoon) AlertLogin(session.Name, warning!.Value);
+            if (_expiringSoon) AlertLogin(warning!.Value);
         }
         LastLogin = _lastReading;
 
@@ -127,11 +127,11 @@ public sealed class SupervisorLoop
     }
 
     /// <summary>Writes the login alert, at most once per <see cref="LoginAlertInterval"/>. A clock that went back starts the count again.</summary>
-    private void AlertLogin(string name, TimeSpan remaining)
+    private void AlertLogin(TimeSpan remaining)
     {
         var now = _clock.GetUtcNow();
         if (_lastLoginAlert is { } last && now >= last && now - last < LoginAlertInterval) return;
         _lastLoginAlert = now;
-        _log($"{name}: ALERT {AlertKind.LoginExpiring} - the login expires in {remaining.TotalHours:0} hours. Run /login.");
+        _log($"ALERT {AlertKind.LoginExpiring} - the login expires in {remaining.TotalHours:0} hours. Run /login.");
     }
 }

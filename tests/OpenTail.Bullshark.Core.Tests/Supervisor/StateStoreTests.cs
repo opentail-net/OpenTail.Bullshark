@@ -164,8 +164,9 @@ public sealed class StateStoreTests : IDisposable
 
         Assert.Equal("new-session", loaded["ovc-coder"].SessionId);
         var line = Assert.Single(logged);
-        Assert.Contains("old-session", line);
-        Assert.Contains("new-session", line);
+        Assert.Contains("two records share a name", line);
+        Assert.DoesNotContain("old-session", line);
+        Assert.DoesNotContain("new-session", line);
     }
 
     [Fact]

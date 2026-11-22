@@ -169,7 +169,7 @@ public sealed class MagicNamer
                 // Counted like a failed call, so a session with nothing to name is not picked again on every run (D8).
                 noText++;
                 failures[job.SessionId] = failures.TryGetValue(job.SessionId, out var noTextCount) ? noTextCount + 1 : 1;
-                _log($"magic rename: session {job.SessionId} has no text to name");
+                _log("magic rename: a session has no text to name");
                 continue;
             }
             if (calls >= limit) break;
@@ -221,12 +221,12 @@ public sealed class MagicNamer
             {
                 takenNames.Add(name);
                 named++;
-                _log($"magic rename: session {job.SessionId} named");
+                _log("magic rename: a session named");
             }
             else
             {
                 refused++;
-                _log($"magic rename: session {job.SessionId} kept its own name");
+                _log("magic rename: a session kept its own name");
             }
         }
 
@@ -239,6 +239,6 @@ public sealed class MagicNamer
     private void Fail(string sessionId, IDictionary<string, int> failures, string reason)
     {
         failures[sessionId] = failures.TryGetValue(sessionId, out var count) ? count + 1 : 1;
-        _log($"magic rename: session {sessionId} not named: {reason}");
+        _log($"magic rename: a session not named: {reason}");
     }
 }

@@ -69,7 +69,7 @@ public static class TabOrder
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
         {
-            log?.Invoke($"tab layout not read: {ex.Message}");
+            log?.Invoke($"tab layout not read: {ex.GetType().Name}");
             return TabLayout.Empty;
         }
 
@@ -80,7 +80,7 @@ public static class TabOrder
         }
         catch (JsonException ex)
         {
-            log?.Invoke($"tab layout not read: {ex.Message}");
+            log?.Invoke($"tab layout not read: {ex.GetType().Name}");
             return TabLayout.Empty;
         }
     }
@@ -95,14 +95,14 @@ public static class TabOrder
         {
             if (CannotBeRead(path))
             {
-                log?.Invoke($"tab layout not saved: {path} cannot be read, so it is left as it is.");
+                log?.Invoke("tab layout not saved: the file cannot be read, so it is left as it is.");
                 return;
             }
             FileLock.WriteAtomic(path, JsonSerializer.Serialize(layout));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            log?.Invoke($"tab layout not saved: {ex.Message}");
+            log?.Invoke($"tab layout not saved: {ex.GetType().Name}");
         }
     }
 

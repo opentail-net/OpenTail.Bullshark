@@ -100,13 +100,13 @@ public static class KeptFiles
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
-                    log($"old file kept, not deleted: {file.Name}: {ex.Message}");
+                    log($"old file kept, not deleted: {ex.GetType().Name}");
                 }
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            log($"old files not counted: {ex.Message}");
+            log($"old files not counted: {ex.GetType().Name}");
         }
     }
 

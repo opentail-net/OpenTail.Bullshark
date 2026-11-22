@@ -200,9 +200,7 @@ public sealed class StateStore
             }
 
             var winner = record.StartedAt > kept.StartedAt ? record : kept;
-            var loser = ReferenceEquals(winner, record) ? kept : record;
-            _log($"state: two records named '{record.Name}' (sessions {kept.SessionId} and {record.SessionId}); " +
-                 $"keeping {winner.SessionId}, dropping {loser.SessionId}");
+            _log("state: two records share a name; one is kept and one is dropped");
             byName[record.Name] = winner;
         }
         return byName;

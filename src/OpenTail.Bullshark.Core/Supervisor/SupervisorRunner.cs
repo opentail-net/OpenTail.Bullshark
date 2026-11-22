@@ -234,7 +234,7 @@ public sealed class SupervisorRunner
         }
         catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
-            _log($"events: not written: {ex.Message}");
+            _log($"events: not written: {ex.GetType().Name}");
         }
     }
 
@@ -288,14 +288,14 @@ public sealed class SupervisorRunner
                 // --bg assigns the session id itself, so read the real one back.
                 var sessionId = await _cli.ResolveSessionIdAsync(shortId, _resolveTimeout, cancellationToken);
                 records[spec.Name] = new SessionRecord(spec.Role, sessionId, spec.Name, now, 0, [], null, null);
-                _log($"{spec.Name}: started {shortId} (session {sessionId})");
+                _log($"{spec.Role}: started a session");
                 break;
 
             case SupervisorAction.Adopt adopt:
                 // The run's clock counts from the session's own start when the listing has it (round 8 item 4). A record that is kept
                 // keeps its StartedAt: Resume copies the record, and a start or an adoption only replaces a record with no session id.
                 records[spec.Name] = new SessionRecord(spec.Role, adopt.SessionId, spec.Name, adopt.StartedAt ?? now, 0, [], adopt.State, null);
-                _log($"{spec.Name}: adopted the listed session {adopt.SessionId}");
+                _log($"{spec.Role}: adopted a listed session");
                 break;
 
             case SupervisorAction.Resume resume:
@@ -316,7 +316,7 @@ public sealed class SupervisorRunner
                     // put the session under "Needs you" the next time it went missing (AttentionList reads it).
                     LastAlert = null,
                 };
-                _log($"{spec.Name}: resumed {resume.SessionId}");
+                _log($"{spec.Role}: resumed a session");
                 break;
 
             case SupervisorAction.Alert alert:
@@ -333,7 +333,7 @@ public sealed class SupervisorRunner
                         StaleBlockedAt = alert.Detail == AttentionList.StaleBlockedDetail ? now : records[spec.Name].StaleBlockedAt,
                     },
                 };
-                _log($"{spec.Name}: ALERT {alert.Kind} - {alert.Detail}");
+                _log($"{spec.Role}: ALERT {alert.Kind}");
                 break;
 
             case SupervisorAction.LimitLevelSet levelSet:
@@ -355,7 +355,7 @@ public sealed class SupervisorRunner
         string message)
     {
         var detail = (action is SupervisorAction.Start ? "start failed: " : AttentionList.ResumeFailedPrefix) + message;
-        _log($"{spec.Name}: ALERT {AlertKind.StartFailed} - {detail}");
+        _log($"{spec.Role}: ALERT {AlertKind.StartFailed} - {(action is SupervisorAction.Start ? "start" : "resume")} failed");
 
         if (action is SupervisorAction.Start)
         {

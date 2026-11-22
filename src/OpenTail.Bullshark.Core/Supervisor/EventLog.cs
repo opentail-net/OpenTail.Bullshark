@@ -86,7 +86,7 @@ public sealed class EventLog : IEventSink
         {
             if (_rotationFailureLogged) return;
             _rotationFailureLogged = true;
-            _log?.Invoke($"events: not rotated, so the log keeps growing: {ex.Message}");
+            _log?.Invoke($"events: not rotated, so the log keeps growing: {ex.GetType().Name}");
         }
     }
 
@@ -133,14 +133,14 @@ public sealed class EventLog : IEventSink
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
-                    _log?.Invoke($"events: {file} not read for the digest: {ex.Message}");
+                    _log?.Invoke($"events: a file not read for the digest: {ex.GetType().Name}");
                 }
                 recent.AddRange(found.Where(evt => evt.At >= since));
             }
         }
         catch (TimeoutException ex)
         {
-            _log?.Invoke($"events: not read for the digest: {ex.Message}");
+            _log?.Invoke($"events: not read for the digest: {ex.GetType().Name}");
             return [];
         }
         return recent.OrderBy(evt => evt.At).TakeLast(Math.Max(0, max)).ToList();

@@ -51,7 +51,7 @@ public sealed class LibraryReadOnlyMigrationTests : IDisposable
         Assert.Equal("Plan", loaded[Id].Name);
         Assert.Equal("kept", loaded[Id].Note);
         var line = Assert.Single(lines);
-        Assert.StartsWith("library: could not migrate (" + PathIn + "): ", line);
+        Assert.StartsWith("library: could not migrate (", line);
         Assert.EndsWith("marks are shown as they are on disk", line);
         Assert.Equal(before, File.ReadAllBytes(PathIn));
     }

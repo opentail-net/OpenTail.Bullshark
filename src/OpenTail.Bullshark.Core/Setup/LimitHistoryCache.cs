@@ -131,7 +131,7 @@ internal static class LimitHistoryCache
         }
         catch (Exception ex)
         {
-            log?.Invoke($"limit history cache not used ({ex.GetType().Name}): {ex.Message}");
+            log?.Invoke($"limit history cache not used ({ex.GetType().Name})");
             return null;
         }
     }
@@ -160,7 +160,7 @@ internal static class LimitHistoryCache
         }
         catch (Exception ex)
         {
-            log?.Invoke($"limit history cache not saved ({ex.GetType().Name}): {ex.Message}");
+            log?.Invoke($"limit history cache not saved ({ex.GetType().Name})");
         }
     }
 
@@ -249,14 +249,14 @@ internal static class LimitHistoryCache
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
-                    log?.Invoke($"limit history cache temporary file not removed ({ex.GetType().Name}): {ex.Message}");
+                    log?.Invoke($"limit history cache temporary file not removed ({ex.GetType().Name})");
                 }
             }
         }
         catch (Exception ex)
         {
             // A path that cannot be resolved, or a folder that cannot be listed: the cache is still read, and nothing is thrown to the caller.
-            log?.Invoke($"limit history cache temporary files not swept ({ex.GetType().Name}): {ex.Message}");
+            log?.Invoke($"limit history cache temporary files not swept ({ex.GetType().Name})");
         }
     }
 }
