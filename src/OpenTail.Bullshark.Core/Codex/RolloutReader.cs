@@ -91,15 +91,94 @@ internal static class RolloutReader
     /// The one place the decoder differs by target: the zstd stream is decoded as it is read, in memory, and closing the returned stream closes
     /// <paramref name="compressed"/>. net11.0 uses the BCL's <c>ZstandardStream</c>; net10.0 uses <c>ZstdSharp.DecompressionStream</c> from
     /// ZstdSharp.Port 0.8.8 (Z0 checked that it decodes the BCL's output byte for byte). Its <c>leaveOpen</c> defaults to true, so it is set to
-    /// false here, or the file would stay open after the reader is closed.
+    /// false here, or the file would stay open after the reader is closed. The decoder's own failures are translated by <see cref="DecodedStream"/>.
     /// </summary>
     private static Stream DecodeZstd(Stream compressed)
     {
 #if NET11_0_OR_GREATER
-        return new System.IO.Compression.ZstandardStream(compressed, System.IO.Compression.CompressionMode.Decompress);
+        Stream decoder = new System.IO.Compression.ZstandardStream(compressed, System.IO.Compression.CompressionMode.Decompress);
 #else
-        return new ZstdSharp.DecompressionStream(compressed, leaveOpen: false);
+        Stream decoder = new ZstdSharp.DecompressionStream(compressed, leaveOpen: false);
 #endif
+        return new DecodedStream(decoder);
+    }
+
+    /// <summary>
+    /// The decoded stream the readers get. A damaged or cut-short rollout makes the decoder throw its own exception types, and they differ by
+    /// target (net11.0: InvalidDataException or EndOfStreamException; net10.0: ZstdSharp's ZstdException or EndOfStreamException). The readers
+    /// count only IOException as an unreadable file, so every read failure that is not already an IOException or a cancellation comes out as an
+    /// IOException. Everything else forwards to the decoder. Disposing this stream disposes the decoder, which closes the compressed input.
+    /// </summary>
+    private sealed class DecodedStream(Stream decoder) : Stream
+    {
+        private const string DamagedMessage = "The compressed rollout is damaged or cut short.";
+
+        public override bool CanRead => decoder.CanRead;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override void Flush() => decoder.Flush();
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            try
+            {
+                return decoder.Read(buffer, offset, count);
+            }
+            catch (Exception ex) when (IsDecoderFailure(ex))
+            {
+                throw new IOException(DamagedMessage, ex);
+            }
+        }
+
+        public override int Read(Span<byte> buffer)
+        {
+            try
+            {
+                return decoder.Read(buffer);
+            }
+            catch (Exception ex) when (IsDecoderFailure(ex))
+            {
+                throw new IOException(DamagedMessage, ex);
+            }
+        }
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                return await decoder.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (IsDecoderFailure(ex))
+            {
+                throw new IOException(DamagedMessage, ex);
+            }
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) decoder.Dispose();
+            base.Dispose(disposing);
+        }
+
+        /// <summary>True for a failure to translate: anything other than an IOException or a cancellation, which keep their own types.</summary>
+        private static bool IsDecoderFailure(Exception ex) => ex is not (IOException or OperationCanceledException);
     }
 
     /// <summary>

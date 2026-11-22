@@ -98,4 +98,17 @@ public sealed class CodexTranscriptReaderTests : IDisposable
         Assert.Equal(lines[2..5], page.Lines);
         Assert.Equal(2, page.FirstLine);
     }
+
+    [Fact]
+    public async Task ADamagedCompressedRolloutThrowsIOException()
+    {
+        // Both targets: the first half of a valid compressed rollout fails while it is read. The documented failure is an IOException (or a subclass,
+        // such as the EndOfStreamException net10.0 throws), not the decoder's own non-IO exception type (see RolloutReader.DecodedStream).
+        var path = _home.WriteCompressed(CodexHome.NameFor(CodexHome.SecondId), CodexHome.Standard(CodexHome.SecondId));
+        var whole = File.ReadAllBytes(path);
+        File.WriteAllBytes(path, whole[..(whole.Length / 2)]);
+
+        // A count past the end reads the file to its end, so the failure is reached.
+        await Assert.ThrowsAnyAsync<IOException>(() => Reader().ReadPageAsync(CodexHome.SecondId, 0, 1000, CancellationToken.None));
+    }
 }

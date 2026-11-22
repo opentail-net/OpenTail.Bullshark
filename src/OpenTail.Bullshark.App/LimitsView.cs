@@ -150,7 +150,7 @@ public sealed class LimitsView : UserControl
         DrawDays(report.Usage);
         DrawProjects(report.Usage);
         var rollouts = report.CodexSkipped == 1 ? "rollout" : "rollouts";
-        _codexSkipped.Text = $"{report.CodexSkipped.ToString(CultureInfo.CurrentCulture)} Codex {rollouts} not read: this build cannot decode compressed files.";
+        _codexSkipped.Text = $"{report.CodexSkipped.ToString(CultureInfo.CurrentCulture)} Codex {rollouts} not read: decoding compressed rollouts is switched off.";
         _codexSkipped.Visibility = report.CodexSkipped > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 

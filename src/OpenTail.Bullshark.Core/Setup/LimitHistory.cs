@@ -19,7 +19,7 @@ public sealed record LimitDay(DateOnly Day, IReadOnlyDictionary<string, int> Hit
 
 /// <summary>
 /// What the Limits page shows, from one read: the hits and their days (as <see cref="LimitHistory.ReadWithCache"/> gives them) and the usage report.
-/// <paramref name="CodexSkipped"/> is the number of Codex rollouts this build could not decode (compressed, on net10.0); zero when none, or when
+/// <paramref name="CodexSkipped"/> is the number of compressed Codex rollouts not decoded because decoding is switched off (damaged rollouts are counted as unreadable, not here); zero when none, or when
 /// no Codex history was read.
 /// </summary>
 public sealed record LimitsReport(IReadOnlyList<LimitHit> Hits, IReadOnlyList<LimitDay> Days, UsageReport Usage, int CodexSkipped = 0);

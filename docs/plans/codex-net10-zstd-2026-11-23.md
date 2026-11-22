@@ -26,6 +26,14 @@ Codex rollouts are zstd-compressed (62 of 63 local files; B1). The BCL's `Zstand
 
 **Z3. Third-party notice.** A `THIRD-PARTY-NOTICES.md` in the repository root names ZstdSharp.Port 0.8.8, its MIT licence text, and its copyright line as the repository LICENSE gives it. Linked from `README.md` (one line). The project's LICENSE.md is not edited.
 
+**Z1 and Z2 status (2026-11-23): committed as `b530c58`.** Core 2961 (net10.0 and net11.0), App 269 on each full target, all exit 0 when rerun. A damaged compressed rollout threw a decoder-specific exception on each target, and not every reader caught it. **Robustness fix, done 2026-11-23 (uncommitted at the time of writing, committed with this note):** the decoder stream is wrapped in `DecodedStream` (RolloutReader.cs), which translates every decoder failure into `IOException` ("The compressed rollout is damaged or cut short."), and passes cancellation through. Four tests on both targets: a truncated rollout, a garbage rollout with the zstd magic, a usage read with one good and one damaged rollout, and a transcript read that throws IOException. Core 2965 on each target; App 269 on each full target. The limits line (`LimitsView.cs`) now says "decoding compressed rollouts is switched off", because its count only ever covers that case.
+
+**Open items from Z1 to Z4 (recorded, not done):**
+- Damaged rollouts are counted as **unreadable** and are not shown in the limits report. Carrying that count into `LimitsReport` is a visible change and needs the owner's decision.
+- The transcript test accepts any IOException: on net10.0 a truncated read throws `EndOfStreamException`, an IOException subclass, and the wrapper passes IOException subclasses through unchanged.
+- Checked against the pre-fix decoder (2026-11-23, the file swapped and restored byte for byte): `ADamagedCompressedRolloutThrowsIOException` and `ADamagedCompressedRolloutIsCountedAndTheGoodOneIsRead` **fail** without the fix, so they test the translation. The two history-source tests (`ATruncatedCompressedRolloutIsCountedAsUnreadable`, `AGarbageCompressedRolloutWithTheZstdMagicIsCountedAsUnreadable`) **pass** without it: the history reader already catches every exception while listing. They still show that a damaged file does not stop a listing, but they do not test the translation.
+- The App's net10.0 run exited 1 once with "Test Collection Cleanup Failure (headless WPF) System.InvalidOperationException" and no failed test. It passed on rerun. It is environmental, and the counts above come from passing runs.
+
 **Z4. Review and commit.** A Sonnet review of Z1 and Z2 (decoder seam, privacy, the net10 test changes). Dispositions recorded here. Local commit only; no push.
 
 ## Gates and risks

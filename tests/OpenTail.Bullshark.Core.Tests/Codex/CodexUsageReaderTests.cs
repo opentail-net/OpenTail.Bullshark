@@ -427,6 +427,31 @@ public sealed class CodexUsageReaderTests : IDisposable
     }
 
     [Fact]
+    public void ADamagedCompressedRolloutIsCountedAndTheGoodOneIsRead()
+    {
+        // Both targets: a damaged compressed rollout (the zstd magic and no decodable frame after it) must not throw out of the folder read. It is
+        // counted as unreadable, and the good compressed rollout beside it is read.
+        Directory.CreateDirectory(_folder);
+        var good = Path.Combine(_folder, "rollout-good.jsonl.zst");
+        using (var file = File.Create(good))
+        using (var zstd = CodexHome.CompressingStream(file))
+        using (var writer = new StreamWriter(zstd))
+        {
+            foreach (var line in Lines(100)) writer.WriteLine(line);
+        }
+        File.SetLastWriteTimeUtc(good, OldWrite);
+        var damaged = Path.Combine(_folder, "rollout-damaged.jsonl.zst");
+        File.WriteAllBytes(damaged, [0x28, 0xB5, 0x2F, 0xFD, 0xFF, 0x13, 0x37, 0x42, 0x00, 0xEE, 0x80, 0x01, 0x5A]);
+        File.SetLastWriteTimeUtc(damaged, OldWrite);
+
+        var read = CodexUsageReader.ReadFolder(_folder, Since, true, now: Now);
+
+        Assert.Equal(0, read.Skipped);
+        Assert.Equal(1, read.Unreadable);
+        Assert.Equal(new TokenUsage(40, 10, 0, 60), Assert.Single(read.Records).Usage);
+    }
+
+    [Fact]
     public void AnUnreadableRolloutIsNotReportedAsSkippedOnTheLimitsReport()
     {
         var path = WriteRollout("rollout-old.jsonl", Lines(100), OldWrite);

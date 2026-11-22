@@ -294,6 +294,38 @@ public sealed class CodexHistorySourceReadingTests : IDisposable
     }
 
     [Fact]
+    public async Task ATruncatedCompressedRolloutIsCountedAsUnreadable()
+    {
+        // Both targets: the first half of a valid compressed rollout fails while it is read, so it is skipped and counted, and the listing does not throw.
+        _home.WritePlain(CodexHome.NameFor(CodexHome.SessionId), CodexHome.Standard(CodexHome.SessionId));
+        var truncatedPath = _home.WriteCompressed(CodexHome.NameFor(CodexHome.SecondId), CodexHome.Standard(CodexHome.SecondId));
+        var whole = File.ReadAllBytes(truncatedPath);
+        File.WriteAllBytes(truncatedPath, whole[..(whole.Length / 2)]);
+        var source = Source();
+
+        var session = Assert.Single(await source.ListAsync(CancellationToken.None));
+
+        Assert.Equal(new SessionKey(ProviderId.Codex, CodexHome.SessionId), session.Key);
+        Assert.Equal(1, source.SkippedFiles);
+    }
+
+    [Fact]
+    public async Task AGarbageCompressedRolloutWithTheZstdMagicIsCountedAsUnreadable()
+    {
+        // Both targets: the zstd frame magic, then a frame header that cannot be decoded (the reserved bit of the descriptor is set).
+        _home.WritePlain(CodexHome.NameFor(CodexHome.SessionId), CodexHome.Standard(CodexHome.SessionId));
+        var badPath = _home.PathFor("rollout-2026-11-20T10-00-00-" + CodexHome.SecondId + ".jsonl.zst");
+        Directory.CreateDirectory(Path.GetDirectoryName(badPath)!);
+        File.WriteAllBytes(badPath, [0x28, 0xB5, 0x2F, 0xFD, 0xFF, 0x13, 0x37, 0x42, 0x00, 0xEE, 0x80, 0x01, 0x5A]);
+        var source = Source();
+
+        var session = Assert.Single(await source.ListAsync(CancellationToken.None));
+
+        Assert.Equal(new SessionKey(ProviderId.Codex, CodexHome.SessionId), session.Key);
+        Assert.Equal(1, source.SkippedFiles);
+    }
+
+    [Fact]
     public async Task AMalformedLineInTheMiddleIsSkippedAndTheLinesAroundItAreRead()
     {
         // F-E (b): one line of JSON cut short sits between two good records. It is counted once; both neighbours are read.
