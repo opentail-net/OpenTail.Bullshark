@@ -26,9 +26,10 @@ public enum ResumeMode
 
 /// <summary>
 /// The choice made in the resume prompt. Level is set for a summary; Turns is the number of turns kept verbatim. Model and Effort
-/// are the model and effort of the resumed or new session (the summary itself is always Haiku at low effort).
+/// are the model and effort of the resumed or new session (the summary itself is always Haiku at low effort). Remember is the
+/// "Remember for this session" tick: the prompt only returns it, and the window writes the mark (Continue, stage C6).
 /// </summary>
-public sealed record ResumeChoice(ResumeMode Mode, SummaryLevel? Level, int Turns, string Model, string Effort);
+public sealed record ResumeChoice(ResumeMode Mode, SummaryLevel? Level, int Turns, string Model, string Effort, bool Remember = false);
 
 /// <summary>
 /// What the Claude resume prompt's preview callback gives: the built preview, or, when the launch is refused, null with the refusal in
@@ -206,6 +207,7 @@ public partial class ResumePrompt : Window
         foreach (var segment in LevelRow.Children.OfType<RadioButton>()) Enable(segment, free);
         ResumeButton.IsEnabled = free && !_refused;
         ResumeMenuButton.IsEnabled = free;
+        Enable(RememberBox, free);
 
         var canBuild = free && choice is not null && choice.Mode != ResumeMode.Full && turnsValid && _previewAsync is not null;
         PreviewItem.IsEnabled = canBuild;
@@ -386,7 +388,7 @@ public partial class ResumePrompt : Window
             return;
         }
 
-        Choice = choice;
+        Choice = choice with { Remember = RememberBox.IsChecked == true };
         Close();
     }
 

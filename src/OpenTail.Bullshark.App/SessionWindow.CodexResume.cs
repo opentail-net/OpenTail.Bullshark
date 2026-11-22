@@ -101,9 +101,12 @@ public partial class SessionWindow
             if (choice.Mode == CodexResumeMode.Full)
             {
                 await ResumeCodexAsync(session);
-                return;
             }
-            await StartCodexFromTextAsync(session, folder, choice, dialog.PreviewText);
+            else
+            {
+                await StartCodexFromTextAsync(session, folder, choice, dialog.PreviewText);
+            }
+            if (choice.Remember) RememberResumeMode(ProviderId.Codex, session.Key.SessionId, RememberChoice.ModeOf(choice.Mode));
         }
         finally
         {

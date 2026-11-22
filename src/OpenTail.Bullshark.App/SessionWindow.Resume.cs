@@ -3,6 +3,7 @@ using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Claude;
 using OpenTail.Bullshark.Core.Continue;
 using OpenTail.Bullshark.Core.Folders;
+using OpenTail.Bullshark.Core.Providers;
 using OpenTail.Bullshark.Core.Resume;
 using OpenTail.Bullshark.Core.Setup;
 using OpenTail.Bullshark.Core.Supervisor;
@@ -99,6 +100,18 @@ public partial class SessionWindow
 
         if (choice.Mode == ResumeMode.Full) await ResumeInFullAsync(digest, folder, choice);
         else await StartFromTextAsync(digest, folder, lines, choice, prompt.KeptSummary);
+        if (choice.Remember) RememberResumeMode(ProviderId.Claude, digest.SessionId, RememberChoice.ModeOf(choice.Mode));
+    }
+
+    /// <summary>
+    /// Writes the mode the owner ticked "Remember for this session" as the session's remembered mode (CN-D6, stage C6), under the provider's own key. It goes
+    /// through <see cref="ChangeMarkOf"/>, the one mark path the rail's edits use: a library that cannot be read is not written, and the status line says so.
+    /// The log holds the provider and the mode only.
+    /// </summary>
+    private void RememberResumeMode(ProviderId provider, string sessionId, ContinueMode mode)
+    {
+        if (!ChangeMarkOf(provider, sessionId, existing => RememberChoice.Apply(existing, mode))) return;
+        AppLog.Write($"resume mode remembered: {provider.Value} {ContinueModeText.ToText(mode)}");
     }
 
     /// <summary>

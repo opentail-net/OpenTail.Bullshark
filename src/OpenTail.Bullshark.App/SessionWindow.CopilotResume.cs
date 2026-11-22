@@ -84,6 +84,7 @@ public partial class SessionWindow
             if (choice.Mode == CopilotResumeMode.Full)
             {
                 ResumeCopilot(session);
+                if (choice.Remember) RememberResumeMode(ProviderId.Copilot, id, RememberChoice.ModeOf(choice.Mode));
                 return;
             }
             // The list and the folder are checked again: either may have changed while the screen was open (G-D12).
@@ -94,6 +95,7 @@ public partial class SessionWindow
                 return;
             }
             StartCopilotFromText(choice, dialog.PreviewText, folder, title);
+            if (choice.Remember) RememberResumeMode(ProviderId.Copilot, id, RememberChoice.ModeOf(choice.Mode));
         }
         finally
         {

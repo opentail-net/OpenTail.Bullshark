@@ -199,6 +199,8 @@
             <TextBlock x:Name="PreviewNote" Style="{StaticResource Muted}" Margin="0,4,0,0" Visibility="Collapsed" />
         </StackPanel>
 
+        <CheckBox x:Name="RememberBox" Content="Remember for this session" Foreground="{DynamicResource PromptText}" Margin="0,16,0,0" />
+
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
             <StackPanel Orientation="Horizontal" Margin="0,0,8,0">
                 <Button x:Name="ResumeButton" Content="Resume" Click="Resume_Click" Style="{StaticResource ResumeGo}"

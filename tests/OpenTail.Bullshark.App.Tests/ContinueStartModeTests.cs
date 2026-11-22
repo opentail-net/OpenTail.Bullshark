@@ -173,10 +173,15 @@ public sealed class ContinueStartModeTests
     }
 
     [Fact]
-    public void ClaudeHasNoRememberTick()
+    public void ClaudeRememberTickIsOffWhenTheScreenOpens()
     {
-        // CN-D9 and the AFK decision of 2026-11-23: a new visible control would change Claude's screen, so there is none.
-        UiThread.Run(() => Assert.Null(NewClaudePrompt(10_000, new List<ResumeMode>()).FindName("RememberBox")));
+        // The owner's decision of 2026-11-23: Claude's screen gets the "Remember for this session" tick too. It supersedes the C4 AFK default of no tick.
+        UiThread.Run(() =>
+        {
+            var remember = Named<CheckBox>(NewClaudePrompt(10_000, new List<ResumeMode>()), "RememberBox");
+            Assert.False(remember.IsChecked == true);
+            Assert.Equal("Remember for this session", (string?)remember.Content);
+        });
     }
 
     // ---- Codex's screen. ----
