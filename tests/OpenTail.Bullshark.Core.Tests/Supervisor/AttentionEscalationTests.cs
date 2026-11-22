@@ -226,4 +226,98 @@ public sealed class AttentionEscalationTests
         Assert.Equal(TimeSpan.FromMinutes(1), AttentionEscalation.IntervalOf(JsonValue.Create(0.2)));
         Assert.Equal(TimeSpan.FromMinutes(15), AttentionEscalation.IntervalOf(JsonNode.Parse("15")));
     }
+
+    [Fact]
+    public void AnAcknowledgedSessionIsSilentUntilItsReasonChanges()
+    {
+        var escalation = new AttentionEscalation();
+        escalation.Update([Waiting("coder")], T0, Fifteen);
+        escalation.Acknowledge("coder");
+
+        // Acknowledged is silent for as long as the state holds, not for a time.
+        Assert.True(escalation.SilenceAt(T0.AddMinutes(1)).Silences("s-coder"));
+        Assert.True(escalation.SilenceAt(T0.AddMinutes(600)).Silences("s-coder"));
+
+        // The reason changes: the silence ends, and the session re-alerts on the normal schedule from its count.
+        Assert.Empty(escalation.Update([Waiting("coder", AttentionReason.Failed)], T0.AddMinutes(5), Fifteen));
+        Assert.False(escalation.SilenceAt(T0.AddMinutes(5)).Silences("s-coder"));
+        Assert.Equal(1, Assert.Single(escalation.Update([Waiting("coder", AttentionReason.Failed)], T0.AddMinutes(20), Fifteen)).Again);
+    }
+
+    [Fact]
+    public void AnAcknowledgedSessionIsSilentWithRepeatsOff()
+    {
+        var escalation = new AttentionEscalation();
+        escalation.Update([Waiting("coder")], T0, TimeSpan.Zero);
+        escalation.Acknowledge("coder");
+
+        Assert.Empty(escalation.Update([Waiting("coder")], T0.AddMinutes(30), TimeSpan.Zero));
+        Assert.True(escalation.SilenceAt(T0.AddMinutes(30)).Silences("s-coder"));
+    }
+
+    [Fact]
+    public void ASnoozedSessionIsSilentUntilTheSnoozeTimeThenAlertable()
+    {
+        var escalation = new AttentionEscalation();
+        escalation.Update([Waiting("coder")], T0, Fifteen);
+        escalation.Snooze("coder", T0.AddMinutes(60));
+
+        Assert.True(escalation.SilenceAt(T0.AddMinutes(15)).Silences("s-coder"));
+        Assert.Empty(escalation.Update([Waiting("coder")], T0.AddMinutes(59), Fifteen));
+        Assert.True(escalation.SilenceAt(T0.AddMinutes(59)).Silences("s-coder"));
+
+        // At the snooze time the silence ends, and the snooze's own re-alert is due in the same pass, so it alerts.
+        Assert.Equal(1, Assert.Single(escalation.Update([Waiting("coder")], T0.AddMinutes(60), Fifteen)).Again);
+        Assert.False(escalation.SilenceAt(T0.AddMinutes(60)).Silences("s-coder"));
+    }
+
+    [Fact]
+    public void AnAcknowledgeAfterASnoozeSilencesUntilTheStateChanges()
+    {
+        var escalation = new AttentionEscalation();
+        escalation.Update([Waiting("coder")], T0, Fifteen);
+        escalation.Snooze("coder", T0.AddMinutes(60));
+        escalation.Acknowledge("coder");
+
+        Assert.True(escalation.SilenceAt(T0.AddMinutes(120)).Silences("s-coder"));
+    }
+
+    [Fact]
+    public void ANewSpellAfterLeavingTheListIsNotSilenced()
+    {
+        var escalation = new AttentionEscalation();
+        escalation.Update([Waiting("coder")], T0, Fifteen);
+        escalation.Acknowledge("coder");
+        escalation.Update([], T0.AddMinutes(10), Fifteen);
+
+        escalation.Update([Waiting("coder")], T0.AddMinutes(20), Fifteen);
+        Assert.False(escalation.SilenceAt(T0.AddMinutes(20)).Silences("s-coder"));
+    }
+
+    [Fact]
+    public void TheSameNameOnAnotherSessionIsANewSpellAndNotSilenced()
+    {
+        var escalation = new AttentionEscalation();
+        escalation.Update([Waiting("coder")], T0, Fifteen);
+        escalation.Acknowledge("coder");
+
+        escalation.Update([new AttentionItem("coder", "s-other", AttentionReason.Blocked, "detail", T0)], T0.AddMinutes(5), Fifteen);
+        Assert.False(escalation.SilenceAt(T0.AddMinutes(5)).Silences("s-coder"));
+        Assert.False(escalation.SilenceAt(T0.AddMinutes(5)).Silences("s-other"));
+    }
+
+    [Fact]
+    public void ASilenceMatchesTheSessionIdWithoutCaseAndASessionlessStartSilencesNothing()
+    {
+        var escalation = new AttentionEscalation();
+        escalation.Update([Waiting("coder")], T0, Fifteen);
+        escalation.Acknowledge("coder");
+        Assert.True(escalation.SilenceAt(T0).Silences("S-CODER"));
+        Assert.False(escalation.SilenceAt(T0).Silences(null));
+
+        var starting = new AttentionEscalation();
+        starting.Update([new AttentionItem("starter", null, AttentionReason.StartFailed, "detail", T0)], T0, Fifteen);
+        starting.Acknowledge("starter");
+        Assert.False(starting.SilenceAt(T0).Silences(null));
+    }
 }

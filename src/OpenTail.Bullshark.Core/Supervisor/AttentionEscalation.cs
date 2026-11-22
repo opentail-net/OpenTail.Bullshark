@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json.Nodes;
+using OpenTail.Bullshark.Core.Behaviour;
 
 namespace OpenTail.Bullshark.Core.Supervisor;
 
@@ -25,8 +26,11 @@ public sealed class AttentionEscalation
 
     private readonly Dictionary<string, Spell> _spells = new(StringComparer.Ordinal);
 
-    /// <summary>One waiting spell, from the first time its item is seen until the item leaves the list (D6: kept by name).</summary>
-    private sealed class Spell(DateTimeOffset firstSeen)
+    /// <summary>
+    /// One waiting spell, from the first time its item is seen until the item leaves the list (D6: kept by name). A spell is for one session: a
+    /// session that changes to another one under the same name starts a new spell (R2b).
+    /// </summary>
+    private sealed class Spell(DateTimeOffset firstSeen, AttentionItem item)
     {
         public DateTimeOffset LastAlert { get; set; } = firstSeen;
 
@@ -36,6 +40,12 @@ public sealed class AttentionEscalation
         public DateTimeOffset? SnoozedUntil { get; set; }
 
         public bool Acknowledged { get; set; }
+
+        /// <summary>The session the spell is for, or null for a start that never got one.</summary>
+        public string? SessionId { get; } = item.SessionId;
+
+        /// <summary>The reason at the last pass. A change of it is a change of state, which ends an acknowledgement (R2b).</summary>
+        public AttentionReason Reason { get; set; } = item.Reason;
     }
 
     /// <summary>
@@ -79,10 +89,18 @@ public sealed class AttentionEscalation
         var due = new List<ReAlert>();
         foreach (var item in waiting)
         {
-            if (!_spells.TryGetValue(item.Name, out var spell))
+            // A new spell, or the same name on another session: announced as usual, with no acknowledgement or snooze carried over (R2b).
+            if (!_spells.TryGetValue(item.Name, out var spell) || !SameSession(spell.SessionId, item.SessionId))
             {
-                _spells[item.Name] = new Spell(now);
+                _spells[item.Name] = new Spell(now, item);
                 continue;
+            }
+
+            // A changed reason is a change of state: the acknowledgement ends with it, so the session alerts again (R2b). A snooze keeps its time.
+            if (spell.Reason != item.Reason)
+            {
+                spell.Reason = item.Reason;
+                spell.Acknowledged = false;
             }
             if (interval <= TimeSpan.Zero || spell.Acknowledged) continue;
 
@@ -107,8 +125,20 @@ public sealed class AttentionEscalation
     }
 
     /// <summary>
+    /// The sessions whose banners and sound are held back at <paramref name="now"/> (R2b): a session whose spell the owner acknowledged, and one
+    /// snoozed to a time after <paramref name="now"/>. An acknowledgement lasts until the spell ends or its reason changes; a snooze until its time.
+    /// Call it after <see cref="Update"/> for the same pass, so a changed reason has already ended the acknowledgement. A spell with no session id
+    /// (a start that never got one) silences nothing, since a change has no session to be held back by.
+    /// </summary>
+    public AlertSilence SilenceAt(DateTimeOffset now) =>
+        new(_spells.Values
+            .Where(spell => spell.SessionId is not null
+                && (spell.Acknowledged || (spell.SnoozedUntil is { } until && now < until)))
+            .Select(spell => spell.SessionId!));
+
+    /// <summary>
     /// The owner acknowledged the item (D3): no more re-alerts for it until it stops waiting. It stays in the list. Clears a snooze.
-    /// A name with no spell is ignored.
+    /// A name with no spell is ignored. The acknowledgement also silences the session's banners and sound until its state changes (R2b).
     /// </summary>
     public void Acknowledge(string name)
     {
@@ -119,7 +149,8 @@ public sealed class AttentionEscalation
 
     /// <summary>
     /// The owner snoozed the item until <paramref name="until"/> (D4): no re-alert before then, and one at the end if it still waits.
-    /// It takes back an acknowledgement, so the snooze's own re-alert is not swallowed. A name with no spell is ignored.
+    /// It takes back an acknowledgement, so the snooze's own re-alert is not swallowed. A name with no spell is ignored. Until <paramref name="until"/>
+    /// the session's banners and sound are held back too (R2b).
     /// </summary>
     public void Snooze(string name, DateTimeOffset until)
     {
@@ -127,4 +158,7 @@ public sealed class AttentionEscalation
         spell.Acknowledged = false;
         spell.SnoozedUntil = until;
     }
+
+    /// <summary>Whether two session ids are the same session. Two missing ids (a start with no session) are the same.</summary>
+    private static bool SameSession(string? a, string? b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
 }

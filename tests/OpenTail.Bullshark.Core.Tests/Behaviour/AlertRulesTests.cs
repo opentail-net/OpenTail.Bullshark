@@ -164,4 +164,80 @@ public sealed class AlertRulesTests
         Assert.Single(AlertRules.Ready(ready, Away, on));
         Assert.Empty(AlertRules.Ready(ready, InFront, on));
     }
+
+    [Fact]
+    public void ASilencedSessionMakesNoBannerForAChangeOrARepeatUnderEitherGate()
+    {
+        var silence = new AlertSilence(["s1"]);
+        foreach (var gate in new[] { FocusGate.Unfocused, FocusGate.UnfocusedOrUnselected })
+        {
+            var alerts = Settings(repeat: 15, gate: gate);
+            foreach (var focus in new[] { Away, InFront, InFrontSelecting("s2"), AwaySelecting("s1") })
+            {
+                Assert.False(AlertRules.Shows(AlertGroup.NeedsInput, AlertTrigger.Change, focus, "s1", alerts, silence));
+                Assert.False(AlertRules.Shows(AlertGroup.Errored, AlertTrigger.Change, focus, "s1", alerts, silence));
+                Assert.False(AlertRules.Shows(AlertGroup.NeedsInput, AlertTrigger.Repeat, focus, "s1", alerts, silence));
+            }
+
+            // Without the silence the same change alerts from the window's back, so the silence is what holds it.
+            Assert.True(AlertRules.Shows(AlertGroup.NeedsInput, AlertTrigger.Change, Away, "s1", alerts));
+            Assert.True(AlertRules.Shows(AlertGroup.NeedsInput, AlertTrigger.Repeat, Away, "s1", alerts));
+        }
+    }
+
+    [Fact]
+    public void AnUnsilencedSessionIsUnaffectedAndNoSilenceOrNoSessionIsNeverHeld()
+    {
+        var silence = new AlertSilence(["s1"]);
+        var alerts = Settings(repeat: 15);
+
+        Assert.True(AlertRules.Shows(AlertGroup.NeedsInput, AlertTrigger.Change, Away, "s2", alerts, silence));
+        Assert.True(AlertRules.Shows(AlertGroup.NeedsInput, AlertTrigger.Repeat, Away, "s2", alerts, silence));
+        Assert.True(AlertRules.Shows(AlertGroup.NeedsInput, AlertTrigger.Change, Away, "s1", alerts, null));
+        Assert.True(AlertRules.Shows(AlertGroup.NeedsInput, AlertTrigger.Change, Away, "s1", alerts, AlertSilence.None));
+        Assert.True(AlertRules.Shows(AlertGroup.Notice, AlertTrigger.Change, Away, null, alerts, silence));
+        Assert.False(AlertRules.Shows(AlertGroup.NeedsInput, AlertTrigger.Change, Away, "S1", alerts, silence));
+    }
+
+    [Fact]
+    public void ChangesRepeatsAndReadyKeepOnlyTheSessionsThatAreNotSilenced()
+    {
+        var silence = new AlertSilence(["s1"]);
+        var on = Settings(repeat: 15, kinds: new HashSet<AlertGroup> { AlertGroup.NeedsInput, AlertGroup.Errored, AlertGroup.Finished });
+        IReadOnlyList<AttentionItem> gained =
+        [
+            Item("s1-blocked", "s1", AttentionReason.Blocked),
+            Item("s2-failed", "s2", AttentionReason.Failed),
+            Item("s3-overlap", "s3", AttentionReason.Overlap),
+        ];
+        IReadOnlyList<ReAlert> due = [new ReAlert(Item("s1", "s1", AttentionReason.Blocked), 1), new ReAlert(Item("s2", "s2", AttentionReason.Blocked), 1)];
+        IReadOnlyList<ReviewItem> ready = [new ReviewItem("coder-1", "s1", 2, DateTimeOffset.UnixEpoch), new ReviewItem("coder-2", "s9", 2, DateTimeOffset.UnixEpoch)];
+
+        Assert.Equal(new[] { "s2-failed", "s3-overlap" }, AlertRules.Changes(gained, Away, on, silence).Select(item => item.Name));
+        Assert.Equal(new[] { "s2" }, AlertRules.Repeats(due, Away, on, silence).Select(alert => alert.Item.Name));
+        Assert.Equal(new[] { "coder-2" }, AlertRules.Ready(ready, Away, on, silence).Select(item => item.Name));
+        // The input is not changed: the silence holds banners back, it does not drop items.
+        Assert.Equal(3, gained.Count);
+    }
+
+    [Fact]
+    public void AnAcknowledgedSessionAlertsAgainOnceItsReasonChanges()
+    {
+        var escalation = new AttentionEscalation();
+        var alerts = Settings();
+        var t0 = DateTimeOffset.UnixEpoch.AddHours(9);
+        escalation.Update([Item("coder", "s1", AttentionReason.Blocked)], t0, TimeSpan.Zero);
+        escalation.Acknowledge("coder");
+
+        // Still blocked, a minute later: a change would be held, and the repeat is off.
+        escalation.Update([Item("coder", "s1", AttentionReason.Blocked)], t0.AddMinutes(1), TimeSpan.Zero);
+        var stillBlocked = AlertRules.Changes([Item("coder", "s1", AttentionReason.Blocked)], Away, alerts, escalation.SilenceAt(t0.AddMinutes(1)));
+        Assert.Empty(stillBlocked);
+
+        // Now it fails: the reason changed, so the session alerts again.
+        var failed = Item("coder", "s1", AttentionReason.Failed);
+        escalation.Update([failed], t0.AddMinutes(2), TimeSpan.Zero);
+        var changed = AlertRules.Changes([failed], Away, alerts, escalation.SilenceAt(t0.AddMinutes(2)));
+        Assert.Equal("coder", Assert.Single(changed).Name);
+    }
 }

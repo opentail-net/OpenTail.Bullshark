@@ -218,9 +218,9 @@ public partial class SessionWindow
     /// <summary>
     /// Called after each pass. When a session joined the list since the last pass, the window flashes its taskbar button until it
     /// is in front and plays the notification sound once. Both are off when ui.json says "notify": false. Which changes alert at all, and whether a focused
-    /// window or the selected session holds a banner back, is the rule of behaviour.json (R2); the list keeps every change. When the window is not in front, a
-    /// silent Windows toast is shown too, unless ui.json says "toast": false (toasts-2026-11-18); each kind of toast can be switched off
-    /// (toasts by event). The first pass after the window opens only sets the baselines. The escalation runs on every pass: a session that still
+    /// window or the selected session holds a banner back, is the rule of behaviour.json (R2); the list keeps every change. A session the owner
+    /// acknowledged or snoozed is silent too (R2b). When the window is not in front, a silent Windows toast is shown too, unless ui.json says
+    /// "toast": false (toasts-2026-11-18); each kind of toast can be switched off (toasts by event). The first pass after the window opens only sets the baselines. The escalation runs on every pass: a session that still
     /// waits after its interval sounds again, with the same sound and flash, and is logged as "again" (escalation-2026-11-18). A coder that becomes
     /// ready for review, and a usage limit that resets, get a silent toast each when the window is not in front (toasts by event).
     /// </summary>
@@ -240,6 +240,9 @@ public partial class SessionWindow
         // A re-alert that falls while "notify" is false is used up without a sound: the owner chose silence.
         // The interval is behaviour.json's alerts.repeatMinutes (zero: never re-alert). The count limit and the schedule are the escalation's own.
         var due = _escalation.Update(_attention, now, _behaviour.Alerts.RepeatInterval);
+        // The sessions the owner acknowledged or snoozed are silent now (R2b): their changes and re-alerts make no banner and no sound. The read is after
+        // Update, so a changed reason has already ended an acknowledgement.
+        var silence = _escalation.SilenceAt(now);
         // The ready and limit states are read on every pass, shown or not, so each pass is compared with the one before it.
         var readyNew = ReadyGained();
         var limitsReset = LimitsReset(now);
@@ -259,12 +262,12 @@ public partial class SessionWindow
         // Which changes alert is the behaviour rule's (behaviour.json, R2): the kinds, the focus gate and the selected session. The lists above keep every
         // change; only the banner, the sound and the flash are held back, and the count of the held ones is logged.
         var focus = AlertFocusNow();
-        var waits = AlertRules.Changes(gained, focus, _behaviour.Alerts);
-        var repeats = AlertRules.Repeats(due, focus, _behaviour.Alerts);
+        var waits = AlertRules.Changes(gained, focus, _behaviour.Alerts, silence);
+        var repeats = AlertRules.Repeats(due, focus, _behaviour.Alerts, silence);
         var held = gained.Count - waits.Count + due.Count - repeats.Count;
-        if (held > 0) AppLog.Write($"needs you: {held} not alerted (focus gate or kinds)");
+        if (held > 0) AppLog.Write($"needs you: {held} not alerted (focus gate, kinds or silence)");
         if (waits.Count > 0 || repeats.Count > 0) AnnounceWaits(waits, repeats, quiet);
-        AnnounceQuiet(readyNew, limitsReset, quiet, focus);
+        AnnounceQuiet(readyNew, limitsReset, quiet, focus, silence);
     }
 
     /// <summary>
@@ -327,9 +330,10 @@ public partial class SessionWindow
 
     /// <summary>
     /// The silent toasts of a pass: a coder newly ready for review, and a usage limit that reset (toasts by event, 2026-11-18). No sound and no flash.
-    /// Each is shown only when "notify" and "toast" are on, its own switch is on, and the window is not in front, as the Needs-you toast is.
+    /// Each is shown only when "notify" and "toast" are on, its own switch is on, and the window is not in front, as the Needs-you toast is. A ready
+    /// coder whose session the owner acknowledged or snoozed (<paramref name="silence"/>, R2b) gets none.
     /// </summary>
-    private void AnnounceQuiet(IReadOnlyList<ReviewItem> readyNew, IReadOnlyList<string> limitsReset, bool quiet, AlertFocus focus)
+    private void AnnounceQuiet(IReadOnlyList<ReviewItem> readyNew, IReadOnlyList<string> limitsReset, bool quiet, AlertFocus focus, AlertSilence silence)
     {
         if (readyNew.Count == 0 && limitsReset.Count == 0) return;
         if (IsActive) return;
@@ -345,7 +349,7 @@ public partial class SessionWindow
         }
 
         // A coder that is ready alerts under the kind "finished" (off by default) and the focus gate (behaviour.json, R2). Its toast names the first one.
-        var readyAlerting = AlertRules.Ready(readyNew, focus, _behaviour.Alerts);
+        var readyAlerting = AlertRules.Ready(readyNew, focus, _behaviour.Alerts, silence);
         if (readyAlerting.Count > 0 && AnnouncePolicy.SilentToastShown(_passSettings, ToastCategory.Ready, IsActive, quiet))
         {
             var names = readyAlerting.Select(item => item.Name).ToList();
