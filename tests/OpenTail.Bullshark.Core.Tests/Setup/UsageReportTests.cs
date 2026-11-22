@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using OpenTail.Bullshark.Core.Activity;
+using OpenTail.Bullshark.Core.Behaviour;
 using OpenTail.Bullshark.Core.Setup;
 using Xunit;
 
@@ -66,8 +67,14 @@ public sealed class UsageReportTests : IDisposable
 
     private void Log(string note) => _logged.Add(note);
 
+    /// <summary>
+    /// The usage settings of these expectations: attribution to each message's own time (<c>event</c>), which is the rule they were written for (R8).
+    /// The default (<c>lastUpdate</c>) is tested in <c>UsageAttributionTests</c>.
+    /// </summary>
+    private static readonly UsageSettings EventRule = new() { Attribution = UsageAttribution.Event };
+
     private LimitsReport Report(TimeZoneInfo? zone = null, string? cachePath = null) =>
-        LimitHistory.ReadReportWithCache(_projects, Now, cachePath ?? _cache, zone: zone ?? Utc, log: Log);
+        LimitHistory.ReadReportWithCache(_projects, Now, cachePath ?? _cache, zone: zone ?? Utc, log: Log, usage: EventRule);
 
     private static TokenUsage Sum(IEnumerable<TokenUsage> usages) => usages.Aggregate(TokenUsage.Zero, (sum, usage) => sum.Add(usage));
 
@@ -264,7 +271,7 @@ public sealed class UsageReportTests : IDisposable
         Write("project-a/session.jsonl", [Record(hit.AddHours(-1), "msg_a", output: 500), Limit(hit, hit.AddHours(3))]);
         Write("project-b/session.jsonl", [Record(hit.AddHours(-2), "msg_b", output: 70, cacheRead: 5)]);
 
-        var cold = LimitHistory.ReadReportWithCache(_projects, Now, Path.Combine(_root, "other-cache.json"), zone: Utc);
+        var cold = LimitHistory.ReadReportWithCache(_projects, Now, Path.Combine(_root, "other-cache.json"), zone: Utc, usage: EventRule);
         var first = Report();
         Assert.True(File.Exists(_cache));
         Assert.Equal(Canonical(cold), Canonical(first));

@@ -1,4 +1,6 @@
 using OpenTail.Bullshark.Core.Activity;
+using OpenTail.Bullshark.Core.Behaviour;
+using OpenTail.Bullshark.Core.Codex;
 
 namespace OpenTail.Bullshark.Core.Setup;
 
@@ -64,15 +66,34 @@ public static class LimitHistory
     /// The Limits page's read: the hits and days of <see cref="ReadWithCache"/>, and the usage report (<see cref="UsageReport"/>) of the same transcripts.
     /// The transcripts are listed and read once, so both come from one set of files and one cache save. The usage report is built even when there is no
     /// hit. Its local days are the <paramref name="days"/> days ending on the local date of <paramref name="now"/>.
+    /// <para>
+    /// <paramref name="usage"/> sets the attribution of usage to a day (R8; default: the session's last update, and reasoning as output). The hits
+    /// are Claude's limit hits and keep their own rule (per message, in the five hours before the hit): Codex usage never enters them.
+    /// <paramref name="codexHistoryRoot"/> is the Codex history folder (its rollouts are read fresh on each call, as <see cref="CodexUsageReader.ReadFolder"/>
+    /// does); null leaves Codex out of the report.
+    /// </para>
     /// </summary>
     public static LimitsReport ReadReportWithCache(
-        string projectsRoot, DateTimeOffset now, string cachePath, int days = DefaultDays, TimeZoneInfo? zone = null, Action<string>? log = null)
+        string projectsRoot,
+        DateTimeOffset now,
+        string cachePath,
+        int days = DefaultDays,
+        TimeZoneInfo? zone = null,
+        Action<string>? log = null,
+        UsageSettings? usage = null,
+        string? codexHistoryRoot = null)
     {
         var clock = zone ?? TimeZoneInfo.Local;
+        var settings = usage ?? new UsageSettings();
         var since = now.AddDays(-days);
         var reads = ReadWindow(projectsRoot, since, cachePath, log);
         var (hits, byDay) = HitsOf(reads, since, now, clock);
-        return new LimitsReport(hits, byDay, UsageReport.Build(reads, projectsRoot, now, days, clock));
+        IReadOnlyList<CodexSessionUsage> codex = [];
+        if (codexHistoryRoot is not null)
+        {
+            codex = CodexUsageReader.ReadFolder(codexHistoryRoot, since, settings.ReasoningAsOutput, log);
+        }
+        return new LimitsReport(hits, byDay, UsageReport.Build(reads, codex, projectsRoot, now, days, clock, settings.Attribution));
     }
 
     private static (IReadOnlyList<LimitHit> Hits, IReadOnlyList<LimitDay> Days) Compute(
