@@ -26,11 +26,11 @@ public partial class SessionWindow
             ? new SetupCheckDialog(Palette, () => CodexSetupCheck.Run(),
                 "Looks for the Codex CLI on PATH and changes nothing. Its version is not read, and codex is not started.")
             : IsCopilotActive
-                // The Copilot row: the one row, the bundled version read through cmd.exe with no update check (G1.6, G2.2, C-D7). It runs
+                // The Copilot rows: the terminal copy's version read through cmd.exe, and the start copy's (copilot.ps1) through pwsh, both with no update check (G1.6, G2.2, C-D7). It runs
                 // asynchronously: a blocking wait here would stall the UI thread, and the check's continuations need that thread (a deadlock).
                 ? new SetupCheckDialog(Palette, run: null,
-                    noteText: "Looks for the Copilot CLI on PATH and reads the version it bundles. No session is started.",
-                    runAsync: () => CopilotSetupCheck.RunAsync(new ProcessCliRunner("cmd.exe")))
+                    noteText: "Looks for the Copilot CLI on PATH and reads the version of each copy the app runs. No session is started.",
+                    runAsync: () => CopilotSetupCheck.RunAsync(new ProcessCliRunner("cmd.exe"), new ProcessCliRunner("pwsh.exe"), log: AppLog.Write))
                 : new SetupCheckDialog(Palette, () => SetupCheck.Run(SetupCheck.DefaultClaudeDir, SetupCheck.DefaultClaudeJsonPath));
         dialog.Owner = this;
         dialog.ShowDialog();
