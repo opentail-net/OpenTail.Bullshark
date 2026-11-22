@@ -32,6 +32,23 @@ One action, **Continue**, that: (1) picks the most recently active session of th
 - Resume screens: `ResumePrompt` (Claude), `CodexResumePrompt`, `CopilotResumePrompt`: their starting mode (today hard-coded to the last-turns choice), and the "Remember" tick's place.
 - The palette and rail: where a command is added (`SessionWindow.Palette.cs` `PaletteItems` for Claude; the Codex and Copilot palette branches), and the place for a button beside the provider dropdown.
 
+## C0 results (2026-11-23, read-only; the full table is in the job folder, `continue-c0-facts.md`)
+
+Corrections to the plan above, from reading the code and this PC's data (names and counts only):
+
+1. **Codex last activity comes from the rollouts, not the index.** Codex's `LastActivity` is the last rollout record's timestamp (`Core/Codex/CodexHistorySource.cs:142, :241-244`); the index is not read for it. On this PC the index's `updated_at` is more than 60 seconds earlier than the rollout's last record for 53 of 54 entries, so the index must not be used to pick the last session.
+2. **Claude's resume screen does not start on last turns.** It starts on Full or Summary by recommendation, and its Tail radio is unchecked (`App/ResumePrompt.xaml.cs:56-57, :78, :85`). CN-D9 therefore has to keep Claude's recommendation as the default, and the setting applies only where the owner has chosen a mode.
+3. **There is no "Remember for this session" control on any screen.** It is new on all three screens (C4 and C6 build it).
+4. **The palette has no Codex or Copilot branch.** `PaletteItems()` is one list, and the Claude-only items are gated by `claude` (`App/SessionWindow.Palette.cs:81-168`, gate at `:86`). "Continue" is added ungated.
+5. **`IsSubagent` is null, not false, for Codex (when not marked) and Copilot (always).** Continue skips a session only when `IsSubagent == true`. Copilot subagents therefore cannot be excluded in v1; this is a known limit, not a bug.
+6. **`SessionSummary` has no archived flag.** Archived is a library mark, so `ContinueChooser` takes the marks as input and excludes archived sessions there.
+7. **`LibraryEntry.IsEmpty` must list any new field** (`Core/Library/SessionLibrary.cs:38-41`); `ResumeMode` is added there (C3).
+8. **Open tab checks are per provider and not in the Claude resume path.** Claude's resume does not check for an open tab (`App/SessionWindow.Resume.cs:43`), and the Codex and Copilot screens do not either (`CodexResume.cs:49`, `CopilotResume.cs:29`). Continue checks for an open tab itself, before it opens any screen: `ShowOpenCodexTab` (`SessionWindow.Codex.cs:571`), `ShowOpenCopilotTab` (`SessionWindow.Copilot.cs:360`), and the Claude tab lookup (`SessionWindow.Tabs.cs:150`).
+
+Sanity figures for this PC (names and counts only): Claude has 291 of 291 checked transcripts with a timestamp in their last 256 KB, and 158 of 292 transcripts are under `subagents` folders. Codex has 64 rollouts, 2 marked subagent. Copilot has 52 folders, 5 without `events.jsonl`; of 47 compared, `updated_at` is within 60 seconds of the newest event for 45.
+
+Settings and library, confirmed: `behaviour.json` sits beside the state file; a missing or bad value gives the default and counts as ignored (`Core/Behaviour/BehaviourStore.cs:23, :95-117, :217-224`); a new `continue` section follows the `resume.ambiguous` pattern (`BehaviourSettings.cs:143, :180-208`; `BehaviourStore.cs:120-181`). Library keys are `provider:id`, and a new optional field is a trailing defaulted parameter read and written by the generic code (`SessionLibrary.cs:184-227, :302-308`).
+
 ## Stages
 
 **C0. Facts (read-only, gate for everything after).** Check each contract above and write the answers into this plan under "C0 results": the field names, the file and line for each, and whether each provider's last activity is present and trustworthy on this PC (names, counts and types only, no session text).
