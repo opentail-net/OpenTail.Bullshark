@@ -2,17 +2,42 @@
 
 Bullshark - saves your bytes.
 
-> **Status (2026-11-21): built and tested locally; the live end-to-end run with real sessions is not done.** Latest local run (2026-11-21): Core.Tests 2181 passed on net10.0 and net11.0, with the live tests filtered out as CI does; App.Tests 33 passed on both Windows targets. The CI workflow (`.github/workflows/ci.yml`) ran green on GitHub for commit beed809 (Core 2181 and App 33 on net10 and net11). The live run with the real `claude` CLI is still open: see [docs/plans/live-run-checklist.md](docs/plans/live-run-checklist.md). The provider and Codex work is a plan only, nothing built: see [docs/plans/provider-codex-2026-11-21.md](docs/plans/provider-codex-2026-11-21.md). See [Plans](#plans).
+> **Status (2026-11-22): built and tested; the live end-to-end run with real sessions is not done.**
+>
+> - **CI:** the latest completed CI run on main is green: run 45082603240, for commit a7d5967. CI builds the solution and runs the tests with `--filter "Category!=Live"`, so the live tests (which start the real `claude` and spend tokens) are not run ([.github/workflows/ci.yml](.github/workflows/ci.yml), lines 34 to 37). That run's counts: Core.Tests 3178 passed on net10.0 and on net11.0; App.Tests 574 passed on net10.0-windows10.0.19041.0 and on net11.0-windows10.0.19041.0; 0 failed. A run for the newest push, commit 17f1972 (docs only), was still in progress when this was written.
+> - **Providers:** Claude Code (the original), OpenAI Codex CLI and GitHub Copilot CLI are built. Each has checks at the PC that are still open. opencode is planned, not built. See [Providers](#providers).
+> - **Continue** (the button beside the provider dropdown, and the palette entry "Continue last session"): built in stages C1 to C6, with the review (C8) done. Its screen check (C7) is not run ([docs/plans/continue-last-session-2026-11-23.md](docs/plans/continue-last-session-2026-11-23.md)).
+> - **Resume into another platform** (a summary can start a new session in another platform): built. Its screen check (S5) is not run ([docs/plans/resume-source-target-2026-11-22.md](docs/plans/resume-source-target-2026-11-22.md)).
+> - **The live run with the real `claude` CLI** is still open: section B of [docs/plans/live-run-checklist.md](docs/plans/live-run-checklist.md) is unchecked.
+>
+> The current work is in [docs/plans/00-current-work.md](docs/plans/00-current-work.md), and the owner's decisions are in [docs/plans/owner-decisions-2026-11-22.md](docs/plans/owner-decisions-2026-11-22.md). See [Plans](#plans).
 
 ## What it is
 
-OpenTail.Bullshark is a session manager for Claude Code, with a window that shows each session as a tab. It keeps a **planner** session and a **coder** session running, gives each one its first direction, and restarts them if they stop. The window is the supervisor: it starts when the owner opens it, and watches the sessions while it is open. There is no log-on startup (P4, owner decision of 2026-11-15).
+OpenTail.Bullshark is a session manager for AI coding CLIs: Claude Code, OpenAI Codex CLI and GitHub Copilot CLI. A window shows each session as a tab. For Claude Code, it keeps a **planner** session and a **coder** session running, gives each one its first direction, and restarts them if they stop. The window is the supervisor: it starts when the owner opens it, and watches the Claude sessions while it is open. There is no log-on startup (P4, owner decision of 2026-11-15).
+
+**Supervision is for Claude sessions only.** The supervisor runs Claude sessions; Codex and Copilot sessions are listed, read, resumed and summarised, not supervised (see [Providers](#providers)).
 
 Sessions are long-lived. A session is not closed after a task, so its context carries on from one day to the next.
 
 **The goal, in the owner's words:** "I do vibe coding, I need to allow vibe coding to carry on." The owner should be able to walk away, come back, and continue the conversation with the planner where it stopped, without rebuilding context or re-explaining the project.
 
 **The owner's requirement:** "the full experience". Every session is the real interactive Claude Code terminal. Redirected output puts Claude Code into non-interactive mode and cripples the project, so OpenTail.Bullshark does not use redirected or print-mode output for any session the owner sees.
+
+## Providers
+
+A dropdown at the top of the rail chooses the provider, and the rail lists that provider's sessions.
+
+| Provider | Status | List | Transcript | Resume in a terminal | Start from text | Summary | Supervision | Plan |
+|---|---|---|---|---|---|---|---|---|
+| Claude Code | The original. Built. | Yes | Yes | Yes | Yes | Yes | Yes | This README, and [docs/plans/Done/](docs/plans/Done/) |
+| OpenAI Codex CLI | Built. The owner's checks at the PC are open. | Yes | Yes, read-only, messages only | Yes (`codex resume <id>`; whether it restores the chat is open) | Yes | Yes, on demand, one call per press | No | [provider-codex-2026-11-21.md](docs/plans/provider-codex-2026-11-21.md) |
+| GitHub Copilot CLI | Built (stages G1 to G4; G5 optional, not started). Screen check not run. Install question open (G-O5). | Yes | Yes, read-only, messages only, first 5,000 | Yes (`copilot --resume=<id>`) | Yes | Yes, on demand, one call per press | No | [provider-copilot-2026-11-22.md](docs/plans/provider-copilot-2026-11-22.md) |
+| opencode | Planned. No code. | No | No | No | No | No | No | [provider-opencode-2026-11-22.md](docs/plans/provider-opencode-2026-11-22.md) |
+
+- **Codex and Copilot are not supervised.** Only Claude implements the supervisor's interfaces (`src/OpenTail.Bullshark.Core/Providers/Capabilities.cs`, lines 35 to 41). The Codex and Copilot provider classes implement none of them (`src/OpenTail.Bullshark.Core/Codex/CodexProvider.cs`, line 10; `src/OpenTail.Bullshark.Core/Copilot/CopilotProvider.cs`, line 11). Their rows show no live status and no restarts.
+- **Copilot's install question is open.** The copy that `cmd.exe` runs (WinGet, bundled version 1.0.34) lacks two of the flags the app passes, `-C` and `--sync-session`; the auto-updated builds have them ([docs/plans/provider-copilot-2026-11-22.md](docs/plans/provider-copilot-2026-11-22.md), G-O5). Copilot is switched off as the target of a cross-platform start (`src/OpenTail.Bullshark.App/Providers/ResumeTarget.cs`, `CopilotTargetEnabled = false`).
+- **Continue** (the button and the palette entry) picks the most recently active session of the current provider and opens its resume screen; it starts nothing when it opens. **Resume into another platform** is allowed only from a summary: a full or last-turns resume stays in the session's own platform ([docs/plans/resume-source-target-2026-11-22.md](docs/plans/resume-source-target-2026-11-22.md)).
 
 ## Where this came from
 
@@ -30,8 +55,8 @@ On 2026-11-12/13 a planner session directed a second local Claude session (a Hai
 
 Two parts, plus a later optional third:
 
-- **Supervisor** (the window runs it; a headless host exists but is not started at log-on, P4). It starts the planner and the coder as background sessions (`claude --bg` with `--name`; `--bg` ignores `--session-id`, so the id is read back from the listing, F18), keeps their IDs in a state file, and polls `claude agents --json`. The window runs the same pass every 15 seconds while it is open, off the UI thread. If a session has gone, it restarts it. If a session is `blocked`, it raises an alert. *Built so far:* the headless host (`src/OpenTail.Bullshark.Supervisor`) is report-only for now: it prints the usage and cache reports and starts nothing. The loop runs inside the window, and the log-on start (P4) is not built.
-- **Window** (opened by the owner). One tab per session. Each tab is an embedded terminal running `claude attach <id>`. Closing a tab detaches; the session keeps running.
+- **Supervisor** (the window runs it; a headless host exists but is not started at log-on, P4). It starts the planner and the coder as background sessions (`claude --bg` with `--name`; `--bg` ignores `--session-id`, so the id is read back from the listing, F18), keeps their IDs in a state file, and polls `claude agents --json`. The window runs the same pass every 15 seconds while it is open, off the UI thread. If a session has gone, it restarts it. If a session is `blocked`, it raises an alert. *Built so far:* the headless host (`src/OpenTail.Bullshark.Supervisor`) is report-only: its `Program.cs` prints two read-only reports, `--usage-report` and `--cache-report`, and starts nothing. Without one of those flags it prints that it runs no supervisor, and exits with code 2. The loop runs inside the window, every 15 seconds and off the UI thread (`src/OpenTail.Bullshark.App/SessionWindow.xaml.cs`, line 170), and the log-on start (P4) is not built.
+- **Window** (opened by the owner). One tab per session. For a Claude session, each tab is an embedded terminal running `claude attach <id>`, and closing the tab detaches; the session keeps running. Codex and Copilot tabs run their own CLI (see [Providers](#providers)).
 - **Orchestrator** (later, optional, P8). A local model that handles situations the supervisor cannot, such as recovery when a restart is not enough. See its own section.
 
 The sessions run whether or not the window is open. The window is a view onto them, and the owner can type into any tab.
@@ -223,19 +248,29 @@ Not needed for the core. It is useful for recovery when a restart is not enough,
 - **One supervisor per state.** The window that holds the state's supervisor name runs the pass: starts, resumes, restarts and alerts. A second window on the same state only watches. It reads and draws, shows "Another OpenTail.Bullshark window supervises this state. This one only watches." under Needs you, and raises no toast and no sound. When the first window closes or is killed, the second takes over on a later pass. The sessions keep running in every case.
 - **Claude's folder.** Every path to a Claude file comes from one helper. With `CLAUDE_CONFIG_DIR` set, the app reads `.claude.json`, the transcripts and its archive from that folder, as Claude does (`.claude.json` tested with claude 2.1.328 on 2026-11-19). Without it, the app reads `~\.claude` and `~\.claude.json`. An archive made before the variable was set stays where it was, and is not listed.
 
+## Privacy
+
+The owner's standing rule for logs, as recorded in [docs/plans/owner-decisions-2026-11-22.md](docs/plans/owner-decisions-2026-11-22.md) ("Logs: exception messages and paths"): "Logs carry counts, provider names and exception types only, never a message, title, id or path. Screens may show the message (the owner's screen is not a log)."
+
+The App and Core log lines were changed to follow the rule (commits `8fc42db` and `f6fdaf9`). The file log, `src/OpenTail.Bullshark.App/AppLog.cs`, writes each line it is given and filters none, so the rule holds only where each call follows it. One item is open: a run's failure text is kept in its stored alert, which is shown on screen and is not a log, and the owner decides whether it stays.
+
 ## Licence
 
-[PolyForm Strict 1.0.0](LICENSE.md). Personal and other noncommercial use is permitted; commercial use needs a separate licence from the licensor. The licence does not allow distributing the software or making changes or new works based on it. The code is public to be read and reviewed.
+The project is licensed under [PolyForm Strict 1.0.0](LICENSE.md). Personal and other noncommercial use is permitted; commercial use needs a separate licence from the licensor. The licence does not allow distributing the software or making changes or new works based on it. The code is public to be read and reviewed.
+
+[LICENSE.md](LICENSE.md) states that OpenTail.Bullshark "is an independent project" and is "not affiliated with, endorsed by, sponsored by or approved by Microsoft, GitHub, Anthropic (Claude) or OpenAI (Codex)". It also states that "No code, schema, bundled file, icon or test fixture is taken from those tools or their packages." Its own text says that this section "does not change the terms below".
 
 Third-party components and their licences are listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 ## Repo
 
-Folder: `C:\Git\split\OpenTail.Bullshark` (next to the other `OpenTail.*` projects). Git repo with remote `origin` = `github.com/opentail-net/OpenTail.Bullshark`, branch `main`.
+Folder: the repository root. Git repo with remote `origin` = `github.com/opentail-net/OpenTail.Bullshark`, branch `main`.
 
-Projects: `src/OpenTail.Bullshark.Core` (logic, no UI), `src/OpenTail.Bullshark.App` (WPF window), `src/OpenTail.Bullshark.Supervisor` (headless host), `tests/OpenTail.Bullshark.Core.Tests`. Build and test: `dotnet test OpenTail.Bullshark.slnx -nodeReuse:false` (Visual Studio's build nodes otherwise lock new folders).
+Projects: `src/OpenTail.Bullshark.Core` (logic, no UI), `src/OpenTail.Bullshark.App` (WPF window), `src/OpenTail.Bullshark.Supervisor` (headless host), `tests/OpenTail.Bullshark.Core.Tests` and `tests/OpenTail.Bullshark.App.Tests`.
+
+Build and test, as CI runs them: `dotnet build OpenTail.Bullshark.slnx -nodeReuse:false`, then `dotnet test OpenTail.Bullshark.slnx -nodeReuse:false --no-build --filter "Category!=Live"`. Without the filter, the live tests are included, and they start the real `claude` CLI when their own environment gate is set (`.github/workflows/ci.yml`, lines 34 to 35). Visual Studio's build nodes otherwise lock new folders, so keep `-nodeReuse:false`.
 
 ## Plans
 
-Open work is in [docs/plans/00-current-work.md](docs/plans/00-current-work.md): the path through the plans, and the owner decisions still open. The owner's checks are in [docs/plans/live-run-checklist.md](docs/plans/live-run-checklist.md), and the CLI probes that decide features are in [docs/plans/cli-gates.md](docs/plans/cli-gates.md). Finished plans, and the records of plans that were split, are in [docs/plans/Done/](docs/plans/Done/). Parked ideas are in [docs/later/ideas.md](docs/later/ideas.md). Findings (facts checked against the real CLI, and bugs fixed) are in [docs/findings/FINDINGS.md](docs/findings/FINDINGS.md).
+Open work is in [docs/plans/00-current-work.md](docs/plans/00-current-work.md): the path through the plans, and the owner decisions still open. The owner decisions of 2026-11-22, with their status, are in [docs/plans/owner-decisions-2026-11-22.md](docs/plans/owner-decisions-2026-11-22.md). The owner's checks are in [docs/plans/live-run-checklist.md](docs/plans/live-run-checklist.md), and the CLI probes that decide features are in [docs/plans/cli-gates.md](docs/plans/cli-gates.md). Finished plans, and the records of plans that were split, are in [docs/plans/Done/](docs/plans/Done/). Parked ideas are in [docs/later/ideas.md](docs/later/ideas.md). Findings (facts checked against the real CLI, and bugs fixed) are in [docs/findings/FINDINGS.md](docs/findings/FINDINGS.md).
 
