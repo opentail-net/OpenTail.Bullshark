@@ -337,8 +337,24 @@ public partial class SessionWindow
             return CrossPlatformStartText.Build(source, target, summary?.Text, level, lines, turns);
 
         var solo = SavedSolo();
+        return CrossPlatformStartText.Build(
+            source, target, summary?.Text, level, lines, turns, text => SetupPlan.LongestCommandLine(CrossClaudeRequestOf(folder, text, solo)));
+    }
+
+    /// <summary>
+    /// The Claude request of a cross-platform start into Claude (S3b-B1, RS-D5, RS-D12), for <paramref name="text"/> in <paramref name="folder"/>: the
+    /// solo pattern, one coder, the planner at the Claude screen's default model and effort, and the coder at the saved solo's. The fit of
+    /// <see cref="CrossStartTextFor"/> and the start of <c>StartCrossAsync</c> both build it here, so they measure the same command line.
+    /// </summary>
+    internal SetupRequest CrossClaudeRequest(string folder, string text) => CrossClaudeRequestOf(folder, text, SavedSolo());
+
+    /// <summary>
+    /// <see cref="CrossClaudeRequest"/> for a given solo pattern, with no file read. A test reaches the request through it, since no window is made in a test.
+    /// </summary>
+    internal static SetupRequest CrossClaudeRequestOf(string folder, string text, PatternSettings solo)
+    {
         var (model, effort) = CrossPlatformStartText.ClaudeDefaults(solo);
-        SetupRequest RequestFor(string text) => new(
+        return new SetupRequest(
             PatternKey: "solo",
             Folder: folder,
             Task: text,
@@ -347,8 +363,6 @@ public partial class SessionWindow
             PlannerEffort: effort,
             CoderModel: solo.CoderModel,
             CoderEffort: solo.CoderEffort);
-        return CrossPlatformStartText.Build(
-            source, target, summary?.Text, level, lines, turns, text => SetupPlan.LongestCommandLine(RequestFor(text)));
     }
 
     /// <summary>
@@ -415,8 +429,13 @@ public partial class SessionWindow
             SetStatus("Not started: the start text is too long for the command line, even with its latest turn cut.");
             return;
         }
-        // Only a start in Claude has a request of Claude's. A cross-platform start into another CLI is started by its own start (S3b-B).
-        var request = start.Request ?? throw new InvalidOperationException("A start in another platform takes no Claude request.");
+        // A start in another platform (S3b-B) goes to that platform's start with the cross text built above. Only a start in Claude has a request of Claude's.
+        if (choice.Target != ProviderId.Claude)
+        {
+            await StartCrossAsync(ProviderId.Claude, choice.Target, RememberChoice.ModeOf(choice.Mode), folder, fitted.Text, DisplayTitle(digest));
+            return;
+        }
+        var request = start.Request ?? throw new InvalidOperationException("A Claude start has a request.");
 
         var check = SetupPlan.Validate(request, TrustCheck.DefaultClaudeJsonPath);
         if (!check.IsValid)
@@ -451,8 +470,8 @@ public partial class SessionWindow
         var name = DisplayTitle(digest);
         try
         {
-            var path = await Task.Run(() => SummaryFiles.Save(folder, name, level, digest.SessionId, summary, DateTimeOffset.Now));
-            AppLog.Write($"summary saved: {path}");
+            await Task.Run(() => SummaryFiles.Save(folder, name, level, digest.SessionId, summary, DateTimeOffset.Now));
+            AppLog.Write($"summary saved as a file: {summary.Length:N0} characters");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

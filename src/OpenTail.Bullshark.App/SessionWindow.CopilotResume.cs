@@ -94,7 +94,15 @@ public partial class SessionWindow
                 SetStatus(again ?? CopilotRailText.FolderMissing(folder));
                 return;
             }
-            StartCopilotFromText(choice, dialog.PreviewText, folder, title);
+            if (choice.Target != ProviderId.Copilot)
+            {
+                // A start in another platform (S3b-B): the cross text the preview showed goes to that platform's start.
+                await StartCrossAsync(ProviderId.Copilot, choice.Target, RememberChoice.ModeOf(choice.Mode), folder, dialog.PreviewText, title);
+            }
+            else
+            {
+                StartCopilotFromText(choice, dialog.PreviewText, folder, title);
+            }
             if (choice.Remember) RememberResumeMode(ProviderId.Copilot, id, RememberChoice.ModeOf(choice.Mode));
         }
         finally

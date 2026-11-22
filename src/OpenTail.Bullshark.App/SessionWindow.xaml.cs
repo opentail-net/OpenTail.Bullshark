@@ -1018,7 +1018,7 @@ public partial class SessionWindow : Window
             _setup.RunFinished();
             return null;
         }
-        AppLog.Write($"run {run.RunId} written: {run.Specs.Count} session(s) in {run.WorkingDirectory}");
+        AppLog.Write($"run {run.RunId} written: {run.Specs.Count} session(s)");
         // A run that waits (a start time, or the usage limit's reset) does not start on the next pass, so the line says when it starts.
         var now = DateTimeOffset.UtcNow;
         var when = run.StartAt is { } startAt && RunStore.IsWaiting(run, now)

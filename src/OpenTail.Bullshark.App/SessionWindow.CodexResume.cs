@@ -102,6 +102,11 @@ public partial class SessionWindow
             {
                 await ResumeCodexAsync(session);
             }
+            else if (choice.Target != ProviderId.Codex)
+            {
+                // A start in another platform (S3b-B): the cross text the preview showed goes to that platform's start.
+                await StartCrossAsync(ProviderId.Codex, choice.Target, RememberChoice.ModeOf(choice.Mode), folder, dialog.PreviewText, title);
+            }
             else
             {
                 await StartCodexFromTextAsync(session, folder, choice, dialog.PreviewText);
@@ -254,22 +259,44 @@ public partial class SessionWindow
     /// </summary>
     private async Task StartCodexFromTextAsync(SessionSummary session, string folder, CodexResumeChoice choice, string? text)
     {
+        var title = CodexRowTitle(MarkOf(ProviderId.Codex, session.Key.SessionId)?.Name, session);
+        var start = await StartCodexFromTextAsync(folder, choice.Model, text, "Codex: resume of " + title);
+        if (start is null) return;
+        var how = choice.Level is { } level
+            ? $"a Codex summary ({level.ToString().ToLowerInvariant()}) and the last {choice.Turns} turns"
+            : $"the last {choice.Turns} turns";
+        SetStatus(WithWarning(start.Warning, $"Started a Codex session from {how}. It starts with a model turn."));
+    }
+
+    /// <summary>
+    /// What a Codex tab start gave on success: the launch check's warning (null for none), which the caller puts in its status line.
+    /// </summary>
+    private sealed record CodexTabStart(string? Warning);
+
+    /// <summary>
+    /// The start of a Codex terminal tab with <paramref name="text"/> in <paramref name="folder"/>, titled <paramref name="tabTitle"/>, at <paramref name="model"/>
+    /// (null for Codex's own default). The same checks as the session start, in the same order, before the start file is written (P9, R4). A refusal sets
+    /// the status line and returns null. A cross-platform start (S3b-B1) calls this with no Codex session: its title is the cross title and its model is the
+    /// default (RS-D12). The caller sets the success status line.
+    /// </summary>
+    private async Task<CodexTabStart?> StartCodexFromTextAsync(string folder, string? model, string? text, string tabTitle)
+    {
         if (text is not { Length: > 0 })
         {
             SetStatus("Not started: there is no start text to send.");
-            return;
+            return null;
         }
         var toolRefusal = CodexStartToolRefusal();
         if (toolRefusal is not null)
         {
             SetStatus(toolRefusal);
-            return;
+            return null;
         }
         // The model is checked before the start file is written (P9, M-D5): a refused model leaves no text on disk.
-        if (choice.Model is { } model && !CodexModelList.IsValidModelId(model))
+        if (model is { } chosen && !CodexModelList.IsValidModelId(chosen))
         {
             SetStatus("Not started: the model name is not valid.");
-            return;
+            return null;
         }
 
         // The version check comes before the start file is written, so a refused start leaves no text on disk and no tab (R4).
@@ -277,28 +304,24 @@ public partial class SessionWindow
         if (launch.Refusal is { } refusal)
         {
             SetStatus(refusal);
-            return;
+            return null;
         }
 
         string command;
         try
         {
             var path = CodexStartLauncher.WriteStart(CodexStartLauncher.StartsFolderBeside(_options.StatePath), text, DateTimeOffset.Now);
-            command = CodexStartLauncher.CommandLine(folder, path, choice.Model);
+            command = CodexStartLauncher.CommandLine(folder, path, model);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
         {
             AppLog.Write($"codex start file not written: {ex.GetType().Name}");
             SetStatus($"Not started: the start text could not be written ({ex.GetType().Name}).");
-            return;
+            return null;
         }
 
-        var title = CodexRowTitle(MarkOf(ProviderId.Codex, session.Key.SessionId)?.Name, session);
-        OpenCodexTab("new-" + Guid.NewGuid().ToString("N"), "Codex: resume of " + title, command, folder);
-        var how = choice.Level is { } level
-            ? $"a Codex summary ({level.ToString().ToLowerInvariant()}) and the last {choice.Turns} turns"
-            : $"the last {choice.Turns} turns";
-        SetStatus(WithWarning(launch.Warning, $"Started a Codex session from {how}. It starts with a model turn."));
+        OpenCodexTab("new-" + Guid.NewGuid().ToString("N"), tabTitle, command, folder);
+        return new CodexTabStart(launch.Warning);
     }
 
     /// <summary>
