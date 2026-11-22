@@ -56,8 +56,8 @@ public sealed class CopilotSummarizer(ICliRunner runner)
     /// </summary>
     public static IReadOnlyList<string> Arguments(string configFolder, string logFolder)
     {
-        CopilotTerminalOpener.RequireFolder(configFolder);
-        CopilotTerminalOpener.RequireFolder(logFolder);
+        CommandLineRules.RequireFolder(configFolder);
+        CommandLineRules.RequireFolder(logFolder);
         return
         [
             "/d", "/c", "copilot", "-p", SummaryPrompt,
@@ -85,7 +85,7 @@ public sealed class CopilotSummarizer(ICliRunner runner)
     {
         CopilotFiles.RequireSafeId(sessionId);
         var parent = CopilotScratchFolder.ParentBeside(statePath);
-        CopilotTerminalOpener.RequireFolder(parent);
+        CommandLineRules.RequireFolder(parent);
         var messages = await Task.Run(() => CopilotTranscriptReader.ReadSession(paths, sessionId, ct, int.MaxValue), ct);
         var input = CopilotSummaryInput.Build(messages);
 
