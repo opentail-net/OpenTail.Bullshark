@@ -1,0 +1,54 @@
+# Review notes: provider-copilot-2026-11-22 (plan review, 2026-11-22)
+
+Reviewer: Sonnet (plan review only; no plan, research note or code was edited). Checked against the plan, the research note, the Codex plan (lines 1-232 read; R-D1 to R-D10 and S-D1 to S-D8 read; later sections not read), the Core files named, and, read-only, this PC's `~/.copilot` (names, counts and key names only; no values) and `copilot --help --no-auto-update` (no model call).
+
+Facts found on this PC that the plan and note do not use: `session-state` has **52** folders, 47 with `events.jsonl`; the other 5 hold only `workspace.yaml` (+ empty `checkpoints`, `files`, `research`). Every folder has `workspace.yaml` (keys: `id`, `name`, `user_named`, `summary_count`, `cwd`, `git_root`, `branch`, `repository`, `host_type`, `created_at`, `updated_at`). All 47 event files have exactly 1 `user.message`, 1 `assistant.turn_start`, at most 1 `assistant.turn_end`, a `session.shutdown` with `shutdownType` `routine`, and `producer` `copilot-agent`. The local help has `--config-dir <directory>`, `-s/--silent` ("Output only the agent response (no usage stats)"), `--no-custom-instructions`, `--disable-builtin-mcps`, `--no-ask-user`, `--log-dir`.
+
+## Must fix
+
+**C1. G1.4 / Contracts row `ICliRunner.RunAsync`: the scratch `COPILOT_HOME` cannot be passed.** Claim: the summary call reuses `ICliRunner` unchanged and sets `COPILOT_HOME`. Code: `Core/Claude/CliRunner.cs:18-23` has no environment parameter; `ProcessCliRunner.RunAsync` (46-63) builds `ProcessStartInfo` with no `Environment` entries. Changing the interface breaks every fake; setting the variable on our own process is a race. Fix: use `--config-dir <scratch>` (exists in the local help, line 51) as an argument, and make P-C2 check that it moves auth, state and session files; or state which shared type changes and who updates the fakes. Also `--log-dir`, so logs do not land in the real home.
+
+**C2. G1.5 / parity row 10: the resume command does not fit `ITerminalOpener`.** Claim: resume runs `copilot --resume=<id> -C "<folder>" --sync-session=off`. Code: `Capabilities.cs:32` is `ResumeCommandLine(string sessionId)`, no folder; Codex's resume takes its folder from the window's working directory (`CodexTerminalOpener.cs:51-61`). Also the plan never says the command goes through `cmd.exe /d /c`, which Codex needs because the install is a shim (`CodexTerminalOpener.cs:47,60`); here only `copilot.cmd` and `copilot.ps1` exist (research line 9), so `copilot ...` started by a terminal would not run. Fix: drop `-C` from resume (window sets the folder) or add an overload; write the `cmd.exe /d /c copilot ...` form in G1.5 and G1.4 (the Codex summarizer uses `["/d","/c","codex",...]`, `CodexSummarizer.cs:49`).
+
+**C3. G0.2 (P-C1) writes into the owner's real history.** Claim: stage G0 is "scratch only; no session of the owner's is written". G0.2 starts `copilot --session-id=<uuid>` with no scratch home and no `--sync-session=off`. On this PC the 5 folders without `events.jsonl` show an interactive start with no prompt leaves a folder (`workspace.yaml`) in the real `session-state`. That row would appear in the rail and could sync. Fix: run it with `--config-dir <scratch>` and `--sync-session=off`, or delete exactly the one folder we created (named by the uuid we chose), and say which.
+
+## Should fix
+
+**C4. G1.4: summary output may carry usage stats.** The plan passes `--output-format text` only. The help has `-s/--silent` ("no usage stats"), which the research note did not list. Add `--silent`, plus `--no-ask-user` (no hang in `-p`), `--no-custom-instructions`, `--disable-builtin-mcps`; make P-C2 record the shape of stdout (names/lengths only).
+
+**C5. G1.4: running in the session's own folder.** Repo hooks (`.github/hooks/*.json`, research line 36), custom instructions and MCP config load from the cwd, so a summary call could run a repo's hook commands. A scratch config also drops the trusted-folder list, so `-p` may prompt or refuse. Codex ran in the folder for trust (S-D6); the Copilot note has no evidence. P-C2 must run with cwd = a real session folder and check both, or the plan picks a neutral cwd.
+
+**C6. R-C2 / G1.4: scratch home is a second copy of the transcript.** It holds the prompt (the transcript) in its own `events.jsonl`. "The app removes it on the next start, and only folders it named itself" has no naming rule. Define a fixed prefix plus a marker file, delete after the process tree is dead (cancel path: `Kill(entireProcessTree)` then delete, file locks), and say where it sits (under the app state folder, not `%TEMP%`).
+
+**C7. G1.7 and G0.2 omit `--sync-session=off`.** G-D6 says "every call the app makes"; the `copilot.ps1 -i` launcher and the P-C1 probe do not pass it. The tab commands (G1.5) do. State the flag on every line in G1.5, G1.7, G3.2 and add a test that each command string contains it.
+
+**C8. G1.2 puts `gitRoot`/`branch` "for display" but `SessionSummary` has no field for them.** `Providers/SessionSummary.cs:7-17` has `Key, Title, Folder, FirstActivity, LastActivity, IsSubagent, UserMessages, AssistantMessages, Compactions, Model`. Either the shared record changes (contradicts G-D8, "Claude and Codex files are not touched") or the data is dropped. The Contracts table also lacks `SessionSummary`; state `IsSubagent`/`Compactions` as null.
+
+**C9. G-D2 ignores `workspace.yaml`.** It carries `name`, `user_named`, `cwd`, `updated_at`, `created_at`, `summary_count`. It is a cheaper and better source for title (a named session), last activity (`updated_at`) and cwd than reading every `events.jsonl`; and it is the only file in 5 of 52 folders. The research note's "47 session folders" misses those 5. `session.title_changed` is not among the event types present in the files (note line 13), so P-C5 will probably find 0. Decide: read `workspace.yaml` (a tiny YAML subset reader, no package) or state why not. Also G1.2's rule "a folder with no readable `session.start` is skipped and counted" will count these 5 as damaged; say they are empty sessions.
+
+**C10. Evidence for "finished state from files" is thin.** Research line 25, G-D3, G5.3. All 47 files are one-turn sessions with a clean `routine` shutdown (counts above), so they show neither multi-turn `turn_end` behaviour (a tool loop may emit several `turn_end` per user message) nor what a running or crashed session looks like (no `shutdown`). Mark it an assumption; add a probe on one multi-turn session (counts only); keep G5.3 optional. Fixtures in G1.2/G1.3/G1.8 for multi-turn are guesses.
+
+**C11. G1.8: injected-context prefixes.** "As Codex R-D5" copies Codex prefixes (`<environment_context>`, `<user_instructions>`, `# AGENTS.md`, Codex plan line 212) that mean nothing for Copilot. Research line 16 shows `user.message.data` has both `content` and `transformedContent`; G1.3 picks `content` without saying why. State the field and verify which one holds the owner's words (key presence/length only).
+
+**C12. G0.3 depends on G0.5.** P-C2 needs the "no tools" value from P-C4 (G0.5), which comes later; reorder or run P-C4 first. Also R-C5 says "a probe shows which copy that is (G0.4)", but G0.4 only checks downloads; add `Get-Command copilot` / the shim path to G0.4. P-C6 is in the research list but silently absent from G0 (fine, effort is G5.5; say so).
+
+**C13. G0.3 default-go-ahead and cost.** "No model is hard-coded" means the call uses whatever default model the CLI picks, with an unknown premium multiplier; `session.shutdown.totalPremiumRequests` exists but the scratch home is deleted. Read the premium count and model name (not text) from the scratch session before deleting it, and prefer `--model auto` or a known 1x model for the probe. Then G-O4 can stay a default-go with veto, as the Codex `say hi` rule did.
+
+**C14. Contradiction: CodexExit.** Map line 94 says `CodexExit` is not copied (tabs not supervised), but G2.8 shows "(ended)" and parity row 24 says "same as Codex". The Codex App code uses it: `SessionWindow.Codex.cs:628,641-691` (`WatchCodexExit`, `CodexExit.Classify`, `EndedTitle`), `SessionWindow.Library.cs:123`. The map also says `SessionWindow.Codex.cs` is copied, which brings that watcher. Decide: copy (rename) it, or say Copilot tabs have no end state.
+
+**C15. Codex resume ladder (R7) is neither copied nor listed as a gap.** `CodexTerminalOpener.PickerCommandLine` (line 63-67) and `CodexHistoryQuery` (`FolderCandidates`, newest-in-folder) serve a fallback when the saved id is not found; the Codex plan also records "a resume whose folder is missing falls back silently" (open point 9). The Copilot plan marks `CodexHistoryQuery` "not copied (G-D7)" though G-D7 is about usage/model/search. Say what Copilot does for a missing id or folder (probe `--resume=<unknown>` with `--config-dir` scratch) and add a parity row.
+
+**C16. G1.2 performance and line cap.** It reads every `events.jsonl` fully on each refresh with no cache (C-D3 is not restated). Files here are small (about 50 KB each, 2.3 MB for 47), so it is fine today, but Codex's reader guards with `Overlong` (`CodexSummarizer.cs:87`). State the line cap and the "measure first" rule; `RolloutReader` is zstd-aware and Codex-named, so the copy needs its own reader.
+
+## Notes
+
+- **C17. Summary file name.** Plan lines 76 and 149 say the name "holds the session id (a UUID)". `SummaryFiles.cs:27-28` uses only the first 8 characters and never the provider; collisions are harmless (`CreateNew`, " (2)", lines 54-67), but the claim is imprecise.
+- **C18. G1.2 counts.** "null when none" conflicts with Codex C-D1 ("not found is null, a real zero is zero"); 3 of 47 folders have no `assistant.message`, which is a known zero.
+- **C19. VS Code metadata.** All 47 event folders also hold `vscode.metadata.json`; whether CLI resume works on such sessions is unknown. `producer` is `copilot-agent` in all 47.
+- **C20. G2.1 on net10.0.** Codex is hidden on net10.0 (C-D2, `#if NET11_0_OR_GREATER`); Copilot is not. State that the dropdown shows Copilot on both targets.
+- **C21. Prompt on the command line.** G1.7 `-i <text>` puts session text in the process command line while the process runs (the same as Codex). Say so in R-C3.
+- **C22. Decisions G-D1 to G-D10 and owner items.** G-D1 to G-D10 are fine as defaults. G-O2 can be a plain default (privacy-protective, already applied). G-O1 (licence) is the owner's. G-O3 and G-O4 are owner-touching only through cost, see C13. `ProviderChoice`, `ProviderId`, `ProviderPaths`, `SessionKey`, `ProviderFeatures` line references in the Contracts table are correct as read.
+
+## Not checked
+
+Codex plan sections after line 232 (R5 to R7 detail, P-steps); the App code beyond the grep hits; whether `--config-dir` moves auth (needs P-C2); the vendor docs (not re-fetched); no probe was run.
