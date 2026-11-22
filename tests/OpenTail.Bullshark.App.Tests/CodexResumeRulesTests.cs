@@ -97,6 +97,13 @@ public sealed class CodexResumeRulesTests
     }
 
     [Fact]
+    public void TheNoShimLineIsNonEmptyAndNamesCodexPs1()
+    {
+        Assert.False(string.IsNullOrWhiteSpace(CodexResumeRules.NoShimOnPath));
+        Assert.Contains("codex.ps1", CodexResumeRules.NoShimOnPath);
+    }
+
+    [Fact]
     public void ASizeLineCountsTokensAsCharactersOverFourRounded()
     {
         Assert.Equal(

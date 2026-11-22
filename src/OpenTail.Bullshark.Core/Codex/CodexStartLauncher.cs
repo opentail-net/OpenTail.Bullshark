@@ -7,7 +7,7 @@ namespace OpenTail.Bullshark.Core.Codex;
 /// <summary>
 /// Starts a new Codex session with a start text (step R3, decisions R-D6 and R-D8). The text is written to a new file in the Starts folder. A terminal
 /// tab runs the line from <see cref="CommandLine"/>: a PowerShell 7 script that checks for the Codex PowerShell shim (<c>codex.ps1</c>), reads the
-/// file, deletes it, sets the session's folder and runs the shim with the text as its last argument (after <c>-m</c> and the model, when a model is set). The text never goes on a <c>cmd.exe</c> command
+/// file, sets the session's folder, deletes it and runs the shim with the text as its last argument (after <c>-m</c> and the model, when a model is set). The text never goes on a <c>cmd.exe</c> command
 /// line, which breaks on quotes, percent signs and new lines. The line itself holds only the script in base64, so nothing in it is special to
 /// <c>cmd.exe</c>. Windows PowerShell 5.1 is not used: it drops the double quotes of an argument passed to a script.
 /// </summary>
@@ -53,8 +53,9 @@ public static class CodexStartLauncher
     /// The command line of a terminal tab that starts Codex with the text in <paramref name="promptPath"/>:
     /// <c>pwsh.exe -NoProfile -ExecutionPolicy Bypass -EncodedCommand &lt;base64&gt;</c>. The base64 is the UTF-16LE script (what
     /// <c>-EncodedCommand</c> needs). The script first looks for the Codex PowerShell shim (<c>codex.ps1</c>) and, when it is missing, writes a line
-    /// that says where the text is kept and exits with 1, leaving the prompt file in place. Otherwise it reads the prompt file as UTF-8, deletes it,
-    /// sets the location to <paramref name="folder"/> and runs the shim with the text as its last argument. Single quotes in every path are doubled (see
+    /// that says where the text is kept and exits with 1, leaving the prompt file in place. Otherwise it reads the prompt file as UTF-8, sets the location
+    /// to <paramref name="folder"/>, deletes the prompt file and runs the shim with the text as its last argument. The location is set before the file is
+    /// deleted, so a folder that is missing stops the script with the text still kept. Single quotes in every path are doubled (see
     /// <see cref="SingleQuoteChars"/>). A path that is blank, or has a control character or a line break, throws <see cref="ArgumentException"/>.
     /// With <paramref name="model"/> (P9, decision M-D5), the shim runs as <c>-m '&lt;model&gt;' $prompt</c>; the model must pass
     /// <see cref="CodexModelList.IsValidModelId"/>, or <see cref="ArgumentException"/> is thrown before any script is built. Null keeps Codex's own default.
@@ -73,8 +74,8 @@ public static class CodexStartLauncher
             "$shim = Get-Command codex -CommandType ExternalScript -ErrorAction SilentlyContinue | Select-Object -First 1",
             "if ($null -eq $shim) { Write-Output 'Codex PowerShell shim (codex.ps1) not found. The start text is kept in: " + Quoted(promptPath) + "'; exit 1 }",
             $"$prompt = [System.IO.File]::ReadAllText('{Quoted(promptPath)}', [System.Text.Encoding]::UTF8)",
-            $"Remove-Item -LiteralPath '{Quoted(promptPath)}' -Force",
             $"Set-Location -LiteralPath '{Quoted(folder)}'",
+            $"Remove-Item -LiteralPath '{Quoted(promptPath)}' -Force",
             run);
         return Prefix + Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
     }
@@ -93,6 +94,23 @@ public static class CodexStartLauncher
         foreach (var folder in searchPath.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             var candidate = Path.Combine(folder.Trim('"'), "pwsh.exe");
+            if (File.Exists(candidate)) return Path.GetFullPath(candidate);
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// The full path of <c>codex.ps1</c> in the folders of <paramref name="searchPath"/> (a PATH value, searched in order, as <see cref="FindPwsh(string?)"/>
+    /// searches), or null when it is in none of them or the value is blank. Null means the PATH of this process. A start from text needs the shim: the
+    /// launcher's script finds it with Get-Command, so a <c>codex.exe</c> alone does not count.
+    /// </summary>
+    public static string? FindShim(string? searchPath = null)
+    {
+        var pathValue = searchPath ?? Environment.GetEnvironmentVariable("PATH");
+        if (string.IsNullOrWhiteSpace(pathValue)) return null;
+        foreach (var folder in pathValue.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var candidate = Path.Combine(folder.Trim('"'), "codex.ps1");
             if (File.Exists(candidate)) return Path.GetFullPath(candidate);
         }
         return null;

@@ -25,8 +25,8 @@ public sealed class CodexStartLauncherTests
         "$shim = Get-Command codex -CommandType ExternalScript -ErrorAction SilentlyContinue | Select-Object -First 1",
         "if ($null -eq $shim) { Write-Output 'Codex PowerShell shim (codex.ps1) not found. The start text is kept in: " + promptQuoted + "'; exit 1 }",
         "$prompt = [System.IO.File]::ReadAllText('" + promptQuoted + "', [System.Text.Encoding]::UTF8)",
-        "Remove-Item -LiteralPath '" + promptQuoted + "' -Force",
         "Set-Location -LiteralPath '" + folderQuoted + "'",
+        "Remove-Item -LiteralPath '" + promptQuoted + "' -Force",
         "& $shim.Source $prompt");
 
     /// <summary>The script inside a command line: the base64 after the fixed prefix, decoded as UTF-16LE.</summary>
@@ -58,6 +58,19 @@ public sealed class CodexStartLauncherTests
     }
 
     [Fact]
+    public void TheFolderIsSetBeforeThePromptFileIsDeletedSoAMissingFolderKeepsTheText()
+    {
+        var script = DecodeScript(CodexStartLauncher.CommandLine("C:\\Work", "C:\\Work\\Starts\\prompt.txt")).Split('\n');
+
+        var read = Array.FindIndex(script, line => line.StartsWith("$prompt = ", StringComparison.Ordinal));
+        var setLocation = Array.FindIndex(script, line => line.StartsWith("Set-Location -LiteralPath ", StringComparison.Ordinal));
+        var remove = Array.FindIndex(script, line => line.StartsWith("Remove-Item -LiteralPath ", StringComparison.Ordinal));
+        var run = Array.FindIndex(script, line => line.StartsWith("& $shim.Source", StringComparison.Ordinal));
+        Assert.True(read >= 0 && setLocation >= 0 && remove >= 0 && run >= 0, "the script lacks one of its four steps");
+        Assert.True(read < setLocation && setLocation < remove && remove < run, "the steps are not in the order read, set the folder, delete, run");
+    }
+
+    [Fact]
     public void TheLineHasTheFixedPrefixAndItsBase64HasNoSpaceAndNoCmdSpecialCharacter()
     {
         var line = CodexStartLauncher.CommandLine("C:\\Work\\Synthetic Folder", "C:\\Work\\Starts\\prompt.txt");
@@ -81,7 +94,7 @@ public sealed class CodexStartLauncherTests
     {
         var script = DecodeScript(CodexStartLauncher.CommandLine(folder, "C:\\Work\\Starts\\prompt.txt")).Split('\n');
 
-        Assert.Equal("Set-Location -LiteralPath '" + folderQuoted + "'", script[5]);
+        Assert.Equal("Set-Location -LiteralPath '" + folderQuoted + "'", script[4]);
     }
 
     [Fact]
@@ -90,7 +103,7 @@ public sealed class CodexStartLauncherTests
         var script = DecodeScript(CodexStartLauncher.CommandLine("C:\\Work", "C:\\Work\\O'Brien\\prompt.txt")).Split('\n');
 
         Assert.Equal("$prompt = [System.IO.File]::ReadAllText('C:\\Work\\O''Brien\\prompt.txt', [System.Text.Encoding]::UTF8)", script[3]);
-        Assert.Equal("Remove-Item -LiteralPath 'C:\\Work\\O''Brien\\prompt.txt' -Force", script[4]);
+        Assert.Equal("Remove-Item -LiteralPath 'C:\\Work\\O''Brien\\prompt.txt' -Force", script[5]);
         Assert.Contains("kept in: C:\\Work\\O''Brien\\prompt.txt'; exit 1 }", script[2]);
     }
 
@@ -104,7 +117,7 @@ public sealed class CodexStartLauncherTests
             var folder = "C:\\Work\\O" + q + "Brien";
             var script = DecodeScript(CodexStartLauncher.CommandLine(folder, "C:\\Work\\Starts\\prompt.txt")).Split('\n');
 
-            Assert.Equal("Set-Location -LiteralPath 'C:\\Work\\O" + q + q + "Brien'", script[5]);
+            Assert.Equal("Set-Location -LiteralPath 'C:\\Work\\O" + q + q + "Brien'", script[4]);
         }
     }
 
@@ -165,6 +178,42 @@ public sealed class CodexStartLauncherTests
     {
         // The launch test needs PowerShell 7 on the PATH of this process, so a missing pwsh.exe is a failure of the environment, not a pass.
         Assert.NotNull(CodexStartLauncher.FindPwsh());
+    }
+
+    [Fact]
+    public void FindShimReturnsTheFullPathOfCodexPs1InTheFirstFolderThatHasIt()
+    {
+        using var temp = new TempFolder();
+        var first = Directory.CreateDirectory(Path.Combine(temp.Folder, "first")).FullName;
+        var second = Directory.CreateDirectory(Path.Combine(temp.Folder, "second")).FullName;
+        File.WriteAllText(Path.Combine(first, "codex.exe"), string.Empty);
+        File.WriteAllText(Path.Combine(second, "codex.ps1"), string.Empty);
+        var searchPath = first + Path.PathSeparator + "C:\\no such folder" + Path.PathSeparator + second;
+
+        // codex.exe in the first folder does not count: the start needs the PowerShell shim.
+        Assert.Equal(Path.Combine(second, "codex.ps1"), CodexStartLauncher.FindShim(searchPath));
+    }
+
+    [Fact]
+    public void FindShimIsNullWhenOnlyCodexExeIsInTheFoldersOrThePathIsBlank()
+    {
+        using var temp = new TempFolder();
+        Directory.CreateDirectory(temp.Folder);
+        File.WriteAllText(Path.Combine(temp.Folder, "codex.exe"), string.Empty);
+
+        Assert.Null(CodexStartLauncher.FindShim(temp.Folder));
+        Assert.Null(CodexStartLauncher.FindShim(string.Empty));
+        Assert.Null(CodexStartLauncher.FindShim("   "));
+    }
+
+    [Fact]
+    public void FindShimAcceptsAQuotedFolderEntry()
+    {
+        using var temp = new TempFolder();
+        var folder = Directory.CreateDirectory(Path.Combine(temp.Folder, "quoted folder")).FullName;
+        File.WriteAllText(Path.Combine(folder, "codex.ps1"), string.Empty);
+
+        Assert.Equal(Path.Combine(folder, "codex.ps1"), CodexStartLauncher.FindShim("\"" + folder + "\""));
     }
 
     [Fact]

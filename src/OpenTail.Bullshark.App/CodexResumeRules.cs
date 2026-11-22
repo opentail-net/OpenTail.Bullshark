@@ -29,6 +29,13 @@ public static class CodexResumeRules
     /// <summary>The line under the turns box when the box is not a valid number.</summary>
     public static readonly string TurnsMessage = $"Enter a whole number from 0 to {MaxTurns} for the turns.";
 
+    /// <summary>
+    /// The status line of a start when codex.ps1 is not on PATH: the start runs the shim, and a codex.exe alone cannot take the text. The text is in the
+    /// preview, so the owner can copy it and start Codex by hand.
+    /// </summary>
+    public const string NoShimOnPath =
+        "Not started: codex.ps1 is not on PATH, so a start from text cannot run. The start text is in the preview: use Copy and start Codex yourself.";
+
     /// <summary>The label of a mode, as its radio button shows it.</summary>
     public static string ModeLabel(CodexResumeMode mode) => mode switch
     {

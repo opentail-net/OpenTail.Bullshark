@@ -227,6 +227,12 @@ public partial class SessionWindow
             SetStatus("Not started: PowerShell 7 (pwsh.exe) is not on PATH. The start text is in the preview: use Copy and start Codex yourself.");
             return;
         }
+        // The start runs codex.ps1 (the launcher's script). The terminal's own codex may be codex.exe, so the file is not written when the shim is missing.
+        if (CodexStartLauncher.FindShim() is null)
+        {
+            SetStatus(CodexResumeRules.NoShimOnPath);
+            return;
+        }
         // The model is checked before the start file is written (P9, M-D5): a refused model leaves no text on disk.
         if (choice.Model is { } model && !CodexModelList.IsValidModelId(model))
         {
