@@ -259,7 +259,7 @@ Probes: a net11.0 console app in the session scratchpad (structure only: line co
 
 ## Open decisions for the owner
 
-- **Research, 2026-11-22** (`docs/research/examples-learnings-2026-11-22.md`): (a) licence approach for outside code: reimplement ideas only (the default), or allow agent-manager's Apache-2.0 code with attribution (the other three are GPL or non-standard, so not copyable); (b) which cheap items to plan, of the ten small ones in that note. Nothing from that note is scheduled or built.
+- **Research, decided by the owner 2026-11-22** (`docs/research/examples-learnings-2026-11-22.md`): the process is clean-room. Research subagents read the four outside sources and write concept notes: overall design, our own names, no names from the source, no procedure-level detail. We implement ourselves, from the notes only. No code or names are carried across, so attribution does not arise. Scope: the small-effort items of that note, one at a time, in order of value. The medium and large items wait for their own decisions (O5 for the hook-based ones; worktrees is an owner decision).
 - O1/O2 (settled 2026-11-21 by the orchestrator, see the B4 decisions): no package in Core; Codex history net11.0-only; no SQLite.
 - O3: **decided (owner, 2026-11-21): no downgrade support;** in-place migration with a one-time backup copy (R-4).
 - O4 (settled 2026-11-21): yes, a plain terminal tab is part of C3.
