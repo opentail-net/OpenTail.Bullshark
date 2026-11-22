@@ -73,6 +73,22 @@ Each row is one idea from the concept notes in `docs/research/concept-notes-*-20
 - Build from nothing: R3 (approval-text safety and arming), R6 (an exit waiter with identity checks), R10 (miss memory).
 - Owner decision found by the audit: R2's note says an alert never repeats while a state persists, but the code re-alerts by design (up to three times, every 15 minutes). Choose which to keep. The default is the code's behaviour until you say otherwise.
 
+**Decisions, 2026-11-22.** The owner said: "you decide, and make things configurable". Every choice below has a default in code, and a knob in one file, `behaviour.json`, beside the state file. Changing a default is a config change, not a code change. The Settings window does not show these yet.
+
+| Row | Decision (default) | Knobs in `behaviour.json` | Build order |
+|---|---|---|---|
+| R2 | Alert on a state change only; never re-alert while the state holds. Alert only when the window is unfocused. Default kinds: needs-input and errored; finished is off. | `alerts.repeatMinutes` (0 = never), `alerts.focusGate` (`unfocused` or `unfocusedOrUnselected`), `alerts.kinds` | 1 |
+| R10 | Remember a missing session id for 60 s, and clear the memory when the pane's session changes. | `lookups.missMemorySeconds` (0 = off) | 2 |
+| R4 | The minimum for each tool is the version we tested against: Claude 2.1.330, Codex 0.171.0. A version that cannot be read is a warning, not a refusal. A version below the minimum refuses the launch and offers an update. | `versions.minimum.claude`, `versions.minimum.codex`, `versions.unreadable` (`warn` or `refuse`) | 3 |
+| R6 | Mark a tab's session ended when its process exits. No retries. The ended row stays visible. | `exit.endOnProcessExit` (true) | 4 |
+| R7 | No newest-in-folder fallback by default, and it is always labelled when used. An ambiguous match is refused. The tool's picker is the fallback, and the owner sees it. | `resume.allowNewestInFolder` (false), `resume.ambiguous` (`refuse` or `earliest`) | 5 |
+| R5 | No decay of "working" by default. A clock that goes backwards is clamped to zero. Session records carry a version. | `state.workingDecayMinutes` (0 = never), `state.clampClockBackwards` (true) | 6 |
+| R9 | Refresh the session list when the window opens, and every 60 s. A folder's stamp is its file count and newest change time. | `index.refreshSeconds` (60; 0 = only on open), `index.stamp` (`countAndNewest`) | 7 |
+| R8 | Usage is attributed to a session's last update. A repeated message counts once, keeping its final copy. Codex usage comes from its last running total. Reasoning counts as output. | `usage.attribution` (`lastUpdate`, `start` or `event`), `usage.reasoningAsOutput` (true) | 8 |
+| R3 | **Not built.** The window never answers for the owner (principle 3), and there is no approval view to make safe. Revisit only if you decide to add one. | none | none |
+
+R1 is built and needs no setting. Each row gets a plan only when it is built, and each build runs on its own, one at a time, with its tests.
+
 ## Owner decisions still open
 
 1. **Gate G2.** Trust one throwaway git folder so the gate can run, or name a folder that is already trusted. (Source: [additions record](Done/additions-2026-11-17.md), decision D3.2.)
