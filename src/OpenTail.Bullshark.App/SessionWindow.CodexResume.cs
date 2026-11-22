@@ -131,8 +131,9 @@ public partial class SessionWindow
     /// The start text of a Codex resume for a choice, built by one method for the preview and for the start. The messages are read off the UI thread.
     /// For a summary, the summary is made (one Codex call) unless the kept one is for the level; it is saved as a file. The last turns are copied
     /// (<see cref="CodexResumeText.Tail"/>) and the text is composed (<see cref="CodexResumeText.Compose"/>). A session with no messages gives an empty
-    /// text and makes no call. A failure is logged by type and message only, shown in the screen, and never escapes this method. A cancellation passes
-    /// through to the screen, which is quiet about it.
+    /// text and makes no call. The launch check comes first (R4c): a refused launch gives the refusal as the preview, with no message read and no summary
+    /// call, because the start would be refused too. A failure is logged by type and message only, shown in the screen, and never escapes this method.
+    /// A cancellation passes through to the screen, which is quiet about it.
     /// </summary>
     private async Task<CodexPreview> BuildCodexStartTextAsync(
         SessionSummary session, string folder, CodexResumeChoice choice, KeptSummary? kept, CancellationToken ct)
@@ -141,6 +142,13 @@ public partial class SessionWindow
         var sessionId = session.Key.SessionId;
         try
         {
+            var launch = await CodexLaunchCheckAsync(ct);
+            if (launch.Refusal is { } refusal)
+            {
+                AppLog.Write("codex resume preview: launch refused, no summary");
+                return new CodexPreview(string.Empty, null, refusal);
+            }
+
             var lines = await Task.Run(() => CodexTurns.ReadSession(provider.Paths, sessionId, ct), ct);
             AppLog.Write($"codex start text: {lines.Count} messages read");
             if (lines.Count == 0) return new CodexPreview(string.Empty, null);

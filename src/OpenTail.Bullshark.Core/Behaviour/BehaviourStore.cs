@@ -150,6 +150,8 @@ public static class BehaviourStore
                     Codex = r.Version(minimum, "codex", d.Versions.Minimum.Codex),
                 },
                 Unreadable = r.Choice(versions, "unreadable", d.Versions.Unreadable, UnreadableNames),
+                // A negative value is read as zero (the check every time), not as the default: the decision for versions.recheckSeconds.
+                RecheckSeconds = Math.Max(0, r.Int(versions, "recheckSeconds", d.Versions.RecheckSeconds, int.MinValue, int.MaxValue)),
             },
             Exit = new ExitSettings
             {

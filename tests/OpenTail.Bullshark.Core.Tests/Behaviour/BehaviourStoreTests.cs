@@ -35,6 +35,7 @@ public sealed class BehaviourStoreTests : IDisposable
         Assert.Equal("2.1.330", s.Versions.Minimum.Claude);
         Assert.Equal("0.171.0", s.Versions.Minimum.Codex);
         Assert.Equal(UnreadableVersion.Warn, s.Versions.Unreadable);
+        Assert.Equal(60, s.Versions.RecheckSeconds);
         Assert.True(s.Exit.EndOnProcessExit);
         Assert.False(s.Resume.AllowNewestInFolder);
         Assert.Equal(AmbiguousResume.Refuse, s.Resume.Ambiguous);
@@ -93,7 +94,7 @@ public sealed class BehaviourStoreTests : IDisposable
         {
           "alerts": { "repeatMinutes": 10, "focusGate": "unfocusedOrUnselected", "kinds": ["needsInput", "finished"] },
           "lookups": { "missMemorySeconds": 30 },
-          "versions": { "minimum": { "claude": "2.2.0", "codex": "0.200.1" }, "unreadable": "refuse" },
+          "versions": { "minimum": { "claude": "2.2.0", "codex": "0.200.1" }, "unreadable": "refuse", "recheckSeconds": 15 },
           "exit": { "endOnProcessExit": false },
           "resume": { "allowNewestInFolder": true, "ambiguous": "earliest" },
           "state": { "workingDecayMinutes": 45, "clampClockBackwards": false },
@@ -111,6 +112,8 @@ public sealed class BehaviourStoreTests : IDisposable
         Assert.Equal("2.2.0", s.Versions.Minimum.Claude);
         Assert.Equal("0.200.1", s.Versions.Minimum.Codex);
         Assert.Equal(UnreadableVersion.Refuse, s.Versions.Unreadable);
+        Assert.Equal(15, s.Versions.RecheckSeconds);
+        Assert.Equal(TimeSpan.FromSeconds(15), s.Versions.RecheckWindow);
         Assert.False(s.Exit.EndOnProcessExit);
         Assert.True(s.Resume.AllowNewestInFolder);
         Assert.Equal(AmbiguousResume.Earliest, s.Resume.Ambiguous);
@@ -205,6 +208,18 @@ public sealed class BehaviourStoreTests : IDisposable
         Assert.Equal(1, unknown.Ignored);
         Assert.Empty(empty.Settings.Alerts.Kinds);
         Assert.Equal(0, empty.Ignored);
+    }
+
+    [Fact]
+    public void ARecheckSecondsBelowZeroIsReadAsZeroAndTextGivesTheDefault()
+    {
+        var negative = BehaviourStore.Parse("{\"versions\":{\"recheckSeconds\":-5}}");
+        var text = BehaviourStore.Parse("{\"versions\":{\"recheckSeconds\":\"30\"}}");
+
+        Assert.Equal(0, negative.Settings.Versions.RecheckSeconds);
+        Assert.Equal(0, negative.Ignored);
+        Assert.Equal(60, text.Settings.Versions.RecheckSeconds);
+        Assert.Equal(1, text.Ignored);
     }
 
     [Fact]

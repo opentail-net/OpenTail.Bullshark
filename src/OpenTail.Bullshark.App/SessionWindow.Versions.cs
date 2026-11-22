@@ -7,15 +7,19 @@ namespace OpenTail.Bullshark.App;
 /// The minimum CLI version before a launch (R4, decisions of 2026-11-22). Each launch point asks <see cref="ClaudeLaunchCheckAsync"/> or
 /// <see cref="CodexLaunchCheckAsync"/> before anything is created. A version below the minimum refuses the launch, with a status line that names the
 /// installed and the minimum versions and asks for an update; no update command is run or shown. A version that cannot be read refuses or goes on
-/// with a warning, as <c>versions.unreadable</c> says. The probe runs `--version` off the UI thread, and a Supported reading is kept for the window run.
+/// with a warning, as <c>versions.unreadable</c> says. The probe runs `--version` off the UI thread. A Supported reading is kept for the window run;
+/// any other reading is kept for <c>versions.recheckSeconds</c>, so a pass that asks again every few seconds does not run the command each time.
 /// </summary>
 public partial class SessionWindow
 {
-    /// <summary>The probe of Claude Code: the default program, the same one the window's own `claude` calls run.</summary>
-    private readonly ToolVersionProbe _claudeVersion = ToolVersionProbe.ForClaude(new ProcessCliRunner());
+    /// <summary>
+    /// The probe of Claude Code: the default program, the same one the window's own `claude` calls run. Made in the constructor, because it reads the
+    /// recheck window from <see cref="_behaviour"/> at each check (<c>versions.recheckSeconds</c>); a field initialiser cannot read that field.
+    /// </summary>
+    private readonly ToolVersionProbe _claudeVersion;
 
-    /// <summary>The probe of Codex: the same `cmd.exe /d /c codex` line that a Codex terminal tab runs.</summary>
-    private readonly ToolVersionProbe _codexVersion = ToolVersionProbe.ForCodex(new ProcessCliRunner("cmd.exe"));
+    /// <summary>The probe of Codex: the same `cmd.exe /d /c codex` line that a Codex terminal tab runs. Made in the constructor, as for Claude.</summary>
+    private readonly ToolVersionProbe _codexVersion;
 
     /// <summary>
     /// The answer of a launch check. <see cref="Refusal"/> is the status text that says why nothing starts, or null when the launch may go on.

@@ -211,6 +211,9 @@ public partial class SessionWindow : Window
         _activeProvider = _claude;
         if (ProviderStore.Load(options.StatePath) == ProviderId.Codex && CodexProvider.Available)
             _activeProvider = _codex = new CodexProvider();
+        // The version probes (R4). Their recheck window is read from the behaviour settings at each check, so they are made here (see _claudeVersion).
+        _claudeVersion = ToolVersionProbe.ForClaude(new ProcessCliRunner(), () => _behaviour.Versions.RecheckWindow);
+        _codexVersion = ToolVersionProbe.ForCodex(new ProcessCliRunner("cmd.exe"), () => _behaviour.Versions.RecheckWindow);
         InitializeComponent();
         // The Insights page hosts the four views that were tabs of their own (2026-11-18). It is made before InitRail, which draws the theme into it.
         _insights = new InsightsView(_away, _night, _limits, _timeline, _storage) { Visibility = Visibility.Hidden };

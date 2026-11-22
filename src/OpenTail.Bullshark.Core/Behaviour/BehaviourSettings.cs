@@ -115,6 +115,15 @@ public sealed record VersionsSettings
 
     /// <summary>What a version that cannot be read does (<c>versions.unreadable</c>). Default <see cref="UnreadableVersion.Warn"/>.</summary>
     public UnreadableVersion Unreadable { get; init; } = UnreadableVersion.Warn;
+
+    /// <summary>
+    /// Seconds a version reading that is not Supported (too old, or could not be read) is kept before the command runs again (<c>versions.recheckSeconds</c>).
+    /// Zero means the command runs on every launch check. Default 60.
+    /// </summary>
+    public int RecheckSeconds { get; init; } = 60;
+
+    /// <summary>The recheck window as a span; zero when off.</summary>
+    public TimeSpan RecheckWindow => TimeSpan.FromSeconds(RecheckSeconds);
 }
 
 /// <summary>The exit settings (behaviour batch, R6).</summary>
