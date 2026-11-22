@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using OpenTail.Bullshark.Core.Activity;
+using OpenTail.Bullshark.Core.Codex;
 using OpenTail.Bullshark.Core.Library;
 using OpenTail.Bullshark.Core.Providers;
 using OpenTail.Bullshark.Core.Supervisor;
@@ -116,7 +117,11 @@ public partial class SessionWindow
         foreach (var tab in _tabs.Where(t => t.Provider == ProviderId.Codex && t.Kind == TabKind.Session).ToList())
         {
             if (_codexSessions.FirstOrDefault(s => SameId(s.Key.SessionId, tab.Key)) is { } session)
-                tab.Title = CodexRowTitle(MarkOf(ProviderId.Codex, tab.Key)?.Name, session);
+            {
+                // An ended tab keeps its suffix when the row's title is applied again (R6).
+                var title = CodexRowTitle(MarkOf(ProviderId.Codex, tab.Key)?.Name, session);
+                tab.Title = tab.Ended ? CodexExit.EndedTitle(title) : title;
+            }
         }
     }
 

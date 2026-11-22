@@ -73,4 +73,31 @@ public sealed class CodexExitTests
         Assert.Null(record.ExitCode);
         Assert.Equal("Ended.", record.Text);
     }
+
+    [Fact]
+    public void AnEndedTitleGetsTheSuffixOnce()
+    {
+        Assert.Equal("Codex: repo (ended)", CodexExit.EndedTitle("Codex: repo"));
+    }
+
+    [Fact]
+    public void AnEndedTitleIsNotDoubledWhenItAlreadyHasTheSuffix()
+    {
+        // Each title refresh applies the suffix again, so it must be idempotent.
+        var once = CodexExit.EndedTitle("Codex: repo");
+        Assert.Equal("Codex: repo (ended)", CodexExit.EndedTitle(once));
+        Assert.Equal(once, CodexExit.EndedTitle(CodexExit.EndedTitle(once)));
+    }
+
+    [Fact]
+    public void ATitleThatOnlyContainsTheSuffixInTheMiddleStillGetsIt()
+    {
+        Assert.Equal("ended (ended) more (ended)", CodexExit.EndedTitle("ended (ended) more"));
+    }
+
+    [Fact]
+    public void AnEndedTitleOfNullIsRefused()
+    {
+        Assert.Throws<ArgumentNullException>(() => CodexExit.EndedTitle(null!));
+    }
 }

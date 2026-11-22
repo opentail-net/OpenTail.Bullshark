@@ -287,6 +287,8 @@ public partial class SessionWindow : Window
         _timer.Start();
         Closing += (_, _) =>
         {
+            // Set before the terminals are detached: the Codex process ends that the detach causes are then expected (R6).
+            _appShuttingDown = true;
             DetachAll();
             // A closed window starts no more passes. A pass that is running is cancelled, and it gives the supervisor lock back when it ends,
             // so no pass writes after another window has taken the lock (F5).

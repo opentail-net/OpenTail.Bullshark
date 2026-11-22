@@ -31,4 +31,17 @@ public static class CodexExit
                 : "Ended; no exit code was reported.";
         return new ExitRecord(expected, exitCode, text);
     }
+
+    /// <summary>The suffix an ended Codex tab's title gets (R6).</summary>
+    public const string EndedSuffix = " (ended)";
+
+    /// <summary>
+    /// The title of an ended Codex tab: <paramref name="title"/> with <see cref="EndedSuffix"/> added. A title that already ends with the suffix is
+    /// returned as it is, so applying this again (on each title refresh) never doubles it.
+    /// </summary>
+    public static string EndedTitle(string title)
+    {
+        ArgumentNullException.ThrowIfNull(title);
+        return title.EndsWith(EndedSuffix, StringComparison.Ordinal) ? title : title + EndedSuffix;
+    }
 }

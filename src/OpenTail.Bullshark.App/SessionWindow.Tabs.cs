@@ -71,6 +71,14 @@ public partial class SessionWindow
 
         /// <summary>What the listing says the session waits for (round 7 item 3), or null. Shown in the tab's tooltip.</summary>
         public string? Waiting { get; set; }
+
+        /// <summary>
+        /// True once the owner has closed this Codex tab (R6). The process end that the close causes is then expected, and changes nothing.
+        /// </summary>
+        public bool ClosedByOwner { get; set; }
+
+        /// <summary>True once this Codex tab's process has ended on its own (R6). The title then carries the ended suffix.</summary>
+        public bool Ended { get; set; }
     }
 
     /// <summary>The tab's tooltip: its title, and what the session waits for when the listing says so (round 7 item 3).</summary>
@@ -396,6 +404,8 @@ public partial class SessionWindow
     private void CloseCodexTab(OpenTab tab)
     {
         var key = KeyOf(tab);
+        // Marked before the terminal is detached: the process end that the detach causes is then expected (R6), and changes nothing.
+        tab.ClosedByOwner = true;
         CloseTab(tab);
         DetachTerminal(key);
         SetStatus($"{tab.Title} is closed. Codex keeps the conversation: resume it from the Codex rows.");

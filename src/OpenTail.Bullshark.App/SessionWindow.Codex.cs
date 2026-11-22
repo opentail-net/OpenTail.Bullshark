@@ -7,6 +7,7 @@ using OpenTail.Bullshark.Core.Library;
 using OpenTail.Bullshark.Core.Providers;
 using OpenTail.Bullshark.Core.Supervisor;
 using Wpf.Ui.Terminal;
+using Wpf.Ui.Terminal.Internals;
 
 namespace OpenTail.Bullshark.App;
 
@@ -37,6 +38,12 @@ public partial class SessionWindow
 
     /// <summary>True while the Codex history is being read, so a second read does not start.</summary>
     private bool _codexLoading;
+
+    /// <summary>
+    /// True once the window's Closing has started (R6). A Codex process that ends because the app detaches its terminals is then expected, and is not
+    /// shown as ended.
+    /// </summary>
+    private bool _appShuttingDown;
 
     /// <summary>True when the last read failed. The rail then says so, and the status line says why.</summary>
     private bool _codexFailed;
@@ -560,12 +567,72 @@ public partial class SessionWindow
             Visibility = Visibility.Hidden,
         };
         _terminals[new SessionKey(ProviderId.Codex, id)] = terminal;
+        var tab = AddTab(TabKind.Session, id, title, ProviderId.Codex);
+        // Watched before the control is shown: its process starts when the control loads, so the watch must be in place by then (R6).
+        if (terminal.ConPTYTerm is { } term) WatchCodexExit(tab, term);
         Pane.Children.Add(terminal);
         ConfigureTerminal(terminal);
-        var tab = AddTab(TabKind.Session, id, title, ProviderId.Codex);
         SetActive(tab);
         ShowOnly(terminal);
         SetStatus($"Codex tab opened in {folder}.");
+    }
+
+    /// <summary>
+    /// Watches for the start of a Codex terminal's process (R6). The connection raises <c>TermReady</c> on its start thread once the process object
+    /// exists, so the watch reads it there and starts one wait for it. The watch is one-shot: it unsubscribes as it fires, so a process gets one wait.
+    /// </summary>
+    private void WatchCodexExit(OpenTab tab, TermPTY term)
+    {
+        EventHandler? started = null;
+        started = (_, _) =>
+        {
+            term.TermReady -= started;
+            // The process is set before TermReady is raised. Null only when the start produced no process: then there is nothing to wait for.
+            if (term.Process is not { } process) return;
+            FireAndForget.Observe(WaitForCodexExitAsync(tab, process), "codex exit wait");
+        };
+        term.TermReady += started;
+    }
+
+    /// <summary>
+    /// The one wait for a Codex process (R6). A pool thread blocks in <c>WaitForExit</c> until the process ends, then the end is handled on the UI
+    /// thread. A failed wait is logged by <see cref="FireAndForget"/>. A dispatcher that is shutting down takes no more work, as the app is closing.
+    /// </summary>
+    private async Task WaitForCodexExitAsync(OpenTab tab, IProcess process)
+    {
+        // A process that has ended before this wait began can make WaitForExit throw (its id is gone). That is an end, not a failure, so it is handled as one.
+        await Task.Run(() =>
+        {
+            try
+            {
+                process.WaitForExit();
+            }
+            catch (ArgumentException)
+            {
+                // The process had already ended: nothing left to wait for.
+            }
+        }).ConfigureAwait(false);
+        if (Dispatcher.HasShutdownStarted) return;
+        await Dispatcher.InvokeAsync(() => CodexProcessEnded(tab, process));
+    }
+
+    /// <summary>
+    /// Handles the end of a Codex terminal's process on the UI thread (R6). The end is classified, and logged with its expected flag and text only.
+    /// An expected end changes nothing. Any other end marks the tab ended, but only when the tab is still open and its process is still the one that
+    /// ended, so an old end never changes a newer tab. Nothing is retried, and the tab stays open.
+    /// </summary>
+    private void CodexProcessEnded(OpenTab tab, IProcess process)
+    {
+        var record = CodexExit.Classify(tab.ClosedByOwner, _appShuttingDown, exitCode: null);
+        AppLog.Write($"codex tab process ended: expected {record.Expected}; {record.Text}");
+        if (record.Expected) return;
+        if (!_tabs.Contains(tab)) return;
+        if (!_terminals.TryGetValue(KeyOf(tab), out var terminal) || !ReferenceEquals(terminal.ConPTYTerm?.Process, process)) return;
+
+        tab.Ended = true;
+        tab.Title = CodexExit.EndedTitle(tab.Title);
+        RefreshTabStrip();
+        SetStatus(record.Text);
     }
 
     /// <summary>The last part of a folder path, or the path itself when it has none (a drive root).</summary>
