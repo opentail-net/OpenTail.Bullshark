@@ -222,7 +222,7 @@ public sealed class ResumePromptTests
     }
 
     [Fact]
-    public void ARefusedLaunchShowsTheRefusalAndResumeStaysOffUntilTheChoiceChanges()
+    public void ARefusedSummaryShowsTheRefusalAndFallsBackToInFull()
     {
         UiThread.Run(() =>
         {
@@ -232,15 +232,16 @@ public sealed class ResumePromptTests
 
             Press(Named<MenuItem>(prompt, "PreviewItem"));
 
-            Assert.Equal(refusal, Named<TextBlock>(prompt, "PreviewHeader").Text);
+            Assert.Equal(refusal + " " + ResumeDefaults.FullFallbackLine, Named<TextBlock>(prompt, "PreviewHeader").Text);
             Assert.Equal(Visibility.Collapsed, Named<TextBox>(prompt, "PreviewText").Visibility);
             Assert.Equal(Visibility.Visible, Named<StackPanel>(prompt, "PreviewBlock").Visibility);
-            Assert.False(Named<Button>(prompt, "ResumeButton").IsEnabled);
+            Assert.True(Named<RadioButton>(prompt, "FullChoice").IsChecked == true);
+            Assert.True(Named<Button>(prompt, "ResumeButton").IsEnabled);
             Assert.False(Named<MenuItem>(prompt, "CopyItem").IsEnabled);
-            Assert.True(Named<MenuItem>(prompt, "PreviewItem").IsEnabled);
+            Assert.False(Named<MenuItem>(prompt, "PreviewItem").IsEnabled);
             Assert.Null(prompt.KeptSummary);
 
-            // A changed level takes the refusal away, and Resume is on again.
+            // A changed level takes the refusal away; In full stays chosen and Resume is on.
             LevelSegment(prompt, "Minimal").IsChecked = true;
             Assert.Equal(Visibility.Collapsed, Named<StackPanel>(prompt, "PreviewBlock").Visibility);
             Assert.True(Named<Button>(prompt, "ResumeButton").IsEnabled);

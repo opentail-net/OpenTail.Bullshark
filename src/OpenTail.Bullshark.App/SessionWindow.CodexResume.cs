@@ -95,11 +95,11 @@ public partial class SessionWindow
                 SetStatus("Not resumed.");
                 return;
             }
-            // The folder is checked again: it may have gone while the screen was open. Nothing starts without a folder that exists (as the Copilot
-            // screen checks it). The full resume would otherwise fall back to the app's own folder.
-            if (!FolderExists(folder))
+            // The folder is made again first if it is gone, before anything runs in it (owner, 2026-11-22). The full resume would otherwise fall back
+            // to the app's own folder, so a folder that cannot be made refuses.
+            if (!EnsureSessionFolder(folder, out var folderRefusal))
             {
-                SetStatus("Not resumed: the session's folder is missing.");
+                SetStatus(folderRefusal!);
                 return;
             }
             if (choice.Mode == CodexResumeMode.Full)
@@ -188,12 +188,11 @@ public partial class SessionWindow
                 }
                 else
                 {
-                    // Codex runs its summary in the session's folder, so with the folder missing no call is made (SummaryFolderRule). The refusal is
-                    // reported as a failed summary is: the status line and the preview.
-                    if (SummaryFolderRule.Refusal(FolderExists(folder)) is { } folderRefusal)
+                    // Codex runs its summary in the session's folder, so the folder is made again first if it is gone (owner, 2026-11-22). A folder that
+                    // cannot be made refuses: the refusal is reported as a failed summary is, in the status line and the preview.
+                    if (!EnsureSessionFolder(folder, out var folderRefusal))
                     {
-                        AppLog.Write("codex summary not made: the folder is missing, no call");
-                        SetStatus($"Not started: {folderRefusal}");
+                        SetStatus(folderRefusal!);
                         return new CodexPreview(string.Empty, null, folderRefusal);
                     }
                     var made = await new CodexSummarizer(new ProcessCliRunner("cmd.exe"))

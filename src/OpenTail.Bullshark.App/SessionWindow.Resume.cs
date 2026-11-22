@@ -77,7 +77,7 @@ public partial class SessionWindow
         SetStatus($"Reading session {ShortId(digest.SessionId)}…");
         var (lines, transcriptFolder) = await Task.Run(() => ResumeSource.Load(digest.FilePath));
         // A transcript with no folder gives an empty folder. The screen opens with the notice that the session has no folder on record, and Start is
-        // blocked. The start checks below refuse a missing folder too (the summary guard in BuildStartTextAsync, and SetupPlan.Validate).
+        // blocked. A missing folder is made again before the start runs in it (EnsureSessionFolder).
         var folder = transcriptFolder ?? string.Empty;
 
         var facts = $"{digest.Turns} {(digest.Turns == 1 ? "turn" : "turns")} · last active {AgeOf(digest.LastActivity)} · {FolderFact.For(folder)}";
@@ -205,10 +205,15 @@ public partial class SessionWindow
             return new FullResume($"Not resumed: session {ShortId(sessionId)} is already open in the rail.");
         }
 
+        // The folder is made again first if it is gone (owner, 2026-11-22). A folder that cannot be made refuses.
+        var madeNow = !FolderExists(folder);
+        if (!EnsureSessionFolder(folder, out var folderRefusal)) return new FullResume(folderRefusal!);
         var check = FolderCheck.Check(folder, TrustCheck.DefaultClaudeJsonPath);
         if (check.Status is FolderStatus.Missing or FolderStatus.NotTrusted)
         {
-            return new FullResume($"Not resumed: {check.Message}");
+            return new FullResume(madeNow && check.Status == FolderStatus.NotTrusted
+                ? SessionFolder.ClaudeNotTrustedAfterMake
+                : $"Not resumed: {check.Message}");
         }
 
         // The version check comes before the name is made and the start (R4): a refused launch starts nothing and writes no record.
@@ -375,11 +380,16 @@ public partial class SessionWindow
     /// </summary>
     private async Task<string?> CrossTargetCheckAsync(ProviderId source, ProviderId target, string folder, CancellationToken cancellationToken)
     {
-        if (!FolderExists(folder)) return "Not started: the session's folder is missing.";
+        // The folder is made again first if it is gone (owner, 2026-11-22). A folder that cannot be made refuses.
+        var madeNow = !FolderExists(folder);
+        if (!EnsureSessionFolder(folder, out var folderRefusal)) return folderRefusal;
         if (target == ProviderId.Claude)
         {
             var check = FolderCheck.Check(folder, TrustCheck.DefaultClaudeJsonPath);
-            if (check.Status is FolderStatus.Missing or FolderStatus.NotTrusted) return $"Not started: {check.Message}";
+            if (check.Status is FolderStatus.Missing or FolderStatus.NotTrusted)
+                return madeNow && check.Status == FolderStatus.NotTrusted
+                    ? SessionFolder.ClaudeNotTrustedAfterMake
+                    : $"Not started: {check.Message}";
             return (await ClaudeLaunchCheckAsync(cancellationToken)).Refusal;
         }
         if (target == ProviderId.Codex)
@@ -446,6 +456,13 @@ public partial class SessionWindow
         }
         var request = start.Request ?? throw new InvalidOperationException("A Claude start has a request.");
 
+        // The folder is made again first if it is gone, before the setup is checked (owner, 2026-11-22). A folder that cannot be made refuses.
+        var madeNow = !FolderExists(folder);
+        if (!EnsureSessionFolder(folder, out var folderRefusal))
+        {
+            SetStatus(folderRefusal!);
+            return;
+        }
         var check = SetupPlan.Validate(request, TrustCheck.DefaultClaudeJsonPath);
         if (!check.IsValid)
         {
@@ -454,7 +471,7 @@ public partial class SessionWindow
         }
         if (check.Folder?.Status == FolderStatus.NotTrusted)
         {
-            SetStatus($"Not started: {check.Folder.Message}");
+            SetStatus(madeNow ? SessionFolder.ClaudeNotTrustedAfterMake : $"Not started: {check.Folder.Message}");
             return;
         }
 

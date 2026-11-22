@@ -64,10 +64,13 @@ public partial class ResumePrompt : Window
     private bool _refused;
 
     /// <summary>
-    /// The folder notice shown in red (<see cref="ResumeFolderNotice"/>), or null when there is none. While it applies, Start (Resume) is off; the chooser
+    /// The folder notice shown in red (<see cref="ResumeFolderNotice"/>), or null when there is none. Start (Resume) is off only with no folder on record; the chooser
     /// and the preview stay on.
     /// </summary>
     private readonly string? _folderNotice;
+
+    /// <summary>True while the folder notice blocks Start: only a session with no folder on record. A missing folder does not block it: Start makes it again.</summary>
+    private readonly bool _blocksStart;
 
     /// <param name="folder">The session's folder, for the folder notice. Used only with <paramref name="folderExists"/>.</param>
     /// <param name="folderExists">Whether the folder exists (the screen's folder check, Missing is false). Null: no folder notice is shown.</param>
@@ -76,6 +79,8 @@ public partial class ResumePrompt : Window
         string? folder = null, bool? folderExists = null)
     {
         InitializeComponent();
+        // The window grows to the screen's work area at most: the body scrolls and the buttons stay in view (owner, 2026-11-22).
+        MaxHeight = SystemParameters.WorkArea.Height - 40;
         // The title names the source and the button names the target (RS-D4, RS-O2, RS-O4). The words come from ResumeTarget, the one place.
         Title = ResumeTarget.TitleOf(ProviderId.Claude);
         var startLabel = ResumeTarget.ButtonOf(ProviderId.Claude);
@@ -83,6 +88,7 @@ public partial class ResumePrompt : Window
         AutomationProperties.SetName(ResumeButton, startLabel);
         _previewAsync = previewAsync;
         _folderNotice = folderExists is { } exists ? ResumeFolderNotice.For(folder, exists) : null;
+        _blocksStart = ResumeFolderNotice.BlocksStart(folder, folderExists);
         UiTheme.Apply(palette);
         Resources["PromptBg"] = RailPalette.Brush(palette.Background);
         Resources["PromptPanel"] = RailPalette.Brush(palette.Panel);
@@ -282,7 +288,7 @@ public partial class ResumePrompt : Window
         Enable(TurnsBox, free);
         Enable(TargetBox, free);
         foreach (var segment in LevelRow.Children.OfType<RadioButton>()) Enable(segment, free);
-        ResumeButton.IsEnabled = free && !_refused && !ResumeFolderNotice.BlocksStart(_folderNotice);
+        ResumeButton.IsEnabled = free && !_refused && !_blocksStart;
         ResumeMenuButton.IsEnabled = free;
         Enable(RememberBox, free);
 
@@ -358,8 +364,14 @@ public partial class ResumePrompt : Window
             var built = await _previewAsync(choice, KeptSummary, cts.Token);
             if (built.Preview is not { } preview)
             {
-                _refused = true;
-                ShowRefusal(built.Problem ?? "The prompt could not be built.");
+                // A summary that was refused falls back to In full (ResumeDefaults). Resume is then on: In full has no prompt to refuse.
+                var problem = built.Problem ?? "The prompt could not be built.";
+                if (ResumeDefaults.FallBackToFull(choice.Mode == ResumeMode.Summary, cancelled: false)) FallBackToFull(problem);
+                else
+                {
+                    _refused = true;
+                    ShowRefusal(problem);
+                }
                 return;
             }
             if (preview.Summary is { } summary) KeptSummary = summary;
@@ -372,7 +384,8 @@ public partial class ResumePrompt : Window
         }
         catch (Exception ex)
         {
-            ShowError(ex.Message);
+            if (ResumeDefaults.FallBackToFull(choice.Mode == ResumeMode.Summary, cancelled: false)) FallBackToFull($"The prompt could not be built: {ex.Message}");
+            else ShowError(ex.Message);
         }
         finally
         {
@@ -381,6 +394,16 @@ public partial class ResumePrompt : Window
             cts.Dispose();
             Refresh();
         }
+    }
+
+    /// <summary>
+    /// A summary that was not made (ResumeDefaults): In full is selected, which takes the preview away, and the problem is shown with the line that says
+    /// so, as a refusal is shown. Nothing is started, and Resume is on, as In full has no prompt to refuse.
+    /// </summary>
+    private void FallBackToFull(string problem)
+    {
+        FullChoice.IsChecked = true;
+        ShowRefusal($"{problem} {ResumeDefaults.FullFallbackLine}");
     }
 
     /// <summary>Shows a built prompt: its size line (in the danger colour when it does not fit), and the text, read-only.</summary>
@@ -457,7 +480,7 @@ public partial class ResumePrompt : Window
 
     private void Resume_Click(object sender, RoutedEventArgs e)
     {
-        if (ResumeFolderNotice.BlocksStart(_folderNotice)) return;
+        if (_blocksStart) return;
         var choice = Selected(out var turnsValid);
         if (choice is null) return;
         if (!turnsValid && choice.Mode != ResumeMode.Full)

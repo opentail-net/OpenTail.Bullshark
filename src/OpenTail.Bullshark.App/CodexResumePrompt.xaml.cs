@@ -63,8 +63,11 @@ public partial class CodexResumePrompt : Window
     /// <summary>True once the model list is in (or none was asked for). Start of a new session waits for it; In full does not need it.</summary>
     private bool _modelsReady;
 
-    /// <summary>The folder notice shown in red (<see cref="ResumeFolderNotice"/>), or null. While it applies, Start is off; the choices and Copy stay on.</summary>
+    /// <summary>The folder notice shown in red (<see cref="ResumeFolderNotice"/>), or null. Start is off only with no folder on record; the choices and Copy stay on.</summary>
     private readonly string? _folderNotice;
+
+    /// <summary>True while the folder notice blocks Start: only a session with no folder on record. A missing folder does not block it: Start makes it again.</summary>
+    private readonly bool _blocksStart;
 
     /// <param name="heading">The heading: the session's name.</param>
     /// <param name="facts">The line under the heading: turns, last activity and folder.</param>
@@ -73,12 +76,14 @@ public partial class CodexResumePrompt : Window
     /// <param name="models">The model list, read off the UI thread. The model box shows that it is loading until the list is in, and Start waits for it (except In full). Null: no list, so Codex's default.</param>
     /// <param name="initialMode">The mode the screen opens on (stage C4). Null keeps the screen's own start, the last turns. Opening on a mode never makes a summary.</param>
     /// <param name="folder">The session's folder, for the folder notice. Used only with <paramref name="folderExists"/>.</param>
-    /// <param name="folderExists">Whether the folder exists. Null: no folder notice is shown. While the notice applies, Start is off.</param>
+    /// <param name="folderExists">Whether the folder exists. Null: no folder notice is shown. Start is off only with no folder on record.</param>
     public CodexResumePrompt(string heading, string facts, RailPalette palette,
         Func<CodexResumeChoice, KeptSummary?, CancellationToken, Task<CodexPreview>>? previewAsync = null,
         Task<CodexModelReading>? models = null, ContinueMode? initialMode = null, string? folder = null, bool? folderExists = null)
     {
         InitializeComponent();
+        // The window grows to the screen's work area at most: the body scrolls and the buttons stay in view (owner, 2026-11-22).
+        MaxHeight = SystemParameters.WorkArea.Height - 40;
         // The title names the source and the button names the target (RS-D4, RS-O2, RS-O4). The words come from ResumeTarget, the one place.
         Title = ResumeTarget.TitleOf(ProviderId.Codex);
         var startLabel = ResumeTarget.ButtonOf(ProviderId.Codex);
@@ -86,6 +91,7 @@ public partial class CodexResumePrompt : Window
         AutomationProperties.SetName(StartButton, startLabel);
         _previewAsync = previewAsync;
         _folderNotice = folderExists is { } exists ? ResumeFolderNotice.For(folder, exists) : null;
+        _blocksStart = ResumeFolderNotice.BlocksStart(folder, folderExists);
         UiTheme.Apply(palette);
         Resources["PromptBg"] = RailPalette.Brush(palette.Background);
         Resources["PromptPanel"] = RailPalette.Brush(palette.Panel);
@@ -316,7 +322,7 @@ public partial class CodexResumePrompt : Window
         var modelRow = mode != CodexResumeMode.Full;
         ModelBlock.Visibility = modelRow && !IsCross(choice) ? Visibility.Visible : Visibility.Collapsed;
         Enable(ModelBox, free && modelRow && _modelsReady);
-        Enable(StartButton, free && !ResumeFolderNotice.BlocksStart(_folderNotice) && ModelReady(mode, IsCross(choice))
+        Enable(StartButton, free && !_blocksStart && ModelReady(mode, IsCross(choice))
             && CodexResumeRules.CanStart(mode, previewReady, KeptMatches(choice)));
     }
 
@@ -363,15 +369,16 @@ public partial class CodexResumePrompt : Window
             var preview = await _previewAsync(choice, _kept, cts.Token);
             if (id != _request) return;
             if (preview.KeptSummary is { } made) _kept = made;
-            ShowPreview(preview);
+            if (preview.Problem is { } problem && preview.Text.Length == 0) ShowFailedSummary(choice, problem);
+            else ShowPreview(preview);
         }
         catch (OperationCanceledException)
         {
-            // Cancelled by a change of the choice, or by the dialog closing: nothing is shown.
+            // Cancelled by a change of the choice, or by the dialog closing: nothing is shown, and the selection stays.
         }
         catch (Exception ex)
         {
-            if (id == _request) ShowMessage($"The start text could not be made: {ex.Message}", problem: true);
+            if (id == _request) ShowFailedSummary(choice, $"The start text could not be made: {ex.Message}");
         }
         finally
         {
@@ -432,6 +439,22 @@ public partial class CodexResumePrompt : Window
         PreviewBlock.Visibility = Visibility.Visible;
     }
 
+    /// <summary>
+    /// Shows a failed preview: the problem in the danger colour, and no text. A summary that was not made falls back to In full (ResumeDefaults): In full
+    /// is selected, and the problem is shown with the line that says so. Nothing is started.
+    /// </summary>
+    private void ShowFailedSummary(CodexResumeChoice choice, string problem)
+    {
+        if (!ResumeDefaults.FallBackToFull(choice.Mode == CodexResumeMode.Summary, cancelled: false))
+        {
+            ShowMessage(problem, problem: true);
+            return;
+        }
+        // Selecting In full clears the preview (OnChoiceChanged), so the problem is shown after it.
+        FullChoice.IsChecked = true;
+        ShowMessage($"{problem} {ResumeDefaults.FullFallbackLine}", problem: true);
+    }
+
     /// <summary>Takes the preview away. The text is cleared too, so no stale text stays in the dialog.</summary>
     private void HidePreview()
     {
@@ -466,7 +489,7 @@ public partial class CodexResumePrompt : Window
     /// </summary>
     private void Start_Click(object sender, RoutedEventArgs e)
     {
-        if (ResumeFolderNotice.BlocksStart(_folderNotice)) return;
+        if (_blocksStart) return;
         var choice = Selected(out _);
         if (choice is null || _busy) return;
         if (!ModelReady(choice.Mode, IsCross(choice))) return;

@@ -64,7 +64,7 @@ public sealed class ResumeScreenFolderTests
         window.FindName(name) as T ?? throw new InvalidOperationException($"no element named {name}");
 
     [Fact]
-    public void ClaudeAMissingFolderShowsItsNoticeAndBlocksStartButNotTheChooserOrThePreview()
+    public void ClaudeAMissingFolderShowsItsNoticeAndStartStaysOn()
     {
         UiThread.Run(() =>
         {
@@ -73,7 +73,7 @@ public sealed class ResumeScreenFolderTests
             var notice = Named<TextBlock>(prompt, "FolderNotice");
             Assert.Equal(Visibility.Visible, notice.Visibility);
             Assert.Equal(ResumeFolderNotice.For(folder, folderExists: false), notice.Text);
-            Assert.False(Named<Button>(prompt, "ResumeButton").IsEnabled);
+            Assert.True(Named<Button>(prompt, "ResumeButton").IsEnabled);
             Assert.True(Named<ComboBox>(prompt, "TargetBox").IsEnabled);
             Assert.True(Named<MenuItem>(prompt, "PreviewItem").IsEnabled);
         });
@@ -91,7 +91,7 @@ public sealed class ResumeScreenFolderTests
     }
 
     [Fact]
-    public void CodexAMissingFolderShowsItsNoticeAndBlocksStartWhileTheChooserAndThePreviewStayOn()
+    public void CodexAMissingFolderShowsItsNoticeAndStartStaysOn()
     {
         UiThread.Run(() =>
         {
@@ -100,9 +100,9 @@ public sealed class ResumeScreenFolderTests
             var notice = Named<TextBlock>(prompt, "FolderNotice");
             Assert.Equal(Visibility.Visible, notice.Visibility);
             Assert.Equal(ResumeFolderNotice.For(folder, folderExists: false), notice.Text);
-            // The last-turns preview is built at once, with no press: its text is ready, Copy is on, and Start is still off.
+            // The last-turns preview is built at once, with no press: its text is ready and Copy is on. Start stays on: Start makes the folder again.
             Assert.True(Named<Button>(prompt, "CopyButton").IsEnabled);
-            Assert.False(Named<Button>(prompt, "StartButton").IsEnabled);
+            Assert.True(Named<Button>(prompt, "StartButton").IsEnabled);
             Assert.True(Named<ComboBox>(prompt, "TargetBox").IsEnabled);
             Assert.True(Named<RadioButton>(prompt, "SummaryChoice").IsEnabled);
         });
@@ -131,7 +131,7 @@ public sealed class ResumeScreenFolderTests
     }
 
     [Fact]
-    public void CopilotAMissingFolderShowsItsNoticeAndBlocksStartWhileTheChooserAndThePreviewStayOn()
+    public void CopilotAMissingFolderShowsItsNoticeAndStartStaysOn()
     {
         UiThread.Run(() =>
         {
@@ -141,7 +141,7 @@ public sealed class ResumeScreenFolderTests
             Assert.Equal(Visibility.Visible, notice.Visibility);
             Assert.Equal(ResumeFolderNotice.For(folder, folderExists: false), notice.Text);
             Assert.True(Named<Button>(prompt, "CopyButton").IsEnabled);
-            Assert.False(Named<Button>(prompt, "StartButton").IsEnabled);
+            Assert.True(Named<Button>(prompt, "StartButton").IsEnabled);
             Assert.True(Named<ComboBox>(prompt, "TargetBox").IsEnabled);
             Assert.True(Named<RadioButton>(prompt, "SummaryChoice").IsEnabled);
         });

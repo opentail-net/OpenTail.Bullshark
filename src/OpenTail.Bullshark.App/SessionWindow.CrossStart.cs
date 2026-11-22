@@ -38,6 +38,14 @@ public partial class SessionWindow
             return;
         }
 
+        // The folder is made again first if it is gone, before anything runs in it (owner, 2026-11-22).
+        var madeNow = !FolderExists(folder);
+        if (!EnsureSessionFolder(folder, out var folderRefusal))
+        {
+            SetStatus(folderRefusal!);
+            return;
+        }
+
         if (route.Kind == CrossStartKind.Codex)
         {
             var start = await StartCodexFromTextAsync(folder, model: null, text, CrossStartRoute.TabTitleOf(target, sourceTitle));
@@ -57,7 +65,7 @@ public partial class SessionWindow
         }
         if (check.Folder?.Status == FolderStatus.NotTrusted)
         {
-            SetStatus($"Not started: {check.Folder.Message}");
+            SetStatus(madeNow ? SessionFolder.ClaudeNotTrustedAfterMake : $"Not started: {check.Folder.Message}");
             return;
         }
 

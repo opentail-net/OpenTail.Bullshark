@@ -81,17 +81,27 @@ public partial class SessionWindow
                 SetStatus("Not resumed.");
                 return;
             }
+            // The folder is made again first if it is gone, before anything runs in it (owner, 2026-11-22). A folder that cannot be made refuses.
+            if (folder is null)
+            {
+                SetStatus(CopilotRailText.FolderMissing(folder));
+                return;
+            }
+            if (!EnsureSessionFolder(folder, out var folderRefusal))
+            {
+                SetStatus(folderRefusal!);
+                return;
+            }
             if (choice.Mode == CopilotResumeMode.Full)
             {
                 ResumeCopilot(session);
                 if (choice.Remember) RememberResumeMode(ProviderId.Copilot, id, RememberChoice.ModeOf(choice.Mode));
                 return;
             }
-            // The list and the folder are checked again: either may have changed while the screen was open (G-D12).
-            var again = CopilotResumeRules.RefusalFor(IsCopilotListed(id), folder, FolderExists(folder));
-            if (again is not null || folder is null)
+            // The list is checked again: it may have changed while the screen was open (G-D12).
+            if (!IsCopilotListed(id))
             {
-                SetStatus(again ?? CopilotRailText.FolderMissing(folder));
+                SetStatus(CopilotRailText.NotListed);
                 return;
             }
             if (choice.Target != ProviderId.Copilot)

@@ -59,8 +59,11 @@ public partial class CopilotResumePrompt : Window
     private string? _previewText;
     private KeptSummary? _kept;
 
-    /// <summary>The folder notice shown in red (<see cref="ResumeFolderNotice"/>), or null. While it applies, Start is off; the choices and Copy stay on.</summary>
+    /// <summary>The folder notice shown in red (<see cref="ResumeFolderNotice"/>), or null. Start is off only with no folder on record; the choices and Copy stay on.</summary>
     private readonly string? _folderNotice;
+
+    /// <summary>True while the folder notice blocks Start: only a session with no folder on record. A missing folder does not block it: Start makes it again.</summary>
+    private readonly bool _blocksStart;
 
     /// <param name="heading">The heading: the session's name.</param>
     /// <param name="facts">The line under the heading: turns, last activity and folder.</param>
@@ -68,12 +71,14 @@ public partial class CopilotResumePrompt : Window
     /// <param name="previewAsync">Makes the start text for a choice. It is given the summary kept for the choice (or null), and returns the text and the summary it used.</param>
     /// <param name="initialMode">The mode the screen opens on (stage C4). Null keeps the screen's own start, the last turns. Opening on a mode never makes a summary.</param>
     /// <param name="folder">The session's folder, for the folder notice. Used only with <paramref name="folderExists"/>.</param>
-    /// <param name="folderExists">Whether the folder exists. Null: no folder notice is shown. While the notice applies, Start is off.</param>
+    /// <param name="folderExists">Whether the folder exists. Null: no folder notice is shown. Start is off only with no folder on record.</param>
     public CopilotResumePrompt(string heading, string facts, RailPalette palette,
         Func<CopilotResumeChoice, KeptSummary?, CancellationToken, Task<CopilotPreview>>? previewAsync = null, ContinueMode? initialMode = null,
         string? folder = null, bool? folderExists = null)
     {
         InitializeComponent();
+        // The window grows to the screen's work area at most: the body scrolls and the buttons stay in view (owner, 2026-11-22).
+        MaxHeight = SystemParameters.WorkArea.Height - 40;
         // The title names the source and the button names the target (RS-D4, RS-O2, RS-O4). The words come from ResumeTarget, the one place.
         Title = ResumeTarget.TitleOf(ProviderId.Copilot);
         var startLabel = ResumeTarget.ButtonOf(ProviderId.Copilot);
@@ -81,6 +86,7 @@ public partial class CopilotResumePrompt : Window
         AutomationProperties.SetName(StartButton, startLabel);
         _previewAsync = previewAsync;
         _folderNotice = folderExists is { } exists ? ResumeFolderNotice.For(folder, exists) : null;
+        _blocksStart = ResumeFolderNotice.BlocksStart(folder, folderExists);
         UiTheme.Apply(palette);
         Resources["PromptBg"] = RailPalette.Brush(palette.Background);
         Resources["PromptPanel"] = RailPalette.Brush(palette.Panel);
@@ -261,7 +267,7 @@ public partial class CopilotResumePrompt : Window
         Enable(RememberBox, free);
         var previewReady = _previewText is not null;
         Enable(CopyButton, free && previewReady);
-        Enable(StartButton, free && !ResumeFolderNotice.BlocksStart(_folderNotice) && CopilotResumeRules.CanStart(mode, previewReady, KeptMatches(choice)));
+        Enable(StartButton, free && !_blocksStart && CopilotResumeRules.CanStart(mode, previewReady, KeptMatches(choice)));
     }
 
     private static void Enable(UIElement element, bool enabled)
@@ -310,15 +316,16 @@ public partial class CopilotResumePrompt : Window
             var preview = await _previewAsync(choice, _kept, cts.Token);
             if (id != _request) return;
             if (preview.KeptSummary is { } made) _kept = made;
-            ShowPreview(preview);
+            if (preview.Problem is { } problem && preview.Text.Length == 0) ShowFailedSummary(choice, problem);
+            else ShowPreview(preview);
         }
         catch (OperationCanceledException)
         {
-            // Cancelled by a change of the choice, or by the dialog closing: nothing is shown.
+            // Cancelled by a change of the choice, or by the dialog closing: nothing is shown, and the selection stays.
         }
         catch (Exception ex)
         {
-            if (id == _request) ShowMessage($"The start text could not be made ({ex.GetType().Name}).", problem: true);
+            if (id == _request) ShowFailedSummary(choice, $"The start text could not be made ({ex.GetType().Name}).");
         }
         finally
         {
@@ -379,6 +386,22 @@ public partial class CopilotResumePrompt : Window
         PreviewBlock.Visibility = Visibility.Visible;
     }
 
+    /// <summary>
+    /// Shows a failed preview: the problem in the danger colour, and no text. A summary that was not made falls back to In full (ResumeDefaults): In full
+    /// is selected, and the problem is shown with the line that says so. Nothing is started.
+    /// </summary>
+    private void ShowFailedSummary(CopilotResumeChoice choice, string problem)
+    {
+        if (!ResumeDefaults.FallBackToFull(choice.Mode == CopilotResumeMode.Summary, cancelled: false))
+        {
+            ShowMessage(problem, problem: true);
+            return;
+        }
+        // Selecting In full clears the preview (OnChoiceChanged), so the problem is shown after it.
+        FullChoice.IsChecked = true;
+        ShowMessage($"{problem} {ResumeDefaults.FullFallbackLine}", problem: true);
+    }
+
     /// <summary>Takes the preview away. The text is cleared too, so no stale text stays in the dialog.</summary>
     private void HidePreview()
     {
@@ -413,7 +436,7 @@ public partial class CopilotResumePrompt : Window
     /// </summary>
     private void Start_Click(object sender, RoutedEventArgs e)
     {
-        if (ResumeFolderNotice.BlocksStart(_folderNotice)) return;
+        if (_blocksStart) return;
         var choice = Selected(out _);
         if (choice is null || _busy) return;
         if (!CopilotResumeRules.CanStart(choice.Mode, _previewText is not null, KeptMatches(choice))) return;

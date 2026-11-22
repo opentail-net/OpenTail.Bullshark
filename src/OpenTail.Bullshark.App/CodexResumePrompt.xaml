@@ -1,7 +1,7 @@
 <Window x:Class="OpenTail.Bullshark.App.CodexResumePrompt"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        SizeToContent="WidthAndHeight" ResizeMode="NoResize" ShowInTaskbar="False"
+        SizeToContent="WidthAndHeight" ResizeMode="CanResize" ShowInTaskbar="False"
         WindowStartupLocation="CenterOwner"
         Background="{DynamicResource PromptBg}" Foreground="{DynamicResource PromptText}" FontFamily="Segoe UI">
     <Window.Resources>
@@ -116,69 +116,76 @@
         </Style>
     </Window.Resources>
 
-    <StackPanel Margin="20" Width="580">
-        <TextBlock x:Name="Heading" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" />
-        <TextBlock x:Name="Facts" Style="{StaticResource Muted}" Margin="0,6,0,0" />
-        <TextBlock x:Name="FolderNotice" Foreground="{DynamicResource UiDanger}" TextWrapping="Wrap" Margin="0,8,0,0" Visibility="Collapsed" />
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="20,20,20,0" Width="580">
+                <TextBlock x:Name="Heading" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" />
+                <TextBlock x:Name="Facts" Style="{StaticResource Muted}" Margin="0,6,0,0" />
+                <TextBlock x:Name="FolderNotice" Foreground="{DynamicResource UiDanger}" TextWrapping="Wrap" Margin="0,8,0,0" Visibility="Collapsed" />
 
-        <TextBlock Style="{StaticResource Section}" Text="How to continue" />
-        <RadioButton x:Name="FullChoice" GroupName="CodexResume" />
-        <RadioButton x:Name="TailChoice" GroupName="CodexResume" IsChecked="True" />
-        <RadioButton x:Name="SummaryChoice" GroupName="CodexResume" />
+                <TextBlock Style="{StaticResource Section}" Text="How to continue" />
+                <RadioButton x:Name="FullChoice" GroupName="CodexResume" />
+                <RadioButton x:Name="TailChoice" GroupName="CodexResume" IsChecked="True" />
+                <RadioButton x:Name="SummaryChoice" GroupName="CodexResume" />
 
-        <StackPanel x:Name="LevelBlock" Margin="22,0,0,4">
-            <!-- The platform the new session starts in (RS-D3, RS-D4): a summary only. The line names both platforms when they differ. -->
-            <StackPanel x:Name="TargetRow" Orientation="Horizontal" Margin="0,0,0,6">
-                <TextBlock Text="Start in" VerticalAlignment="Center" Margin="0,0,8,0" />
-                <ComboBox x:Name="TargetBox" MinWidth="200" VerticalContentAlignment="Center" AutomationProperties.Name="Start in the platform" />
+                <StackPanel x:Name="LevelBlock" Margin="22,0,0,4">
+                    <!-- The platform the new session starts in (RS-D3, RS-D4): a summary only. The line names both platforms when they differ. -->
+                    <StackPanel x:Name="TargetRow" Orientation="Horizontal" Margin="0,0,0,6">
+                        <TextBlock Text="Start in" VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <ComboBox x:Name="TargetBox" MinWidth="200" VerticalContentAlignment="Center" AutomationProperties.Name="Start in the platform" />
+                    </StackPanel>
+                    <TextBlock x:Name="TargetLine" Style="{StaticResource Muted}" Margin="0,0,0,6" />
+                    <WrapPanel x:Name="LevelRow" Orientation="Horizontal" />
+                    <TextBlock Style="{StaticResource Muted}" Margin="0,0,0,4"
+                               Text="Codex writes it from this session's messages. Tool calls and their output are left out." />
+                </StackPanel>
+
+                <StackPanel x:Name="TurnsBlock" Margin="22,0,0,0">
+                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                        <TextBlock Text="Keep the last" VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <TextBox x:Name="TurnsBox" Width="56" Padding="6,3" VerticalContentAlignment="Center" />
+                        <TextBlock Text="turns" VerticalAlignment="Center" Margin="8,0,0,0" />
+                    </StackPanel>
+                    <TextBlock Style="{StaticResource Muted}" Margin="0,2,0,0"
+                               Text="Word for word, messages only, and at most about 4,000 tokens. The oldest turn goes first." />
+                </StackPanel>
+
+                <!-- The model of the new session (P9). Not shown for In full, which runs codex resume. The list is read once per window run (see the code-behind). -->
+                <StackPanel x:Name="ModelBlock" Margin="22,0,0,0">
+                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                        <TextBlock Text="Model" VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <ComboBox x:Name="ModelBox" MinWidth="280" VerticalContentAlignment="Center"
+                                  AutomationProperties.Name="Model of the new Codex session" />
+                    </StackPanel>
+                    <TextBlock x:Name="ModelNote" Style="{StaticResource Muted}" Margin="0,4,0,0" />
+                </StackPanel>
+
+                <TextBlock x:Name="CostText" Style="{StaticResource Muted}" Margin="0,14,0,0" />
+                <Button x:Name="MakeSummaryButton" Content="Make summary" Click="MakeSummary_Click" HorizontalAlignment="Right" Margin="0,8,0,0" Style="{StaticResource YellowGo}"
+                        ToolTip="Makes the summary now (one Codex call) and keeps it for Start. Nothing else makes it." AutomationProperties.Name="Make summary" />
+
+                <!-- The start text, shown before anything starts. Hidden until a text is made, and hidden again when the choice changes. -->
+                <StackPanel x:Name="PreviewBlock" Visibility="Collapsed" Margin="0,14,0,0">
+                    <TextBlock x:Name="PreviewHeader" Style="{StaticResource Muted}" />
+                    <TextBox x:Name="PreviewBox" IsReadOnly="True" TextWrapping="Wrap" FontFamily="Consolas" FontSize="12"
+                             MaxHeight="260" VerticalScrollBarVisibility="Auto" Margin="0,6,0,0" Padding="8"
+                             Background="{DynamicResource PromptPanel}" Foreground="{DynamicResource PromptText}"
+                             BorderBrush="{DynamicResource PromptBorder}" />
+                    <Button x:Name="CopyButton" Content="Copy" Click="Copy_Click" HorizontalAlignment="Left" Margin="0,6,0,0"
+                            ToolTip="Copies the text above to the clipboard. Nothing is sent to a session." AutomationProperties.Name="Copy the start text" />
+                    <TextBlock x:Name="PreviewNote" Style="{StaticResource Muted}" Margin="0,4,0,0" Visibility="Collapsed" />
+                </StackPanel>
+
+                <CheckBox x:Name="RememberBox" Content="Remember for this session" Foreground="{DynamicResource PromptText}" Margin="0,16,0,0" />
             </StackPanel>
-            <TextBlock x:Name="TargetLine" Style="{StaticResource Muted}" Margin="0,0,0,6" />
-            <WrapPanel x:Name="LevelRow" Orientation="Horizontal" />
-            <TextBlock Style="{StaticResource Muted}" Margin="0,0,0,4"
-                       Text="Codex writes it from this session's messages. Tool calls and their output are left out." />
-        </StackPanel>
-
-        <StackPanel x:Name="TurnsBlock" Margin="22,0,0,0">
-            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                <TextBlock Text="Keep the last" VerticalAlignment="Center" Margin="0,0,8,0" />
-                <TextBox x:Name="TurnsBox" Width="56" Padding="6,3" VerticalContentAlignment="Center" />
-                <TextBlock Text="turns" VerticalAlignment="Center" Margin="8,0,0,0" />
-            </StackPanel>
-            <TextBlock Style="{StaticResource Muted}" Margin="0,2,0,0"
-                       Text="Word for word, messages only, and at most about 4,000 tokens. The oldest turn goes first." />
-        </StackPanel>
-
-        <!-- The model of the new session (P9). Not shown for In full, which runs codex resume. The list is read once per window run (see the code-behind). -->
-        <StackPanel x:Name="ModelBlock" Margin="22,0,0,0">
-            <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-                <TextBlock Text="Model" VerticalAlignment="Center" Margin="0,0,8,0" />
-                <ComboBox x:Name="ModelBox" MinWidth="280" VerticalContentAlignment="Center"
-                          AutomationProperties.Name="Model of the new Codex session" />
-            </StackPanel>
-            <TextBlock x:Name="ModelNote" Style="{StaticResource Muted}" Margin="0,4,0,0" />
-        </StackPanel>
-
-        <TextBlock x:Name="CostText" Style="{StaticResource Muted}" Margin="0,14,0,0" />
-        <Button x:Name="MakeSummaryButton" Content="Make summary" Click="MakeSummary_Click" HorizontalAlignment="Right" Margin="0,8,0,0" Style="{StaticResource YellowGo}"
-                ToolTip="Makes the summary now (one Codex call) and keeps it for Start. Nothing else makes it." AutomationProperties.Name="Make summary" />
-
-        <!-- The start text, shown before anything starts. Hidden until a text is made, and hidden again when the choice changes. -->
-        <StackPanel x:Name="PreviewBlock" Visibility="Collapsed" Margin="0,14,0,0">
-            <TextBlock x:Name="PreviewHeader" Style="{StaticResource Muted}" />
-            <TextBox x:Name="PreviewBox" IsReadOnly="True" TextWrapping="Wrap" FontFamily="Consolas" FontSize="12"
-                     MaxHeight="260" VerticalScrollBarVisibility="Auto" Margin="0,6,0,0" Padding="8"
-                     Background="{DynamicResource PromptPanel}" Foreground="{DynamicResource PromptText}"
-                     BorderBrush="{DynamicResource PromptBorder}" />
-            <Button x:Name="CopyButton" Content="Copy" Click="Copy_Click" HorizontalAlignment="Left" Margin="0,6,0,0"
-                    ToolTip="Copies the text above to the clipboard. Nothing is sent to a session." AutomationProperties.Name="Copy the start text" />
-            <TextBlock x:Name="PreviewNote" Style="{StaticResource Muted}" Margin="0,4,0,0" Visibility="Collapsed" />
-        </StackPanel>
-
-        <CheckBox x:Name="RememberBox" Content="Remember for this session" Foreground="{DynamicResource PromptText}" Margin="0,16,0,0" />
-
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+        </ScrollViewer>
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="20,18,20,20">
             <Button x:Name="StartButton" Style="{StaticResource StartGo}" Click="Start_Click" />
             <Button x:Name="CancelButton" Content="Cancel" IsCancel="True" IsDefault="True" Click="Cancel_Click" Margin="0" />
         </StackPanel>
-    </StackPanel>
+    </Grid>
 </Window>

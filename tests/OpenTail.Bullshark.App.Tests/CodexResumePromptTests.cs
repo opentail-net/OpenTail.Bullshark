@@ -274,8 +274,9 @@ public sealed class CodexResumePromptTests
 
             Click(Named<Button>(prompt, "MakeSummaryButton"));
 
-            Assert.Equal(problem, Named<TextBlock>(prompt, "PreviewHeader").Text);
-            Assert.False(Named<Button>(prompt, "StartButton").IsEnabled);
+            Assert.Equal(problem + " " + ResumeDefaults.FullFallbackLine, Named<TextBlock>(prompt, "PreviewHeader").Text);
+            Assert.True(Named<RadioButton>(prompt, "FullChoice").IsChecked == true);
+            Assert.True(Named<Button>(prompt, "StartButton").IsEnabled);
         });
     }
 
@@ -290,7 +291,7 @@ public sealed class CodexResumePromptTests
             Click(Named<Button>(prompt, "MakeSummaryButton"));
 
             Assert.Contains("example failure", Named<TextBlock>(prompt, "PreviewHeader").Text);
-            Assert.False(Named<Button>(prompt, "StartButton").IsEnabled);
+            Assert.True(Named<Button>(prompt, "StartButton").IsEnabled);
         });
     }
 

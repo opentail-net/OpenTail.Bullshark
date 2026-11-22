@@ -10,7 +10,7 @@ namespace OpenTail.Bullshark.App.Tests;
 public sealed class ResumeFolderNoticeTests
 {
     private const string NoFolderText =
-        "The session has no folder on record, so it cannot be started. Start is blocked.";
+        "The session has no folder on record, so Start cannot make one. Start is blocked.";
 
     [Fact]
     public void ANullFolderHasNoFolderOnRecordWhetherOrNotItExists()
@@ -29,10 +29,10 @@ public sealed class ResumeFolderNoticeTests
     }
 
     [Fact]
-    public void AMissingFolderNamesTheFolderAndSaysStartIsBlocked()
+    public void AMissingFolderNamesTheFolderAndSaysStartWillMakeItAgain()
     {
         Assert.Equal(
-            "The session's folder is missing: C:\\Work\\gone. Start needs it, so it is blocked.",
+            "The session's folder is missing: C:\\Work\\gone. Start will make it again before it starts.",
             ResumeFolderNotice.For("C:\\Work\\gone", folderExists: false));
     }
 
@@ -43,10 +43,12 @@ public sealed class ResumeFolderNoticeTests
     }
 
     [Fact]
-    public void OnlyAPresentNoticeBlocksStart()
+    public void OnlyANoFolderOnRecordBlocksStart()
     {
-        Assert.False(ResumeFolderNotice.BlocksStart(null));
-        Assert.True(ResumeFolderNotice.BlocksStart(NoFolderText));
-        Assert.True(ResumeFolderNotice.BlocksStart(ResumeFolderNotice.For("C:\\Work\\gone", folderExists: false)));
+        Assert.False(ResumeFolderNotice.BlocksStart(null, folderExists: null));
+        Assert.False(ResumeFolderNotice.BlocksStart(Path.GetTempPath(), folderExists: true));
+        Assert.False(ResumeFolderNotice.BlocksStart("C:\\Work\\gone", folderExists: false));
+        Assert.True(ResumeFolderNotice.BlocksStart(null, folderExists: false));
+        Assert.True(ResumeFolderNotice.BlocksStart("  ", folderExists: true));
     }
 }

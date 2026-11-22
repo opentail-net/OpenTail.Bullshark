@@ -1,7 +1,7 @@
 <Window x:Class="OpenTail.Bullshark.App.ResumePrompt"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        SizeToContent="WidthAndHeight" ResizeMode="NoResize" ShowInTaskbar="False"
+        SizeToContent="WidthAndHeight" ResizeMode="CanResize" ShowInTaskbar="False"
         WindowStartupLocation="CenterOwner"
         Background="{DynamicResource PromptBg}" Foreground="{DynamicResource PromptText}" FontFamily="Segoe UI">
     <Window.Resources>
@@ -148,66 +148,73 @@
         </Style>
     </Window.Resources>
 
-    <StackPanel Margin="20" Width="580">
-        <TextBlock x:Name="Heading" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" />
-        <TextBlock x:Name="Facts" Style="{StaticResource Muted}" Margin="0,6,0,0" />
-        <TextBlock x:Name="FolderNotice" Foreground="{DynamicResource UiDanger}" TextWrapping="Wrap" Margin="0,8,0,0" Visibility="Collapsed" />
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="20,20,20,0" Width="580">
+                <TextBlock x:Name="Heading" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" />
+                <TextBlock x:Name="Facts" Style="{StaticResource Muted}" Margin="0,6,0,0" />
+                <TextBlock x:Name="FolderNotice" Foreground="{DynamicResource UiDanger}" TextWrapping="Wrap" Margin="0,8,0,0" Visibility="Collapsed" />
 
-        <TextBlock x:Name="Recommendation" Style="{StaticResource Muted}" Margin="0,10,0,0" />
+                <TextBlock x:Name="Recommendation" Style="{StaticResource Muted}" Margin="0,10,0,0" />
 
-        <TextBlock Style="{StaticResource Section}" Text="How to continue" />
-        <RadioButton x:Name="FullChoice" GroupName="Resume" Content="In full" />
-        <RadioButton x:Name="SummaryChoice" GroupName="Resume" Content="From a summary, then a new session" />
+                <TextBlock Style="{StaticResource Section}" Text="How to continue" />
+                <RadioButton x:Name="FullChoice" GroupName="Resume" Content="In full" />
+                <RadioButton x:Name="SummaryChoice" GroupName="Resume" Content="From a summary, then a new session" />
 
-        <StackPanel x:Name="LevelBlock" Margin="22,0,0,4">
-            <!-- The platform the new session starts in (RS-D3, RS-D4): a summary only. The line names both platforms when they differ. -->
-            <StackPanel x:Name="TargetRow" Orientation="Horizontal" Margin="0,0,0,6">
-                <TextBlock Text="Start in" VerticalAlignment="Center" Margin="0,0,8,0" />
-                <ComboBox x:Name="TargetBox" MinWidth="200" VerticalContentAlignment="Center" AutomationProperties.Name="Start in the platform" />
+                <StackPanel x:Name="LevelBlock" Margin="22,0,0,4">
+                    <!-- The platform the new session starts in (RS-D3, RS-D4): a summary only. The line names both platforms when they differ. -->
+                    <StackPanel x:Name="TargetRow" Orientation="Horizontal" Margin="0,0,0,6">
+                        <TextBlock Text="Start in" VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <ComboBox x:Name="TargetBox" MinWidth="200" VerticalContentAlignment="Center" AutomationProperties.Name="Start in the platform" />
+                    </StackPanel>
+                    <TextBlock x:Name="TargetLine" Style="{StaticResource Muted}" Margin="0,0,0,6" />
+                    <WrapPanel x:Name="LevelRow" Orientation="Horizontal" />
+                    <TextBlock Style="{StaticResource Muted}" Margin="0,0,0,4"
+                               Text="Haiku writes it from your messages and Claude's replies. The tool output is left out." />
+                </StackPanel>
+
+                <RadioButton x:Name="TailChoice" GroupName="Resume" Content="The last turns only (no model call)" />
+
+                <StackPanel x:Name="TurnsBlock">
+                    <StackPanel Orientation="Horizontal" Margin="22,6,0,0">
+                        <TextBlock Text="Keep the last" VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <TextBox x:Name="TurnsBox" Width="56" Padding="6,3" VerticalContentAlignment="Center" />
+                        <TextBlock Text="turns" VerticalAlignment="Center" Margin="8,0,0,0" />
+                    </StackPanel>
+                    <TextBlock Style="{StaticResource Muted}" Margin="22,2,0,0"
+                               Text="Word for word, with tool results on one line each, and at most about 4,000 tokens. The oldest turn goes first." />
+                </StackPanel>
+
+                <TextBlock x:Name="ModelHeader" Style="{StaticResource Section}" Text="Model and effort for the session that continues" />
+                <StackPanel x:Name="ModelLine" Orientation="Horizontal">
+                    <TextBlock Text="Model" Width="60" VerticalAlignment="Center" Style="{StaticResource Muted}" />
+                    <WrapPanel x:Name="ModelRow" Orientation="Horizontal" />
+                </StackPanel>
+                <StackPanel x:Name="EffortLine" Orientation="Horizontal" Margin="0,2,0,0">
+                    <TextBlock Text="Effort" Width="60" VerticalAlignment="Center" Style="{StaticResource Muted}" />
+                    <WrapPanel x:Name="EffortRow" Orientation="Horizontal" />
+                </StackPanel>
+
+                <TextBlock x:Name="CostText" Style="{StaticResource Muted}" Margin="0,16,0,0" />
+
+                <!-- The prompt the new session would get, shown before anything runs. Hidden until a preview is made, and hidden again when the choice changes. -->
+                <StackPanel x:Name="PreviewBlock" Visibility="Collapsed" Margin="0,14,0,0">
+                    <TextBlock x:Name="PreviewHeader" Style="{StaticResource Muted}" />
+                    <TextBox x:Name="PreviewText" IsReadOnly="True" TextWrapping="Wrap" FontFamily="Consolas" FontSize="12"
+                             MaxHeight="220" VerticalScrollBarVisibility="Auto" Margin="0,6,0,0" Padding="8"
+                             Background="{DynamicResource PromptPanel}" Foreground="{DynamicResource PromptText}"
+                             BorderBrush="{DynamicResource PromptBorder}" />
+                    <TextBlock x:Name="PreviewNote" Style="{StaticResource Muted}" Margin="0,4,0,0" Visibility="Collapsed" />
+                </StackPanel>
+
+                <CheckBox x:Name="RememberBox" Content="Remember for this session" Foreground="{DynamicResource PromptText}" Margin="0,16,0,0" />
             </StackPanel>
-            <TextBlock x:Name="TargetLine" Style="{StaticResource Muted}" Margin="0,0,0,6" />
-            <WrapPanel x:Name="LevelRow" Orientation="Horizontal" />
-            <TextBlock Style="{StaticResource Muted}" Margin="0,0,0,4"
-                       Text="Haiku writes it from your messages and Claude's replies. The tool output is left out." />
-        </StackPanel>
-
-        <RadioButton x:Name="TailChoice" GroupName="Resume" Content="The last turns only (no model call)" />
-
-        <StackPanel x:Name="TurnsBlock">
-            <StackPanel Orientation="Horizontal" Margin="22,6,0,0">
-                <TextBlock Text="Keep the last" VerticalAlignment="Center" Margin="0,0,8,0" />
-                <TextBox x:Name="TurnsBox" Width="56" Padding="6,3" VerticalContentAlignment="Center" />
-                <TextBlock Text="turns" VerticalAlignment="Center" Margin="8,0,0,0" />
-            </StackPanel>
-            <TextBlock Style="{StaticResource Muted}" Margin="22,2,0,0"
-                       Text="Word for word, with tool results on one line each, and at most about 4,000 tokens. The oldest turn goes first." />
-        </StackPanel>
-
-        <TextBlock x:Name="ModelHeader" Style="{StaticResource Section}" Text="Model and effort for the session that continues" />
-        <StackPanel x:Name="ModelLine" Orientation="Horizontal">
-            <TextBlock Text="Model" Width="60" VerticalAlignment="Center" Style="{StaticResource Muted}" />
-            <WrapPanel x:Name="ModelRow" Orientation="Horizontal" />
-        </StackPanel>
-        <StackPanel x:Name="EffortLine" Orientation="Horizontal" Margin="0,2,0,0">
-            <TextBlock Text="Effort" Width="60" VerticalAlignment="Center" Style="{StaticResource Muted}" />
-            <WrapPanel x:Name="EffortRow" Orientation="Horizontal" />
-        </StackPanel>
-
-        <TextBlock x:Name="CostText" Style="{StaticResource Muted}" Margin="0,16,0,0" />
-
-        <!-- The prompt the new session would get, shown before anything runs. Hidden until a preview is made, and hidden again when the choice changes. -->
-        <StackPanel x:Name="PreviewBlock" Visibility="Collapsed" Margin="0,14,0,0">
-            <TextBlock x:Name="PreviewHeader" Style="{StaticResource Muted}" />
-            <TextBox x:Name="PreviewText" IsReadOnly="True" TextWrapping="Wrap" FontFamily="Consolas" FontSize="12"
-                     MaxHeight="220" VerticalScrollBarVisibility="Auto" Margin="0,6,0,0" Padding="8"
-                     Background="{DynamicResource PromptPanel}" Foreground="{DynamicResource PromptText}"
-                     BorderBrush="{DynamicResource PromptBorder}" />
-            <TextBlock x:Name="PreviewNote" Style="{StaticResource Muted}" Margin="0,4,0,0" Visibility="Collapsed" />
-        </StackPanel>
-
-        <CheckBox x:Name="RememberBox" Content="Remember for this session" Foreground="{DynamicResource PromptText}" Margin="0,16,0,0" />
-
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+        </ScrollViewer>
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="20,18,20,20">
             <StackPanel Orientation="Horizontal" Margin="0,0,8,0">
                 <Button x:Name="ResumeButton" Click="Resume_Click" Style="{StaticResource ResumeGo}" />
                 <Border Width="1" Background="{DynamicResource UiGoText}" Opacity="0.35" />
@@ -225,5 +232,5 @@
             </StackPanel>
             <Button Content="Cancel" IsCancel="True" IsDefault="True" Click="Cancel_Click" Margin="0" />
         </StackPanel>
-    </StackPanel>
+    </Grid>
 </Window>

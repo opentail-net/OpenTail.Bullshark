@@ -287,8 +287,9 @@ public sealed class CopilotResumePromptTests
 
             Click(Named<Button>(prompt, "MakeSummaryButton"));
 
-            Assert.Equal(problem, Named<TextBlock>(prompt, "PreviewHeader").Text);
-            Assert.False(Named<Button>(prompt, "StartButton").IsEnabled);
+            Assert.Equal(problem + " " + ResumeDefaults.FullFallbackLine, Named<TextBlock>(prompt, "PreviewHeader").Text);
+            Assert.True(Named<RadioButton>(prompt, "FullChoice").IsChecked == true);
+            Assert.True(Named<Button>(prompt, "StartButton").IsEnabled);
         });
     }
 
@@ -303,9 +304,9 @@ public sealed class CopilotResumePromptTests
             Click(Named<Button>(prompt, "MakeSummaryButton"));
 
             // The message of an unexpected failure can name a file or a folder, so the screen shows the type only.
-            Assert.Equal("The start text could not be made (InvalidOperationException).", Named<TextBlock>(prompt, "PreviewHeader").Text);
+            Assert.Equal("The start text could not be made (InvalidOperationException). " + ResumeDefaults.FullFallbackLine, Named<TextBlock>(prompt, "PreviewHeader").Text);
             Assert.DoesNotContain("example failure", Named<TextBlock>(prompt, "PreviewHeader").Text);
-            Assert.False(Named<Button>(prompt, "StartButton").IsEnabled);
+            Assert.True(Named<Button>(prompt, "StartButton").IsEnabled);
         });
     }
 
