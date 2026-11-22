@@ -4,8 +4,10 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using OpenTail.Bullshark.Core.Continue;
+using OpenTail.Bullshark.Core.Providers;
 using OpenTail.Bullshark.Core.Resume;
 using OpenTail.Bullshark.Core.Setup;
 
@@ -27,9 +29,15 @@ public enum ResumeMode
 /// <summary>
 /// The choice made in the resume prompt. Level is set for a summary; Turns is the number of turns kept verbatim. Model and Effort
 /// are the model and effort of the resumed or new session (the summary itself is always Haiku at low effort). Remember is the
-/// "Remember for this session" tick: the prompt only returns it, and the window writes the mark (Continue, stage C6).
+/// "Remember for this session" tick: the prompt only returns it, and the window writes the mark (Continue, stage C6). Target is the platform
+/// the new session starts in (RS-D14). Until the target chooser is built it is always Claude, the screen's own platform.
 /// </summary>
-public sealed record ResumeChoice(ResumeMode Mode, SummaryLevel? Level, int Turns, string Model, string Effort, bool Remember = false);
+public sealed record ResumeChoice(ResumeMode Mode, SummaryLevel? Level, int Turns, string Model, string Effort, bool Remember, ProviderId Target)
+{
+    /// <summary>A choice whose target is Claude, the screen's own platform. The target is a static field, not a constant, so it cannot be a default value.</summary>
+    public ResumeChoice(ResumeMode Mode, SummaryLevel? Level, int Turns, string Model, string Effort, bool Remember = false)
+        : this(Mode, Level, Turns, Model, Effort, Remember, ProviderId.Claude) { }
+}
 
 /// <summary>
 /// What the Claude resume prompt's preview callback gives: the built preview, or, when the launch is refused, null with the refusal in
@@ -59,6 +67,11 @@ public partial class ResumePrompt : Window
         Func<ResumeChoice, KeptSummary?, CancellationToken, Task<ResumePromptPreview>>? previewAsync = null, ContinueMode? initialMode = null)
     {
         InitializeComponent();
+        // The title names the source and the button names the target (RS-D4, RS-O2, RS-O4). The words come from ResumeTarget, the one place.
+        Title = ResumeTarget.TitleOf(ProviderId.Claude);
+        var startLabel = ResumeTarget.ButtonOf(ProviderId.Claude);
+        ResumeButton.Content = startLabel;
+        AutomationProperties.SetName(ResumeButton, startLabel);
         _previewAsync = previewAsync;
         UiTheme.Apply(palette);
         Resources["PromptBg"] = RailPalette.Brush(palette.Background);
@@ -388,7 +401,7 @@ public partial class ResumePrompt : Window
             return;
         }
 
-        Choice = choice with { Remember = RememberBox.IsChecked == true };
+        Choice = choice with { Remember = RememberBox.IsChecked == true, Target = ProviderId.Claude };
         Close();
     }
 

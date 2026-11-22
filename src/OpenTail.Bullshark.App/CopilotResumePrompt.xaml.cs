@@ -4,8 +4,10 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using OpenTail.Bullshark.Core.Continue;
+using OpenTail.Bullshark.Core.Providers;
 using OpenTail.Bullshark.Core.Resume;
 
 namespace OpenTail.Bullshark.App;
@@ -26,9 +28,15 @@ public enum CopilotResumeMode
 /// <summary>
 /// The choice made in the Copilot resume screen. Level is set only for a summary; Turns is the number kept verbatim (0 for In full). Copilot has no model
 /// choice in v1 (G-O3): the new session uses Copilot's own default. Remember is the "Remember for this session" tick: it is only returned to the caller,
-/// which decides what to do with it (the screen writes nothing).
+/// which decides what to do with it (the screen writes nothing). Target is the platform the new session starts in (RS-D14). Until the target chooser is built it is always
+/// Copilot, the screen's own platform.
 /// </summary>
-public sealed record CopilotResumeChoice(CopilotResumeMode Mode, SummaryLevel? Level, int Turns, bool Remember = false);
+public sealed record CopilotResumeChoice(CopilotResumeMode Mode, SummaryLevel? Level, int Turns, bool Remember, ProviderId Target)
+{
+    /// <summary>A choice whose target is Copilot, the screen's own platform. The target is a static field, not a constant, so it cannot be a default value.</summary>
+    public CopilotResumeChoice(CopilotResumeMode Mode, SummaryLevel? Level, int Turns, bool Remember = false)
+        : this(Mode, Level, Turns, Remember, ProviderId.Copilot) { }
+}
 
 /// <summary>
 /// What the screen's preview callback gives: the start text (empty when the session has no messages), the summary it made or reused (null for none),
@@ -60,6 +68,11 @@ public partial class CopilotResumePrompt : Window
         Func<CopilotResumeChoice, KeptSummary?, CancellationToken, Task<CopilotPreview>>? previewAsync = null, ContinueMode? initialMode = null)
     {
         InitializeComponent();
+        // The title names the source and the button names the target (RS-D4, RS-O2, RS-O4). The words come from ResumeTarget, the one place.
+        Title = ResumeTarget.TitleOf(ProviderId.Copilot);
+        var startLabel = ResumeTarget.ButtonOf(ProviderId.Copilot);
+        StartButton.Content = startLabel;
+        AutomationProperties.SetName(StartButton, startLabel);
         _previewAsync = previewAsync;
         UiTheme.Apply(palette);
         Resources["PromptBg"] = RailPalette.Brush(palette.Background);
@@ -348,7 +361,7 @@ public partial class CopilotResumePrompt : Window
         var choice = Selected(out _);
         if (choice is null || _busy) return;
         if (!CopilotResumeRules.CanStart(choice.Mode, _previewText is not null, KeptMatches(choice))) return;
-        Choice = choice with { Remember = RememberBox.IsChecked == true };
+        Choice = choice with { Remember = RememberBox.IsChecked == true, Target = ProviderId.Copilot };
         PreviewText = choice.Mode == CopilotResumeMode.Full ? null : _previewText;
         KeptSummary = _kept;
         Close();

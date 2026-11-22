@@ -4,9 +4,11 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using OpenTail.Bullshark.Core.Codex;
 using OpenTail.Bullshark.Core.Continue;
+using OpenTail.Bullshark.Core.Providers;
 using OpenTail.Bullshark.Core.Resume;
 
 namespace OpenTail.Bullshark.App;
@@ -27,9 +29,15 @@ public enum CodexResumeMode
 /// <summary>
 /// The choice made in the Codex resume screen. Level is set only for a summary; Turns is the number kept verbatim (0 for In full). Model is the model
 /// id the new session is started with (P9), or null for Codex's own default (also the case for In full, which sends no model). Remember is the
-/// "Remember for this session" tick: it is only returned to the caller, which decides what to do with it (the screen writes nothing).
+/// "Remember for this session" tick: it is only returned to the caller, which decides what to do with it (the screen writes nothing). Target is the platform the new session starts in (RS-D14). Until the target chooser is built it is always
+/// Codex, the screen's own platform.
 /// </summary>
-public sealed record CodexResumeChoice(CodexResumeMode Mode, SummaryLevel? Level, int Turns, string? Model = null, bool Remember = false);
+public sealed record CodexResumeChoice(CodexResumeMode Mode, SummaryLevel? Level, int Turns, string? Model, bool Remember, ProviderId Target)
+{
+    /// <summary>A choice whose target is Codex, the screen's own platform. The target is a static field, not a constant, so it cannot be a default value.</summary>
+    public CodexResumeChoice(CodexResumeMode Mode, SummaryLevel? Level, int Turns, string? Model = null, bool Remember = false)
+        : this(Mode, Level, Turns, Model, Remember, ProviderId.Codex) { }
+}
 
 /// <summary>
 /// What the screen's preview callback gives: the start text (empty when the session has no messages), the summary it made or reused (null for
@@ -66,6 +74,11 @@ public partial class CodexResumePrompt : Window
         Task<CodexModelReading>? models = null, ContinueMode? initialMode = null)
     {
         InitializeComponent();
+        // The title names the source and the button names the target (RS-D4, RS-O2, RS-O4). The words come from ResumeTarget, the one place.
+        Title = ResumeTarget.TitleOf(ProviderId.Codex);
+        var startLabel = ResumeTarget.ButtonOf(ProviderId.Codex);
+        StartButton.Content = startLabel;
+        AutomationProperties.SetName(StartButton, startLabel);
         _previewAsync = previewAsync;
         UiTheme.Apply(palette);
         Resources["PromptBg"] = RailPalette.Brush(palette.Background);
@@ -396,7 +409,7 @@ public partial class CodexResumePrompt : Window
         if (choice is null || _busy) return;
         if (!ModelReady(choice.Mode)) return;
         if (!CodexResumeRules.CanStart(choice.Mode, _previewText is not null, KeptMatches(choice))) return;
-        Choice = choice with { Remember = RememberBox.IsChecked == true };
+        Choice = choice with { Remember = RememberBox.IsChecked == true, Target = ProviderId.Codex };
         PreviewText = choice.Mode == CodexResumeMode.Full ? null : _previewText;
         KeptSummary = _kept;
         Close();
