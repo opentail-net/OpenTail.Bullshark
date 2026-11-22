@@ -9,10 +9,81 @@
             <Setter Property="Padding" Value="14,7" />
             <Setter Property="Margin" Value="0,0,8,0" />
         </Style>
-        <!-- Start is the app's green launch button, as Claude's Resume is (the GoButton style, so the colours and the hover are the app's). -->
+        <!-- Start is the app's green launch button, as Claude's Resume is (the GoButton style, so the colours and the hover are the app's). It is the left part
+             of the Start split button: its right corners are square, and the narrow part on its right (TargetMenuPart) rounds them. -->
         <Style x:Key="StartGo" TargetType="Button" BasedOn="{StaticResource GoButton}">
             <Setter Property="Padding" Value="20,7" />
-            <Setter Property="Margin" Value="0,0,8,0" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid>
+                            <Border x:Name="Ring" CornerRadius="10,0,0,10" BorderThickness="2" BorderBrush="Transparent" Margin="-2" />
+                            <Border x:Name="Frame" Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="8,0,0,8" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                  TextElement.Foreground="{TemplateBinding Foreground}" />
+                            </Border>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Frame" Property="Background" Value="{DynamicResource UiGoHover}" />
+                                <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource UiGoHover}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Frame" Property="Background" Value="{DynamicResource UiGoPressed}" />
+                                <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource UiGoPressed}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Ring" Property="BorderBrush" Value="{DynamicResource UiAccent}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45" />
+                                <Setter Property="Cursor" Value="Arrow" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- The narrow part of the Start split button: the same green, with the corners on its right rounded. It opens the Start menu (the platform). -->
+        <Style x:Key="TargetMenuPart" TargetType="Button" BasedOn="{StaticResource GoButton}">
+            <Setter Property="Padding" Value="9,7" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid>
+                            <Border x:Name="Ring" CornerRadius="0,10,10,0" BorderThickness="2" BorderBrush="Transparent" Margin="-2" />
+                            <Border x:Name="Frame" Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="0,8,8,0" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                  TextElement.Foreground="{TemplateBinding Foreground}" />
+                            </Border>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Frame" Property="Background" Value="{DynamicResource UiGoHover}" />
+                                <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource UiGoHover}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Frame" Property="Background" Value="{DynamicResource UiGoPressed}" />
+                                <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource UiGoPressed}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Ring" Property="BorderBrush" Value="{DynamicResource UiAccent}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45" />
+                                <Setter Property="Cursor" Value="Arrow" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
         <!-- Make summary: the Start button's shape, hover and disabled look, in the attention yellow (the palette's Attention colours, one yellow in both themes). -->
         <Style x:Key="YellowGo" TargetType="Button" BasedOn="{StaticResource GoButton}">
@@ -133,11 +204,7 @@
                 <RadioButton x:Name="SummaryChoice" GroupName="CodexResume" />
 
                 <StackPanel x:Name="LevelBlock" Margin="22,0,0,4">
-                    <!-- The platform the new session starts in (RS-D3, RS-D4): a summary only. The line names both platforms when they differ. -->
-                    <StackPanel x:Name="TargetRow" Orientation="Horizontal" Margin="0,0,0,6">
-                        <TextBlock Text="Start in" VerticalAlignment="Center" Margin="0,0,8,0" />
-                        <ComboBox x:Name="TargetBox" MinWidth="200" VerticalContentAlignment="Center" AutomationProperties.Name="Start in the platform" />
-                    </StackPanel>
+                    <!-- The platform the new session starts in (RS-D3, RS-D4) is picked in the Start menu, a summary only. The line names both platforms when they differ. -->
                     <TextBlock x:Name="TargetLine" Style="{StaticResource Muted}" Margin="0,0,0,6" />
                     <WrapPanel x:Name="LevelRow" Orientation="Horizontal" />
                     <TextBlock Style="{StaticResource Muted}" Margin="0,0,0,4"
@@ -184,7 +251,21 @@
             </StackPanel>
         </ScrollViewer>
         <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="20,18,20,20">
-            <Button x:Name="StartButton" Style="{StaticResource StartGo}" Click="Start_Click" />
+            <!-- The Start split button: Start, and the narrow part that opens the Start menu of platforms. The menu is for a summary only (RS-D2). -->
+            <StackPanel x:Name="StartSplit" Orientation="Horizontal" Margin="0,0,8,0">
+                <Button x:Name="StartButton" Style="{StaticResource StartGo}" Click="Start_Click" />
+                <Border Width="1" Background="{DynamicResource UiGoText}" Opacity="0.35" />
+                <Button x:Name="TargetMenuButton" Content="▾" Style="{StaticResource TargetMenuPart}" Click="TargetMenuButton_Click"
+                        ToolTip="Start in another platform: only from a summary" AutomationProperties.Name="Choose the platform to start in">
+                    <Button.ContextMenu>
+                        <ContextMenu x:Name="TargetMenu" Placement="Top" HorizontalOffset="-150" MinWidth="200">
+                            <MenuItem x:Name="TargetClaudeItem" Click="TargetItem_Click" IsCheckable="True" ToolTipService.ShowOnDisabled="True" />
+                            <MenuItem x:Name="TargetCodexItem" Click="TargetItem_Click" IsCheckable="True" ToolTipService.ShowOnDisabled="True" />
+                            <MenuItem x:Name="TargetCopilotItem" Click="TargetItem_Click" IsCheckable="True" ToolTipService.ShowOnDisabled="True" />
+                        </ContextMenu>
+                    </Button.ContextMenu>
+                </Button>
+            </StackPanel>
             <Button x:Name="CancelButton" Content="Cancel" IsCancel="True" IsDefault="True" Click="Cancel_Click" Margin="0" />
         </StackPanel>
     </Grid>

@@ -58,6 +58,9 @@ public partial class ResumePrompt : Window
     private readonly int _contextTokens;
     private readonly Func<ResumeChoice, KeptSummary?, CancellationToken, Task<ResumePromptPreview>>? _previewAsync;
     private CancellationTokenSource? _previewCts;
+
+    /// <summary>The platform the Start menu picks (RS-D3): Claude by default, and back to Claude when the mode leaves a summary.</summary>
+    private ProviderId _target = ProviderId.Claude;
     private bool _previewing;
 
     /// <summary>True while the preview on screen is a refusal of the launch: Resume and Copy stay off, as the Codex Start does (R4d).</summary>
@@ -141,10 +144,6 @@ public partial class ResumePrompt : Window
         foreach (var model in Choices.Models) ModelRow.Children.Add(Segment(model, "Model", model == defaultModel));
         foreach (var effort in Choices.Efforts) EffortRow.Children.Add(Segment(effort, "Effort", effort == defaultEffort));
 
-        // The target chooser (RS-D3): the source is the default. A change of the pick hides the preview (RS-D18); it does not rebuild it.
-        ResumeTargetBox.Fill(TargetBox, ProviderId.Claude);
-        TargetBox.SelectionChanged += (_, _) => OnTargetChanged();
-
         UpdateCost();
     }
 
@@ -196,23 +195,21 @@ public partial class ResumePrompt : Window
     private ResumeChoice Targeted(ResumeChoice choice) => choice with { Target = StartTarget(choice.Mode) };
 
     /// <summary>
-    /// The platform the new session starts in, for the mode (<see cref="ResumeTarget.ChosenTarget"/>): the chooser's pick in a summary, else Claude.
+    /// The platform the new session starts in, for the mode (<see cref="ResumeTarget.ChosenTarget"/>): the Resume menu's pick in a summary, else Claude.
     /// </summary>
     private ProviderId StartTarget(ResumeMode mode) =>
-        ResumeTarget.ChosenTarget(ProviderId.Claude, RememberChoice.ModeOf(mode), ResumeTargetBox.SelectedOf(TargetBox, ProviderId.Claude));
+        ResumeTarget.ChosenTarget(ProviderId.Claude, RememberChoice.ModeOf(mode), _target);
 
     /// <summary>True when the start on screen goes to another platform than Claude: the model and effort rows do not apply to it (RS-D12).</summary>
     private static bool IsCross(ResumeChoice? choice) => choice is not null && !CrossModelRow.ShowsModel(ProviderId.Claude, choice.Target);
 
     /// <summary>
-    /// Shows the target on screen (RS-D3, RS-D4, RS-O2): the chooser only in a summary, the line "Summary of ... session, new ... session" when the target
-    /// is another platform, and the button that names the target.
+    /// Shows the target on screen (RS-D3, RS-D4, RS-O2): the line "Summary of ... session, new ... session" when a summary starts in another platform, and
+    /// the Resume button, which names the target.
     /// </summary>
     private void ShowTarget(ProviderId target)
     {
         var summary = SummaryChoice.IsChecked == true;
-        TargetRow.Visibility = summary ? Visibility.Visible : Visibility.Collapsed;
-        TargetBox.Visibility = TargetRow.Visibility;
         var line = ResumeTarget.SummaryLine(ProviderId.Claude, target);
         TargetLine.Text = line ?? string.Empty;
         TargetLine.Visibility = summary && line is not null ? Visibility.Visible : Visibility.Collapsed;
@@ -222,13 +219,26 @@ public partial class ResumePrompt : Window
     }
 
     /// <summary>
-    /// Runs when the owner picks another platform (RS-D18). The preview on screen is for the old target, so it is taken away. Nothing is rebuilt and no
-    /// model is called: Preview builds the text again with the kept summary, and Start builds its text the same way.
+    /// Runs when the owner picks a platform in the Resume menu (RS-D3, RS-D18). No model is called. A pick that changes the target takes the preview on
+    /// screen away: nothing is rebuilt and no model is called, as Preview builds the text again with the kept summary, and Start builds its text the same way.
     /// </summary>
-    private void OnTargetChanged()
+    private void TargetItem_Click(object sender, RoutedEventArgs e)
     {
-        HidePreview();
+        if (ResumeTargetMenu.PlatformOf(sender) is not { } platform) return;
+        if (platform != _target) HidePreview();
+        _target = platform;
         Refresh();
+    }
+
+    /// <summary>
+    /// Sets the platform items of the Resume menu (RS-D2, RS-D3, RS-D8): the pick is checked, and each item is on only in a summary, where the rule allows
+    /// it. <paramref name="menuOn"/> is false outside a summary, and while a preview is being made.
+    /// </summary>
+    private void ShowTargetMenu(bool menuOn)
+    {
+        ResumeTargetMenu.Apply(TargetClaudeItem, ProviderId.Claude, ProviderId.Claude, _target, menuOn);
+        ResumeTargetMenu.Apply(TargetCodexItem, ProviderId.Codex, ProviderId.Claude, _target, menuOn);
+        ResumeTargetMenu.Apply(TargetCopilotItem, ProviderId.Copilot, ProviderId.Claude, _target, menuOn);
     }
 
     /// <summary>
@@ -237,8 +247,8 @@ public partial class ResumePrompt : Window
     /// </summary>
     private void UpdateCost()
     {
-        // RS-D3: the target goes back to the source when the mode leaves a summary; the chooser is hidden then.
-        if (SummaryChoice.IsChecked != true) ResumeTargetBox.Select(TargetBox, ProviderId.Claude);
+        // RS-D3: the target goes back to the source when the mode leaves a summary; the Resume menu's platform items are off then.
+        if (SummaryChoice.IsChecked != true) _target = ProviderId.Claude;
         HidePreview();
         if (KeptSummary is { } kept && !kept.MatchesLevel(SelectedLevelOrNull())) KeptSummary = null;
         Refresh();
@@ -286,7 +296,7 @@ public partial class ResumePrompt : Window
         Enable(SummaryChoice, free);
         Enable(TailChoice, free);
         Enable(TurnsBox, free);
-        Enable(TargetBox, free);
+        ShowTargetMenu(free && choice?.Mode == ResumeMode.Summary);
         foreach (var segment in LevelRow.Children.OfType<RadioButton>()) Enable(segment, free);
         ResumeButton.IsEnabled = free && !_refused && !_blocksStart;
         ResumeMenuButton.IsEnabled = free;

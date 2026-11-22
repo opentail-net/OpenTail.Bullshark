@@ -1,6 +1,7 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using OpenTail.Bullshark.Core.Continue;
 using Xunit;
 
@@ -115,6 +116,30 @@ public sealed class ResumeScreenLayoutTests
 
             Assert.Contains("Start cannot make one", Named<TextBlock>(prompt, "FolderNotice").Text);
             Assert.False(Named<Button>(prompt, "StartButton").IsEnabled);
+        });
+    }
+
+    [Fact]
+    public void TheStartButtonsAndTheirSplitHaveNoFixedWidthAndTheCodexAndCopilotMenusOpenUpward()
+    {
+        UiThread.Run(() =>
+        {
+            EnsureAppResources();
+            var claude = new ResumePrompt(Heading, Facts, 500_000, RailPalette.DarkPalette, "opus", "high");
+            var codex = new CodexResumePrompt(Heading, Facts, RailPalette.DarkPalette);
+            var copilot = new CopilotResumePrompt(Heading, Facts, RailPalette.DarkPalette);
+
+            // No fixed width: the buttons are as wide as their labels, so the Start label is not clipped by the part beside it.
+            Assert.True(double.IsNaN(Named<Button>(claude, "ResumeButton").Width));
+            Assert.True(double.IsNaN(Named<Button>(claude, "ResumeMenuButton").Width));
+            Assert.True(double.IsNaN(Named<Button>(codex, "StartButton").Width));
+            Assert.True(double.IsNaN(Named<StackPanel>(codex, "StartSplit").Width));
+            Assert.True(double.IsNaN(Named<Button>(copilot, "StartButton").Width));
+            Assert.True(double.IsNaN(Named<StackPanel>(copilot, "StartSplit").Width));
+
+            // The platform menu of the split button opens upward, above the Start row that is pinned at the bottom.
+            Assert.Equal(PlacementMode.Top, Named<ContextMenu>(codex, "TargetMenu").Placement);
+            Assert.Equal(PlacementMode.Top, Named<ContextMenu>(copilot, "TargetMenu").Placement);
         });
     }
 }

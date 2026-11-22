@@ -59,6 +59,9 @@ public partial class CopilotResumePrompt : Window
     private string? _previewText;
     private KeptSummary? _kept;
 
+    /// <summary>The platform the Start menu picks (RS-D3): Copilot by default, and back to Copilot when the mode leaves a summary.</summary>
+    private ProviderId _target = ProviderId.Copilot;
+
     /// <summary>The folder notice shown in red (<see cref="ResumeFolderNotice"/>), or null. Start is off only with no folder on record; the choices and Copy stay on.</summary>
     private readonly string? _folderNotice;
 
@@ -129,10 +132,6 @@ public partial class CopilotResumePrompt : Window
         foreach (var radio in new[] { FullChoice, TailChoice, SummaryChoice }) radio.Checked += (_, _) => OnChoiceChanged();
         TurnsBox.TextChanged += (_, _) => OnChoiceChanged();
 
-        // The target chooser (RS-D3): the source is the default. A change of the pick hides the preview (RS-D18); it does not rebuild it.
-        ResumeTargetBox.Fill(TargetBox, ProviderId.Copilot);
-        TargetBox.SelectionChanged += (_, _) => OnTargetChanged();
-
         OnChoiceChanged();
     }
 
@@ -189,20 +188,18 @@ public partial class CopilotResumePrompt : Window
     private CopilotResumeChoice Targeted(CopilotResumeChoice choice) => choice with { Target = StartTarget(choice.Mode) };
 
     /// <summary>
-    /// The platform the new session starts in, for the mode (<see cref="ResumeTarget.ChosenTarget"/>): the chooser's pick in a summary, else Copilot.
+    /// The platform the new session starts in, for the mode (<see cref="ResumeTarget.ChosenTarget"/>): the Start menu's pick in a summary, else Copilot.
     /// </summary>
     private ProviderId StartTarget(CopilotResumeMode mode) =>
-        ResumeTarget.ChosenTarget(ProviderId.Copilot, RememberChoice.ModeOf(mode), ResumeTargetBox.SelectedOf(TargetBox, ProviderId.Copilot));
+        ResumeTarget.ChosenTarget(ProviderId.Copilot, RememberChoice.ModeOf(mode), _target);
 
     /// <summary>
-    /// Shows the target on screen (RS-D3, RS-D4, RS-O2): the chooser only in a summary, the line "Summary of ... session, new ... session" when the target
-    /// is another platform, and the button that names the target.
+    /// Shows the target on screen (RS-D3, RS-D4, RS-O2): the line "Summary of ... session, new ... session" when a summary starts in another platform, and
+    /// the Start button, which names the target.
     /// </summary>
     private void ShowTarget(ProviderId target)
     {
         var summary = SummaryChoice.IsChecked == true;
-        TargetRow.Visibility = summary ? Visibility.Visible : Visibility.Collapsed;
-        TargetBox.Visibility = TargetRow.Visibility;
         var line = ResumeTarget.SummaryLine(ProviderId.Copilot, target);
         TargetLine.Text = line ?? string.Empty;
         TargetLine.Visibility = summary && line is not null ? Visibility.Visible : Visibility.Collapsed;
@@ -211,16 +208,45 @@ public partial class CopilotResumePrompt : Window
         AutomationProperties.SetName(StartButton, startLabel);
     }
 
+    /// <summary>The tooltip of the narrow part of the Start split button: in a summary, and outside one (RS-D2).</summary>
+    private const string TargetMenuTip = "Start in another platform: only from a summary";
+
+    /// <summary>The tooltip of the narrow part of the Start split button while it is off: the mode is not a summary (RS-D2).</summary>
+    private const string TargetMenuOffTip = "Switching platform is only for a summary.";
+
     /// <summary>
-    /// Runs when the owner picks another platform (RS-D18). A request in progress is for the old target, so it is cancelled, and the preview on screen is
-    /// taken away. Nothing is rebuilt here: Make summary builds the text again for the target on screen, with the kept summary (no call when it is kept).
+    /// Runs when the owner picks a platform in the Start menu (RS-D3, RS-D18). No model call. A pick that changes the target cancels a request in progress,
+    /// which is for the old target, and takes the preview on screen away. Make summary builds the text again for the target on screen, with the kept summary.
     /// </summary>
-    private void OnTargetChanged()
+    private void TargetItem_Click(object sender, RoutedEventArgs e)
     {
-        CancelRequest();
-        _busy = false;
-        HidePreview();
+        if (ResumeTargetMenu.PlatformOf(sender) is not { } platform) return;
+        if (platform != _target)
+        {
+            CancelRequest();
+            _busy = false;
+            HidePreview();
+        }
+        _target = platform;
         Refresh();
+    }
+
+    /// <summary>The narrow part of the Start split button: opens the Start menu above it. Nothing is started.</summary>
+    private void TargetMenuButton_Click(object sender, RoutedEventArgs e)
+    {
+        TargetMenu.PlacementTarget = TargetMenuButton;
+        TargetMenu.IsOpen = true;
+    }
+
+    /// <summary>
+    /// Sets the Start menu (RS-D3, RS-D8): the pick is checked, and each platform item is on only where the rule allows it for a summary.
+    /// <paramref name="menuOn"/> is false outside a summary, and while a summary is made.
+    /// </summary>
+    private void ShowTargetMenu(bool menuOn)
+    {
+        ResumeTargetMenu.Apply(TargetClaudeItem, ProviderId.Claude, ProviderId.Copilot, _target, menuOn);
+        ResumeTargetMenu.Apply(TargetCodexItem, ProviderId.Codex, ProviderId.Copilot, _target, menuOn);
+        ResumeTargetMenu.Apply(TargetCopilotItem, ProviderId.Copilot, ProviderId.Copilot, _target, menuOn);
     }
 
     /// <summary>
@@ -230,8 +256,8 @@ public partial class CopilotResumePrompt : Window
     /// </summary>
     private void OnChoiceChanged()
     {
-        // RS-D3: the target goes back to the source when the mode leaves a summary; the chooser is hidden then.
-        if (SummaryChoice.IsChecked != true) ResumeTargetBox.Select(TargetBox, ProviderId.Copilot);
+        // RS-D3: the target goes back to the source when the mode leaves a summary; the Start menu is off then.
+        if (SummaryChoice.IsChecked != true) _target = ProviderId.Copilot;
         CancelRequest();
         _busy = false;
         var choice = Selected(out var turnsValid);
@@ -261,8 +287,11 @@ public partial class CopilotResumePrompt : Window
         Enable(SummaryChoice, free);
         Enable(LevelRow, free && mode == CopilotResumeMode.Summary);
         Enable(TurnsBox, free && turnsApply);
-        Enable(TargetBox, free);
         ShowTarget(choice?.Target ?? ProviderId.Copilot);
+        var inSummary = mode == CopilotResumeMode.Summary;
+        Enable(TargetMenuButton, free && inSummary);
+        TargetMenuButton.ToolTip = inSummary ? TargetMenuTip : TargetMenuOffTip;
+        ShowTargetMenu(free && inSummary);
         Enable(MakeSummaryButton, free && mode == CopilotResumeMode.Summary && turnsValid);
         Enable(RememberBox, free);
         var previewReady = _previewText is not null;

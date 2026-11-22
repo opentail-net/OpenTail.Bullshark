@@ -74,7 +74,7 @@ public sealed class ResumeScreenFolderTests
             Assert.Equal(Visibility.Visible, notice.Visibility);
             Assert.Equal(ResumeFolderNotice.For(folder, folderExists: false), notice.Text);
             Assert.True(Named<Button>(prompt, "ResumeButton").IsEnabled);
-            Assert.True(Named<ComboBox>(prompt, "TargetBox").IsEnabled);
+            Assert.True(Named<Button>(prompt, "ResumeMenuButton").IsEnabled);
             Assert.True(Named<MenuItem>(prompt, "PreviewItem").IsEnabled);
         });
     }
@@ -103,7 +103,10 @@ public sealed class ResumeScreenFolderTests
             // The last-turns preview is built at once, with no press: its text is ready and Copy is on. Start stays on: Start makes the folder again.
             Assert.True(Named<Button>(prompt, "CopyButton").IsEnabled);
             Assert.True(Named<Button>(prompt, "StartButton").IsEnabled);
-            Assert.True(Named<ComboBox>(prompt, "TargetBox").IsEnabled);
+            // The Start menu is for a summary only (RS-D2): off in the last turns, and on in a summary whatever the folder notice says.
+            Assert.False(Named<Button>(prompt, "TargetMenuButton").IsEnabled);
+            Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
+            Assert.True(Named<Button>(prompt, "TargetMenuButton").IsEnabled);
             Assert.True(Named<RadioButton>(prompt, "SummaryChoice").IsEnabled);
         });
     }
@@ -142,7 +145,10 @@ public sealed class ResumeScreenFolderTests
             Assert.Equal(ResumeFolderNotice.For(folder, folderExists: false), notice.Text);
             Assert.True(Named<Button>(prompt, "CopyButton").IsEnabled);
             Assert.True(Named<Button>(prompt, "StartButton").IsEnabled);
-            Assert.True(Named<ComboBox>(prompt, "TargetBox").IsEnabled);
+            // The Start menu is for a summary only (RS-D2): off in the last turns, and on in a summary whatever the folder notice says.
+            Assert.False(Named<Button>(prompt, "TargetMenuButton").IsEnabled);
+            Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
+            Assert.True(Named<Button>(prompt, "TargetMenuButton").IsEnabled);
             Assert.True(Named<RadioButton>(prompt, "SummaryChoice").IsEnabled);
         });
     }

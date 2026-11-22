@@ -60,6 +60,9 @@ public partial class CodexResumePrompt : Window
     private string? _previewText;
     private KeptSummary? _kept;
 
+    /// <summary>The platform the Start menu picks (RS-D3): Codex by default, and back to Codex when the mode leaves a summary.</summary>
+    private ProviderId _target = ProviderId.Codex;
+
     /// <summary>True once the model list is in (or none was asked for). Start of a new session waits for it; In full does not need it.</summary>
     private bool _modelsReady;
 
@@ -133,10 +136,6 @@ public partial class CodexResumePrompt : Window
         }
         foreach (var radio in new[] { FullChoice, TailChoice, SummaryChoice }) radio.Checked += (_, _) => OnChoiceChanged();
         TurnsBox.TextChanged += (_, _) => OnChoiceChanged();
-
-        // The target chooser (RS-D3): the source is the default. A change of the pick hides the preview (RS-D18); it does not rebuild it.
-        ResumeTargetBox.Fill(TargetBox, ProviderId.Codex);
-        TargetBox.SelectionChanged += (_, _) => OnTargetChanged();
 
         OnChoiceChanged();
 
@@ -241,20 +240,18 @@ public partial class CodexResumePrompt : Window
     private CodexResumeChoice Targeted(CodexResumeChoice choice) => choice with { Target = StartTarget(choice.Mode) };
 
     /// <summary>
-    /// The platform the new session starts in, for the mode (<see cref="ResumeTarget.ChosenTarget"/>): the chooser's pick in a summary, else Codex.
+    /// The platform the new session starts in, for the mode (<see cref="ResumeTarget.ChosenTarget"/>): the Start menu's pick in a summary, else Codex.
     /// </summary>
     private ProviderId StartTarget(CodexResumeMode mode) =>
-        ResumeTarget.ChosenTarget(ProviderId.Codex, RememberChoice.ModeOf(mode), ResumeTargetBox.SelectedOf(TargetBox, ProviderId.Codex));
+        ResumeTarget.ChosenTarget(ProviderId.Codex, RememberChoice.ModeOf(mode), _target);
 
     /// <summary>
-    /// Shows the target on screen (RS-D3, RS-D4, RS-O2): the chooser only in a summary, the line "Summary of ... session, new ... session" when the target
-    /// is another platform, and the button that names the target.
+    /// Shows the target on screen (RS-D3, RS-D4, RS-O2): the line "Summary of ... session, new ... session" when a summary starts in another platform, and
+    /// the Start button, which names the target.
     /// </summary>
     private void ShowTarget(ProviderId target)
     {
         var summary = SummaryChoice.IsChecked == true;
-        TargetRow.Visibility = summary ? Visibility.Visible : Visibility.Collapsed;
-        TargetBox.Visibility = TargetRow.Visibility;
         var line = ResumeTarget.SummaryLine(ProviderId.Codex, target);
         TargetLine.Text = line ?? string.Empty;
         TargetLine.Visibility = summary && line is not null ? Visibility.Visible : Visibility.Collapsed;
@@ -263,16 +260,45 @@ public partial class CodexResumePrompt : Window
         AutomationProperties.SetName(StartButton, startLabel);
     }
 
+    /// <summary>The tooltip of the narrow part of the Start split button: in a summary, and outside one (RS-D2).</summary>
+    private const string TargetMenuTip = "Start in another platform: only from a summary";
+
+    /// <summary>The tooltip of the narrow part of the Start split button while it is off: the mode is not a summary (RS-D2).</summary>
+    private const string TargetMenuOffTip = "Switching platform is only for a summary.";
+
     /// <summary>
-    /// Runs when the owner picks another platform (RS-D18). A request in progress is for the old target, so it is cancelled, and the preview on screen is
-    /// taken away. Nothing is rebuilt here: Make summary builds the text again for the target on screen, with the kept summary (no call when it is kept).
+    /// Runs when the owner picks a platform in the Start menu (RS-D3, RS-D18). No model call. A pick that changes the target cancels a request in progress,
+    /// which is for the old target, and takes the preview on screen away. Make summary builds the text again for the target on screen, with the kept summary.
     /// </summary>
-    private void OnTargetChanged()
+    private void TargetItem_Click(object sender, RoutedEventArgs e)
     {
-        CancelRequest();
-        _busy = false;
-        HidePreview();
+        if (ResumeTargetMenu.PlatformOf(sender) is not { } platform) return;
+        if (platform != _target)
+        {
+            CancelRequest();
+            _busy = false;
+            HidePreview();
+        }
+        _target = platform;
         Refresh();
+    }
+
+    /// <summary>The narrow part of the Start split button: opens the Start menu above it. Nothing is started.</summary>
+    private void TargetMenuButton_Click(object sender, RoutedEventArgs e)
+    {
+        TargetMenu.PlacementTarget = TargetMenuButton;
+        TargetMenu.IsOpen = true;
+    }
+
+    /// <summary>
+    /// Sets the Start menu (RS-D3, RS-D8): the pick is checked, and each platform item is on only where the rule allows it for a summary.
+    /// <paramref name="menuOn"/> is false outside a summary, and while a summary is made.
+    /// </summary>
+    private void ShowTargetMenu(bool menuOn)
+    {
+        ResumeTargetMenu.Apply(TargetClaudeItem, ProviderId.Claude, ProviderId.Codex, _target, menuOn);
+        ResumeTargetMenu.Apply(TargetCodexItem, ProviderId.Codex, ProviderId.Codex, _target, menuOn);
+        ResumeTargetMenu.Apply(TargetCopilotItem, ProviderId.Copilot, ProviderId.Codex, _target, menuOn);
     }
 
     /// <summary>
@@ -282,8 +308,8 @@ public partial class CodexResumePrompt : Window
     /// </summary>
     private void OnChoiceChanged()
     {
-        // RS-D3: the target goes back to the source when the mode leaves a summary; the chooser is hidden then.
-        if (SummaryChoice.IsChecked != true) ResumeTargetBox.Select(TargetBox, ProviderId.Codex);
+        // RS-D3: the target goes back to the source when the mode leaves a summary; the Start menu is off then.
+        if (SummaryChoice.IsChecked != true) _target = ProviderId.Codex;
         CancelRequest();
         _busy = false;
         var choice = Selected(out var turnsValid);
@@ -313,8 +339,11 @@ public partial class CodexResumePrompt : Window
         Enable(SummaryChoice, free);
         Enable(LevelRow, free && mode == CodexResumeMode.Summary);
         Enable(TurnsBox, free && turnsApply);
-        Enable(TargetBox, free);
         ShowTarget(choice?.Target ?? ProviderId.Codex);
+        var inSummary = mode == CodexResumeMode.Summary;
+        Enable(TargetMenuButton, free && inSummary);
+        TargetMenuButton.ToolTip = inSummary ? TargetMenuTip : TargetMenuOffTip;
+        ShowTargetMenu(free && inSummary);
         Enable(MakeSummaryButton, free && mode == CodexResumeMode.Summary && turnsValid);
         Enable(RememberBox, free);
         var previewReady = _previewText is not null;

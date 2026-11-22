@@ -166,11 +166,7 @@
                 <RadioButton x:Name="SummaryChoice" GroupName="Resume" Content="From a summary, then a new session" />
 
                 <StackPanel x:Name="LevelBlock" Margin="22,0,0,4">
-                    <!-- The platform the new session starts in (RS-D3, RS-D4): a summary only. The line names both platforms when they differ. -->
-                    <StackPanel x:Name="TargetRow" Orientation="Horizontal" Margin="0,0,0,6">
-                        <TextBlock Text="Start in" VerticalAlignment="Center" Margin="0,0,8,0" />
-                        <ComboBox x:Name="TargetBox" MinWidth="200" VerticalContentAlignment="Center" AutomationProperties.Name="Start in the platform" />
-                    </StackPanel>
+                    <!-- The platform the new session starts in (RS-D3, RS-D4) is picked in the Resume menu, a summary only. The line names both platforms when they differ. -->
                     <TextBlock x:Name="TargetLine" Style="{StaticResource Muted}" Margin="0,0,0,6" />
                     <WrapPanel x:Name="LevelRow" Orientation="Horizontal" />
                     <TextBlock Style="{StaticResource Muted}" Margin="0,0,0,4"
@@ -219,13 +215,18 @@
                 <Button x:Name="ResumeButton" Click="Resume_Click" Style="{StaticResource ResumeGo}" />
                 <Border Width="1" Background="{DynamicResource UiGoText}" Opacity="0.35" />
                 <Button x:Name="ResumeMenuButton" Content="▾" Style="{StaticResource ResumeMenuPart}" Click="ResumeMenuButton_Click"
-                        ToolTip="Resume options: preview the prompt" AutomationProperties.Name="Resume options">
+                        ToolTip="Resume options: preview or copy the prompt, or start in another platform (summary only)" AutomationProperties.Name="Resume options">
                     <Button.ContextMenu>
                         <ContextMenu x:Name="ResumeMenu" Placement="Bottom" HorizontalOffset="-150" MinWidth="200">
                             <MenuItem x:Name="PreviewItem" Header="Preview the prompt…" Click="PreviewItem_Click"
                                       ToolTipService.ShowOnDisabled="True" />
                             <MenuItem x:Name="CopyItem" Header="Copy the prompt" Click="CopyItem_Click"
                                       ToolTipService.ShowOnDisabled="True" />
+                            <Separator />
+                            <!-- The platform the new session starts in (RS-D2, RS-D3): the items are on in a summary only. Each names its platform as its header. -->
+                            <MenuItem x:Name="TargetClaudeItem" Click="TargetItem_Click" IsCheckable="True" ToolTipService.ShowOnDisabled="True" />
+                            <MenuItem x:Name="TargetCodexItem" Click="TargetItem_Click" IsCheckable="True" ToolTipService.ShowOnDisabled="True" />
+                            <MenuItem x:Name="TargetCopilotItem" Click="TargetItem_Click" IsCheckable="True" ToolTipService.ShowOnDisabled="True" />
                         </ContextMenu>
                     </Button.ContextMenu>
                 </Button>
