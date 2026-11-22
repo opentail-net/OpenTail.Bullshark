@@ -1,6 +1,7 @@
 using System.Text;
 using OpenTail.Bullshark.Core.Claude;
 using OpenTail.Bullshark.Core.Providers;
+using OpenTail.Bullshark.Core.Providers.Summary;
 using OpenTail.Bullshark.Core.Resume;
 
 namespace OpenTail.Bullshark.Core.Copilot;
@@ -112,11 +113,8 @@ public sealed class CopilotSummarizer(ICliRunner runner)
         var arguments = Arguments(
             Path.Combine(scratch, CopilotScratchFolder.ConfigFolderName),
             Path.Combine(scratch, CopilotScratchFolder.LogFolderName));
-        var result = await runner.RunAsync(arguments, Path.Combine(scratch, CopilotScratchFolder.WorkFolderName), Timeout, ct);
-        if (result.TimedOut) throw new CopilotSummaryException("the summary timed out after five minutes");
-        if (result.ExitCode != 0) throw new CopilotSummaryException($"the summary failed (exit {result.ExitCode})");
-        var text = result.StdOut.Trim();
-        if (text.Length == 0) throw new CopilotSummaryException("the summary came back empty");
-        return text;
+        return await CliProcessRun.RunAsync(
+            runner, arguments, Path.Combine(scratch, CopilotScratchFolder.WorkFolderName), Timeout, ct, standardInput: null,
+            message => new CopilotSummaryException(message));
     }
 }

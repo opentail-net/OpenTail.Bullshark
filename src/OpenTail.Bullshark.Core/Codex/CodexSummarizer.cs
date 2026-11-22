@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using OpenTail.Bullshark.Core.Claude;
 using OpenTail.Bullshark.Core.Providers;
+using OpenTail.Bullshark.Core.Providers.Summary;
 using OpenTail.Bullshark.Core.Resume;
 
 namespace OpenTail.Bullshark.Core.Codex;
@@ -25,7 +26,7 @@ public sealed class CodexSummarizer(ICliRunner runner)
     public const string DefaultModel = "gpt-6-luna";
 
     /// <summary>The most transcript text one summary reads, in characters (S-D3). The oldest text goes first.</summary>
-    public const int MaxInputChars = 120_000;
+    public const int MaxInputChars = SummaryInputBuilder.MaxInputChars;
 
     /// <summary>How long one summary call may run before it is stopped and its process tree is killed (S-D6).</summary>
     public static readonly TimeSpan Timeout = TimeSpan.FromMinutes(5);
@@ -56,12 +57,9 @@ public sealed class CodexSummarizer(ICliRunner runner)
     /// </summary>
     public async Task<string> SummariseAsync(string instructions, string transcript, string folder, CancellationToken ct)
     {
-        var result = await runner.RunAsync(ExecArguments(DefaultModel), folder, Timeout, ct, Prompt(instructions, transcript));
-        if (result.TimedOut) throw new CodexSummaryException("the summary timed out after five minutes");
-        if (result.ExitCode != 0) throw new CodexSummaryException($"the summary failed (exit {result.ExitCode})");
-        var text = result.StdOut.Trim();
-        if (text.Length == 0) throw new CodexSummaryException("the summary came back empty");
-        return text;
+        return await CliProcessRun.RunAsync(
+            runner, ExecArguments(DefaultModel), folder, Timeout, ct, Prompt(instructions, transcript),
+            message => new CodexSummaryException(message));
     }
 
     /// <summary>
