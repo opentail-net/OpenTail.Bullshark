@@ -46,10 +46,10 @@ public partial class SessionWindow
         }
         var id = session.Key.SessionId;
         var folder = session.Folder;
-        var refusal = CopilotResumeRules.RefusalFor(IsCopilotListed(id), folder, FolderExists(folder));
-        if (refusal is not null || folder is null)
+        // The list is checked before the screen. The folder is not: a missing folder is shown on the screen, and Start is blocked there (ResumeFolderNotice).
+        if (!IsCopilotListed(id))
         {
-            SetStatus(refusal ?? CopilotRailText.FolderMissing(folder));
+            SetStatus(CopilotRailText.NotListed);
             return;
         }
         RemoveOldCopilotStartsQuietly();
@@ -58,7 +58,7 @@ public partial class SessionWindow
         var turns = session.UserMessages is { } count ? $"{count} {(count == 1 ? "turn" : "turns")}" : "turns not counted";
         var facts = $"{turns} · last active {AgeOf(session.LastActivity)} · in {folder}";
         var dialog = new CopilotResumePrompt($"Resume: {title}", facts, Palette,
-            (choice, kept, ct) => BuildCopilotStartTextAsync(session, choice, kept, ct, choice.Target), initialMode)
+            (choice, kept, ct) => BuildCopilotStartTextAsync(session, choice, kept, ct, choice.Target), initialMode, folder, FolderExists(folder))
         {
             Owner = this,
         };

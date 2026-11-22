@@ -84,9 +84,13 @@ public partial class SessionWindow
 
         var facts = $"{digest.Turns} {(digest.Turns == 1 ? "turn" : "turns")} · last active {AgeOf(digest.LastActivity)} · in {folder}";
         var defaults = SavedSolo();
+        // The folder is checked when the screen opens, as the Codex and Copilot screens check theirs: a missing folder is shown on the screen and blocks
+        // Start (the Start-time checks still run). A folder that is not trusted is not shown here: its Start refuses, as before.
+        var check = FolderCheck.Check(folder, TrustCheck.DefaultClaudeJsonPath);
         var prompt = new ResumePrompt($"Resume: {DisplayTitle(digest)}", facts, digest.ContextTokensAtLastTurn, Palette,
             defaults.PlannerModel, defaults.PlannerEffort,
-            (choice, kept, cancellationToken) => PreviewAsync(digest, folder, lines, choice, kept, cancellationToken), initialMode)
+            (choice, kept, cancellationToken) => PreviewAsync(digest, folder, lines, choice, kept, cancellationToken), initialMode,
+            folder, folderExists: check.Status != FolderStatus.Missing)
         {
             Owner = this,
         };

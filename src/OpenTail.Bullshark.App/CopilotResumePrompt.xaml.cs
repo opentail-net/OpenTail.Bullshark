@@ -59,13 +59,19 @@ public partial class CopilotResumePrompt : Window
     private string? _previewText;
     private KeptSummary? _kept;
 
+    /// <summary>The folder notice shown in red (<see cref="ResumeFolderNotice"/>), or null. While it applies, Start is off; the choices and Copy stay on.</summary>
+    private readonly string? _folderNotice;
+
     /// <param name="heading">The heading: the session's name.</param>
     /// <param name="facts">The line under the heading: turns, last activity and folder.</param>
     /// <param name="palette">The theme, as the rest of the window's dialogs use it.</param>
     /// <param name="previewAsync">Makes the start text for a choice. It is given the summary kept for the choice (or null), and returns the text and the summary it used.</param>
     /// <param name="initialMode">The mode the screen opens on (stage C4). Null keeps the screen's own start, the last turns. Opening on a mode never makes a summary.</param>
+    /// <param name="folder">The session's folder, for the folder notice. Used only with <paramref name="folderExists"/>.</param>
+    /// <param name="folderExists">Whether the folder exists. Null: no folder notice is shown. While the notice applies, Start is off.</param>
     public CopilotResumePrompt(string heading, string facts, RailPalette palette,
-        Func<CopilotResumeChoice, KeptSummary?, CancellationToken, Task<CopilotPreview>>? previewAsync = null, ContinueMode? initialMode = null)
+        Func<CopilotResumeChoice, KeptSummary?, CancellationToken, Task<CopilotPreview>>? previewAsync = null, ContinueMode? initialMode = null,
+        string? folder = null, bool? folderExists = null)
     {
         InitializeComponent();
         // The title names the source and the button names the target (RS-D4, RS-O2, RS-O4). The words come from ResumeTarget, the one place.
@@ -74,6 +80,7 @@ public partial class CopilotResumePrompt : Window
         StartButton.Content = startLabel;
         AutomationProperties.SetName(StartButton, startLabel);
         _previewAsync = previewAsync;
+        _folderNotice = folderExists is { } exists ? ResumeFolderNotice.For(folder, exists) : null;
         UiTheme.Apply(palette);
         Resources["PromptBg"] = RailPalette.Brush(palette.Background);
         Resources["PromptPanel"] = RailPalette.Brush(palette.Panel);
@@ -240,6 +247,8 @@ public partial class CopilotResumePrompt : Window
         var free = !_busy;
         var turnsApply = mode != CopilotResumeMode.Full;
         CostText.Text = CopilotResumeRules.CostLine(mode) + (turnsApply && !turnsValid ? " " + CopilotResumeRules.TurnsMessage : string.Empty);
+        FolderNotice.Text = _folderNotice ?? string.Empty;
+        FolderNotice.Visibility = _folderNotice is null ? Visibility.Collapsed : Visibility.Visible;
 
         Enable(FullChoice, free);
         Enable(TailChoice, free);
@@ -252,7 +261,7 @@ public partial class CopilotResumePrompt : Window
         Enable(RememberBox, free);
         var previewReady = _previewText is not null;
         Enable(CopyButton, free && previewReady);
-        Enable(StartButton, free && CopilotResumeRules.CanStart(mode, previewReady, KeptMatches(choice)));
+        Enable(StartButton, free && !ResumeFolderNotice.BlocksStart(_folderNotice) && CopilotResumeRules.CanStart(mode, previewReady, KeptMatches(choice)));
     }
 
     private static void Enable(UIElement element, bool enabled)
@@ -404,6 +413,7 @@ public partial class CopilotResumePrompt : Window
     /// </summary>
     private void Start_Click(object sender, RoutedEventArgs e)
     {
+        if (ResumeFolderNotice.BlocksStart(_folderNotice)) return;
         var choice = Selected(out _);
         if (choice is null || _busy) return;
         if (!CopilotResumeRules.CanStart(choice.Mode, _previewText is not null, KeptMatches(choice))) return;

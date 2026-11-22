@@ -63,15 +63,20 @@ public partial class CodexResumePrompt : Window
     /// <summary>True once the model list is in (or none was asked for). Start of a new session waits for it; In full does not need it.</summary>
     private bool _modelsReady;
 
+    /// <summary>The folder notice shown in red (<see cref="ResumeFolderNotice"/>), or null. While it applies, Start is off; the choices and Copy stay on.</summary>
+    private readonly string? _folderNotice;
+
     /// <param name="heading">The heading: the session's name.</param>
     /// <param name="facts">The line under the heading: turns, last activity and folder.</param>
     /// <param name="palette">The theme, as the rest of the window's dialogs use it.</param>
     /// <param name="previewAsync">Makes the start text for a choice. It is given the summary kept for the choice (or null), and returns the text and the summary it used.</param>
     /// <param name="models">The model list, read off the UI thread. The model box shows that it is loading until the list is in, and Start waits for it (except In full). Null: no list, so Codex's default.</param>
     /// <param name="initialMode">The mode the screen opens on (stage C4). Null keeps the screen's own start, the last turns. Opening on a mode never makes a summary.</param>
+    /// <param name="folder">The session's folder, for the folder notice. Used only with <paramref name="folderExists"/>.</param>
+    /// <param name="folderExists">Whether the folder exists. Null: no folder notice is shown. While the notice applies, Start is off.</param>
     public CodexResumePrompt(string heading, string facts, RailPalette palette,
         Func<CodexResumeChoice, KeptSummary?, CancellationToken, Task<CodexPreview>>? previewAsync = null,
-        Task<CodexModelReading>? models = null, ContinueMode? initialMode = null)
+        Task<CodexModelReading>? models = null, ContinueMode? initialMode = null, string? folder = null, bool? folderExists = null)
     {
         InitializeComponent();
         // The title names the source and the button names the target (RS-D4, RS-O2, RS-O4). The words come from ResumeTarget, the one place.
@@ -80,6 +85,7 @@ public partial class CodexResumePrompt : Window
         StartButton.Content = startLabel;
         AutomationProperties.SetName(StartButton, startLabel);
         _previewAsync = previewAsync;
+        _folderNotice = folderExists is { } exists ? ResumeFolderNotice.For(folder, exists) : null;
         UiTheme.Apply(palette);
         Resources["PromptBg"] = RailPalette.Brush(palette.Background);
         Resources["PromptPanel"] = RailPalette.Brush(palette.Panel);
@@ -293,6 +299,8 @@ public partial class CodexResumePrompt : Window
         var free = !_busy;
         var turnsApply = mode != CodexResumeMode.Full;
         CostText.Text = CodexResumeRules.CostLine(mode) + (turnsApply && !turnsValid ? " " + CodexResumeRules.TurnsMessage : string.Empty);
+        FolderNotice.Text = _folderNotice ?? string.Empty;
+        FolderNotice.Visibility = _folderNotice is null ? Visibility.Collapsed : Visibility.Visible;
 
         Enable(FullChoice, free);
         Enable(TailChoice, free);
@@ -308,7 +316,8 @@ public partial class CodexResumePrompt : Window
         var modelRow = mode != CodexResumeMode.Full;
         ModelBlock.Visibility = modelRow && !IsCross(choice) ? Visibility.Visible : Visibility.Collapsed;
         Enable(ModelBox, free && modelRow && _modelsReady);
-        Enable(StartButton, free && ModelReady(mode, IsCross(choice)) && CodexResumeRules.CanStart(mode, previewReady, KeptMatches(choice)));
+        Enable(StartButton, free && !ResumeFolderNotice.BlocksStart(_folderNotice) && ModelReady(mode, IsCross(choice))
+            && CodexResumeRules.CanStart(mode, previewReady, KeptMatches(choice)));
     }
 
     private static void Enable(UIElement element, bool enabled)
@@ -457,6 +466,7 @@ public partial class CodexResumePrompt : Window
     /// </summary>
     private void Start_Click(object sender, RoutedEventArgs e)
     {
+        if (ResumeFolderNotice.BlocksStart(_folderNotice)) return;
         var choice = Selected(out _);
         if (choice is null || _busy) return;
         if (!ModelReady(choice.Mode, IsCross(choice))) return;

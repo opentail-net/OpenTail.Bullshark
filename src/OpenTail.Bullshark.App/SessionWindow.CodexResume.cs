@@ -44,8 +44,8 @@ public partial class SessionWindow
     }
 
     /// <summary>
-    /// Opens the Codex resume screen for a session (R6). Nothing starts until the owner presses Start. A session whose folder is missing is refused
-    /// here; the full resume (<see cref="ResumeCodex"/>) keeps its own behaviour.
+    /// Opens the Codex resume screen for a session (R6). Nothing starts until the owner presses Start. A session whose folder is missing opens the screen
+    /// with the folder notice: Start (and In full) is blocked there, and the previews stay on. The full resume (<see cref="ResumeCodex"/>) keeps its own behaviour.
     /// </summary>
     private void ResumeCodexScreen(SessionSummary session) => ShowCodexResume(session, forScreenshot: false, screenshotSummary: false);
 
@@ -64,19 +64,16 @@ public partial class SessionWindow
             SetStatus("A Codex resume is already open or running. Wait for it to finish.");
             return;
         }
-        var folder = session.Folder;
-        if (folder is not { Length: > 0 } || !Directory.Exists(folder))
-        {
-            SetStatus("Not resumed: the session's folder is missing.");
-            return;
-        }
+        // A missing folder does not refuse here: the screen opens and shows the folder notice (ResumeFolderNotice), which blocks Start.
+        var folder = session.Folder ?? string.Empty;
         RemoveOldStartsQuietly();
 
         var title = CodexRowTitle(MarkOf(ProviderId.Codex, session.Key.SessionId)?.Name, session);
         var turns = session.UserMessages is { } count ? $"{count} {(count == 1 ? "turn" : "turns")}" : "turns not counted";
         var facts = $"{turns} · last active {AgeOf(session.LastActivity)} · in {folder}";
         var dialog = new CodexResumePrompt($"Resume: {title}", facts, Palette,
-            (choice, kept, ct) => BuildCodexStartTextAsync(session, folder, choice, kept, ct, choice.Target), CodexModels(), initialMode)
+            (choice, kept, ct) => BuildCodexStartTextAsync(session, folder, choice, kept, ct, choice.Target), CodexModels(), initialMode,
+            folder, FolderExists(folder))
         {
             Owner = this,
         };
@@ -96,6 +93,13 @@ public partial class SessionWindow
             if (dialog.Choice is not { } choice)
             {
                 SetStatus("Not resumed.");
+                return;
+            }
+            // The folder is checked again: it may have gone while the screen was open. Nothing starts without a folder that exists (as the Copilot
+            // screen checks it). The full resume would otherwise fall back to the app's own folder.
+            if (!FolderExists(folder))
+            {
+                SetStatus("Not resumed: the session's folder is missing.");
                 return;
             }
             if (choice.Mode == CodexResumeMode.Full)

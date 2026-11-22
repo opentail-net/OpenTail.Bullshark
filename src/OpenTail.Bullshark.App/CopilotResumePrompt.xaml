@@ -119,6 +119,7 @@
     <StackPanel Margin="20" Width="580">
         <TextBlock x:Name="Heading" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" />
         <TextBlock x:Name="Facts" Style="{StaticResource Muted}" Margin="0,6,0,0" />
+        <TextBlock x:Name="FolderNotice" Foreground="{DynamicResource UiDanger}" TextWrapping="Wrap" Margin="0,8,0,0" Visibility="Collapsed" />
 
         <TextBlock Style="{StaticResource Section}" Text="How to continue" />
         <RadioButton x:Name="FullChoice" GroupName="CopilotResume" />

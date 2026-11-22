@@ -63,8 +63,17 @@ public partial class ResumePrompt : Window
     /// <summary>True while the preview on screen is a refusal of the launch: Resume and Copy stay off, as the Codex Start does (R4d).</summary>
     private bool _refused;
 
+    /// <summary>
+    /// The folder notice shown in red (<see cref="ResumeFolderNotice"/>), or null when there is none. While it applies, Start (Resume) is off; the chooser
+    /// and the preview stay on.
+    /// </summary>
+    private readonly string? _folderNotice;
+
+    /// <param name="folder">The session's folder, for the folder notice. Used only with <paramref name="folderExists"/>.</param>
+    /// <param name="folderExists">Whether the folder exists (the screen's folder check, Missing is false). Null: no folder notice is shown.</param>
     public ResumePrompt(string heading, string facts, long contextTokens, RailPalette palette, string defaultModel, string defaultEffort,
-        Func<ResumeChoice, KeptSummary?, CancellationToken, Task<ResumePromptPreview>>? previewAsync = null, ContinueMode? initialMode = null)
+        Func<ResumeChoice, KeptSummary?, CancellationToken, Task<ResumePromptPreview>>? previewAsync = null, ContinueMode? initialMode = null,
+        string? folder = null, bool? folderExists = null)
     {
         InitializeComponent();
         // The title names the source and the button names the target (RS-D4, RS-O2, RS-O4). The words come from ResumeTarget, the one place.
@@ -73,6 +82,7 @@ public partial class ResumePrompt : Window
         ResumeButton.Content = startLabel;
         AutomationProperties.SetName(ResumeButton, startLabel);
         _previewAsync = previewAsync;
+        _folderNotice = folderExists is { } exists ? ResumeFolderNotice.For(folder, exists) : null;
         UiTheme.Apply(palette);
         Resources["PromptBg"] = RailPalette.Brush(palette.Background);
         Resources["PromptPanel"] = RailPalette.Brush(palette.Panel);
@@ -236,6 +246,8 @@ public partial class ResumePrompt : Window
     private void Refresh()
     {
         var choice = Selected(out var turnsValid);
+        FolderNotice.Text = _folderNotice ?? string.Empty;
+        FolderNotice.Visibility = _folderNotice is null ? Visibility.Collapsed : Visibility.Visible;
         LevelBlock.Visibility = SummaryChoice.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         TurnsBlock.Visibility = FullChoice.IsChecked == true ? Visibility.Collapsed : Visibility.Visible;
         ShowTarget(choice?.Target ?? ProviderId.Claude);
@@ -270,7 +282,7 @@ public partial class ResumePrompt : Window
         Enable(TurnsBox, free);
         Enable(TargetBox, free);
         foreach (var segment in LevelRow.Children.OfType<RadioButton>()) Enable(segment, free);
-        ResumeButton.IsEnabled = free && !_refused;
+        ResumeButton.IsEnabled = free && !_refused && !ResumeFolderNotice.BlocksStart(_folderNotice);
         ResumeMenuButton.IsEnabled = free;
         Enable(RememberBox, free);
 
@@ -445,6 +457,7 @@ public partial class ResumePrompt : Window
 
     private void Resume_Click(object sender, RoutedEventArgs e)
     {
+        if (ResumeFolderNotice.BlocksStart(_folderNotice)) return;
         var choice = Selected(out var turnsValid);
         if (choice is null) return;
         if (!turnsValid && choice.Mode != ResumeMode.Full)
