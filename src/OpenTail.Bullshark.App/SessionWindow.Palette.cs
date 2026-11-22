@@ -125,6 +125,8 @@ public partial class SessionWindow
         if (claude && NextWaitingId(from) is not null)
             items.Add(new PaletteItem(new PaletteEntry("action:next-waiting", "Go to next waiting session", "Ctrl+Shift+N", 3),
                 () => GoToNextWaitingFrom(from)));
+        // Continue (Continue plan, C5) is not gated by the Claude check: it picks from the window's active provider or from every provider.
+        items.Add(ActionItem("continue", "Continue last session", "the last session, in its resume screen", ContinueLastSession));
         items.Add(ActionItem("refresh", "Refresh now", "the pass that runs every 15 seconds", () => _ = PassAndRefreshAsync()));
         // The re-alerts are only silenced, never answered: nothing is typed into a session (escalation D3, D4).
         var needing = _attention.Where(AttentionEscalation.Escalates).Select(item => item.Name).Distinct(StringComparer.Ordinal).ToList();

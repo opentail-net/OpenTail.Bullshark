@@ -1,6 +1,7 @@
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using OpenTail.Bullshark.Core.Continue;
 using OpenTail.Bullshark.Core.Copilot;
 using OpenTail.Bullshark.Core.Providers;
 using OpenTail.Bullshark.Core.Resume;
@@ -33,10 +34,10 @@ public partial class SessionWindow
     /// (<c>_shotDialog</c>, as the Codex screen does). With <paramref name="shotMode"/> "summary", the summary mode is chosen and Make summary is pressed
     /// once when the screen has loaded; with "full", In full is chosen. Anything else shows the last turns.
     /// </summary>
-    private void ShowCopilotResume(SessionSummary session, bool forScreenshot, string shotMode) =>
-        FireAndForget.Observe(ShowCopilotResumeAsync(session, forScreenshot, shotMode), "Copilot resume screen");
+    private void ShowCopilotResume(SessionSummary session, bool forScreenshot, string shotMode, ContinueMode? initialMode = null) =>
+        FireAndForget.Observe(ShowCopilotResumeAsync(session, forScreenshot, shotMode, initialMode), "Copilot resume screen");
 
-    private async Task ShowCopilotResumeAsync(SessionSummary session, bool forScreenshot, string shotMode)
+    private async Task ShowCopilotResumeAsync(SessionSummary session, bool forScreenshot, string shotMode, ContinueMode? initialMode = null)
     {
         if (_copilotResuming)
         {
@@ -57,7 +58,7 @@ public partial class SessionWindow
         var turns = session.UserMessages is { } count ? $"{count} {(count == 1 ? "turn" : "turns")}" : "turns not counted";
         var facts = $"{turns} · last active {AgeOf(session.LastActivity)} · in {folder}";
         var dialog = new CopilotResumePrompt($"Resume: {title}", facts, Palette,
-            (choice, kept, ct) => BuildCopilotStartTextAsync(session, choice, kept, ct))
+            (choice, kept, ct) => BuildCopilotStartTextAsync(session, choice, kept, ct), initialMode)
         {
             Owner = this,
         };

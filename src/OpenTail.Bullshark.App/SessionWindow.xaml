@@ -79,8 +79,13 @@
             <!-- The rail: live sessions grouped by folder, and one History section at the bottom. Colours come from RailTheme. -->
             <DockPanel x:Name="RailPanel" Grid.Column="0" Background="#111316">
                 <!-- The provider the rail lists (stage C4): Claude's sessions, or Codex's history. Remembered in ui.json. Open tabs keep their provider. -->
-                <ComboBox x:Name="ProviderBox" DockPanel.Dock="Top" Margin="8,8,8,0"
-                          SelectionChanged="ProviderBox_SelectionChanged" />
+                <DockPanel DockPanel.Dock="Top" Margin="8,8,8,0">
+                    <!-- Continue (Continue plan, C5): the last session of the scope, in its resume screen. Always on: when nothing is left, its status line says so. -->
+                    <Button x:Name="ContinueButton" Style="{StaticResource GhostButton}" DockPanel.Dock="Right" Margin="6,0,0,0"
+                            Content="Continue" Click="ContinueButton_Click"
+                            ToolTip="Open the last session in its resume screen" />
+                    <ComboBox x:Name="ProviderBox" SelectionChanged="ProviderBox_SelectionChanged" />
+                </DockPanel>
                 <DockPanel DockPanel.Dock="Top" Margin="8,8,8,4">
                     <TextBlock x:Name="ThemeMark" DockPanel.Dock="Right" Cursor="Hand" FontSize="12" VerticalAlignment="Center"
                                ToolTip="Switch between the dark and the light rail" MouseLeftButtonUp="ThemeMark_Click" />

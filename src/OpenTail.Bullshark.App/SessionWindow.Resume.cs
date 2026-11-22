@@ -1,6 +1,7 @@
 using System.IO;
 using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Claude;
+using OpenTail.Bullshark.Core.Continue;
 using OpenTail.Bullshark.Core.Folders;
 using OpenTail.Bullshark.Core.Resume;
 using OpenTail.Bullshark.Core.Setup;
@@ -40,7 +41,7 @@ public partial class SessionWindow
     /// <summary>
     /// Runs one resume at a time. The resume button is off while one runs, and a request that comes meanwhile is refused with a status line.
     /// </summary>
-    private async Task ResumeAsync(SessionDigest digest)
+    private async Task ResumeAsync(SessionDigest digest, ContinueMode? initialMode = null)
     {
         if (_resuming)
         {
@@ -51,7 +52,7 @@ public partial class SessionWindow
         _transcript.SetResumeBusy(true);
         try
         {
-            await ResumeOnceAsync(digest);
+            await ResumeOnceAsync(digest, initialMode);
         }
         catch (Exception ex)
         {
@@ -66,8 +67,11 @@ public partial class SessionWindow
         }
     }
 
-    /// <summary>Opens the resume prompt for a past session, then does what the owner chose.</summary>
-    private async Task ResumeOnceAsync(SessionDigest digest)
+    /// <summary>
+    /// Opens the resume prompt for a past session, then does what the owner chose. <paramref name="initialMode"/> is the mode the prompt opens on, from
+    /// Continue (CN-D9); null keeps the prompt's own recommendation, as before. Opening on a mode makes no summary (CN-D3).
+    /// </summary>
+    private async Task ResumeOnceAsync(SessionDigest digest, ContinueMode? initialMode = null)
     {
         SetStatus($"Reading session {ShortId(digest.SessionId)}…");
         var (lines, folder) = await Task.Run(() => ResumeSource.Load(digest.FilePath));
@@ -81,7 +85,7 @@ public partial class SessionWindow
         var defaults = SavedSolo();
         var prompt = new ResumePrompt($"Resume: {DisplayTitle(digest)}", facts, digest.ContextTokensAtLastTurn, Palette,
             defaults.PlannerModel, defaults.PlannerEffort,
-            (choice, kept, cancellationToken) => PreviewAsync(digest, folder, lines, choice, kept, cancellationToken))
+            (choice, kept, cancellationToken) => PreviewAsync(digest, folder, lines, choice, kept, cancellationToken), initialMode)
         {
             Owner = this,
         };

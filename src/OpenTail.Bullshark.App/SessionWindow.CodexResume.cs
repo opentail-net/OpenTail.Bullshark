@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using OpenTail.Bullshark.Core.Claude;
 using OpenTail.Bullshark.Core.Codex;
+using OpenTail.Bullshark.Core.Continue;
 using OpenTail.Bullshark.Core.Providers;
 using OpenTail.Bullshark.Core.Resume;
 
@@ -53,10 +54,10 @@ public partial class SessionWindow
     /// (<c>_shotDialog</c>, as the shortcut sheet does). With <paramref name="screenshotSummary"/>, the summary mode is chosen and Make summary is
     /// pressed once when the screen has loaded.
     /// </summary>
-    private void ShowCodexResume(SessionSummary session, bool forScreenshot, bool screenshotSummary) =>
-        FireAndForget.Observe(ShowCodexResumeAsync(session, forScreenshot, screenshotSummary), "Codex resume screen");
+    private void ShowCodexResume(SessionSummary session, bool forScreenshot, bool screenshotSummary, ContinueMode? initialMode = null) =>
+        FireAndForget.Observe(ShowCodexResumeAsync(session, forScreenshot, screenshotSummary, initialMode), "Codex resume screen");
 
-    private async Task ShowCodexResumeAsync(SessionSummary session, bool forScreenshot, bool screenshotSummary)
+    private async Task ShowCodexResumeAsync(SessionSummary session, bool forScreenshot, bool screenshotSummary, ContinueMode? initialMode = null)
     {
         if (_codexResuming)
         {
@@ -75,7 +76,7 @@ public partial class SessionWindow
         var turns = session.UserMessages is { } count ? $"{count} {(count == 1 ? "turn" : "turns")}" : "turns not counted";
         var facts = $"{turns} · last active {AgeOf(session.LastActivity)} · in {folder}";
         var dialog = new CodexResumePrompt($"Resume: {title}", facts, Palette,
-            (choice, kept, ct) => BuildCodexStartTextAsync(session, folder, choice, kept, ct), CodexModels())
+            (choice, kept, ct) => BuildCodexStartTextAsync(session, folder, choice, kept, ct), CodexModels(), initialMode)
         {
             Owner = this,
         };
