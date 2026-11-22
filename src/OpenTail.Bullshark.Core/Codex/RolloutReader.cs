@@ -7,10 +7,10 @@ namespace OpenTail.Bullshark.Core.Codex;
 
 /// <summary>
 /// Opens Codex rollouts for reading, a line at a time (stage C1, C2), and holds the JSON helpers both readers share. A
-/// <c>.jsonl.zst</c> rollout is decoded as a stream with the BCL's <c>ZstandardStream</c>, which exists in net11.0 only (B1, C-D2): on
-/// net10.0 a compressed rollout cannot be opened, and <see cref="CanDecodeCompressed"/> is false. Nothing is decompressed to a file. The
-/// file is opened with sharing, so a Codex process that is still writing it is not blocked. Lines are read through <see cref="Lines"/>, which
-/// caps the length of one line (F-D) and checks the cancellation token before each line.
+/// <c>.jsonl.zst</c> rollout is decoded as a stream while it is read (B1): the BCL's <c>ZstandardStream</c> on net11.0, and
+/// <c>ZstdSharp.DecompressionStream</c> (ZstdSharp.Port) on net10.0, which the Codex-on-net10 plan adds (Z1). Nothing is decompressed to a
+/// file. The file is opened with sharing, so a Codex process that is still writing it is not blocked. Lines are read through <see cref="Lines"/>,
+/// which caps the length of one line (F-D) and checks the cancellation token before each line.
 /// </summary>
 internal static class RolloutReader
 {
@@ -29,19 +29,6 @@ internal static class RolloutReader
     /// <summary>The UUID at the end of a rollout's file name (<c>rollout-&lt;timestamp&gt;-&lt;uuid&gt;</c>), without the extension.</summary>
     private static readonly Regex UuidAtEnd = new(
         @"-([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$", RegexOptions.CultureInvariant);
-
-    /// <summary>True when this build can decode a compressed rollout (net11.0 and later).</summary>
-    public static bool CanDecodeCompressed
-    {
-        get
-        {
-#if NET11_0_OR_GREATER
-            return true;
-#else
-            return false;
-#endif
-        }
-    }
 
     /// <summary>True for a file name a rollout has: <c>rollout-*.jsonl</c> or <c>rollout-*.jsonl.zst</c>.</summary>
     public static bool IsRolloutName(string fileName) =>
@@ -90,14 +77,7 @@ internal static class RolloutReader
         Stream stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         try
         {
-            if (path.EndsWith(".zst", StringComparison.OrdinalIgnoreCase))
-            {
-#if NET11_0_OR_GREATER
-                stream = new System.IO.Compression.ZstandardStream(stream, System.IO.Compression.CompressionMode.Decompress);
-#else
-                throw new NotSupportedException("Codex rollouts are compressed; reading them needs a net11.0 build (C-D2).");
-#endif
-            }
+            if (path.EndsWith(".zst", StringComparison.OrdinalIgnoreCase)) stream = DecodeZstd(stream);
             return new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
         }
         catch
@@ -105,6 +85,21 @@ internal static class RolloutReader
             stream.Dispose();
             throw;
         }
+    }
+
+    /// <summary>
+    /// The one place the decoder differs by target: the zstd stream is decoded as it is read, in memory, and closing the returned stream closes
+    /// <paramref name="compressed"/>. net11.0 uses the BCL's <c>ZstandardStream</c>; net10.0 uses <c>ZstdSharp.DecompressionStream</c> from
+    /// ZstdSharp.Port 0.8.8 (Z0 checked that it decodes the BCL's output byte for byte). Its <c>leaveOpen</c> defaults to true, so it is set to
+    /// false here, or the file would stay open after the reader is closed.
+    /// </summary>
+    private static Stream DecodeZstd(Stream compressed)
+    {
+#if NET11_0_OR_GREATER
+        return new System.IO.Compression.ZstandardStream(compressed, System.IO.Compression.CompressionMode.Decompress);
+#else
+        return new ZstdSharp.DecompressionStream(compressed, leaveOpen: false);
+#endif
     }
 
     /// <summary>

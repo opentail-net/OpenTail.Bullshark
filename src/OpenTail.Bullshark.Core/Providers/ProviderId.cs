@@ -9,7 +9,7 @@ public readonly record struct ProviderId(string Value)
     /// <summary>Claude Code.</summary>
     public static readonly ProviderId Claude = new("claude");
 
-    /// <summary>OpenAI Codex. Its history is read only in a net11.0 build (no package is needed there).</summary>
+    /// <summary>OpenAI Codex. Its history is read on net10.0 and net11.0; net10.0 decodes the compressed rollouts with ZstdSharp.Port.</summary>
     public static readonly ProviderId Codex = new("codex");
 
     /// <summary>GitHub Copilot CLI. Its history is plain files, so it is read on net10.0 and net11.0 alike.</summary>

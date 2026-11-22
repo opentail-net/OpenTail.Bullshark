@@ -20,7 +20,7 @@ public sealed record CodexSessionUsage(string Path, string Project, string Model
 /// because this build cannot decode them (compressed), and the count of files that could not be opened, read or stat'ed. Counts only.
 /// </summary>
 /// <param name="Records">One record per rollout with a valid total, in path order.</param>
-/// <param name="Skipped">The compressed rollouts this build cannot decode (on net10.0, every <c>.zst</c> rollout in the window).</param>
+/// <param name="Skipped">The compressed rollouts skipped because the reader was told this build cannot decode them (none by default).</param>
 /// <param name="Unreadable">The files that failed to open, read or stat (locked, removed, denied).</param>
 public sealed record CodexUsageRead(IReadOnlyList<CodexSessionUsage> Records, int Skipped, int Unreadable);
 
@@ -38,7 +38,7 @@ public sealed record CodexUsageRead(IReadOnlyList<CodexSessionUsage> Records, in
 /// <para>
 /// A line that does not parse is skipped, so a partly written last line of a live session is left out and the rest counts. A token-count event
 /// with no figures (no <c>info</c>, no total, or a figure that is not a non-negative whole number) is skipped. A file with no valid total gives no
-/// record. Lines are read with <see cref="RolloutReader"/>, which decodes compressed rollouts on net11.0 only.
+/// record. Lines are read with <see cref="RolloutReader"/>, which decodes compressed rollouts on both targets.
 /// </para>
 /// </summary>
 public static class CodexUsageReader
@@ -126,8 +126,8 @@ public static class CodexUsageReader
     /// <summary>
     /// The records of the rollouts under <paramref name="historyRoot"/> that were last written at or after <paramref name="since"/> (a rollout
     /// last written earlier has no record in the window under any attribution rule, so it is not read). One record per file with a valid total,
-    /// in path order. A compressed rollout is skipped, and counted in <see cref="CodexUsageRead.Skipped"/>, on a build that cannot decode it
-    /// (<paramref name="canDecodeCompressed"/>; default <see cref="RolloutReader.CanDecodeCompressed"/>). A file that cannot be opened, read or
+    /// in path order. A compressed rollout is skipped, and counted in <see cref="CodexUsageRead.Skipped"/>, when <paramref name="canDecodeCompressed"/>
+    /// is false (default true: both targets decode it, Codex-on-net10 Z1). A file that cannot be opened, read or
     /// stat'ed is counted in <see cref="CodexUsageRead.Unreadable"/>. A missing folder gives an empty result.
     /// <para>
     /// With a <paramref name="memo"/>, a file whose length, write time and reasoning setting are the ones its record was read with is not read
@@ -151,7 +151,7 @@ public static class CodexUsageReader
         if (!Directory.Exists(historyRoot)) return new CodexUsageRead([], 0, 0);
         var sinceUtc = since.UtcDateTime;
         var nowUtc = (now ?? DateTimeOffset.UtcNow).UtcDateTime;
-        var decodes = canDecodeCompressed ?? RolloutReader.CanDecodeCompressed;
+        var decodes = canDecodeCompressed ?? true;
         var paths = RolloutReader.Files(historyRoot);
         var found = new List<CodexSessionUsage>();
         var skipped = 0;
@@ -195,7 +195,7 @@ public static class CodexUsageReader
         memo?.Prune(paths);
         if (skipped > 0)
         {
-            log?.Invoke($"codex usage: {skipped} compressed rollout(s) not read by this build (net11.0 decodes them)");
+            log?.Invoke($"codex usage: {skipped} compressed rollout(s) not read by this build");
         }
         if (unreadable > 0)
         {

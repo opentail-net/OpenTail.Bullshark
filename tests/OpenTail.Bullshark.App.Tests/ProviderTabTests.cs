@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using OpenTail.Bullshark.App;
+using OpenTail.Bullshark.Core.Codex;
 using OpenTail.Bullshark.Core.Providers;
 using OpenTail.Bullshark.Core.Tabs;
 using Xunit;
@@ -26,6 +27,13 @@ public sealed class ProviderTabTests : IDisposable
     {
         if (!Directory.Exists(_dir)) return;
         try { Directory.Delete(_dir, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+    }
+
+    [Fact]
+    public void CodexIsAvailableOnThisTarget()
+    {
+        // Codex-on-net10 (Z2): both targets read Codex history, so the dropdown offers Codex on net10.0 and on net11.0.
+        Assert.True(CodexProvider.Available);
     }
 
     [Fact]

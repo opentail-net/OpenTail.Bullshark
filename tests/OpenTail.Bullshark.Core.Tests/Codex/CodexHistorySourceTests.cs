@@ -7,9 +7,8 @@ using Xunit;
 namespace OpenTail.Bullshark.Core.Tests.Codex;
 
 /// <summary>
-/// Stage C1 and C6 (a)-(f), for both targets. The content tests need the compressed reader, so they are in
-/// <see cref="CodexHistorySourceReadingTests"/> (net11.0 only); here are the tests that hold on net10.0 too: the empty list, the cancellation,
-/// and the compressed fixture (empty on net10.0, read on net11.0).
+/// Stage C1 and C6 (a)-(f), for both targets: the empty list, the cancellation, and the compressed fixture. The content tests are in
+/// <see cref="CodexHistorySourceReadingTests"/>.
 /// </summary>
 public sealed class CodexHistorySourceTests : IDisposable
 {
@@ -31,10 +30,8 @@ public sealed class CodexHistorySourceTests : IDisposable
     }
 
     [Fact]
-    public async Task ACompressedRolloutIsReadOnlyOnNet11AndEmptyOnNet10()
+    public async Task ACompressedRolloutIsRead()
     {
-        // C-D2: a compressed rollout is read on net11.0 only. On net10.0 the list is empty, whatever the files hold.
-#if NET11_0_OR_GREATER
         _home.WriteCompressed(CodexHome.NameFor(CodexHome.SessionId), CodexHome.Standard(CodexHome.SessionId));
         var source = new CodexHistorySource(_home.Paths());
 
@@ -46,29 +43,17 @@ public sealed class CodexHistorySourceTests : IDisposable
         Assert.Equal(1, session.AssistantMessages);
         Assert.Equal(0, source.SkippedFiles);
         Assert.Equal(1, source.SkippedLines);
-#else
-        _home.WritePlain("rollout-compressed-on-net10.jsonl.zst", CodexHome.Standard(CodexHome.SessionId));
-        var source = new CodexHistorySource(_home.Paths());
-
-        Assert.Empty(await source.ListAsync(CancellationToken.None));
-        Assert.Equal(0, source.SkippedFiles);
-#endif
     }
 
     [Fact]
-    public async Task APlainRolloutIsListedOnNet11AndNotOnNet10()
+    public async Task APlainRolloutIsListed()
     {
-        // C-D2 applies to the whole history source: on net10.0 even a plain rollout gives no sessions.
         _home.WritePlain(CodexHome.NameFor(CodexHome.SessionId), CodexHome.Standard(CodexHome.SessionId));
         var source = new CodexHistorySource(_home.Paths());
 
         var sessions = await source.ListAsync(CancellationToken.None);
 
-#if NET11_0_OR_GREATER
         Assert.Single(sessions);
-#else
-        Assert.Empty(sessions);
-#endif
     }
 
     [Fact]
@@ -100,10 +85,8 @@ public sealed class CodexHistorySourceTests : IDisposable
 }
 
 /// <summary>
-/// Stage C1 and C6 (a), (c), (d), (e): the content of the summaries, read from synthetic rollouts. The reader needs the net11.0 build for
-/// compressed files; the plain files here are read in the same way, and the whole class is net11.0 only because C-D2 makes the history empty on net10.0.
+/// Stage C1 and C6 (a), (c), (d), (e): the content of the summaries, read from synthetic rollouts, on both targets.
 /// </summary>
-#if NET11_0_OR_GREATER
 public sealed class CodexHistorySourceReadingTests : IDisposable
 {
     private readonly CodexHome _home = new();
@@ -354,4 +337,3 @@ public sealed class CodexHistorySourceReadingTests : IDisposable
         Assert.Equal(0, source.SkippedFiles);
     }
 }
-#endif

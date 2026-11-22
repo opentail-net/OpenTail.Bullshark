@@ -10,7 +10,7 @@ namespace OpenTail.Bullshark.Core.Codex;
 /// rollout under the history root, one line at a time. Rules: a file that cannot be opened or decoded, or holds no JSON object line, is
 /// skipped and counted (<see cref="SkippedFiles"/>); a line that is not JSON, or longer than 16 MB, is skipped and counted
 /// (<see cref="SkippedLines"/>); an unknown
-/// record type is ignored; a field not found is null, never zero. The list is empty on net10.0 (C-D2): no compressed rollout can be read there.
+/// record type is ignored; a field not found is null, never zero.
 /// </summary>
 public sealed class CodexHistorySource(ProviderPaths paths) : IHistorySource
 {
@@ -35,8 +35,7 @@ public sealed class CodexHistorySource(ProviderPaths paths) : IHistorySource
     {
         SkippedFiles = 0;
         SkippedLines = 0;
-        // C-D2: no rollout is compressed-readable on net10.0, so the history is empty there and nothing is walked.
-        if (!RolloutReader.CanDecodeCompressed || !Directory.Exists(paths.HistoryRoot)) return [];
+        if (!Directory.Exists(paths.HistoryRoot)) return [];
 
         var names = ReadIndex(ct);
         var sessions = new List<SessionSummary>();

@@ -87,11 +87,9 @@ public sealed class CodexTranscriptReaderTests : IDisposable
     }
 
     [Fact]
-    public async Task ACompressedRolloutIsPagedOnNet11AndRefusedOnNet10()
+    public async Task ACompressedRolloutIsPaged()
     {
-        // net11.0: the compressed file is decoded as a stream, and its lines are the same as the plain file's.
-        // net10.0 (C-D2): a compressed rollout cannot be opened, so the page is refused with NotSupportedException, not read as text.
-#if NET11_0_OR_GREATER
+        // The compressed file is decoded as a stream, and its lines are the same as the plain file's. Both targets decode it (Z1).
         var lines = CodexHome.Standard(CodexHome.SessionId);
         _home.WriteCompressed(CodexHome.NameFor(CodexHome.SessionId), lines);
 
@@ -99,11 +97,5 @@ public sealed class CodexTranscriptReaderTests : IDisposable
 
         Assert.Equal(lines[2..5], page.Lines);
         Assert.Equal(2, page.FirstLine);
-#else
-        // Named as a compressed rollout; the content is plain text, which is never reached: the file cannot be opened on net10.0.
-        _home.WritePlain(CodexHome.NameFor(CodexHome.SessionId) + ".zst", CodexHome.Standard(CodexHome.SessionId));
-
-        await Assert.ThrowsAsync<NotSupportedException>(() => Reader().ReadPageAsync(CodexHome.SessionId, 0, 1, CancellationToken.None));
-#endif
     }
 }

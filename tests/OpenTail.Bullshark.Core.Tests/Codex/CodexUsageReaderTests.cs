@@ -405,14 +405,14 @@ public sealed class CodexUsageReaderTests : IDisposable
         Assert.Equal(new TokenUsage(40, 10, 0, 60), Assert.Single(read.Records).Usage);
     }
 
-#if NET11_0_OR_GREATER
     [Fact]
-    public void ACompressedRolloutIsReadOnABuildThatDecodesIt()
+    public void ACompressedRolloutIsRead()
     {
+        // Both targets decode it: the fixture compresses with the BCL on net11.0 and with ZstdSharp on net10.0.
         Directory.CreateDirectory(_folder);
         var path = Path.Combine(_folder, "rollout-zst.jsonl.zst");
         using (var file = File.Create(path))
-        using (var zstd = new System.IO.Compression.ZstandardStream(file, System.IO.Compression.CompressionMode.Compress))
+        using (var zstd = CodexHome.CompressingStream(file))
         using (var writer = new StreamWriter(zstd))
         {
             foreach (var line in Lines(100)) writer.WriteLine(line);
@@ -425,7 +425,6 @@ public sealed class CodexUsageReaderTests : IDisposable
         Assert.Equal(0, read.Unreadable);
         Assert.Equal(new TokenUsage(40, 10, 0, 60), Assert.Single(read.Records).Usage);
     }
-#endif
 
     [Fact]
     public void AnUnreadableRolloutIsNotReportedAsSkippedOnTheLimitsReport()

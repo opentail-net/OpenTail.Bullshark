@@ -24,10 +24,10 @@ public sealed class CodexProvider : IProvider, IHistorySource, ITranscriptReader
     public ProviderPaths Paths { get; }
 
     /// <summary>
-    /// True when this build can read Codex history (C-D2, O1): Codex is offered only in a net11.0 build, where the BCL decodes the compressed
-    /// rollouts. The window does not offer Codex when this is false.
+    /// True when this build can read Codex history. Both targets can: net11.0 decodes the compressed rollouts with the BCL, and net10.0 with
+    /// ZstdSharp.Port (Codex-on-net10 plan, Z1 and Z2). The window offers Codex when this is true.
     /// </summary>
-    public static bool Available => RolloutReader.CanDecodeCompressed;
+    public static bool Available => true;
 
     public ProviderId Id => ProviderId.Codex;
 

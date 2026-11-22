@@ -66,8 +66,8 @@ internal sealed class CodexHome : IDisposable
     }
 
     /// <summary>
-    /// Writes lines as a zstd-compressed rollout (net11.0 only: the BCL encoder is there). <c>.zst</c> is added to the file name, so the reader
-    /// sees the compressed name; pass the plain rollout name (<see cref="NameFor"/>).
+    /// Writes lines as a zstd-compressed rollout. <c>.zst</c> is added to the file name, so the reader sees the compressed name; pass the plain
+    /// rollout name (<see cref="NameFor"/>).
     /// </summary>
     public string WriteCompressed(string plainFileName, IEnumerable<string> lines)
     {
@@ -75,14 +75,24 @@ internal sealed class CodexHome : IDisposable
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var bytes = Encoding.UTF8.GetBytes(string.Join('\n', lines) + "\n");
         using var file = File.Create(path);
-#if NET11_0_OR_GREATER
-        using (var zstd = new ZstandardStream(file, CompressionMode.Compress))
+        using (var zstd = CompressingStream(file))
         {
             zstd.Write(bytes);
         }
         return path;
+    }
+
+    /// <summary>
+    /// A stream that compresses what is written to <paramref name="destination"/> as zstd: the BCL's <c>ZstandardStream</c> on net11.0, and
+    /// ZstdSharp's <c>CompressionStream</c> (from ZstdSharp.Port, the package the reader uses) on net10.0. Dispose it before the destination is
+    /// read, so the last frame is written.
+    /// </summary>
+    public static Stream CompressingStream(Stream destination)
+    {
+#if NET11_0_OR_GREATER
+        return new ZstandardStream(destination, CompressionMode.Compress);
 #else
-        throw new NotSupportedException("The compressed fixture needs the net11.0 build.");
+        return new ZstdSharp.CompressionStream(destination);
 #endif
     }
 
