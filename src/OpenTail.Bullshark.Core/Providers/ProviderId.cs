@@ -12,5 +12,8 @@ public readonly record struct ProviderId(string Value)
     /// <summary>OpenAI Codex. Its history is read only in a net11.0 build (no package is needed there).</summary>
     public static readonly ProviderId Codex = new("codex");
 
+    /// <summary>GitHub Copilot CLI. Its history is plain files, so it is read on net10.0 and net11.0 alike.</summary>
+    public static readonly ProviderId Copilot = new("copilot");
+
     public override string ToString() => Value;
 }
