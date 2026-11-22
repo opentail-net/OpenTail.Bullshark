@@ -75,6 +75,40 @@ public static class ProviderResumeText
         return text.ToString();
     }
 
+    /// <summary>
+    /// The text a new session starts from when it is in another platform than the session it is made from (RS-D6), with a summary of that session.
+    /// It is <see cref="Compose"/> with a different header: the first line names the source platform (<paramref name="sourcePhrase"/>), the level
+    /// heading is as <see cref="Compose"/> writes it, and a line says that the new <paramref name="targetPhrase"/> session starts from the summary and
+    /// that the source session is not continued. The tail and the closing line are written as <see cref="Compose"/> writes them. There is no session
+    /// line: a cross-platform start is not a continuation of the source session (RS-D5). A summary and its level are required (RS-D2): without them
+    /// the method throws, rather than write a header that names a summary it does not have.
+    /// </summary>
+    public static string ComposeFrom(
+        string targetPhrase,
+        string sourcePhrase,
+        string? summary,
+        SummaryLevel? level,
+        string tail,
+        int turns)
+    {
+        if (string.IsNullOrWhiteSpace(summary) || level is not { } shown)
+            throw new ArgumentException("A cross-platform start needs a summary and its level (RS-D2).");
+        var text = new StringBuilder();
+        text.AppendLine($"Summary of a {sourcePhrase} session");
+        text.AppendLine($"This new {targetPhrase} session starts from that summary. The {sourcePhrase} session itself is not continued.");
+        text.AppendLine($"## Summary ({shown.ToString().ToLowerInvariant()})");
+        text.AppendLine(Cap(summary.Trim()));
+        if (turns > 0 && tail.Length > 0)
+        {
+            text.AppendLine();
+            text.AppendLine($"## The last {turns} turns, word for word (messages only)");
+            text.AppendLine(tail);
+        }
+        text.AppendLine();
+        text.Append("Carry on from this. Where something is unclear, make the sensible decision and say what you decided.");
+        return text.ToString();
+    }
+
     /// <summary>The summary as the start text carries it: at most <see cref="ResumeText.MaxSummaryChars"/> characters, with a note when it is cut.</summary>
     public static string Cap(string summary) =>
         summary.Length <= ResumeText.MaxSummaryChars

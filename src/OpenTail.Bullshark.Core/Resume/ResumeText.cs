@@ -152,22 +152,41 @@ public static class ResumeText
         int turns,
         string sourceSessionId,
         Func<string, int> commandLineOf,
-        int limit = ClaudeCli.MaxLaunchCharacters)
+        int limit = ClaudeCli.MaxLaunchCharacters) =>
+        FitWith(summary, level, lines, turns, sourceSessionId, commandLineOf, limit,
+            (turnLines, keep, maxChars) => Tail(turnLines, keep, maxChars: maxChars), Compose);
+
+    /// <summary>
+    /// <see cref="Fit"/> with the tail and the compose step as parameters, so that the start text of another platform's session (S3) is fitted
+    /// the same way. <paramref name="tail"/> is called as <c>tail(lines, turns, maxChars)</c>, with <c>int.MaxValue</c> for the whole tail, and
+    /// <paramref name="compose"/> as <c>compose(summary, level, tail, turns, sourceSessionId)</c>. With <see cref="Tail"/> and <see cref="Compose"/>
+    /// it gives what <see cref="Fit"/> gives.
+    /// </summary>
+    public static FittedStart FitWith(
+        string? summary,
+        SummaryLevel? level,
+        IReadOnlyList<TranscriptLine> lines,
+        int turns,
+        string sourceSessionId,
+        Func<string, int> commandLineOf,
+        int limit,
+        Func<IReadOnlyList<TranscriptLine>, int, int, string> tail,
+        Func<string?, SummaryLevel?, string, int, string?, string> compose)
     {
-        var fullTail = Tail(lines, turns);
-        var text = Compose(summary, level, fullTail, turns, sourceSessionId);
+        var fullTail = tail(lines, turns, int.MaxValue);
+        var text = compose(summary, level, fullTail, turns, sourceSessionId);
         var excess = commandLineOf(text) - limit;
         if (excess <= 0) return new FittedStart(text, 0, Fits: true);
 
         // Even with the tail gone, the text is over: nothing more can be cut to fit it, so the whole tail is left out.
-        if (commandLineOf(Compose(summary, level, string.Empty, turns, sourceSessionId)) > limit)
-            return new FittedStart(Compose(summary, level, string.Empty, turns, sourceSessionId), fullTail.Length, Fits: false);
+        if (commandLineOf(compose(summary, level, string.Empty, turns, sourceSessionId)) > limit)
+            return new FittedStart(compose(summary, level, string.Empty, turns, sourceSessionId), fullTail.Length, Fits: false);
 
         var cut = excess;
         while (true)
         {
-            var cutTail = Tail(lines, turns, maxChars: Math.Max(0, fullTail.Length - cut));
-            text = Compose(summary, level, cutTail, turns, sourceSessionId);
+            var cutTail = tail(lines, turns, Math.Max(0, fullTail.Length - cut));
+            text = compose(summary, level, cutTail, turns, sourceSessionId);
             var stillOver = commandLineOf(text) - limit;
             if (stillOver <= 0 || cut >= fullTail.Length)
                 return new FittedStart(text, fullTail.Length - cutTail.Length, Fits: stillOver <= 0);
