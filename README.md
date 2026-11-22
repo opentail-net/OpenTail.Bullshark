@@ -2,15 +2,7 @@
 
 Bullshark - saves your bytes.
 
-> **Status (2026-11-22): built and tested; the live end-to-end run with real sessions is not done.**
->
-> - **CI:** the latest completed CI run on main is green: run 45082603240, for commit a7d5967. CI builds the solution and runs the tests with `--filter "Category!=Live"`, so the live tests (which start the real `claude` and spend tokens) are not run ([.github/workflows/ci.yml](.github/workflows/ci.yml), lines 34 to 37). That run's counts: Core.Tests 3178 passed on net10.0 and on net11.0; App.Tests 574 passed on net10.0-windows10.0.19041.0 and on net11.0-windows10.0.19041.0; 0 failed. A run for the newest push, commit 17f1972 (docs only), was still in progress when this was written.
-> - **Providers:** Claude Code (the original), OpenAI Codex CLI and GitHub Copilot CLI are built. Each has checks at the PC that are still open. opencode is planned, not built. See [Providers](#providers).
-> - **Continue** (the button beside the provider dropdown, and the palette entry "Continue last session"): built in stages C1 to C6, with the review (C8) done. Its screen check (C7) is not run ([docs/plans/continue-last-session-2026-11-23.md](docs/plans/continue-last-session-2026-11-23.md)).
-> - **Resume into another platform** (a summary can start a new session in another platform): built. Its screen check (S5) is not run ([docs/plans/resume-source-target-2026-11-22.md](docs/plans/resume-source-target-2026-11-22.md)).
-> - **The live run with the real `claude` CLI** is still open: section B of [docs/plans/live-run-checklist.md](docs/plans/live-run-checklist.md) is unchecked.
->
-> The current work is in [docs/plans/00-current-work.md](docs/plans/00-current-work.md), and the owner's decisions are in [docs/plans/owner-decisions-2026-11-22.md](docs/plans/owner-decisions-2026-11-22.md). See [Plans](#plans).
+OpenTail.Bullshark is a window for your AI coding sessions. Each Claude Code, OpenAI Codex CLI or GitHub Copilot CLI session shows up as a tab, and the sessions keep running after the window closes. It exists so that work carries on from one day to the next: you can come back to a session and pick up where it stopped, without rebuilding the context or explaining the project again.
 
 ## What it is
 
@@ -33,15 +25,27 @@ A dropdown at the top of the rail chooses the provider, and the rail lists that 
 | Claude Code | The original. Built. | Yes | Yes | Yes | Yes | Yes | Yes | This README, and [docs/plans/Done/](docs/plans/Done/) |
 | OpenAI Codex CLI | Built. The owner's checks at the PC are open. | Yes | Yes, read-only, messages only | Yes (`codex resume <id>`; whether it restores the chat is open) | Yes | Yes, on demand, one call per press | No | [provider-codex-2026-11-21.md](docs/plans/provider-codex-2026-11-21.md) |
 | GitHub Copilot CLI | Built (stages G1 to G4; G5 optional, not started). Screen check not run. Install question open (G-O5). | Yes | Yes, read-only, messages only, first 5,000 | Yes (`copilot --resume=<id>`) | Yes | Yes, on demand, one call per press | No | [provider-copilot-2026-11-22.md](docs/plans/provider-copilot-2026-11-22.md) |
-| opencode | Planned. No code. | No | No | No | No | No | No | [provider-opencode-2026-11-22.md](docs/plans/provider-opencode-2026-11-22.md) |
+| opencode | In progress. The provider identity, the terminal commands and the version check are built; the database reader is being built. Not yet in the window. | No | No | No | No | No | No | [provider-opencode-2026-11-22.md](docs/plans/provider-opencode-2026-11-22.md) |
 
 - **Codex and Copilot are not supervised.** Only Claude implements the supervisor's interfaces (`src/OpenTail.Bullshark.Core/Providers/Capabilities.cs`, lines 35 to 41). The Codex and Copilot provider classes implement none of them (`src/OpenTail.Bullshark.Core/Codex/CodexProvider.cs`, line 10; `src/OpenTail.Bullshark.Core/Copilot/CopilotProvider.cs`, line 11). Their rows show no live status and no restarts.
 - **Copilot's install question is open.** The copy that `cmd.exe` runs (WinGet, bundled version 1.0.34) lacks two of the flags the app passes, `-C` and `--sync-session`; the auto-updated builds have them ([docs/plans/provider-copilot-2026-11-22.md](docs/plans/provider-copilot-2026-11-22.md), G-O5). Copilot is switched off as the target of a cross-platform start (`src/OpenTail.Bullshark.App/Providers/ResumeTarget.cs`, `CopilotTargetEnabled = false`).
 - **Continue** (the button and the palette entry) picks the most recently active session of the current provider and opens its resume screen; it starts nothing when it opens. **Resume into another platform** is allowed only from a summary: a full or last-turns resume stays in the session's own platform ([docs/plans/resume-source-target-2026-11-22.md](docs/plans/resume-source-target-2026-11-22.md)).
 
+## Where it stands
+
+As of 2026-11-22:
+
+- **CI:** the latest CI run on main is green (run 45082603240, for commit a7d5967). CI runs the tests without the live tests, which start the real `claude` and spend tokens ([.github/workflows/ci.yml](.github/workflows/ci.yml), lines 34 to 37). That run had 3178 Core tests passed on net10.0 and net11.0, and 574 App tests passed on net10.0-windows10.0.19041.0 and net11.0-windows10.0.19041.0; 0 failed. A run for the newest push, commit 17f1972 (docs only), was still in progress when this was written.
+- **Providers:** Claude Code is the original. OpenAI Codex CLI and GitHub Copilot CLI are built, and each still has checks at the PC to do. Copilot's install question (G-O5) is open. opencode is planned, not built.
+- **Continue** (the button beside the provider dropdown, and the palette entry "Continue last session") is built in stages C1 to C6, with the review (C8) done. Its check at the PC (C7) is still to do ([docs/plans/continue-last-session-2026-11-23.md](docs/plans/continue-last-session-2026-11-23.md)).
+- **Resume into another platform** (a summary can start a new session in another platform) is built. Its check at the PC (S5) is still to do ([docs/plans/resume-source-target-2026-11-22.md](docs/plans/resume-source-target-2026-11-22.md)).
+- **The live run** with the real `claude` CLI is still open: section B of [docs/plans/live-run-checklist.md](docs/plans/live-run-checklist.md) is unchecked.
+
+The current work is in [docs/plans/00-current-work.md](docs/plans/00-current-work.md), and the owner's decisions are in [docs/plans/owner-decisions-2026-11-22.md](docs/plans/owner-decisions-2026-11-22.md). See [Plans](#plans).
+
 ## Where this came from
 
-On 2026-11-12/13 a planner session directed a second local Claude session (a Haiku builder, `git-27`) through briefs sent with SendMessage. It worked (see `project-host-a2a-and-builder-loop` in memory). The owner found the agent-to-agent messaging too clunky. OpenTail.Bullshark keeps the two-session pattern and drops the messaging.
+On 2026-11-12/13 a planner session directed a second local Claude session (a Haiku builder, `git-27`) through briefs sent with SendMessage. It worked. The owner found the agent-to-agent messaging too clunky. OpenTail.Bullshark keeps the two-session pattern and drops the messaging.
 
 ## Design principles
 
@@ -55,7 +59,7 @@ On 2026-11-12/13 a planner session directed a second local Claude session (a Hai
 
 Two parts, plus a later optional third:
 
-- **Supervisor** (the window runs it; a headless host exists but is not started at log-on, P4). It starts the planner and the coder as background sessions (`claude --bg` with `--name`; `--bg` ignores `--session-id`, so the id is read back from the listing, F18), keeps their IDs in a state file, and polls `claude agents --json`. The window runs the same pass every 15 seconds while it is open, off the UI thread. If a session has gone, it restarts it. If a session is `blocked`, it raises an alert. *Built so far:* the headless host (`src/OpenTail.Bullshark.Supervisor`) is report-only: its `Program.cs` prints two read-only reports, `--usage-report` and `--cache-report`, and starts nothing. Without one of those flags it prints that it runs no supervisor, and exits with code 2. The loop runs inside the window, every 15 seconds and off the UI thread (`src/OpenTail.Bullshark.App/SessionWindow.xaml.cs`, line 170), and the log-on start (P4) is not built.
+- **Supervisor** (the window runs it; a headless host exists but is not started at log-on, P4). It starts the planner and the coder as background sessions (`claude --bg` with `--name`; `--bg` ignores `--session-id`, so the id is read back from the listing, F18), keeps their IDs in a state file, and polls `claude agents --json`. The window runs the same pass every 15 seconds while it is open, off the UI thread. If a session has gone, it restarts it. If a session is `blocked`, it raises an alert. *So far:* the headless host (`src/OpenTail.Bullshark.Supervisor`) is report-only: its `Program.cs` prints two read-only reports, `--usage-report` and `--cache-report`, and starts nothing. Without one of those flags it prints that it runs no supervisor, and exits with code 2. The loop runs inside the window, every 15 seconds and off the UI thread (`src/OpenTail.Bullshark.App/SessionWindow.xaml.cs`, line 170), and the log-on start (P4) is not built.
 - **Window** (opened by the owner). One tab per session. For a Claude session, each tab is an embedded terminal running `claude attach <id>`, and closing the tab detaches; the session keeps running. Codex and Copilot tabs run their own CLI (see [Providers](#providers)).
 - **Orchestrator** (later, optional, P8). A local model that handles situations the supervisor cannot, such as recovery when a restart is not enough. See its own section.
 
@@ -63,7 +67,7 @@ The sessions run whether or not the window is open. The window is a view onto th
 
 ## Requirements
 
-1. **Starts with the PC.** *Not built, and not wanted now (P4, owner decision of 2026-11-15):* the window is the one supervisor, so sessions are watched while the window is open. The sessions themselves keep running without it.
+1. **Starts with the PC.** *Not wanted now (P4, owner decision of 2026-11-15), so not built:* the window is the one supervisor, so sessions are watched while the window is open. The sessions themselves keep running without it.
 2. **Sessions persist.** A session runs until the owner ends it. Its transcript stays on disk and can be resumed by ID.
 3. **Launch with direction.** OpenTail.Bullshark starts each session and gives it its first instruction: a role brief and a pointer to the plan file.
 4. **Visible.** Each session is a tab in OpenTail.Bullshark, with its full terminal. The owner sees the activity without attaching elsewhere.
@@ -148,7 +152,7 @@ The sessions see each other directly and live, with `SendMessage` by session nam
 
 ## Startup
 
-- **Supervisor (not built, not wanted now, P4):** the design was a Windows Task Scheduler task, trigger "At log on", running as the owner's user account. *Expected, not verified:* a Windows Service would run under another account and would not see the owner's Claude login, so a service is the wrong choice.
+- **Supervisor (P4, not wanted now, so not built):** the design was a Windows Task Scheduler task, trigger "At log on", running as the owner's user account. *Expected, not verified:* a Windows Service would run under another account and would not see the owner's Claude login, so a service is the wrong choice.
 - **Window:** opened by the owner. Auto-open at log-on is optional (owner's choice).
 - **Log-on, not power-on.** A PC that boots without logging in does not run OpenTail.Bullshark. Auto-logon would change that (D6).
 - **Blocked sessions:** the supervisor alerts once per entry into `blocked`. The window lists the session under "Needs you" at the top of the rail, shows the count in the status bar, and flashes the taskbar button with a sound when a session newly needs the owner (turn off with `"notify": false` in `ui.json`). When the window is not in front (minimised or behind other windows), a silent Windows toast also shows the session's name and reason, one per batch; turn it off with `"toast": false` in `ui.json` or "Toggle toasts" in the command palette. A toast is not seen on screen until a run is checked by the owner.
@@ -156,7 +160,7 @@ The sessions see each other directly and live, with `SendMessage` by session nam
 - **Viewed files (2026-11-18):** the Changes tab has a "viewed" box per changed file, plus "Mark all viewed" and "Clear". A tick is kept in `ui.json` (key `viewedFiles`: session, path and two numbers, never file text) with the file's size and write time, so a file that changes again is unviewed; a deleted file has its own stamp. Nothing is written to the folder or to git.
 - **Big-deletion check (2026-11-18):** a changed file that lost most of its lines (at least 50 removed and at least three times as many removed as added) or a tracked file that is deleted gets a "check" label on the Changes tab, and a count line under its header. It is a label, not an alarm, with no sound or toast; the thresholds are the orchestrator's assumption and sit in `DeletionCheck.cs`.
 - **Same-call loop (2026-11-18):** the effort panel lists a call that failed three times or more in a row, with the same tool and the same input and no success of that call in between, with its first and last line. A fail, edit, pass sequence is not listed. The input is hashed, never kept.
-- **Group by tag (2026-11-18):** the rail's show menu groups the History section by folder or by tag (in memory: every start shows folders). A session with several tags is under each of its tags, the sessions with no tag are last, and Needs you and the search are unchanged.
+- **Group by tag (2026-11-18):** the rail's show menu groups the History section by folder or by tag. A session with several tags is under each of its tags, the sessions with no tag are last, and Needs you and the search are unchanged.
 - **Night page (2026-11-19):** Insights has a Night sub-tab, the bedtime preflight: ten checks (the window's last pass, the background daemon, the login, the setup check, a usage limit in force, the runs due in the next 12 hours, folders waiting for trust, the AC sleep timeout, what waits for you, and the quiet hours) and one verdict, "Ready for the night" or how many things to check. The checks are read when the page is shown, on Refresh, and every 30 seconds while it is open. Nothing is started or sent to a session. The window does not keep the computer awake: the Sleep row only reports the AC sleep timeout, read with `powercfg /query` (read-only, five-second timeout).
 - **Heartbeat (2026-11-19):** after each supervisor pass the window writes `heartbeat.json` beside the state file (at most every 10 seconds). The Night page shows "Last pass: 12 s ago", so the owner can see in the morning whether the window ran in the night. The window is the only supervisor: a closed window or a sleeping PC means no pass.
 - **Night report (2026-11-19):** when the owner returns to the window after at least 30 minutes away, and something happened, the "While you were away" digest is also saved as Markdown in `reports\` beside the state file, as `away-yyyy-MM-dd-HHmm.md` (local time), with the sessions' plans and the token totals of the period. A report is never overwritten, and the newest 60 are kept. The Away page names the saved file and has an "Open reports folder" button. Nothing is sent anywhere.
@@ -184,7 +188,7 @@ The sessions see each other directly and live, with `SendMessage` by session nam
 - **Keyboard:** the command palette's "Keyboard shortcuts" shows the chords and where each one works. The palette also has zoom in, zoom out, zoom 100 %, "Switch theme", and "Filter rail: …" for each rail view. The transcript's hint line is built from the same table.
 - **Empty states:** Storage with no transcripts names the folder it looked in and has "Open Claude's folder"; Timeline with no runs says to start one from the + tab and has "Open the setup tab"; a search with no hit says how many sessions it read. The setup check's rows show Ok, Warning or Problem as words as well as colours.
 - **Attention file (off by default):** Settings, Claude, "Write attention.json for other tools" writes `attention.json` beside the state file on each pass: the time in UTC, the count, and each waiting item's reason code and session name (no detail text). It is deleted when the window closes. Nothing is sent, and nothing reads it back.
-- **Not built, the owner's decisions:** publishing a release zip, an update check, and a Teams mirror. The licence (PolyForm Strict, `LICENSE.md`) gives no right to distribute the app, and the app makes no network call of its own.
+- **Not built, by the owner's decision:** publishing a release zip, an update check, and a Teams mirror. The licence (PolyForm Strict, `LICENSE.md`) gives no right to distribute the app, and the app makes no network call of its own.
 
 ## Soak log (perf and testability batch, 2026-11-19)
 
