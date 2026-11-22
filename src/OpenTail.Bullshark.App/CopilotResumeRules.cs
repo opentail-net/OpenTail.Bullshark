@@ -5,26 +5,30 @@ using OpenTail.Bullshark.Core.Resume;
 namespace OpenTail.Bullshark.App;
 
 /// <summary>
-/// The rules of the Copilot resume screen (step G3.1, copied from the Codex rules R-D2 and R-D3): the labels of its modes and levels, the cost line of
-/// each mode, the turns check, the size line of a preview, the rule that turns Start on, and the refusals and status lines of a resume (G-D12, G-D14).
-/// Pure, so the tests need no window; the screen's code-behind only shows what these return.
+/// The rules of the Copilot resume screen (step G3.1, copied from the Codex rules R-D2 and R-D3). The rules are written once in
+/// <see cref="ProviderResumeRules"/>; this class holds Copilot's words and maps its mode to the shared one. The refusals (G-D12) and the started line
+/// (G3.2) are the shared rules with Copilot's texts. Pure, so the tests need no window; the screen's code-behind only shows what these return.
 /// </summary>
 public static class CopilotResumeRules
 {
+    /// <summary>Copilot's words: the name, the resume command, the shim, and the summary's cost line (the cap on the characters sent).</summary>
+    private static readonly ProviderResumeWording Wording = new(
+        CliName: "Copilot",
+        ResumeCommand: "copilot --resume",
+        ShimName: "copilot.ps1",
+        SummaryCostLine: () => $"One Copilot call. Up to {CopilotSummarizer.MaxInputChars.ToString("N0", CultureInfo.InvariantCulture)} characters of this session are sent.");
+
     /// <summary>The most turns the screen accepts. The same limit as Claude's and Codex's resume screens.</summary>
-    public const int MaxTurns = 200;
+    public const int MaxTurns = ProviderResumeRules.MaxTurns;
 
     /// <summary>The turns kept when the box is not a valid number. The same default as Claude's resume prompt.</summary>
-    public const int DefaultTurns = ResumeText.DefaultTurns;
+    public const int DefaultTurns = ProviderResumeRules.DefaultTurns;
 
     /// <summary>The cost line of the mode that makes no model call from the summary path (the last turns).</summary>
-    public const string NoModelCallLine = "No model call. The text is shown before anything starts.";
+    public const string NoModelCallLine = ProviderResumeRules.NoModelCallLine;
 
-    /// <summary>
-    /// The cost line of In full. The text of the other modes ("The text is shown before anything starts") does not fit it: In full sends no text,
-    /// it only runs <c>copilot --resume</c> in a terminal tab.
-    /// </summary>
-    public const string FullCostLine = "No model call from OpenTail. The session opens in a terminal tab with copilot --resume, and OpenTail sends it no text.";
+    /// <summary>The cost line of In full: it runs <c>copilot --resume</c> in a terminal tab, and OpenTail sends no text.</summary>
+    public static readonly string FullCostLine = ProviderResumeRules.FullCostLine(Wording);
 
     /// <summary>The line shown while a summary is made, when another press would start a second call (G3.2): it waits for the first.</summary>
     public const string SummaryRunning = "A Copilot summary is already being made. Wait for it to finish.";
@@ -44,70 +48,51 @@ public static class CopilotResumeRules
         "Summaries are not made from this window: it does not hold the lock for this state file, so another window may be using its scratch folders. Open the session from the window that holds the lock.";
 
     /// <summary>The line under the turns box when the box is not a valid number.</summary>
-    public static readonly string TurnsMessage = $"Enter a whole number from 0 to {MaxTurns} for the turns.";
+    public static readonly string TurnsMessage = ProviderResumeRules.TurnsMessage;
+
+    /// <summary>The shared mode of one of Copilot's modes, or null for a value Copilot does not have.</summary>
+    private static ProviderResumeMode? ToShared(CopilotResumeMode mode) => mode switch
+    {
+        CopilotResumeMode.Full => ProviderResumeMode.Full,
+        CopilotResumeMode.LastTurns => ProviderResumeMode.LastTurns,
+        CopilotResumeMode.Summary => ProviderResumeMode.Summary,
+        _ => null,
+    };
 
     /// <summary>The label of a mode, as its radio button shows it.</summary>
-    public static string ModeLabel(CopilotResumeMode mode) => mode switch
-    {
-        CopilotResumeMode.Full => "In full: the whole conversation, with copilot --resume",
-        CopilotResumeMode.LastTurns => "From the last turns (no model call)",
-        CopilotResumeMode.Summary => "From a Copilot summary (one Copilot call)",
-        _ => throw new ArgumentOutOfRangeException(nameof(mode)),
-    };
+    public static string ModeLabel(CopilotResumeMode mode) =>
+        ProviderResumeRules.ModeLabel(ToShared(mode) ?? throw new ArgumentOutOfRangeException(nameof(mode)), Wording);
 
     /// <summary>
     /// The cost line of a mode. The summary line states the cap on the characters sent (the Core's constant, so the screen says what the call does).
     /// </summary>
-    public static string CostLine(CopilotResumeMode mode) => mode switch
-    {
-        CopilotResumeMode.Full => FullCostLine,
-        CopilotResumeMode.LastTurns => NoModelCallLine,
-        CopilotResumeMode.Summary =>
-            $"One Copilot call. Up to {CopilotSummarizer.MaxInputChars.ToString("N0", CultureInfo.InvariantCulture)} characters of this session are sent.",
-        _ => throw new ArgumentOutOfRangeException(nameof(mode)),
-    };
+    public static string CostLine(CopilotResumeMode mode) =>
+        ProviderResumeRules.CostLine(ToShared(mode) ?? throw new ArgumentOutOfRangeException(nameof(mode)), Wording);
 
     /// <summary>The label of a summary level, with its length in words.</summary>
-    public static string LevelLabel(SummaryLevel level) => level switch
-    {
-        SummaryLevel.Minimal => "Minimal · about 120 words",
-        SummaryLevel.Normal => "Normal · about 400 words",
-        SummaryLevel.Complete => "Complete · about 1,200 words",
-        _ => throw new ArgumentOutOfRangeException(nameof(level)),
-    };
+    public static string LevelLabel(SummaryLevel level) => ProviderResumeRules.LevelLabel(level);
 
     /// <summary>
     /// The turns in the box: a whole number from 0 to <see cref="MaxTurns"/>. Returns false, with <see cref="DefaultTurns"/>, when it is not one.
     /// </summary>
-    public static bool TryTurns(string text, out int turns)
-    {
-        var parsed = int.TryParse(text.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out turns);
-        if (parsed && turns is >= 0 and <= MaxTurns) return true;
-        turns = DefaultTurns;
-        return false;
-    }
+    public static bool TryTurns(string text, out int turns) => ProviderResumeRules.TryTurns(text, out turns);
 
     /// <summary>
     /// True when Start may be pressed. In full is always allowed. From the last turns needs a preview for the current choice. From a summary needs a
     /// preview and a summary kept for the current level (<paramref name="keptMatches"/>): a summary is never made by Start.
     /// </summary>
-    public static bool CanStart(CopilotResumeMode mode, bool previewReady, bool keptMatches) => mode switch
-    {
-        CopilotResumeMode.Full => true,
-        CopilotResumeMode.LastTurns => previewReady,
-        CopilotResumeMode.Summary => previewReady && keptMatches,
-        _ => false,
-    };
+    public static bool CanStart(CopilotResumeMode mode, bool previewReady, bool keptMatches) =>
+        ToShared(mode) is { } shared && ProviderResumeRules.CanStart(shared, previewReady, keptMatches);
+
+    /// <summary>True when the preview of a choice is built at once, with no press: the last turns, or a kept summary for the level on screen.</summary>
+    public static bool RunsAtOnce(CopilotResumeMode mode, bool keptMatches) =>
+        ToShared(mode) is { } shared && ProviderResumeRules.RunsAtOnce(shared, keptMatches);
 
     /// <summary>
     /// The size line above a preview: "About N tokens (C characters). Start sends exactly this text." The tokens are the characters over four, rounded
     /// (as Claude's preview counts them).
     /// </summary>
-    public static string SizeLine(int characters)
-    {
-        var tokens = (int)Math.Round(characters / 4.0, MidpointRounding.AwayFromZero);
-        return $"About {tokens.ToString("N0", CultureInfo.InvariantCulture)} tokens ({characters.ToString("N0", CultureInfo.InvariantCulture)} characters). Start sends exactly this text.";
-    }
+    public static string SizeLine(int characters) => ProviderResumeRules.SizeLine(characters);
 
     /// <summary>
     /// The refusal of a resume or a start (G-D12), or null when it may go on: the id must be in the app's own list of Copilot sessions, and the session's
@@ -116,22 +101,12 @@ public static class CopilotResumeRules
     /// <param name="listed">True when the id is in the list the rail shows.</param>
     /// <param name="folder">The session's folder as the history gives it (may be null or blank).</param>
     /// <param name="folderExists">True when the folder exists on disk.</param>
-    public static string? RefusalFor(bool listed, string? folder, bool folderExists)
-    {
-        if (!listed) return CopilotRailText.NotListed;
-        if (folder is not { Length: > 0 } || !folderExists) return CopilotRailText.FolderMissing(folder);
-        return null;
-    }
+    public static string? RefusalFor(bool listed, string? folder, bool folderExists) =>
+        ProviderResumeRules.RefusalFor(listed, folder, folderExists, CopilotRailText.NotListed, CopilotRailText.FolderMissing);
 
     /// <summary>
     /// The status line after a start (G3.2): what the new session starts from, and that it makes a model turn. The line also says where the start text is
     /// kept when the launch refuses (the Core script keeps the file and writes that line into the tab).
     /// </summary>
-    public static string StartedLine(SummaryLevel? level, int turns)
-    {
-        var how = level is { } chosen
-            ? $"a Copilot summary ({chosen.ToString().ToLowerInvariant()}) and the last {turns} turns"
-            : $"the last {turns} turns";
-        return $"Started a Copilot session from {how}. It starts with a model turn. If the tab reports that copilot.ps1 is missing, the start text is kept in the Starts folder beside the state file.";
-    }
+    public static string StartedLine(SummaryLevel? level, int turns) => ProviderResumeRules.StartedLine(Wording, level, turns);
 }

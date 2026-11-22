@@ -188,7 +188,7 @@ public partial class CodexResumePrompt : Window
     }
 
     /// <summary>True when the summary the dialog holds is for the choice's level. It is kept only for the level and turns it was made at (R-D3).</summary>
-    private bool KeptMatches(CodexResumeChoice? choice) => choice?.Level is { } level && _kept is not null && _kept.MatchesLevel(level);
+    private bool KeptMatches(CodexResumeChoice? choice) => ProviderResumeRules.KeptMatches(choice?.Level, _kept);
 
     /// <summary>
     /// Runs when the mode, the level or the turns change. The preview on screen is for the old choice, so it is taken away. A summary depends on the
@@ -200,11 +200,11 @@ public partial class CodexResumePrompt : Window
         CancelRequest();
         _busy = false;
         var choice = Selected(out var turnsValid);
-        if (_kept is not null && choice is { Mode: CodexResumeMode.Summary } && choice.Level != _kept.Level) _kept = null;
+        _kept = ProviderResumeRules.KeptAfterChange(choice?.Mode == CodexResumeMode.Summary, choice?.Level, _kept);
         HidePreview();
         Refresh();
         if (!turnsValid || choice is null) return;
-        if (choice.Mode == CodexResumeMode.LastTurns || (choice.Mode == CodexResumeMode.Summary && KeptMatches(choice))) _ = RunRequestAsync(choice);
+        if (CodexResumeRules.RunsAtOnce(choice.Mode, KeptMatches(choice))) _ = RunRequestAsync(choice);
     }
 
     /// <summary>
