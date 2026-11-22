@@ -227,6 +227,8 @@ Not needed for the core. It is useful for recovery when a restart is not enough,
 
 [PolyForm Strict 1.0.0](LICENSE.md). Personal and other noncommercial use is permitted; commercial use needs a separate licence from the licensor. The licence does not allow distributing the software or making changes or new works based on it. The code is public to be read and reviewed.
 
+Third-party components and their licences are listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
 ## Repo
 
 Folder: `C:\Git\split\OpenTail.Bullshark` (next to the other `OpenTail.*` projects). Git repo with remote `origin` = `github.com/opentail-net/OpenTail.Bullshark`, branch `main`.
