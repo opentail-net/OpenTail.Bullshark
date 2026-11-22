@@ -66,16 +66,40 @@ public partial class SessionWindow : Window
     private readonly Dictionary<string, string> _transcriptPaths = new(StringComparer.Ordinal);
 
     /// <summary>
+    /// The sessions whose transcript search found nothing, for <c>lookups.missMemorySeconds</c> (behaviour batch, R10). Only a miss is kept here;
+    /// the window clears it when the pane's session changes. Thread-safe: the searches run on pool threads.
+    /// </summary>
+    private readonly LookupMemory _misses = new();
+
+    /// <summary>
+    /// Finds a session's transcript through the miss memory (R10). A live miss is not searched for again: null is returned, as for a search that
+    /// finds nothing. A search that finds nothing is remembered for <paramref name="missMemory"/>; one that finds the file forgets any miss for it.
+    /// Runs on any thread, and logs nothing.
+    /// </summary>
+    private static string? FindTranscriptRemembered(LookupMemory misses, string projectsRoot, string sessionId, TimeSpan missMemory, DateTimeOffset now)
+    {
+        if (misses.IsRemembered(sessionId, now, missMemory)) return null;
+        var path = TranscriptReader.FindTranscript(projectsRoot, sessionId);
+        if (path is null) misses.Remember(sessionId, now, missMemory);
+        else misses.Forget(sessionId);
+        return path;
+    }
+
+    /// <summary>
     /// Reads the cache facts of the running sessions. Runs off the UI thread. A transcript path is kept once found; a
-    /// session whose file is not there yet is not kept, so it is looked for again on the next pass.
+    /// session whose file is not there yet is not kept, and its miss is remembered for <paramref name="missMemory"/> (R10), so it is looked for again
+    /// once that has passed.
     /// </summary>
     private static (Dictionary<string, TailFacts> Facts, Dictionary<string, string> NewPaths) ReadRunningFacts(
         IEnumerable<string> sessionIds,
         Dictionary<string, string> knownPaths,
-        string projectsRoot)
+        string projectsRoot,
+        LookupMemory misses,
+        TimeSpan missMemory)
     {
         var facts = new Dictionary<string, TailFacts>(StringComparer.Ordinal);
         var newPaths = new Dictionary<string, string>(StringComparer.Ordinal);
+        var now = DateTimeOffset.UtcNow;
         foreach (var id in sessionIds)
         {
             // A failure is this session's alone (round 12 B1): before it, one unreadable transcript failed every pass.
@@ -83,7 +107,7 @@ public partial class SessionWindow : Window
             {
                 if (!knownPaths.TryGetValue(id, out var path))
                 {
-                    path = TranscriptReader.FindTranscript(projectsRoot, id);
+                    path = FindTranscriptRemembered(misses, projectsRoot, id, missMemory, now);
                     if (path is null) continue;
                     newPaths[id] = path;
                 }
@@ -172,6 +196,9 @@ public partial class SessionWindow : Window
 
     /// <summary>The terminal the pane is showing, or null when a transcript or a setup page is showing.</summary>
     private ExtendedTerminalControl? _shown;
+
+    /// <summary>The element the left pane showed last (R10). Showing a different element clears the lookup misses.</summary>
+    private UIElement? _paneElement;
 
     public SessionWindow(LaunchOptions options)
     {
@@ -417,7 +444,9 @@ public partial class SessionWindow : Window
         {
             TakeOverIfFree();
             var known = new Dictionary<string, string>(_transcriptPaths, StringComparer.Ordinal);
-            var read = await Task.Run(() => ReadForPassAsync(known));
+            // The miss memory's window is read here, on the UI thread, from the behaviour settings in force (R10).
+            var missMemory = _behaviour.Lookups.MissMemory;
+            var read = await Task.Run(() => ReadForPassAsync(known, missMemory));
 
             _agents = read.Agents;
             _allAgents = read.PassAgents;
@@ -614,7 +643,7 @@ public partial class SessionWindow : Window
     /// The active listing is for the rail; the pass gets its own listing with the completed sessions, so that a session that
     /// finished or was stopped is not taken for a lost one. Touches no window object.
     /// </summary>
-    private async Task<PassReads> ReadForPassAsync(Dictionary<string, string> known)
+    private async Task<PassReads> ReadForPassAsync(Dictionary<string, string> known, TimeSpan missMemory)
     {
         // The daemon is read before the listings and again after them, and never throws: an unknown status lets the pass go on as before
         // (round 7 item 1). A listed row is stale only when both reads say not running (round 9 item 3), so a daemon that starts or exits
@@ -643,7 +672,7 @@ public partial class SessionWindow : Window
         // The cache facts of the running sessions are read on every pass: a warm session turns cold with no new record, so the
         // labels are recomputed each time.
         var ids = records.Values.Select(r => r.SessionId).Where(id => id.Length > 0).ToList();
-        var (facts, newPaths) = ReadRunningFacts(ids, known, _options.ProjectsRoot);
+        var (facts, newPaths) = ReadRunningFacts(ids, known, _options.ProjectsRoot, _misses, missMemory);
 
         // The run limits are read here, before the pass, from the records and transcripts above (round 6 item 1). The transcript paths are
         // the known ones and the new ones. The cache is read under its lock (round 12 B3).
@@ -737,6 +766,9 @@ public partial class SessionWindow : Window
         _insights.Visibility = ReferenceEquals(_insights, element) ? Visibility.Visible : Visibility.Hidden;
         _settings.Visibility = ReferenceEquals(_settings, element) ? Visibility.Visible : Visibility.Hidden;
 
+        // The pane shows another element (a different session, or a page): the lookup misses are forgotten (R10). Showing the same element keeps them.
+        if (!ReferenceEquals(element, _paneElement)) _misses.Clear();
+        _paneElement = element;
         _shown = element as ExtendedTerminalControl;
         if (_shown is not null)
         {

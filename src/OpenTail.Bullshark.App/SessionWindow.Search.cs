@@ -196,6 +196,8 @@ public partial class SessionWindow
         var fromSearch = _search.IsKeyboardFocusWithin;
         ShowOnly(_transcript);
         SelectHistoryRow(digest);
+        // The shared transcript view shows another session: the lookup misses are forgotten (R10).
+        if (!_transcript.IsShowing(digest)) _misses.Clear();
         await _transcript.ShowAsync(digest, line, DisplayTitle(digest), findQuery);
         if (_transcript.IsShowing(digest)) ShowLineageFor(digest);
         if (fromSearch) _transcript.FocusBody();

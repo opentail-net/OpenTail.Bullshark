@@ -81,6 +81,8 @@ public partial class SessionWindow
     {
         foreach (var other in PaneB.Children.OfType<ExtendedTerminalControl>())
             other.Visibility = ReferenceEquals(other, terminal) ? Visibility.Visible : Visibility.Hidden;
+        // A different session in the right pane forgets the lookup misses (R10).
+        if (!ReferenceEquals(terminal, _shownRight)) _misses.Clear();
         _shownRight = terminal;
         _focusTerminal = terminal;
         Dispatcher.BeginInvoke(new Action(() => terminal.Focus()), System.Windows.Threading.DispatcherPriority.Input);

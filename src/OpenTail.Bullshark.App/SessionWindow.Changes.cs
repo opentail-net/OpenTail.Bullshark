@@ -65,7 +65,9 @@ public partial class SessionWindow
             // UI thread (round 12 B3); the path is copied here, as the window's dictionary is read on the UI thread only.
             var known = _transcriptPaths.TryGetValue(sessionId, out var knownPath) ? knownPath : null;
             var projectsRoot = _options.ProjectsRoot;
-            var facts = await Task.Run(() => TranscriptFactsOf(sessionId, known, projectsRoot));
+            // The miss memory's window is read on the UI thread, from the behaviour settings in force (R10).
+            var missMemory = _behaviour.Lookups.MissMemory;
+            var facts = await Task.Run(() => TranscriptFactsOf(sessionId, known, projectsRoot, missMemory));
             if (!SameId(_changesSession, sessionId)) return;
             var folder = GitChanges.FolderOf(facts.Folder, listed, spec);
             if (folder is null)

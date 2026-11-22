@@ -33,13 +33,13 @@ public partial class SessionWindow
     /// <summary>
     /// The files and folder a session's transcript says it wrote, for the Changes tab and the merge check (round 12 B3). The path is the one
     /// the pass found, else the transcript is looked for. The notes are <see cref="TranscriptWrites.Facts"/>'s: a missing transcript and one
-    /// that cannot be read. Runs on a pool thread and touches no window object.
+    /// that cannot be read. The search goes through the miss memory for <paramref name="missMemory"/> (R10), which is thread-safe. Runs on a pool thread.
     /// </summary>
-    private TranscriptWrites.TranscriptFacts TranscriptFactsOf(string sessionId, string? knownPath, string projectsRoot)
+    private TranscriptWrites.TranscriptFacts TranscriptFactsOf(string sessionId, string? knownPath, string projectsRoot, TimeSpan missMemory)
     {
         try
         {
-            var path = knownPath ?? TranscriptReader.FindTranscript(projectsRoot, sessionId);
+            var path = knownPath ?? FindTranscriptRemembered(_misses, projectsRoot, sessionId, missMemory, DateTimeOffset.UtcNow);
             if (path is null) return new TranscriptWrites.TranscriptFacts(null, "No transcript for this session yet.", null);
             var writes = ReadWrites(sessionId, path);
             return new TranscriptWrites.TranscriptFacts(writes.Files, null, writes.Folder);

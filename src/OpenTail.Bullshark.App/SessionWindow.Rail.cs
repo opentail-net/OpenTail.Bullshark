@@ -889,6 +889,8 @@ public partial class SessionWindow
 
             case RailKind.History when tag.Digest is not null:
                 ShowOnly(_transcript);
+                // The shared transcript view shows another session: the lookup misses are forgotten (R10).
+                if (!_transcript.IsShowing(tag.Digest)) _misses.Clear();
                 await _transcript.ShowAsync(tag.Digest, title: DisplayTitle(tag.Digest));
                 if (_transcript.IsShowing(tag.Digest)) ShowLineageFor(tag.Digest);
                 break;
