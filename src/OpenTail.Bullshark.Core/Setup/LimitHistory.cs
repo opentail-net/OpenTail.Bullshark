@@ -17,8 +17,12 @@ public sealed record LimitDay(DateOnly Day, IReadOnlyDictionary<string, int> Hit
     public int Total => HitsByType.Values.Sum();
 }
 
-/// <summary>What the Limits page shows, from one read: the hits and their days (as <see cref="LimitHistory.ReadWithCache"/> gives them) and the usage report.</summary>
-public sealed record LimitsReport(IReadOnlyList<LimitHit> Hits, IReadOnlyList<LimitDay> Days, UsageReport Usage);
+/// <summary>
+/// What the Limits page shows, from one read: the hits and their days (as <see cref="LimitHistory.ReadWithCache"/> gives them) and the usage report.
+/// <paramref name="CodexSkipped"/> is the number of Codex rollouts this build could not decode (compressed, on net10.0); zero when none, or when
+/// no Codex history was read.
+/// </summary>
+public sealed record LimitsReport(IReadOnlyList<LimitHit> Hits, IReadOnlyList<LimitDay> Days, UsageReport Usage, int CodexSkipped = 0);
 
 /// <summary>
 /// The limit history (A4): the usage-limit hits of the last days, from the transcripts on this computer, for the read-only Limits page.
@@ -69,8 +73,9 @@ public static class LimitHistory
     /// <para>
     /// <paramref name="usage"/> sets the attribution of usage to a day (R8; default: the session's last update, and reasoning as output). The hits
     /// are Claude's limit hits and keep their own rule (per message, in the five hours before the hit): Codex usage never enters them.
-    /// <paramref name="codexHistoryRoot"/> is the Codex history folder (its rollouts are read fresh on each call, as <see cref="CodexUsageReader.ReadFolder"/>
-    /// does); null leaves Codex out of the report.
+    /// <paramref name="codexHistoryRoot"/> is the Codex history folder; null leaves Codex out of the report. Its rollouts are read as
+    /// <see cref="CodexUsageReader.ReadFolder"/> does, and <paramref name="codexMemo"/> (the caller's, one per window; null for none) keeps the
+    /// finished ones between reads. The count of rollouts this build could not decode is <see cref="LimitsReport.CodexSkipped"/>.
     /// </para>
     /// </summary>
     public static LimitsReport ReadReportWithCache(
@@ -81,19 +86,22 @@ public static class LimitHistory
         TimeZoneInfo? zone = null,
         Action<string>? log = null,
         UsageSettings? usage = null,
-        string? codexHistoryRoot = null)
+        string? codexHistoryRoot = null,
+        CodexUsageMemo? codexMemo = null)
     {
         var clock = zone ?? TimeZoneInfo.Local;
         var settings = usage ?? new UsageSettings();
         var since = now.AddDays(-days);
         var reads = ReadWindow(projectsRoot, since, cachePath, log);
         var (hits, byDay) = HitsOf(reads, since, now, clock);
-        IReadOnlyList<CodexSessionUsage> codex = [];
-        if (codexHistoryRoot is not null)
-        {
-            codex = CodexUsageReader.ReadFolder(codexHistoryRoot, since, settings.ReasoningAsOutput, log);
-        }
-        return new LimitsReport(hits, byDay, UsageReport.Build(reads, codex, projectsRoot, now, days, clock, settings.Attribution));
+        var codex = codexHistoryRoot is null
+            ? null
+            : CodexUsageReader.ReadFolder(codexHistoryRoot, since, settings.ReasoningAsOutput, log, codexMemo, now);
+        return new LimitsReport(
+            hits,
+            byDay,
+            UsageReport.Build(reads, codex?.Records ?? [], projectsRoot, now, days, clock, settings.Attribution),
+            codex?.Skipped ?? 0);
     }
 
     private static (IReadOnlyList<LimitHit> Hits, IReadOnlyList<LimitDay> Days) Compute(

@@ -130,6 +130,10 @@ public partial class SessionWindow
         var store = _store;
         var projectsRoot = _options.ProjectsRoot;
         var limitCachePath = _options.LimitHistoryCachePath;
+        // The usage settings, the Codex folder and the memo are the Limits page's (R8 part 2): the same transcripts, so the same numbers.
+        var usage = _behaviour.Usage;
+        var codexRoot = CodexHistoryRoot;
+        var codexMemo = _codexUsage;
         // The plan files of the sessions, copied here: the library's marks belong to the window's thread.
         var planFiles = _marks.Where(pair => pair.Value.PlanFile is not null).ToDictionary(pair => pair.Key, pair => pair.Value.PlanFile!, StringComparer.Ordinal);
         return await Task.Run(() =>
@@ -137,7 +141,8 @@ public partial class SessionWindow
             var (records, problem) = LoadRecords(store);
             var log = events.ReadSince(since, AwayDigest.EventLimit);
             // The same read as the Limits page's: the hits are the ones ReadWithCache gave, and the usage report comes from the same files.
-            var report = LimitHistory.ReadReportWithCache(projectsRoot, now, limitCachePath, log: AppLog.Write);
+            var report = LimitHistory.ReadReportWithCache(projectsRoot, now, limitCachePath, log: AppLog.Write,
+                usage: usage, codexHistoryRoot: codexRoot, codexMemo: codexMemo);
             var digest = AwayDigest.Build(records.Values.ToList(), digests, agents, log, report.Hits, attention, since, now);
             return new AwayBuild(digest, report.Usage, PlansOf(records.Values, planFiles), problem);
         });

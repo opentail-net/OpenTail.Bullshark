@@ -16,6 +16,15 @@ namespace OpenTail.Bullshark.Core.Codex;
 public sealed record CodexSessionUsage(string Path, string Project, string Model, TokenUsage Usage, DateTimeOffset FirstTotal, DateTimeOffset LastTotal);
 
 /// <summary>
+/// What one <see cref="CodexUsageReader.ReadFolder"/> call gave (R8 part 2): the records of the rollouts read, the count of rollouts it skipped
+/// because this build cannot decode them (compressed), and the count of files that could not be opened, read or stat'ed. Counts only.
+/// </summary>
+/// <param name="Records">One record per rollout with a valid total, in path order.</param>
+/// <param name="Skipped">The compressed rollouts this build cannot decode (on net10.0, every <c>.zst</c> rollout in the window).</param>
+/// <param name="Unreadable">The files that failed to open, read or stat (locked, removed, denied).</param>
+public sealed record CodexUsageRead(IReadOnlyList<CodexSessionUsage> Records, int Skipped, int Unreadable);
+
+/// <summary>
 /// Reads the token usage of Codex rollouts (R8). A session file gives one record: its last valid running total (a <c>event_msg</c> record with
 /// <c>payload.type</c> <c>token_count</c> whose <c>payload.info.total_token_usage</c> is an object with the figures). The totals are cumulative, so
 /// the last one is the session's total and the events are never summed. Verified on the owner's rollouts (see the R8 plan): each file starts from
@@ -94,55 +103,105 @@ public static class CodexUsageReader
     /// The record of one rollout file, or null when the file has no valid total or cannot be read (locked, removed, denied, or compressed on a
     /// build that cannot decode it). A file that is being written is read to its last complete line.
     /// </summary>
-    public static CodexSessionUsage? ReadFile(string path, bool reasoningAsOutput)
+    public static CodexSessionUsage? ReadFile(string path, bool reasoningAsOutput) => ReadOutcome(path, reasoningAsOutput).Usage;
+
+    /// <summary>
+    /// The record of one rollout file, and whether the file could be read at all. <c>Failed</c> is true only when the file could not be opened or
+    /// read; a file with no valid total is read, with a null <c>Usage</c>. This tells "no total" and "unreadable" apart for the counts of
+    /// <see cref="ReadFolder"/>.
+    /// </summary>
+    private static (CodexSessionUsage? Usage, bool Failed) ReadOutcome(string path, bool reasoningAsOutput)
     {
         try
         {
             using var reader = RolloutReader.Open(path);
-            return FromLines(path, Texts(RolloutReader.Lines(reader, CancellationToken.None)), reasoningAsOutput);
+            return (FromLines(path, Texts(RolloutReader.Lines(reader, CancellationToken.None)), reasoningAsOutput), false);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
         {
-            return null;
+            return (null, true);
         }
     }
 
     /// <summary>
     /// The records of the rollouts under <paramref name="historyRoot"/> that were last written at or after <paramref name="since"/> (a rollout
     /// last written earlier has no record in the window under any attribution rule, so it is not read). One record per file with a valid total,
-    /// in path order. Compressed rollouts are skipped, and counted in <paramref name="log"/>, on a build that cannot decode them. A missing folder
-    /// gives an empty list.
+    /// in path order. A compressed rollout is skipped, and counted in <see cref="CodexUsageRead.Skipped"/>, on a build that cannot decode it
+    /// (<paramref name="canDecodeCompressed"/>; default <see cref="RolloutReader.CanDecodeCompressed"/>). A file that cannot be opened, read or
+    /// stat'ed is counted in <see cref="CodexUsageRead.Unreadable"/>. A missing folder gives an empty result.
+    /// <para>
+    /// With a <paramref name="memo"/>, a file whose length, write time and reasoning setting are the ones its record was read with is not read
+    /// again, when its write time is more than <see cref="CodexUsageMemo.LiveWindow"/> before <paramref name="now"/> (default: the current time).
+    /// Each file's length and write time are taken before its read, so a file that changes during the read is read again next time. The memo's
+    /// entries for files that are no longer in the folder are removed.
+    /// </para>
+    /// <para>
+    /// The counts above zero are said to <paramref name="log"/> as counts only.
+    /// </para>
     /// </summary>
-    public static IReadOnlyList<CodexSessionUsage> ReadFolder(string historyRoot, DateTimeOffset since, bool reasoningAsOutput, Action<string>? log = null)
+    public static CodexUsageRead ReadFolder(
+        string historyRoot,
+        DateTimeOffset since,
+        bool reasoningAsOutput,
+        Action<string>? log = null,
+        CodexUsageMemo? memo = null,
+        DateTimeOffset? now = null,
+        bool? canDecodeCompressed = null)
     {
-        if (!Directory.Exists(historyRoot)) return [];
+        if (!Directory.Exists(historyRoot)) return new CodexUsageRead([], 0, 0);
         var sinceUtc = since.UtcDateTime;
+        var nowUtc = (now ?? DateTimeOffset.UtcNow).UtcDateTime;
+        var decodes = canDecodeCompressed ?? RolloutReader.CanDecodeCompressed;
+        var paths = RolloutReader.Files(historyRoot);
         var found = new List<CodexSessionUsage>();
-        var compressedSkipped = 0;
-        foreach (var path in RolloutReader.Files(historyRoot))
+        var skipped = 0;
+        var unreadable = 0;
+        foreach (var path in paths)
         {
-            DateTime written;
+            long length;
+            DateTime writtenUtc;
             try
             {
-                written = new FileInfo(path).LastWriteTimeUtc;
+                var info = new FileInfo(path);
+                length = info.Length;
+                writtenUtc = info.LastWriteTimeUtc;
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
+                unreadable++;
                 continue;
             }
-            if (written < sinceUtc) continue;
-            if (path.EndsWith(".zst", StringComparison.OrdinalIgnoreCase) && !RolloutReader.CanDecodeCompressed)
+            if (writtenUtc < sinceUtc) continue;
+            if (path.EndsWith(".zst", StringComparison.OrdinalIgnoreCase) && !decodes)
             {
-                compressedSkipped++;
+                skipped++;
                 continue;
             }
-            if (ReadFile(path, reasoningAsOutput) is { } usage) found.Add(usage);
+            if (memo is not null && memo.TryGet(path, length, writtenUtc.Ticks, reasoningAsOutput, nowUtc, out var known))
+            {
+                if (known is not null) found.Add(known);
+                continue;
+            }
+            var (usage, failed) = ReadOutcome(path, reasoningAsOutput);
+            if (failed)
+            {
+                unreadable++;
+                memo?.Forget(path);
+                continue;
+            }
+            memo?.Put(path, length, writtenUtc.Ticks, reasoningAsOutput, usage);
+            if (usage is not null) found.Add(usage);
         }
-        if (compressedSkipped > 0)
+        memo?.Prune(paths);
+        if (skipped > 0)
         {
-            log?.Invoke($"codex usage: {compressedSkipped} compressed rollout(s) not read by this build (net11.0 decodes them)");
+            log?.Invoke($"codex usage: {skipped} compressed rollout(s) not read by this build (net11.0 decodes them)");
         }
-        return found;
+        if (unreadable > 0)
+        {
+            log?.Invoke($"codex usage: {unreadable} rollout file(s) could not be read");
+        }
+        return new CodexUsageRead(found, skipped, unreadable);
     }
 
     /// <summary>The figures of one token-count payload as a <see cref="TokenUsage"/>, or null when it has no valid total.</summary>

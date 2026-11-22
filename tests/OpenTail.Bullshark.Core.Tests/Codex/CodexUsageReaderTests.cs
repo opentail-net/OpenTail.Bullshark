@@ -1,6 +1,7 @@
 using System.Globalization;
 using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Codex;
+using OpenTail.Bullshark.Core.Setup;
 using Xunit;
 
 namespace OpenTail.Bullshark.Core.Tests.Codex;
@@ -239,5 +240,215 @@ public sealed class CodexUsageReaderTests : IDisposable
     public void ReadFileOfAMissingFileGivesNoRecord()
     {
         Assert.Null(CodexUsageReader.ReadFile(Path.Combine(_folder, "missing.jsonl"), reasoningAsOutput: true));
+    }
+
+    /// <summary>The read time of the memo tests.</summary>
+    private static readonly DateTimeOffset Now = new(2026, 11, 22, 12, 0, 0, TimeSpan.Zero);
+
+    /// <summary>A write time long before <see cref="Now"/>: an old, finished rollout.</summary>
+    private static readonly DateTime OldWrite = new(2026, 11, 18, 9, 0, 0, DateTimeKind.Utc);
+
+    private static readonly DateTimeOffset Since = Now.AddDays(-30);
+
+    /// <summary>
+    /// A rollout with one total of input <paramref name="input"/> (cached 60, output 10, reasoning 4). Inputs of 100 and 900 give lines of the same
+    /// length with other figures, so a test can change a file without changing its length.
+    /// </summary>
+    private static string[] Lines(long input) => [Meta("C:\\Work\\proj-x"), Turn(0, "model-one"), Total(1, input, 60, 10, 4)];
+
+    /// <summary>Writes a rollout under the test folder with the given write time, and returns its path.</summary>
+    private string WriteRollout(string name, IEnumerable<string> lines, DateTime written)
+    {
+        Directory.CreateDirectory(_folder);
+        var path = Path.Combine(_folder, name);
+        File.WriteAllLines(path, lines);
+        File.SetLastWriteTimeUtc(path, written);
+        return path;
+    }
+
+    [Fact]
+    public void AFinishedRolloutWithTheSameLengthAndWriteTimeIsReusedFromTheMemo()
+    {
+        var path = WriteRollout("rollout-old.jsonl", Lines(100), OldWrite);
+        var memo = new CodexUsageMemo();
+        var first = CodexUsageReader.ReadFolder(_folder, Since, true, memo: memo, now: Now);
+        var length = new FileInfo(path).Length;
+
+        // Other figures, the same length and the same write time: a reused record keeps the first read's figures, a fresh read does not.
+        WriteRollout("rollout-old.jsonl", Lines(900), OldWrite);
+        Assert.Equal(length, new FileInfo(path).Length);
+
+        var reused = CodexUsageReader.ReadFolder(_folder, Since, true, memo: memo, now: Now);
+        var fresh = CodexUsageReader.ReadFolder(_folder, Since, true, now: Now);
+
+        Assert.Equal(new TokenUsage(40, 10, 0, 60), Assert.Single(first.Records).Usage);
+        Assert.Equal(first.Records, reused.Records);
+        Assert.Equal(new TokenUsage(840, 10, 0, 60), Assert.Single(fresh.Records).Usage);
+    }
+
+    [Fact]
+    public void AFileWhoseWriteTimeChangedIsReadAgain()
+    {
+        WriteRollout("rollout-old.jsonl", Lines(100), OldWrite);
+        var memo = new CodexUsageMemo();
+        CodexUsageReader.ReadFolder(_folder, Since, true, memo: memo, now: Now);
+
+        WriteRollout("rollout-old.jsonl", Lines(900), OldWrite.AddMinutes(1));
+        var again = CodexUsageReader.ReadFolder(_folder, Since, true, memo: memo, now: Now);
+
+        Assert.Equal(new TokenUsage(840, 10, 0, 60), Assert.Single(again.Records).Usage);
+    }
+
+    [Fact]
+    public void ALiveRolloutIsReadAgainWhateverItsStamp()
+    {
+        // Written 30 seconds before the read: live. The same length and write time, other figures, must still be read again.
+        var written = Now.UtcDateTime.AddSeconds(-30);
+        WriteRollout("rollout-live.jsonl", Lines(100), written);
+        var memo = new CodexUsageMemo();
+        CodexUsageReader.ReadFolder(_folder, Since, true, memo: memo, now: Now);
+
+        WriteRollout("rollout-live.jsonl", Lines(900), written);
+        var again = CodexUsageReader.ReadFolder(_folder, Since, true, memo: memo, now: Now);
+
+        Assert.Equal(new TokenUsage(840, 10, 0, 60), Assert.Single(again.Records).Usage);
+    }
+
+    [Fact]
+    public void AGoneRolloutLeavesTheMemoAndAReturnedOneIsReadFresh()
+    {
+        var path = WriteRollout("rollout-old.jsonl", Lines(100), OldWrite);
+        var memo = new CodexUsageMemo();
+        CodexUsageReader.ReadFolder(_folder, Since, true, memo: memo, now: Now);
+        Assert.Equal(1, memo.Count);
+
+        File.Delete(path);
+        Assert.Empty(CodexUsageReader.ReadFolder(_folder, Since, true, memo: memo, now: Now).Records);
+        Assert.Equal(0, memo.Count);
+
+        // The same name, length and write time again, with other figures: read, not answered from the memo.
+        WriteRollout("rollout-old.jsonl", Lines(900), OldWrite);
+        var back = CodexUsageReader.ReadFolder(_folder, Since, true, memo: memo, now: Now);
+        Assert.Equal(new TokenUsage(840, 10, 0, 60), Assert.Single(back.Records).Usage);
+    }
+
+    [Fact]
+    public void AMemoEntryIsNotReusedWhenTheReasoningSettingChanges()
+    {
+        WriteRollout("rollout-old.jsonl", Lines(100), OldWrite);
+        var memo = new CodexUsageMemo();
+        var asOutput = CodexUsageReader.ReadFolder(_folder, Since, true, memo: memo, now: Now);
+        var notAsOutput = CodexUsageReader.ReadFolder(_folder, Since, false, memo: memo, now: Now);
+
+        Assert.Equal(new TokenUsage(40, 10, 0, 60), Assert.Single(asOutput.Records).Usage);
+        // Reasoning (4) comes out of output when it is not output: 10 - 4.
+        Assert.Equal(new TokenUsage(40, 6, 0, 60), Assert.Single(notAsOutput.Records).Usage);
+        Assert.Equal(Assert.Single(CodexUsageReader.ReadFolder(_folder, Since, false, now: Now).Records), Assert.Single(notAsOutput.Records));
+    }
+
+    [Fact]
+    public void AMemoReadGivesTheSameRecordsAsAFreshReadAndKeepsTheFileWithNoTotalToo()
+    {
+        WriteRollout("rollout-a.jsonl", Lines(100), OldWrite);
+        WriteRollout("rollout-b.jsonl", [Meta("C:\\Work\\other"), Turn(0, "model-b"), Total(3, 7, 0, 2, 0)], OldWrite.AddHours(1));
+        WriteRollout("rollout-c.jsonl", [Meta("C:\\Work\\proj-x"), EmptyInfo(2)], OldWrite.AddHours(2));
+        var memo = new CodexUsageMemo();
+
+        var first = CodexUsageReader.ReadFolder(_folder, Since, true, memo: memo, now: Now);
+        var reused = CodexUsageReader.ReadFolder(_folder, Since, true, memo: memo, now: Now);
+        var fresh = CodexUsageReader.ReadFolder(_folder, Since, true, now: Now);
+
+        Assert.Equal(2, fresh.Records.Count);
+        Assert.Equal(fresh.Records, first.Records);
+        Assert.Equal(fresh.Records, reused.Records);
+        // The file with no valid total has an entry too (a null record), so it is not read again either.
+        Assert.Equal(3, memo.Count);
+    }
+
+    [Fact]
+    public void AnUnreadableRolloutIsCountedAndNotKept()
+    {
+        var path = WriteRollout("rollout-old.jsonl", Lines(100), OldWrite);
+        var memo = new CodexUsageMemo();
+
+        // An exclusive open by this test makes the reader's shared open fail (a Windows file lock).
+        using (new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            var locked = CodexUsageReader.ReadFolder(_folder, Since, true, memo: memo, now: Now);
+
+            Assert.Empty(locked.Records);
+            Assert.Equal(0, locked.Skipped);
+            Assert.Equal(1, locked.Unreadable);
+            Assert.Equal(0, memo.Count);
+        }
+
+        var later = CodexUsageReader.ReadFolder(_folder, Since, true, memo: memo, now: Now);
+        Assert.Equal(0, later.Unreadable);
+        Assert.Single(later.Records);
+        Assert.Equal(1, memo.Count);
+    }
+
+    [Fact]
+    public void ACompressedRolloutIsSkippedAndCountedWhenThisBuildCannotDecodeIt()
+    {
+        // The seam: the skip is decided before the file is opened, so the bytes need not be a real archive.
+        WriteRollout("rollout-plain.jsonl", Lines(100), OldWrite);
+        Directory.CreateDirectory(_folder);
+        var compressed = Path.Combine(_folder, "rollout-zst.jsonl.zst");
+        File.WriteAllBytes(compressed, [0x28, 0xB5, 0x2F, 0xFD]);
+        File.SetLastWriteTimeUtc(compressed, OldWrite);
+
+        var read = CodexUsageReader.ReadFolder(_folder, Since, true, now: Now, canDecodeCompressed: false);
+
+        Assert.Equal(1, read.Skipped);
+        Assert.Equal(0, read.Unreadable);
+        Assert.Equal(new TokenUsage(40, 10, 0, 60), Assert.Single(read.Records).Usage);
+    }
+
+#if NET11_0_OR_GREATER
+    [Fact]
+    public void ACompressedRolloutIsReadOnABuildThatDecodesIt()
+    {
+        Directory.CreateDirectory(_folder);
+        var path = Path.Combine(_folder, "rollout-zst.jsonl.zst");
+        using (var file = File.Create(path))
+        using (var zstd = new System.IO.Compression.ZstandardStream(file, System.IO.Compression.CompressionMode.Compress))
+        using (var writer = new StreamWriter(zstd))
+        {
+            foreach (var line in Lines(100)) writer.WriteLine(line);
+        }
+        File.SetLastWriteTimeUtc(path, OldWrite);
+
+        var read = CodexUsageReader.ReadFolder(_folder, Since, true, now: Now);
+
+        Assert.Equal(0, read.Skipped);
+        Assert.Equal(0, read.Unreadable);
+        Assert.Equal(new TokenUsage(40, 10, 0, 60), Assert.Single(read.Records).Usage);
+    }
+#endif
+
+    [Fact]
+    public void AnUnreadableRolloutIsNotReportedAsSkippedOnTheLimitsReport()
+    {
+        var path = WriteRollout("rollout-old.jsonl", Lines(100), OldWrite);
+        var projects = Path.Combine(_folder, "projects");
+        Directory.CreateDirectory(projects);
+
+        using (new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            var report = LimitHistory.ReadReportWithCache(
+                projects, Now, Path.Combine(_folder, "cache.json"), zone: TimeZoneInfo.Utc, codexHistoryRoot: _folder, codexMemo: new CodexUsageMemo());
+
+            Assert.Equal(0, report.CodexSkipped);
+            Assert.Equal(TokenUsage.Zero, report.Usage.Total);
+        }
+    }
+
+    [Fact]
+    public void ALimitsReportWithoutACountHasNoSkippedRollouts()
+    {
+        var usage = new UsageReport(new DateOnly(2026, 11, 22), new DateOnly(2026, 11, 22), [], [], 0, TokenUsage.Zero);
+
+        Assert.Equal(0, new LimitsReport([], [], usage).CodexSkipped);
     }
 }

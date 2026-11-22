@@ -46,6 +46,14 @@ public sealed class LimitsView : UserControl
     private readonly Grid _projectTable = new();
     private readonly StackPanel _usageBlock = new();
 
+    /// <summary>The line under the usage section that says how many Codex rollouts this build could not read (R8 part 2). Hidden when there are none.</summary>
+    private readonly TextBlock _codexSkipped = new()
+    {
+        TextWrapping = TextWrapping.Wrap,
+        Margin = new Thickness(0, 8, 0, 0),
+        Visibility = Visibility.Collapsed,
+    };
+
     /// <summary>The bars of the usage-per-day table, kept so that a theme change can recolour them.</summary>
     private readonly List<Rectangle> _bars = [];
 
@@ -84,6 +92,7 @@ public sealed class LimitsView : UserControl
             Margin = new Thickness(0, 12, 0, 4),
         });
         _usageBlock.Children.Add(_projectTable);
+        _usageBlock.Children.Add(_codexSkipped);
 
         var root = new StackPanel { Margin = new Thickness(12, 8, 12, 8) };
         // No page title here: the Insights tab's sub-tab row names the page (2026-11-18).
@@ -108,6 +117,7 @@ public sealed class LimitsView : UserControl
         _note.Foreground = muted;
         _footer.Foreground = muted;
         _usageCaption.Foreground = muted;
+        _codexSkipped.Foreground = muted;
         _barFill = RailPalette.Brush(palette.Text);
         foreach (var bar in _bars) bar.Fill = _barFill;
     }
@@ -139,6 +149,9 @@ public sealed class LimitsView : UserControl
         _usageBlock.Visibility = Visibility.Visible;
         DrawDays(report.Usage);
         DrawProjects(report.Usage);
+        var rollouts = report.CodexSkipped == 1 ? "rollout" : "rollouts";
+        _codexSkipped.Text = $"{report.CodexSkipped.ToString(CultureInfo.CurrentCulture)} Codex {rollouts} not read: this build cannot decode compressed files.";
+        _codexSkipped.Visibility = report.CodexSkipped > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     /// <summary>Shows a line in place of the page's content, for a read that failed.</summary>

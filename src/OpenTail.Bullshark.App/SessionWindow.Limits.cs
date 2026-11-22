@@ -1,5 +1,6 @@
 using System.Windows;
 using OpenTail.Bullshark.Core.Activity;
+using OpenTail.Bullshark.Core.Codex;
 using OpenTail.Bullshark.Core.Folders;
 using OpenTail.Bullshark.Core.Setup;
 using OpenTail.Bullshark.Core.Supervisor;
@@ -14,6 +15,18 @@ public partial class SessionWindow
 {
     private readonly LimitsView _limits = new() { Visibility = Visibility.Hidden };
 
+    /// <summary>
+    /// The Codex rollouts read for the usage report, kept between reads (R8 part 2). One per window: the Limits page and the Away digest share it.
+    /// The memo locks its own state, since the two reads run on pool threads and may overlap.
+    /// </summary>
+    private readonly CodexUsageMemo _codexUsage = new();
+
+    /// <summary>
+    /// The Codex history folder the usage report reads (R8 part 2): the Codex provider's own folder, whether or not Codex is the provider the rail
+    /// shows. Read on the window's thread and given to the pool thread.
+    /// </summary>
+    private string CodexHistoryRoot => (_codex ?? new CodexProvider()).Paths.HistoryRoot;
+
     private void InitLimits()
     {
         _limits.RefreshRequested += () => _ = RefreshLimitsAsync();
@@ -24,8 +37,12 @@ public partial class SessionWindow
     {
         try
         {
+            var usage = _behaviour.Usage;
+            var codexRoot = CodexHistoryRoot;
+            var codexMemo = _codexUsage;
             var report = await Task.Run(() =>
-                LimitHistory.ReadReportWithCache(_options.ProjectsRoot, DateTimeOffset.Now, _options.LimitHistoryCachePath, log: AppLog.Write));
+                LimitHistory.ReadReportWithCache(_options.ProjectsRoot, DateTimeOffset.Now, _options.LimitHistoryCachePath, log: AppLog.Write,
+                    usage: usage, codexHistoryRoot: codexRoot, codexMemo: codexMemo));
             // The usage keeps its folder keys; the page shows each key's folder name (keyboard and copy batch, T1).
             var projects = report.Usage.Projects.Select(project => project.Project);
             var tops = report.Usage.Days.Select(day => day.TopProject).OfType<string>();

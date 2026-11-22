@@ -257,7 +257,7 @@ public sealed class UsageAttributionTests : IDisposable
 
         var found = CodexUsageReader.ReadFolder(_codex, Now.AddDays(-30), reasoningAsOutput: true);
 
-        var only = Assert.Single(found);
+        var only = Assert.Single(found.Records);
         Assert.EndsWith("rollout-new.jsonl", only.Path, StringComparison.Ordinal);
         Assert.Equal(new TokenUsage(20, 2, 0, 0), only.Usage);
     }
@@ -265,6 +265,6 @@ public sealed class UsageAttributionTests : IDisposable
     [Fact]
     public void AMissingCodexFolderGivesNoSessions()
     {
-        Assert.Empty(CodexUsageReader.ReadFolder(Path.Combine(_root, "no-such-folder"), Now.AddDays(-30), reasoningAsOutput: true));
+        Assert.Empty(CodexUsageReader.ReadFolder(Path.Combine(_root, "no-such-folder"), Now.AddDays(-30), reasoningAsOutput: true).Records);
     }
 }
