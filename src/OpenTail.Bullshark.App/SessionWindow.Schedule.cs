@@ -37,7 +37,7 @@ public partial class SessionWindow
         }
         catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
-            AppLog.Write($"start now: {ex.Message}");
+            AppLog.Write($"start now: {ex.GetType().Name}");
             SetStatus($"Not started: {ex.Message}");
             return;
         }

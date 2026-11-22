@@ -65,7 +65,7 @@ public partial class SessionWindow
         }
         catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
-            AppLog.Write($"storage not read: {ex.Message}");
+            AppLog.Write($"storage not read: {ex.GetType().Name}");
             _storage.SetResult($"The storage cannot be read: {ex.Message}");
         }
     }
@@ -80,7 +80,7 @@ public partial class SessionWindow
         }
         catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
-            AppLog.Write($"storage project not read: {ex.Message}");
+            AppLog.Write($"storage project not read: {ex.GetType().Name}");
             _storage.SetResult($"The transcripts of {StorageNameOf(folder)} cannot be read: {ex.Message}");
         }
     }

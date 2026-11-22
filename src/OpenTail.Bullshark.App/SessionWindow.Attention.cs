@@ -87,7 +87,7 @@ public partial class SessionWindow
     /// </summary>
     private void AnnounceProblem(string reason)
     {
-        AppLog.Write($"supervisor problem: {reason}");
+        AppLog.Write("supervisor problem: the pass failed (the reason is not logged)");
         // The rule is AnnouncePolicy's (perf and testability batch, Q6 d): the switches, quiet hours and the window in front.
         // The kinds (behaviour.json, R2) hold it too: a supervisor problem is errored.
         if (AnnouncePolicy.ProblemToastShown(_passSettings, IsActive, _passSettings.IsQuietAt(DateTimeOffset.Now))

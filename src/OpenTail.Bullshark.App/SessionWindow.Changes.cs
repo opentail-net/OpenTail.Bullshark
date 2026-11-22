@@ -99,7 +99,7 @@ public partial class SessionWindow
         {
             // A read that fails is said in the tab, not left on its old view (round 12 B2). A folder that cannot be read is said so too
             // (round 5 item 11).
-            AppLog.Write($"changes not read: {ex.GetType().Name}: {ex.Message}");
+            AppLog.Write($"changes not read: {ex.GetType().Name}");
             if (SameId(_changesSession, sessionId)) _changes.ShowMessage("Changes", $"The changes cannot be read: {ex.Message}");
         }
     }

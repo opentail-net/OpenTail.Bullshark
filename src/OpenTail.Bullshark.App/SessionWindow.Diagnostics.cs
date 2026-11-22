@@ -53,13 +53,13 @@ public partial class SessionWindow
                 SettingsText: DiagnosticsSources.SettingsText(UiSettingsFile.PathFor(stateFile)));
             var path = DiagnosticsBundle.Save(stateFolder, DateTimeOffset.Now, input,
                 Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), AppLog.Write);
-            AppLog.Write($"diagnostics saved: {Path.GetFileName(path)} (the owner's choice in Settings; nothing sent)");
+            AppLog.Write("diagnostics saved (the owner's choice in Settings; nothing sent)");
             SetStatus($"Diagnostics saved to diagnostics\\{Path.GetFileName(path)}. Nothing was sent. Read it before you share it.");
             OpenFolder(Path.GetDirectoryName(path)!);
         }
         catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
-            AppLog.Write($"diagnostics not saved: {ex.GetType().Name}: {ex.Message}");
+            AppLog.Write($"diagnostics not saved: {ex.GetType().Name}");
             SetStatus($"Diagnostics not saved: {PassHealth.Short(ex.Message)}");
         }
     }

@@ -58,7 +58,7 @@ public partial class SessionWindow
             // Any failure is this session's alone: the others are still read.
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                AppLog.Write($"review: transcript of {record.Name} not read: {ex.GetType().Name}: {ex.Message}");
+                AppLog.Write($"review: transcript not read: {ex.GetType().Name}");
             }
         }
         return sources;
@@ -128,7 +128,7 @@ public partial class SessionWindow
         });
         if (written is not null)
             foreach (var pair in written) _reviewed[pair.Key] = pair.Value;
-        AppLog.Write($"ready for review: {ClaudeCli.ShortIdOf(sessionId)} marked reviewed");
+        AppLog.Write("ready for review: a session marked reviewed");
         if (redraw) RefreshRail();
     }
 

@@ -161,7 +161,7 @@ public partial class SessionWindow
             // A search that was replaced or closed must not touch the hourglass or the status of the one that replaced it.
             if (!IsCurrentSearch(cancel)) return;
             SetBusy(false);
-            AppLog.Write($"search failed: {ex.Message}");
+            AppLog.Write($"search failed: {ex.GetType().Name}");
             SetStatus($"Search failed: {ex.Message}");
         }
         finally

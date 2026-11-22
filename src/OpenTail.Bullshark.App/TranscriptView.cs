@@ -744,7 +744,7 @@ public sealed partial class TranscriptView : UserControl
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            AppLog.Write($"turn facts not read: {ex.Message}");
+            AppLog.Write($"turn facts not read: {ex.GetType().Name}");
             return;
         }
         // Kept even when the session is no longer shown: the next jump on this file reuses it (round 12 B6).
@@ -783,11 +783,11 @@ public sealed partial class TranscriptView : UserControl
             var markdown = await Task.Run(() => OpenTail.Bullshark.Core.Export.TranscriptExport.Markdown(
                 TranscriptFile.ReadLines(digest.FilePath), title, digest.FirstActivity, digest.ProjectFolder, digest.LastModel, digest.LastRecap));
             await File.WriteAllTextAsync(target, markdown, new System.Text.UTF8Encoding(false));
-            AppLog.Write($"exported {digest.SessionId} to {target}");
+            AppLog.Write("transcript exported");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            AppLog.Write($"export not written: {ex.Message}");
+            AppLog.Write($"export not written: {ex.GetType().Name}");
             MessageBox.Show($"The export was not written: {ex.Message}", "Export", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
@@ -808,7 +808,7 @@ public sealed partial class TranscriptView : UserControl
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            AppLog.Write($"effort not read: {ex.Message}");
+            AppLog.Write($"effort not read: {ex.GetType().Name}");
             if (_effortPath == path)
                 _effort.Content = new TextBlock { Text = $"The transcript cannot be read: {ex.Message}", TextWrapping = TextWrapping.Wrap, Foreground = Brush(_palette.Muted) };
             return;

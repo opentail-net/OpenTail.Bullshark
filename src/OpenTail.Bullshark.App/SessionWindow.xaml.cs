@@ -120,7 +120,7 @@ public partial class SessionWindow : Window
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                AppLog.Write($"transcript tail not read ({ClaudeCli.ShortIdOf(id)}): {ex.GetType().Name}: {ex.Message}");
+                AppLog.Write($"transcript tail not read: {ex.GetType().Name}");
             }
         }
         return (facts, newPaths);
@@ -355,7 +355,7 @@ public partial class SessionWindow : Window
         }
         catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
-            AppLog.Write(ex.Message);
+            AppLog.Write($"session records not read: {ex.GetType().Name}");
             _storeProblem = ex.Message;
             return new Dictionary<string, SessionRecord>(StringComparer.Ordinal);
         }
@@ -378,7 +378,7 @@ public partial class SessionWindow : Window
         }
         catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
-            AppLog.Write(ex.Message);
+            AppLog.Write($"runs not read: {ex.GetType().Name}");
             _storeProblem = ex.Message;
             return Array.Empty<RunRecord>();
         }
@@ -396,7 +396,7 @@ public partial class SessionWindow : Window
         }
         catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
-            AppLog.Write(ex.Message);
+            AppLog.Write($"session records not read: {ex.GetType().Name}");
             return (new Dictionary<string, SessionRecord>(StringComparer.Ordinal), ex.Message);
         }
     }
@@ -410,7 +410,7 @@ public partial class SessionWindow : Window
         }
         catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
-            AppLog.Write(ex.Message);
+            AppLog.Write($"runs not read: {ex.GetType().Name}");
             return (Array.Empty<RunRecord>(), ex.Message);
         }
     }
@@ -584,7 +584,7 @@ public partial class SessionWindow : Window
             // A pass that failed may not have read the session list, so the archive waits for the next pass that does (round 5 item 4).
             _listingKnown = false;
             // The owner reads a sentence with a next step, not the exception (firstrun batch B2); the log keeps the exception.
-            AppLog.Write($"pass failed: {ex.Message}");
+            AppLog.Write($"pass failed: {ex.GetType().Name}");
             var sentence = PassErrorText.Of(ex);
             SetStatus($"not running: {sentence}");
             if (_supervisor is not null) ReportPass(sentence);
@@ -887,7 +887,7 @@ public partial class SessionWindow : Window
         }
         catch (Exception ex)
         {
-            AppLog.Write($"trust step close failed: {ex.GetType().Name}: {ex.Message}");
+            AppLog.Write($"trust step close failed: {ex.GetType().Name}");
         }
         Pane.Children.Remove(step.Terminal);
         if (ReferenceEquals(_shown, step.Terminal)) ShowOnly(_setup);
@@ -954,7 +954,7 @@ public partial class SessionWindow : Window
             }
             catch (Exception ex)
             {
-                AppLog.Write($"image paste failed: {ex.GetType().Name}: {ex.Message}");
+                AppLog.Write($"image paste failed: {ex.GetType().Name}");
             }
             e.Handled = true;
             return;
@@ -968,7 +968,7 @@ public partial class SessionWindow : Window
         }
         catch (Exception ex)
         {
-            AppLog.Write($"paste failed: {ex.GetType().Name}: {ex.Message}");
+            AppLog.Write($"paste failed: {ex.GetType().Name}");
         }
         e.Handled = true;
     }
@@ -998,6 +998,7 @@ public partial class SessionWindow : Window
         if (check.Refusal is { } refusal)
         {
             _setup.ShowStarted(refusal);
+            SetStatus(refusal);
             _setup.RunFinished();
             return null;
         }
@@ -1015,6 +1016,7 @@ public partial class SessionWindow : Window
         {
             AppLog.Write($"run not written: {ex.GetType().Name}");
             _setup.ShowStarted($"Not started: {ex.Message}");
+            SetStatus($"Not started: {ex.Message}");
             _setup.RunFinished();
             return null;
         }
@@ -1057,12 +1059,12 @@ public partial class SessionWindow : Window
             var text = result.Succeeded
                 ? "respawn --all done: the background sessions run the installed claude"
                 : $"respawn --all failed (exit {result.ExitCode}): {result.StdErr.Trim()} {result.StdOut.Trim()}".TrimEnd();
-            AppLog.Write(text);
+            AppLog.Write(result.Succeeded ? text : $"respawn --all failed (exit {result.ExitCode})");
             SetStatus(text);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            AppLog.Write($"respawn --all could not run: {ex.Message}");
+            AppLog.Write($"respawn --all could not run: {ex.GetType().Name}");
             SetStatus($"respawn --all could not run: {ex.Message}");
         }
         finally
@@ -1086,7 +1088,7 @@ public partial class SessionWindow : Window
         }
         catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
-            AppLog.Write($"failed starts not forgotten: {ex.Message}");
+            AppLog.Write($"failed starts not forgotten: {ex.GetType().Name}");
             SetStatus($"Not changed: {ex.Message}");
             return;
         }

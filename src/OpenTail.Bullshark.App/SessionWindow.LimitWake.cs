@@ -119,7 +119,7 @@ public partial class SessionWindow
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 // A session whose text cannot be made shows no text; the rail is still drawn. Logged once per session and cause.
-                if (_wakeSaid.Add("text|" + id + "|" + ex.GetType().Name)) AppLog.Write($"limit text not made for {ShortId(id)}: {ex.GetType().Name}: {ex.Message}");
+                if (_wakeSaid.Add("text|" + id + "|" + ex.GetType().Name)) AppLog.Write($"limit text not made: {ex.GetType().Name}");
             }
         }
         return texts;
@@ -269,7 +269,7 @@ public partial class SessionWindow
             _limitUnknown = probe.Unknown;
             foreach (var id in probe.Unknown)
             {
-                if (_wakeSaid.Add("unknown|" + id)) AppLog.Write($"limit state unknown for {ShortId(id)}: transcript not readable; the session is held");
+                if (_wakeSaid.Add("unknown|" + id)) AppLog.Write("limit state unknown: transcript not readable; the session is held");
             }
             if (probe.InForceRead)
             {
@@ -279,7 +279,7 @@ public partial class SessionWindow
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            AppLog.Write($"limit stops not read: {ex.GetType().Name}: {ex.Message}");
+            AppLog.Write($"limit stops not read: {ex.GetType().Name}");
         }
     }
 
@@ -316,7 +316,7 @@ public partial class SessionWindow
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                AppLog.Write($"limit wake not run for {ShortId(id)}: {ex.GetType().Name}: {ex.Message}");
+                AppLog.Write($"limit wake not run: {ex.GetType().Name}");
             }
         }
         return started;
@@ -348,17 +348,17 @@ public partial class SessionWindow
             _resuming = false;
         }
 
-        if (start.Refusal is { } refusal)
+        if (start.Refusal is not null)
         {
             _wakeHeld[sessionId] = now + WakeRetryHold;
-            AppLog.Write($"limit wake of {ShortId(sessionId)} not started, retry in {WakeRetryHold.TotalMinutes:0} min: {refusal}");
+            AppLog.Write($"limit wake not started, retry in {WakeRetryHold.TotalMinutes:0} min");
             return false;
         }
 
         _wokenHits.Add(HitKey(sessionId, stop));
         _wakeHeld.Remove(sessionId);
         RecordWake(sessionId, stop.HitAt, now);
-        AppLog.Write($"limit wake: {ShortId(sessionId)} hit {stop.HitAt:O}, reset {stop.ResetsAt:O}, started as {start.Name} by resume in full"
+        AppLog.Write($"limit wake: hit {stop.HitAt:O}, reset {stop.ResetsAt:O}, started by resume in full"
                      + (start.Recorded ? string.Empty : "; not recorded as kept alive"));
         SetStatus(start.Recorded
             ? $"Woke {ShortId(sessionId)} after its limit reset, as {start.Name}."
@@ -383,7 +383,7 @@ public partial class SessionWindow
         }
         catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
-            AppLog.Write($"limit wake of {ShortId(sessionId)} not recorded in the library: {ex.Message}");
+            AppLog.Write($"limit wake not recorded in the library: {ex.GetType().Name}");
         }
     }
 
@@ -396,7 +396,7 @@ public partial class SessionWindow
         var key = HitKey(sessionId, stop) + "|" + decision.Note;
         if (!_wakeSaid.Add(key)) return;
 
-        AppLog.Write($"limit wake of {ShortId(sessionId)} not started: {decision.Note}");
+        AppLog.Write(decision.Note?.StartsWith("not woken: ", StringComparison.Ordinal) == true ? "limit wake not started: the session's folder cannot be used" : $"limit wake not started: {decision.Note}");
         if (decision.Note != LimitWake.RunningNote) return;
         // The toast is the one that says the session can continue, and it goes only when it is due and the owner's switches allow it.
 

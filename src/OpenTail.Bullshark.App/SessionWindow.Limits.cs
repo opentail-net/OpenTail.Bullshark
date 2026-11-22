@@ -50,7 +50,7 @@ public partial class SessionWindow
         }
         catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
-            AppLog.Write($"limit history not read: {ex.Message}");
+            AppLog.Write($"limit history not read: {ex.GetType().Name}");
             _limits.ShowProblem($"The limit history cannot be read: {ex.Message}");
         }
     }

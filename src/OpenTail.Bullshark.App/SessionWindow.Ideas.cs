@@ -25,7 +25,7 @@ public partial class SessionWindow
         }
         catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
-            AppLog.Write($"idea not saved: {ex.GetType().Name}: {ex.Message}");
+            AppLog.Write($"idea not saved: {ex.GetType().Name}");
             SetStatus($"The idea was not saved: {ex.Message}");
         }
     }
@@ -43,7 +43,7 @@ public partial class SessionWindow
         }
         catch (Exception ex) when (StoreErrors.IsExpected(ex) || ex is Win32Exception)
         {
-            AppLog.Write($"ideas file not opened: {ex.GetType().Name}: {ex.Message}");
+            AppLog.Write($"ideas file not opened: {ex.GetType().Name}");
             SetStatus($"The ideas file was not opened: {ex.Message}");
         }
     }

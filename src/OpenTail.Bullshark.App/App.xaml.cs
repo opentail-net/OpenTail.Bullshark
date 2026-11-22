@@ -42,19 +42,19 @@ public partial class App : Application
         // file (firstrun batch B3), and the window says where it is on its status line. The UI error keeps going: Handled stays true.
         DispatcherUnhandledException += (_, args) =>
         {
-            AppLog.Write($"unhandled: {args.Exception}");
+            AppLog.Write($"unhandled: {args.Exception.GetType().Name}");
             CrashFiles.Record(args.Exception, "ui");
             CrashFiles.ShowOnWindow();
             args.Handled = true;
         };
         AppDomain.CurrentDomain.UnhandledException += (_, args) =>
         {
-            AppLog.Write($"unhandled (not the UI thread, the app ends): {args.ExceptionObject}");
+            AppLog.Write($"unhandled (not the UI thread, the app ends): {args.ExceptionObject.GetType().Name}");
             CrashFiles.Record(args.ExceptionObject as Exception, "domain");
         };
         TaskScheduler.UnobservedTaskException += (_, args) =>
         {
-            AppLog.Write($"unobserved task: {args.Exception}");
+            AppLog.Write($"unobserved task: {args.Exception.GetBaseException().GetType().Name}");
             CrashFiles.Record(args.Exception, "task");
             args.SetObserved();
         };
@@ -75,7 +75,7 @@ public partial class App : Application
         catch (Exception ex)
         {
             // Any other failure while the window is built must not end the start silently. The log has the details; the owner sees the message.
-            AppLog.Write($"startup failed: {ex}");
+            AppLog.Write($"startup failed: {ex.GetType().Name}");
             MessageBox.Show($"OpenTail.Bullshark could not open its window: {ex.Message}\n\nThe details are in the log.",
                 "OpenTail.Bullshark", MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown(1);

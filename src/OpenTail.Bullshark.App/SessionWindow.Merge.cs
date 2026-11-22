@@ -106,7 +106,7 @@ public partial class SessionWindow
             {
                 _mergeProblems.Remove(record.SessionId);
             }
-            AppLog.Write($"merge check {record.Name}: {report.Kind} {report.Message}");
+            AppLog.Write($"merge check: {report.Kind}");
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -115,7 +115,7 @@ public partial class SessionWindow
             _mergeStarted.Remove(record.SessionId);
             var at = DateTimeOffset.UtcNow;
             _mergeProblems[record.SessionId] = new ProblemMemory(at, at, null);
-            AppLog.Write($"merge check {record.Name} failed: {ex.GetType().Name}: {ex.Message}");
+            AppLog.Write($"merge check failed: {ex.GetType().Name}");
         }
     }
 

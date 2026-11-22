@@ -339,7 +339,7 @@ public partial class SessionWindow
         }
         catch (Exception ex)
         {
-            AppLog.Write($"session not closed: the sessions could not be read: {ex.Message}");
+            AppLog.Write($"session not closed: the sessions could not be read: {ex.GetType().Name}");
             SetStatus($"Not closed: {name} is unchanged, because the sessions could not be read. {ex.Message}");
             return;
         }
@@ -370,7 +370,7 @@ public partial class SessionWindow
         // Any failure but cancellation stops the close and keeps the status (round 12 B2): InvalidOperationException was missed here before.
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            AppLog.Write($"session not closed: its transcript could not be read: {ex.GetType().Name}: {ex.Message}");
+            AppLog.Write($"session not closed: its transcript could not be read: {ex.GetType().Name}");
             SetStatus($"Not closed: {name} is unchanged, because its transcript could not be read. {ex.Message}");
             return;
         }
@@ -389,7 +389,7 @@ public partial class SessionWindow
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             RestoreAfterFailedClose(originals, name, closedStart, closedOutput, recordBefore);
-            AppLog.Write($"session not closed: {ex.Message}");
+            AppLog.Write($"session not closed: {ex.GetType().Name}");
             SetStatus($"Not closed: {name} is still running. {ex.Message}");
             RefreshRail();
             return;
@@ -431,7 +431,7 @@ public partial class SessionWindow
         }
         catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
-            AppLog.Write($"restore after the failed close not written: {ex.Message}");
+            AppLog.Write($"restore after the failed close not written: {ex.GetType().Name}");
             SetStatus($"{name} may be missing from the rail: see the log. {ex.Message}");
         }
     }
@@ -498,7 +498,7 @@ public partial class SessionWindow
         }
         catch (Exception ex)
         {
-            AppLog.Write($"detach failed: {ex.GetType().Name}: {ex.Message}");
+            AppLog.Write($"detach failed: {ex.GetType().Name}");
         }
     }
 

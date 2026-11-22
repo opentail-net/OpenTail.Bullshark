@@ -216,7 +216,7 @@ public sealed partial class TranscriptView
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            AppLog.Write($"find not run: {ex.Message}");
+            AppLog.Write($"find not run: {ex.GetType().Name}");
             _findCancel = null;
             _findCount.Text = "The transcript cannot be read.";
             return;
@@ -243,7 +243,7 @@ public sealed partial class TranscriptView
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                AppLog.Write($"find not run: {ex.Message}");
+                AppLog.Write($"find not run: {ex.GetType().Name}");
                 if (ReferenceEquals(_findCancel, cancel))
                 {
                     _findCancel = null;

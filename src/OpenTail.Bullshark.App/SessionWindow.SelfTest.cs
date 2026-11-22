@@ -103,7 +103,7 @@ public partial class SessionWindow
             }
             catch (Exception ex)
             {
-                AppLog.Write($"screenshot failed: {ex.GetType().Name}: {ex.Message}");
+                AppLog.Write($"screenshot failed: {ex.GetType().Name}");
             }
             // A screenshot run closes after the picture, unless the self-test is still running.
             if (_options.SelfTestPath is null) Close();
@@ -175,7 +175,7 @@ public partial class SessionWindow
                 }
                 catch (Exception ex)
                 {
-                    AppLog.Write($"self-test result not written: {ex.Message}");
+                    AppLog.Write($"self-test result not written: {ex.GetType().Name}");
                 }
                 Close();
             }
@@ -252,7 +252,7 @@ public partial class SessionWindow
             catch (Exception ex)
             {
                 moveError ??= $"step {step}: {ex.GetType().Name}: {ex.Message}";
-                AppLog.Write($"move test failed at {moveError}");
+                AppLog.Write($"move test failed at step {step}: {ex.GetType().Name}");
             }
 
             if (elapsed >= 16)
@@ -280,7 +280,7 @@ public partial class SessionWindow
                 }
                 catch (Exception ex)
                 {
-                    AppLog.Write($"move test result not written: {ex.Message}");
+                    AppLog.Write($"move test result not written: {ex.GetType().Name}");
                 }
                 Close();
             }
@@ -395,7 +395,7 @@ public partial class SessionWindow
             catch (Exception ex)
             {
                 seen["error"] = $"step {step}: {ex.GetType().Name}: {ex.Message}";
-                AppLog.Write($"split test failed at step {step}: {ex}");
+                AppLog.Write($"split test failed at step {step}: {ex.GetType().Name}");
                 step = 99;
             }
 
@@ -408,7 +408,7 @@ public partial class SessionWindow
                 }
                 catch (Exception ex)
                 {
-                    AppLog.Write($"split test result not written: {ex.Message}");
+                    AppLog.Write($"split test result not written: {ex.GetType().Name}");
                 }
                 Close();
             }
@@ -447,7 +447,7 @@ public partial class SessionWindow
         }
         catch (Exception ex)
         {
-            AppLog.Write($"console text not read: {ex.GetType().Name}: {ex.Message}");
+            AppLog.Write($"console text not read: {ex.GetType().Name}");
             return string.Empty;
         }
     }

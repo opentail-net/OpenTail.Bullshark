@@ -59,7 +59,7 @@ public sealed class DetachedSessionWindow : Window
             }
             catch (Exception ex)
             {
-                AppLog.Write($"detached window: detach key not sent: {ex.GetType().Name}: {ex.Message}");
+                AppLog.Write($"detached window: detach key not sent: {ex.GetType().Name}");
             }
             await Task.Delay(TimeSpan.FromSeconds(2));
         }
@@ -77,7 +77,7 @@ public sealed class DetachedSessionWindow : Window
         }
         catch (Exception ex)
         {
-            AppLog.Write($"detached window: release failed: {ex.GetType().Name}: {ex.Message}");
+            AppLog.Write($"detached window: release failed: {ex.GetType().Name}");
         }
     }
 }

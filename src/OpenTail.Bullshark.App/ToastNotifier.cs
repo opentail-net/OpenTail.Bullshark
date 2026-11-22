@@ -73,7 +73,7 @@ internal static class ToastNotifier
     {
         if (_failureLogged) return;
         _failureLogged = true;
-        AppLog.Write($"toast: {what} ({ex.GetType().Name}: {ex.Message}). Later toast failures are not logged.");
+        AppLog.Write($"toast: {what} ({ex.GetType().Name}). Later toast failures are not logged.");
     }
 
     /// <summary>Shows one silent toast with its tag. Nothing is shown for a null message.</summary>

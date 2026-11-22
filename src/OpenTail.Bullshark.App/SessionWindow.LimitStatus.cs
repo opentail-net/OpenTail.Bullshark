@@ -46,7 +46,7 @@ public partial class SessionWindow
         }
         catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
-            AppLog.Write($"limit status not read: {ex.Message}");
+            AppLog.Write($"limit status not read: {ex.GetType().Name}");
         }
         // Any other failure is not caught here: FireAndForget logs its type and message (reliability batch R10).
         finally

@@ -36,7 +36,7 @@ public partial class SessionWindow
         }
         catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
-            AppLog.Write($"timeline not read: {ex.Message}");
+            AppLog.Write($"timeline not read: {ex.GetType().Name}");
             _timeline.ShowProblem($"The timeline cannot be read: {ex.Message}");
         }
     }

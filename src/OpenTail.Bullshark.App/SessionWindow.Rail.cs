@@ -628,7 +628,7 @@ public partial class SessionWindow
         {
             section.Items.Add(NewItem(Label("library.json cannot be read", muted: true),
                 new RailTag(RailKind.Heading, HistoryKey + ":library"),
-                "No names, pins, tags or colours are shown, and nothing is written until the file can be read. " + _libraryError));
+                "No names, pins, tags or colours are shown, and nothing is written until the file can be read. " + $"The library could not be read ({_libraryError})."));
         }
 
         if (_history is null)
@@ -785,7 +785,7 @@ public partial class SessionWindow
         }
         catch (Exception ex)
         {
-            AppLog.Write($"history read failed: {ex.GetType().Name}: {ex.Message}");
+            AppLog.Write($"history read failed: {ex.GetType().Name}");
             SetStatus($"history not read: {ex.Message}");
         }
         finally
@@ -912,11 +912,11 @@ public partial class SessionWindow
             d.SessionId.StartsWith(sessionId, StringComparison.OrdinalIgnoreCase));
         if (digest is null)
         {
-            AppLog.Write($"open transcript: no session {sessionId}");
+            AppLog.Write("open transcript: no session matches");
             SetStatus($"No transcript for session {sessionId}.");
             return;
         }
-        AppLog.Write($"open transcript: {digest.SessionId}");
+        AppLog.Write("open transcript: a session matched");
         var tag = new RailTag(RailKind.History, digest.SessionId, digest);
         // As a click on the row does: the transcript's tab becomes the active one, so a later rail refresh keeps the pane (found 2026-11-19: this hook
         // showed the transcript without a tab, and the refresh with no live session then put the setup page over it after about 45 seconds).
@@ -966,7 +966,7 @@ public partial class SessionWindow
             // Any failure is this transcript's alone (round 12 B1, the owner's segmented-load decision): the rest of the history loads.
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                AppLog.Write($"history tail not read: {ex.GetType().Name}: {ex.Message}");
+                AppLog.Write($"history tail not read: {ex.GetType().Name}");
             }
         }
         return facts;

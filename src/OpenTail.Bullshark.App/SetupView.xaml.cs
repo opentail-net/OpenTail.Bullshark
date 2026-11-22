@@ -104,7 +104,7 @@ public partial class SetupView : UserControl
         }
         catch (Exception ex) when (StoreErrors.IsExpected(ex) || ex is ArgumentException or NotSupportedException)
         {
-            AppLog.Write($"folder suggestions not read: {ex.Message}");
+            AppLog.Write($"folder suggestions not read: {ex.GetType().Name}");
             return [];
         }
     }
@@ -227,7 +227,7 @@ public partial class SetupView : UserControl
         catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
             // The saved settings are not read: the defaults are shown, and the page says why. Saving is refused until the file is fixed.
-            AppLog.Write($"patterns not read: {ex.Message}");
+            AppLog.Write($"patterns not read: {ex.GetType().Name}");
             SetStartStatus($"Saved settings not read: {ex.Message}");
             saved = PatternStore.Defaults(Pattern.Key);
         }
@@ -363,7 +363,7 @@ public partial class SetupView : UserControl
         }
         catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
-            AppLog.Write($"briefs not saved: {ex.Message}");
+            AppLog.Write($"briefs not saved: {ex.GetType().Name}");
             SetStartStatus($"Briefs not saved: {ex.Message}");
         }
     }
@@ -448,7 +448,7 @@ public partial class SetupView : UserControl
         }
         catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
-            AppLog.Write($"settings not saved: {ex.Message}");
+            AppLog.Write($"settings not saved: {ex.GetType().Name}");
             SetStartStatus($"Not saved: {ex.Message}");
             return;
         }

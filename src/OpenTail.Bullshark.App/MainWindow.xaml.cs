@@ -39,7 +39,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            AppLog.Write($"detach failed: {ex.GetType().Name}: {ex.Message}");
+            AppLog.Write($"detach failed: {ex.GetType().Name}");
         }
     }
 

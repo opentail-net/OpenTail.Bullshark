@@ -221,7 +221,7 @@ public partial class SessionWindow
                 NightReport.Prune(folder);
                 return Path.GetFileName(path);
             });
-            AppLog.Write($"night report saved: {name}");
+            AppLog.Write("night report saved");
             _away.ShowSaved(name);
         }
         catch (Exception ex) when (StoreErrors.IsExpected(ex))

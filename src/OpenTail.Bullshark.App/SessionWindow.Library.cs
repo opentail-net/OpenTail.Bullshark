@@ -70,10 +70,10 @@ public partial class SessionWindow
             _copilotMarks = new Dictionary<string, LibraryEntry>(StringComparer.Ordinal);
             if (_libraryError is null)
             {
-                AppLog.Write($"library not read: {ex.Message}");
-                SetStatus($"The library cannot be read, so its names, pins, tags and colours are not shown, and nothing is written until it can be. {ex.Message}");
+                AppLog.Write($"library not read: {ex.GetType().Name}");
+                SetStatus($"The library cannot be read, so its names, pins, tags and colours are not shown, and nothing is written until it can be. The library could not be read ({ex.GetType().Name}).");
             }
-            _libraryError = ex.Message;
+            _libraryError = ex.GetType().Name;
         }
     }
 

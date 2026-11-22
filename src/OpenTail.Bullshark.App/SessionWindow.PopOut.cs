@@ -44,7 +44,7 @@ public partial class SessionWindow
             }
             catch (Exception ex)
             {
-                AppLog.Write($"pop-out: detach key not sent: {ex.GetType().Name}: {ex.Message}");
+                AppLog.Write($"pop-out: detach key not sent: {ex.GetType().Name}");
             }
             await Task.Delay(TimeSpan.FromSeconds(2));
         }

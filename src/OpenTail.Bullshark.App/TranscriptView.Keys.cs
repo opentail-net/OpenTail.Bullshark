@@ -235,7 +235,7 @@ public sealed partial class TranscriptView
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            AppLog.Write($"command not read: {ex.Message}");
+            AppLog.Write($"command not read: {ex.GetType().Name}");
             return;
         }
         if (raw is not null && TranscriptCopy.Command(raw) is { } command) CopyText(command);
@@ -254,7 +254,7 @@ public sealed partial class TranscriptView
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            AppLog.Write($"full result not read: {ex.Message}");
+            AppLog.Write($"full result not read: {ex.GetType().Name}");
             return null;
         }
     }

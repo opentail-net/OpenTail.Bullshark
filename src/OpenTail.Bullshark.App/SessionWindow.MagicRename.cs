@@ -261,7 +261,7 @@ public partial class SessionWindow
         }
         catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
-            AppLog.Write($"magic rename not saved: {ex.Message}");
+            AppLog.Write($"magic rename not saved: {ex.GetType().Name}");
             SetStatus($"Not named: {ex.Message}");
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -332,7 +332,7 @@ public partial class SessionWindow
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            AppLog.Write($"magic rename: session {digest.SessionId} transcript not read: {ex.GetType().Name}");
+            AppLog.Write($"magic rename: transcript not read: {ex.GetType().Name}");
             extract = null;
         }
         var used = MagicCandidates.NamesInFolder(history, marks, digest.ProjectFolder);

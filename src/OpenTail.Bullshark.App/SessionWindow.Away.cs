@@ -90,7 +90,7 @@ public partial class SessionWindow
             var build = await BuildAwayAsync(since, now);
             if (build.Problem is not null)
             {
-                AppLog.Write($"away digest: the sessions cannot be read: {build.Problem}");
+                AppLog.Write("away digest: the sessions cannot be read");
                 if (!onReturn) _away.ShowProblem($"The sessions cannot be read, so the page is not complete: {build.Problem}");
                 return;
             }
@@ -108,7 +108,7 @@ public partial class SessionWindow
         }
         catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
-            AppLog.Write($"away digest not built: {ex.Message}");
+            AppLog.Write($"away digest not built: {ex.GetType().Name}");
             if (!onReturn) _away.ShowProblem($"The digest cannot be built: {ex.Message}");
         }
         finally

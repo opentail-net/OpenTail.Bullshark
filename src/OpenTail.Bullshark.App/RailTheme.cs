@@ -182,7 +182,7 @@ public static class ThemeStore
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            AppLog.Write($"rail theme not saved: {ex.Message}");
+            AppLog.Write($"rail theme not saved: {ex.GetType().Name}");
         }
     }
 }

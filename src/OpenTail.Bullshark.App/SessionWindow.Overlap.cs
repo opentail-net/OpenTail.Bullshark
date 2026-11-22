@@ -76,7 +76,7 @@ public partial class SessionWindow
                 // Any failure is this session's alone (round 12 B1): the other sessions of the run are still read.
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    AppLog.Write($"overlap: transcript of {spec.Name} not read: {ex.GetType().Name}: {ex.Message}");
+                    AppLog.Write($"overlap: transcript not read: {ex.GetType().Name}");
                 }
             }
             result.Add((run, writes));
