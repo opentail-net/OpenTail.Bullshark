@@ -88,10 +88,4 @@ public sealed class CopilotRailTextTests
         Assert.Equal("Not resumed: the session has no folder on record, so Copilot cannot open it there.", CopilotRailText.FolderMissing(null));
         Assert.Equal("Not resumed: the session has no folder on record, so Copilot cannot open it there.", CopilotRailText.FolderMissing("  "));
     }
-
-    [Fact]
-    public void TheResumeScreenItemSaysItIsNotBuiltYet()
-    {
-        Assert.Contains("not built yet", CopilotRailText.ResumeScreenNotBuilt);
-    }
 }

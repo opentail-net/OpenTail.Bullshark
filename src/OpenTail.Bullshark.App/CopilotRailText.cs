@@ -59,9 +59,6 @@ internal static class CopilotRailText
     /// <summary>The refusal of a resume whose id the command line builder refuses.</summary>
     public const string InvalidId = "Not resumed: the session id is not a valid Copilot id.";
 
-    /// <summary>The status line of a row's "Resume…" item, which the screen (G3.1) does not yet provide (G2.5).</summary>
-    public const string ResumeScreenNotBuilt = "Resume… is not built yet. Use Resume in a terminal tab.";
-
     private static string Count(int value, string singular, string plural) =>
         value == 1 ? $"1 {singular}" : $"{value.ToString("N0", CultureInfo.InvariantCulture)} {plural}";
 }

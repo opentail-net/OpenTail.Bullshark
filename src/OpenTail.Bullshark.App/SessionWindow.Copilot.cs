@@ -266,7 +266,7 @@ public partial class SessionWindow
         var id = session.Key.SessionId;
         var mark = MarkOf(ProviderId.Copilot, id) ?? new LibraryEntry();
         var menu = StyledMenu();
-        menu.Items.Add(MenuItemFor("Resume…", () => SetStatus(CopilotRailText.ResumeScreenNotBuilt)));
+        menu.Items.Add(MenuItemFor("Resume…", () => ResumeCopilotScreen(session)));
         menu.Items.Add(MenuItemFor("Resume in a terminal tab", () => ResumeCopilot(session)));
         menu.Items.Add(MenuItemFor("View transcript", () => OpenCopilotTranscript(session)));
         menu.Items.Add(MenuItemFor(mark.Pinned ? "Unpin" : "Pin", () => SetCopilotPinned(id, !mark.Pinned)));
@@ -305,6 +305,7 @@ public partial class SessionWindow
             // The log holds counts only: no id, title, folder or line text.
             AppLog.Write($"copilot history read: {_copilotSessions.Count} sessions, {history.EmptySessions} empty, {history.SkippedFiles} damaged folders, {history.SkippedLines} skipped lines");
             if (IsCopilotActive && CopilotRailText.IncompleteNote(history.SkippedFiles, history.SkippedLines) is { } note) SetStatus(note);
+            OpenCopilotResumeForShot();
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

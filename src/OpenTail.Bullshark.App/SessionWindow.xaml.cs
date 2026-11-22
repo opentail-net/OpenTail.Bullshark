@@ -1133,7 +1133,11 @@ public sealed record LaunchOptions(
     /// <summary>--codex-transcript (test only): once the Codex history has loaded, the transcript of its first session opens, for the screenshots (parity P7).</summary>
     bool CodexTranscript = false,
     /// <summary>--codex-search (test only): once the Codex history has loaded, the box is set to this text, so the Codex search runs and its results show (parity P6).</summary>
-    string? CodexSearchText = null)
+    string? CodexSearchText = null,
+    /// <summary>--copilot-resume (test only): once the Copilot history has loaded, the Copilot resume screen opens on its first session, for the screenshots.</summary>
+    bool CopilotResume = false,
+    /// <summary>--copilot-resume (test only): the mode the screenshot shows: full, summary, or empty for the last turns (the default).</summary>
+    string CopilotResumeShot = "")
 {
     /// <summary>The folder of the transcripts: the owner's, unless a test home is given (--claude-home).</summary>
     public string ProjectsRoot => ClaudeHome is null ? TranscriptReader.DefaultProjectsRoot : TestHome.ProjectsRootUnder(ClaudeHome);
@@ -1187,6 +1191,8 @@ public sealed record LaunchOptions(
         }
         // --codex-resume takes an optional value, summary (test only): the flag's position is read here, not in the switch above.
         var codexResumeAt = Array.IndexOf(args, "--codex-resume");
+        // --copilot-resume takes an optional value, full or summary (test only), as --codex-resume takes summary.
+        var copilotResumeAt = Array.IndexOf(args, "--copilot-resume");
         var defaultState = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenTail.Bullshark", "state.json");
         return new LaunchOptions(
@@ -1214,7 +1220,9 @@ public sealed record LaunchOptions(
             CodexResumeSummary: codexResumeAt >= 0 && codexResumeAt + 1 < args.Length && args[codexResumeAt + 1] == "summary",
             CodexViewName: codexView,
             CodexTranscript: args.Contains("--codex-transcript"),
-            CodexSearchText: codexSearch);
+            CodexSearchText: codexSearch,
+            CopilotResume: copilotResumeAt >= 0,
+            CopilotResumeShot: copilotResumeAt >= 0 && copilotResumeAt + 1 < args.Length ? args[copilotResumeAt + 1] : string.Empty);
     }
 }
 
