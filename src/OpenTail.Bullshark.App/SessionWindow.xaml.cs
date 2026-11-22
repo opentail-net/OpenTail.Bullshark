@@ -283,7 +283,12 @@ public partial class SessionWindow : Window
             OpenTestScreen();
             StartSelfTestOrScreenshot();
         };
-        _timer.Tick += async (_, _) => await PassAndRefreshAsync();
+        _timer.Tick += async (_, _) =>
+        {
+            // The session list is refreshed on the same tick when index.refreshSeconds has passed (R9); the refresh runs in the background.
+            MaybeRefreshHistory();
+            await PassAndRefreshAsync();
+        };
         _timer.Start();
         Closing += (_, _) =>
         {

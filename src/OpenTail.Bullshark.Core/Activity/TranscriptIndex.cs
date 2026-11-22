@@ -114,11 +114,21 @@ public sealed class TranscriptIndex
     /// is written again when any was read or one has gone. The result is the same as <see cref="Build(string)"/>. A cache that cannot be read
     /// or written is left out, and every transcript is read; <paramref name="log"/> is told each such failure in one line (null says nothing).
     /// </summary>
-    public static TranscriptIndex Build(string projectsRoot, string cachePath, Action<string>? log = null)
+    public static TranscriptIndex Build(string projectsRoot, string cachePath, Action<string>? log = null) =>
+        BuildFull(projectsRoot, cachePath, log).Index;
+
+    /// <summary>
+    /// The cache build (see <see cref="Build(string, string, Action{string}?)"/>), which also returns the memo a later
+    /// <see cref="RefreshScoped"/> needs (R9). Each folder's stamp is taken from the listing before any of its files is read, so a stamp never
+    /// describes a file the read did not see (commit order). Every file is checked and read where it changed, as the cache build does, and every
+    /// file counts as read in the result.
+    /// </summary>
+    public static TranscriptRefresh BuildFull(string projectsRoot, string cachePath, Action<string>? log = null)
     {
-        if (!Directory.Exists(projectsRoot)) return Empty();
+        if (!Directory.Exists(projectsRoot)) return EmptyRefresh();
 
         var files = ListFiles(projectsRoot);
+        var stamps = FolderStamps.Of(files);
         var cached = IndexCache.Load(cachePath, log);
         var now = DateTime.UtcNow;
         var reads = new FileRead[files.Count];
@@ -146,8 +156,106 @@ public sealed class TranscriptIndex
                 entries.Add(IndexCache.EntryOf(read.Info.FullName, read.Length, read.Written, summary, read.Ledger.Pairs));
         }
         if (cached is null || cached.Count != entries.Count || readNow.Any(read => read)) IndexCache.Save(cachePath, entries, log);
-        return index;
+        return new TranscriptRefresh(
+            index,
+            MemoOf(files, stamps, reads),
+            new HashSet<string>(files.Select(file => file.FullName), StringComparer.OrdinalIgnoreCase),
+            FoldersReused: 0,
+            FoldersRead: stamps.Count);
     }
+
+    /// <summary>
+    /// The index brought up to date from the memo of an earlier read (R9), reading as little as it can. A folder whose stamp is the memo's
+    /// stamp keeps its reads, except a file that is read again: one that is live now (written within <see cref="LiveWindow"/>, by a fresh stat),
+    /// one that is gone, and one whose last read failed. Every other folder is read in full, with the same reader as <see cref="BuildFull"/> but
+    /// without the disk cache, which is not loaded here (loading it costs the whole cache file's parse). The result equals
+    /// <see cref="Build(string)"/> for the same folder state, in the same order, except for one case that is accepted (R9, the owner's decision):
+    /// a file replaced by a copy of the same length with an older write time, under an unchanged count and newest write time in its folder,
+    /// is kept as it was read until the next full build. The window's full build (on open, on the reload button, after a move) sees it.
+    /// The memo is not changed; the result carries a new memo.
+    /// </summary>
+    public static TranscriptRefresh RefreshScoped(string projectsRoot, TranscriptIndexMemo memo)
+    {
+        ArgumentNullException.ThrowIfNull(memo);
+        if (!Directory.Exists(projectsRoot)) return EmptyRefresh();
+
+        var files = ListFiles(projectsRoot);
+        var stamps = FolderStamps.Of(files);
+        var now = DateTime.UtcNow;
+        var reads = new FileRead[files.Count];
+        var kept = new bool[files.Count];
+        Parallel.For(0, files.Count, ReadOptions(), i =>
+        {
+            var file = files[i];
+            var reuse = ReusableRead(file, stamps, memo, now);
+            if (reuse is null)
+            {
+                reads[i] = ReadOne(file);
+            }
+            else
+            {
+                reads[i] = reuse;
+                kept[i] = true;
+            }
+        });
+
+        var readFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var readFolders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < files.Count; i++)
+        {
+            if (kept[i]) continue;
+            readFiles.Add(files[i].FullName);
+            readFolders.Add(FolderStamps.KeyOf(files[i]));
+        }
+        return new TranscriptRefresh(
+            Combine(reads),
+            MemoOf(files, stamps, reads),
+            readFiles,
+            FoldersReused: stamps.Count - readFolders.Count,
+            FoldersRead: readFolders.Count);
+    }
+
+    /// <summary>
+    /// The read the memo keeps for this file, when the file's folder has the memo's stamp and the file is not to be read again (see
+    /// <see cref="RefreshScoped"/>). Null when the file is to be read. The stat is the fresh one, as the cache build takes it.
+    /// </summary>
+    private static FileRead? ReusableRead(FileInfo file, IReadOnlyDictionary<string, FolderStamp> stamps, TranscriptIndexMemo memo, DateTime utcNow)
+    {
+        var key = FolderStamps.KeyOf(file);
+        if (!memo.Folders.TryGetValue(key, out var folder) || !stamps.TryGetValue(key, out var stamp) || folder.Stamp != stamp) return null;
+        if (!folder.Reads.TryGetValue(file.FullName, out var read) || read.Error is not null) return null;
+        try
+        {
+            var (_, written) = StatNow(file);
+            if (!file.Exists || written > utcNow - LiveWindow) return null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+        return read;
+    }
+
+    /// <summary>The memo of a read: each folder's stamp, and the read of each of its files by full name.</summary>
+    private static TranscriptIndexMemo MemoOf(
+        IReadOnlyList<FileInfo> files,
+        IReadOnlyDictionary<string, FolderStamp> stamps,
+        IReadOnlyList<FileRead> reads)
+    {
+        var byFolder = new Dictionary<string, Dictionary<string, FileRead>>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < files.Count; i++)
+        {
+            var key = FolderStamps.KeyOf(files[i]);
+            if (!byFolder.TryGetValue(key, out var folder)) byFolder[key] = folder = new Dictionary<string, FileRead>(StringComparer.OrdinalIgnoreCase);
+            folder[files[i].FullName] = reads[i];
+        }
+        var folders = new Dictionary<string, TranscriptIndexMemo.MemoFolder>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, folder) in byFolder) folders[key] = new TranscriptIndexMemo.MemoFolder(stamps[key], folder);
+        return new TranscriptIndexMemo(folders);
+    }
+
+    private static TranscriptRefresh EmptyRefresh() =>
+        new(Empty(), TranscriptIndexMemo.Empty(), new HashSet<string>(StringComparer.OrdinalIgnoreCase), FoldersReused: 0, FoldersRead: 0);
 
     /// <summary>
     /// The read of a transcript from its cache entry, or null when the entry is not for the file as it is now, or the file was written within
@@ -259,7 +367,7 @@ public sealed class TranscriptIndex
     /// One transcript as it was read on its own: its file, its ledger, and either its summary or the error it failed with. Length and Written
     /// are the fresh stat taken before the read (the cache key), so a file that grows during the read is read again next time.
     /// </summary>
-    private sealed record FileRead(FileInfo Info, UsageLedger Ledger, TranscriptSummary? Summary, Exception? Error, long Length, DateTime Written);
+    internal sealed record FileRead(FileInfo Info, UsageLedger Ledger, TranscriptSummary? Summary, Exception? Error, long Length, DateTime Written);
 
     private static FileRead ReadOne(FileInfo file)
     {

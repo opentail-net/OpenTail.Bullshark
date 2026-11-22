@@ -717,20 +717,28 @@ public partial class SessionWindow
         || folderKey.StartsWith(tempPrefix + "-", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Reads the local transcripts (no model) and the end of each one, off the UI thread. It runs when the window opens and
-    /// when the owner presses 🔄. Nothing is written.
+    /// Reads the local transcripts (no model) and the end of each one, off the UI thread. It is the full read: it runs when the window opens,
+    /// when the owner presses 🔄, after a Storage move and on return from Away. Nothing is written. The periodic refresh is a scoped read
+    /// (SessionWindow.HistoryRefresh.cs). A full read asked for while that runs is made once it has finished.
     /// </summary>
     private async Task LoadHistoryAsync()
     {
         if (_historyLoading) return;
+        if (_historyRefreshing)
+        {
+            _historyFullPending = true;
+            return;
+        }
         _historyLoading = true;
         RefreshRail();
         try
         {
-            var index = await Task.Run(() => ActiveClaude.BuildIndex(_options.IndexCachePath, AppLog.Write));
+            var refresh = await Task.Run(() => ActiveClaude.BuildIndexWithMemo(_options.IndexCachePath, AppLog.Write));
+            var index = refresh.Index;
             var facts = await Task.Run(() => ReadHistoryFacts(index.Sessions));
             _history = index.Sessions.ToList();
             _historyFacts = facts;
+            _historyMemo = refresh.Memo;
             _historyVersion++;
             NoteStartup("history read done");
             // The Storage page's names come from the working folders read here (P9), so its last listing is drawn again with them.
@@ -752,6 +760,7 @@ public partial class SessionWindow
         }
         finally
         {
+            _historyReadAt = DateTimeOffset.UtcNow;
             _historyLoading = false;
             RefreshRail();
         }

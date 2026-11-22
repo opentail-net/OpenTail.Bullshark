@@ -30,6 +30,18 @@ public sealed class ClaudeProvider(ProviderPaths? paths = null)
     public TranscriptIndex BuildIndex() => TranscriptIndex.Build(Paths.HistoryRoot);
 
     /// <summary>
+    /// The full history, as <see cref="BuildIndex(string, Action{string}?)"/> gives it, with the memo that <see cref="RefreshIndex"/> needs (R9).
+    /// </summary>
+    public TranscriptRefresh BuildIndexWithMemo(string cachePath, Action<string>? log = null) =>
+        TranscriptIndex.BuildFull(Paths.HistoryRoot, cachePath, log);
+
+    /// <summary>
+    /// The history brought up to date from the memo of an earlier read, reading only the folders that changed and the live files (R9). The
+    /// accepted blind spot is documented on <see cref="TranscriptIndex.RefreshScoped"/>.
+    /// </summary>
+    public TranscriptRefresh RefreshIndex(TranscriptIndexMemo memo) => TranscriptIndex.RefreshScoped(Paths.HistoryRoot, memo);
+
+    /// <summary>
     /// The sessions as the neutral summary (R-2). Each digest keeps its meaning: a count is known for Claude, and the working folder is
     /// null when the transcript names none. Unreadable transcripts are skipped by <see cref="TranscriptIndex"/>, never fatal.
     /// </summary>
