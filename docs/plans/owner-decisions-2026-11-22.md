@@ -13,14 +13,15 @@ Record of the decisions the owner asked the orchestrator to make ("decide the be
 
 - **Finding.** Three installs. The terminal and summary routes run the WinGet 1.0.34 copy; the start route runs the npm shim (1.0.51 at run time). The flags the app passes exist only in the auto-updated 1.0.103 and 1.0.104-3 builds.
 - **Decision.** The app does not pick a copy. The setup page marks any copy older than 1.0.103 as a Problem and says what to do. The owner updates or removes the older copy on the machine.
-- **Status.** In progress (setup-page check for both copies).
+- **Done.** `e64942b`: the setup page reads both copies the app runs (the terminal's and the start's `copilot.ps1`), marks a copy older than 1.0.103 as a Problem with its path, and marks an unreadable version as a Warning, not Ok. The check runs only version reads; no model call.
 
 ## Logs: exception messages and paths
 
 - **Finding.** 63 App log lines wrote exception messages, which can carry paths. The rail banner showed the library path. Several lines wrote session titles and ids.
 - **Decision.** Logs carry counts, provider names and exception types only, never a message, title, id or path. Screens may show the message (the owner's screen is not a log).
 - **Done (App).** `8fc42db`: 82 lines changed; the banner shows the exception type.
-- **Not yet (Core).** About 25 Core log lines that write messages, names, ids or paths. Exempt by design: the crash report and the diagnostics bundle, which are redacted artifacts with their own tests.
+- **Done (Core).** `f6fdaf9`: 12 Core files; the callbacks the App wires to app.log now log the type or a count. The crash file's own cleanup log lines are changed too (the earlier exemption covered the crash file's content, not these lines). The crash file's content stays redacted, as designed.
+- **Decision for you (not changed).** A run's failure detail is kept in the run's stored alert (`SupervisorRunner`, `SessionRecord.LastAlert`). It can carry an exception's text. It is an owner-facing record, shown on screen, not a log, so I left it. Option: keep the text out of the record too, with the detail shown only on the screen.
 
 ## Refused runs
 
