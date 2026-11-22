@@ -22,6 +22,7 @@ One action, **Continue**, that: (1) picks the most recently active session of th
 - **CN-D6 Per-session memory.** A new optional library field `ResumeMode` (`full`, `lastTurns`, `summary` or absent). Absent means no memory. The existing library entries and their migration are unchanged.
 - **CN-D7 Nothing typed, nothing auto-started.** Continue only opens a screen or activates a tab. The principle 3 rule holds: the app never types into a session.
 - **CN-D8 Logs.** Counts and mode names only: no session id, title, folder or text in the log.
+- **Owner decision, 2026-11-23: Claude's screen gets the "Remember for this session" tick too.** That supersedes the AFK default recorded in C4 (no tick on Claude's screen). Its implementation is a separate step, after the C5 coder's build, and it touches Claude's dialog and Claude's choice record (an additive trailing `Remember`), plus C6's write of the mark under the `claude:` key.
 - **CN-D9 Claude's screen.** Claude's resume screen is Claude's code. Adding the initial mode to it is a change to a Claude file. Decision: it is done as an additive optional parameter with a characterisation test that the default screen is unchanged. This is the only Claude file the feature touches, and it is flagged for the owner's review.
 
 ## Contracts this must satisfy (verify each in C0)
@@ -79,4 +80,4 @@ Settings and library, confirmed: `behaviour.json` sits beside the state file; a 
 ## Owner decisions (defaults stand unless the owner changes them)
 
 - CN-D1 to CN-D9 as above. In particular: the default is last turns (no model call), and Continue looks only at the active provider.
-- CN-D9 is the only Claude change; the owner should look at it.
+- CN-D9 is the only Claude change; the owner should look at it. **Update 2026-11-23:** the owner wants the Remember tick on Claude's screen as well (see the decision above), so the tick is added there in a later step.

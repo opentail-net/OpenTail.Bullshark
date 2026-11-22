@@ -70,6 +70,8 @@ About 480 App lines are identical and about 150 Core lines are near-identical. T
 
 **R8. Review and the playbook.** A Sonnet review of R1 to R7 as one diff range. Dispositions go in its review log and in this plan. Update `docs/plans/provider-onboarding-playbook.md`: the kit's pieces, the rule that a new provider uses them where they fit, and the check that a fourth CLI fits the seam on paper before any piece is added.
 
+**R10. Codex tab close and rail row, unified (owner, 2026-11-23: "sooner or later").** Two pieces stayed per provider in R7: the Codex tab close (`SessionWindow.Tabs.cs`, a Claude-side file, so the stage that touches it needs Claude's close path characterised first) and the Codex rail row (`SessionWindow.Codex.cs` rows, about 25 lines, with a different rail kind, title wording and resume call). Plan: characterise Claude's close and row behaviour with tests; then move the close and the row into the provider-neutral helpers of R7, with each provider's wording and actions as parameters; byte-identical strings; no Claude behaviour change. Scheduled after the continue feature.
+
 **R9. Claude (not in this plan).** Claude's launch, summary, rail and search would move to the kit only after characterisation tests describe its current behaviour. That needs its own plan and the owner's decision.
 
 ## Risks
