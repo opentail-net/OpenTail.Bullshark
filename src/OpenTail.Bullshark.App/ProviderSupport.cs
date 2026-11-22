@@ -5,7 +5,7 @@ using OpenTail.Bullshark.Core.Tabs;
 namespace OpenTail.Bullshark.App;
 
 /// <summary>
-/// The provider the window shows, saved in ui.json beside the other keys (stage C4, C-D6): <c>"provider": "claude"</c> or <c>"codex"</c>.
+/// The provider the window shows, saved in ui.json beside the other keys (stage C4, C-D6; G2.1): <c>"provider": "claude"</c>, <c>"codex"</c> or <c>"copilot"</c>.
 /// <see cref="UiFile.Set"/> keeps the other keys. A missing or unreadable value is Claude, so the window starts as before.
 /// </summary>
 public static class ProviderStore

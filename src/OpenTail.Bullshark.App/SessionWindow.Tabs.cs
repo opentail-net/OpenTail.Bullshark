@@ -50,6 +50,18 @@ public partial class SessionWindow
         /// <see cref="_codexSearch"/>. Claude's <see cref="Search"/> tab is a different kind and is not used for Codex.
         /// </summary>
         CodexSearchResults,
+
+        /// <summary>
+        /// A past Copilot session's messages, read-only (G2.4). Key: the session id, with the Copilot provider. Its view is in
+        /// <see cref="_copilotTranscripts"/>. Copilot's tabs are not Claude's <see cref="Transcript"/> tab.
+        /// </summary>
+        CopilotTranscript,
+
+        /// <summary>
+        /// The results of a search of past Copilot sessions (G2.3). One tab, with the key "copilot-search" and the Copilot provider. Its view is
+        /// <see cref="_copilotSearch"/>.
+        /// </summary>
+        CopilotSearchResults,
     }
 
     internal sealed class OpenTab(TabKind kind, string key, string title, ProviderId? provider = null)
@@ -122,6 +134,7 @@ public partial class SessionWindow
     {
         // Under Codex the "+" starts a Codex session (the rail's own action); the Claude run setup is for Claude.
         if (IsCodexActive) NewCodexSession();
+        else if (IsCopilotActive) NewCopilotSession();
         else OpenSetupTab(null);
     }
 
@@ -212,6 +225,14 @@ public partial class SessionWindow
             case TabKind.CodexSearchResults:
                 ShowOnly(_codexSearch);
                 break;
+
+            case TabKind.CopilotTranscript:
+                if (_copilotTranscripts.TryGetValue(KeyOf(tab), out var copilotView)) ShowOnly(copilotView);
+                break;
+
+            case TabKind.CopilotSearchResults:
+                ShowOnly(_copilotSearch);
+                break;
         }
     }
 
@@ -230,6 +251,7 @@ public partial class SessionWindow
         _tabs.Remove(tab);
         if (tab.Kind == TabKind.Session && tab.Provider == ProviderId.Claude) _hiddenSessions.Add(KeyOf(tab));
         if (tab.Kind == TabKind.CodexTranscript) RemoveCodexTranscript(KeyOf(tab));
+        if (tab.Kind == TabKind.CopilotTranscript) RemoveCopilotTranscript(KeyOf(tab));
         if (tab.Kind == TabKind.Search) ClearSearchFilter();
         if (!ReferenceEquals(_activeTab, tab))
         {
@@ -254,6 +276,12 @@ public partial class SessionWindow
         if (tab.Kind != TabKind.Session)
         {
             CloseTab(tab);
+            return;
+        }
+        // A Copilot tab is the window's own terminal too, with its own wording (G2.7).
+        if (tab.Provider == ProviderId.Copilot)
+        {
+            CloseCopilotTab(tab);
             return;
         }
         // A Codex tab is the window's own terminal: there is no Claude session to stop, so its close only closes the terminal (C3).

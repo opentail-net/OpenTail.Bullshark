@@ -1,7 +1,9 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Windows;
+using OpenTail.Bullshark.Core.Claude;
 using OpenTail.Bullshark.Core.Codex;
+using OpenTail.Bullshark.Core.Copilot;
 using OpenTail.Bullshark.Core.Health;
 using OpenTail.Bullshark.Core.Instructions;
 using OpenTail.Bullshark.Core.Trust;
@@ -23,7 +25,13 @@ public partial class SessionWindow
         var dialog = IsCodexActive
             ? new SetupCheckDialog(Palette, () => CodexSetupCheck.Run(),
                 "Looks for the Codex CLI on PATH and changes nothing. Its version is not read, and codex is not started.")
-            : new SetupCheckDialog(Palette, () => SetupCheck.Run(SetupCheck.DefaultClaudeDir, SetupCheck.DefaultClaudeJsonPath));
+            : IsCopilotActive
+                // The Copilot row: the one row, the bundled version read through cmd.exe with no update check (G1.6, G2.2, C-D7). It runs
+                // asynchronously: a blocking wait here would stall the UI thread, and the check's continuations need that thread (a deadlock).
+                ? new SetupCheckDialog(Palette, run: null,
+                    noteText: "Looks for the Copilot CLI on PATH and reads the version it bundles. No session is started.",
+                    runAsync: () => CopilotSetupCheck.RunAsync(new ProcessCliRunner("cmd.exe")))
+                : new SetupCheckDialog(Palette, () => SetupCheck.Run(SetupCheck.DefaultClaudeDir, SetupCheck.DefaultClaudeJsonPath));
         dialog.Owner = this;
         dialog.ShowDialog();
     }

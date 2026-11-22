@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Codex;
+using OpenTail.Bullshark.Core.Copilot;
 using OpenTail.Bullshark.Core.Library;
 using OpenTail.Bullshark.Core.Providers;
 using OpenTail.Bullshark.Core.Supervisor;
@@ -28,6 +29,9 @@ public partial class SessionWindow
     /// <summary>Codex's marks as they were last read, by session id: the codex: entries of the same file (D1). The Codex rows read these.</summary>
     private Dictionary<string, LibraryEntry> _codexMarks = new(StringComparer.Ordinal);
 
+    /// <summary>Copilot's marks as they were last read, by session id: the copilot: entries of the same file (G2.3). The Copilot rows read these.</summary>
+    private Dictionary<string, LibraryEntry> _copilotMarks = new(StringComparer.Ordinal);
+
     /// <summary>Why library.json cannot be read, or null when it can (D-L3). While it is set, no mark is shown and nothing is written.</summary>
     private string? _libraryError;
 
@@ -51,6 +55,7 @@ public partial class SessionWindow
             var all = _library.LoadAll(UiFile.UiWait);
             _marks = SessionLibrary.ProviderView(all, ProviderId.Claude);
             _codexMarks = SessionLibrary.ProviderView(all, ProviderId.Codex);
+            _copilotMarks = SessionLibrary.ProviderView(all, ProviderId.Copilot);
             _libraryError = null;
             ReadBusy.Note(false);
         }
@@ -62,6 +67,7 @@ public partial class SessionWindow
         {
             _marks = new Dictionary<string, LibraryEntry>(StringComparer.Ordinal);
             _codexMarks = new Dictionary<string, LibraryEntry>(StringComparer.Ordinal);
+            _copilotMarks = new Dictionary<string, LibraryEntry>(StringComparer.Ordinal);
             if (_libraryError is null)
             {
                 AppLog.Write($"library not read: {ex.Message}");
@@ -74,7 +80,8 @@ public partial class SessionWindow
     private LibraryEntry? MarkOf(string sessionId) => _marks.TryGetValue(sessionId, out var entry) ? entry : null;
 
     /// <summary>The marks of one provider as last read (D1): Codex's for a Codex row, Claude's for everything else.</summary>
-    private Dictionary<string, LibraryEntry> MarksOf(ProviderId provider) => provider == ProviderId.Codex ? _codexMarks : _marks;
+    private Dictionary<string, LibraryEntry> MarksOf(ProviderId provider) =>
+        provider == ProviderId.Codex ? _codexMarks : provider == ProviderId.Copilot ? _copilotMarks : _marks;
 
     /// <summary>A session's mark under one provider's key, or null (D1).</summary>
     private LibraryEntry? MarkOf(ProviderId provider, string sessionId) => MarksOf(provider).TryGetValue(sessionId, out var entry) ? entry : null;
@@ -121,6 +128,15 @@ public partial class SessionWindow
                 // An ended tab keeps its suffix when the row's title is applied again (R6).
                 var title = CodexRowTitle(MarkOf(ProviderId.Codex, tab.Key)?.Name, session);
                 tab.Title = tab.Ended ? CodexExit.EndedTitle(title) : title;
+            }
+        }
+        // A Copilot tab follows its history row's title the same way (G2.7).
+        foreach (var tab in _tabs.Where(t => t.Provider == ProviderId.Copilot && t.Kind == TabKind.Session).ToList())
+        {
+            if (_copilotSessions.FirstOrDefault(s => SameId(s.Key.SessionId, tab.Key)) is { } session)
+            {
+                var title = CopilotRowTitle(MarkOf(ProviderId.Copilot, tab.Key)?.Name, session);
+                tab.Title = tab.Ended ? CopilotExit.EndedTitle(title) : title;
             }
         }
     }

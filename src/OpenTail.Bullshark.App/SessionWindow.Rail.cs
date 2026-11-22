@@ -44,6 +44,12 @@ public enum RailKind
 
     /// <summary>"New Codex session…" under Codex. Selecting it asks for a folder and opens Codex there in a terminal tab.</summary>
     CodexNew,
+
+    /// <summary>A Copilot session from its history (G2.2). Key: its session id. Its action is a resume in a terminal tab, from its menu or a double click.</summary>
+    CopilotSession,
+
+    /// <summary>"New Copilot session…" under Copilot. Selecting it asks for a folder and opens Copilot there in a terminal tab.</summary>
+    CopilotNew,
 }
 
 /// <summary>The meaning of one rail item. Detail carries the folder path for folder items.</summary>
@@ -128,8 +134,9 @@ public partial class SessionWindow
     {
         // Under Codex the label shows Codex's own view and tag (parity P11, tags P5): the Claude view does not apply to the Codex rail. The grouping does (G-D4).
         var codex = IsCodexActive;
-        var tag = codex ? ActiveCodexTagFilter : ActiveTagFilter;
-        var view = (codex ? _codexView : _filter).ToString().ToLowerInvariant();
+        var copilot = IsCopilotActive;
+        var tag = codex ? ActiveCodexTagFilter : copilot ? ActiveCopilotTagFilter : ActiveTagFilter;
+        var view = (codex ? _codexView : copilot ? _copilotView : _filter).ToString().ToLowerInvariant();
         var grouping = _groupByTag ? " · by tag" : string.Empty;
         FilterMark.Text = $"show: {view}{(tag is null ? string.Empty : " · #" + tag)}{grouping} ▾";
         // The label may be cut with an ellipsis when the tag is long, so the tooltip names the tag in full.
@@ -168,6 +175,14 @@ public partial class SessionWindow
             foreach (var view in _viewItems.Where(item => item.Tag is RailFilter codexView && IsCodexView(codexView))) _filterMenu.Items.Add(view);
             _filterMenu.Items.Add(new Separator());
             AddCodexTagItems(_filterMenu);
+            AddGroupingItems(_filterMenu);
+            return;
+        }
+        if (IsCopilotActive)
+        {
+            foreach (var view in _viewItems.Where(item => item.Tag is RailFilter copilotView && IsCopilotView(copilotView))) _filterMenu.Items.Add(view);
+            _filterMenu.Items.Add(new Separator());
+            AddCopilotTagItems(_filterMenu);
             AddGroupingItems(_filterMenu);
             return;
         }
@@ -241,10 +256,13 @@ public partial class SessionWindow
     {
         var wanted = string.IsNullOrWhiteSpace(tag) ? null : tag.Trim().ToLowerInvariant();
         // Under Codex the tag is Codex's own filter (tags P5). Claude's filter is not changed by it.
-        if (IsCodexActive) _codexTagFilter = wanted; else _tagFilter = wanted;
+        if (IsCodexActive) _codexTagFilter = wanted;
+        else if (IsCopilotActive) _copilotTagFilter = wanted;
+        else _tagFilter = wanted;
         UpdateFilterMark();
         SetStatus(wanted is null ? "Tag filter cleared."
             : IsCodexActive ? $"Showing the Codex sessions tagged #{wanted}."
+            : IsCopilotActive ? $"Showing the Copilot sessions tagged #{wanted}."
             : $"Showing the rows tagged #{wanted}. Needs you is never filtered.");
         RefreshRail();
     }
@@ -282,6 +300,11 @@ public partial class SessionWindow
             ChooseCodexView(filter);
             return;
         }
+        if (IsCopilotActive)
+        {
+            ChooseCopilotView(filter);
+            return;
+        }
         _filter = filter;
         UpdateFilterMark();
         RefreshRail();
@@ -292,7 +315,7 @@ public partial class SessionWindow
     {
         if (_filterMenu is null) return;
         RebuildTagMenu();
-        var current = IsCodexActive ? _codexView : _filter;
+        var current = IsCodexActive ? _codexView : IsCopilotActive ? _copilotView : _filter;
         foreach (var item in _filterMenu.Items.OfType<MenuItem>())
             if (item.Tag is RailFilter view) item.IsChecked = view == current;
         _filterMenu.IsOpen = true;
@@ -433,6 +456,7 @@ public partial class SessionWindow
         LoadLibrary();
         DropMissingTagFilter();
         DropMissingCodexTagFilter();
+        DropMissingCopilotTagFilter();
         // The context window and the silent threshold come from the pass's settings, or from the file as it is now (a change in Settings shows at once,
         // ctx meter, Part 1). A pass passes what it read on the pool thread (perf and testability batch, Q2).
         var settings = passSettings ?? SettingsNow();
@@ -457,6 +481,12 @@ public partial class SessionWindow
         if (IsCodexActive)
         {
             RefreshCodexRail(stored);
+            return;
+        }
+        // Under Copilot the rail lists Copilot's history only (G2.2), as Codex's does.
+        if (IsCopilotActive)
+        {
+            RefreshCopilotRail(stored);
             return;
         }
 
@@ -792,7 +822,7 @@ public partial class SessionWindow
 
         // A Codex terminal tab keeps its pane when no row is selected (found reading the code, 2026-11-21, not yet seen on screen). Codex's rows are not
         // Claude's session rows, so the policy below would show the setup page over the terminal, or select a folder. Claude's policy is unchanged.
-        if (_activeTab is { Kind: TabKind.Session } activeTab && activeTab.Provider == ProviderId.Codex)
+        if (_activeTab is { Kind: TabKind.Session } activeTab && (activeTab.Provider == ProviderId.Codex || activeTab.Provider == ProviderId.Copilot))
         {
             _selected = null;
             return;
@@ -843,6 +873,9 @@ public partial class SessionWindow
         TabKind.CodexTranscript => PaneKind.Transcript,
         // A Codex search's results keep their pane when the rail refreshes, as Claude's search results do.
         TabKind.CodexSearchResults => PaneKind.Search,
+        // The Copilot transcript and results tabs keep their panes the same way (G2.4, G2.3).
+        TabKind.CopilotTranscript => PaneKind.Transcript,
+        TabKind.CopilotSearchResults => PaneKind.Search,
         _ => null,
     };
 
@@ -855,6 +888,12 @@ public partial class SessionWindow
         {
             NewCodexSession();
             // The rail is drawn again after the dialog, so the row is not left selected and a second press still asks for a folder.
+            _ = Dispatcher.BeginInvoke(new Action(() => RefreshRail()));
+            return;
+        }
+        if (tag.Kind == RailKind.CopilotNew)
+        {
+            NewCopilotSession();
             _ = Dispatcher.BeginInvoke(new Action(() => RefreshRail()));
             return;
         }

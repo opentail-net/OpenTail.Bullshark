@@ -14,7 +14,8 @@ namespace OpenTail.Bullshark.App;
 /// </summary>
 public sealed class SetupCheckDialog : Window
 {
-    private readonly Func<IReadOnlyList<SetupItem>> _run;
+    private readonly Func<IReadOnlyList<SetupItem>>? _run;
+    private readonly Func<System.Threading.Tasks.Task<IReadOnlyList<SetupItem>>>? _runAsync;
     private readonly RailPalette _palette;
     private readonly TextBlock _summary = new()
     {
@@ -25,10 +26,20 @@ public sealed class SetupCheckDialog : Window
     private readonly StackPanel _rows = new();
 
     /// <param name="noteText">The line under the title. Null gives the Claude Code note; the Codex check passes its own (stage C-D7).</param>
-    public SetupCheckDialog(RailPalette palette, Func<IReadOnlyList<SetupItem>> run, string? noteText = null)
+    /// <param name="runAsync">
+    /// The check, when it must not block the UI thread (the Copilot version read through cmd.exe). The dialog shows "Checking…" and the rows when the
+    /// result arrives. Give either <paramref name="run"/> or this one.
+    /// </param>
+    public SetupCheckDialog(
+        RailPalette palette,
+        Func<IReadOnlyList<SetupItem>>? run,
+        string? noteText = null,
+        Func<System.Threading.Tasks.Task<IReadOnlyList<SetupItem>>>? runAsync = null)
     {
+        if (run is null && runAsync is null) throw new ArgumentException("A check is needed: give run or runAsync.");
         _palette = palette;
         _run = run;
+        _runAsync = runAsync;
         Title = "Setup check";
         Width = 680;
         Height = 560;
@@ -74,7 +85,34 @@ public sealed class SetupCheckDialog : Window
 
     private void Check()
     {
-        var items = _run();
+        if (_runAsync is not null)
+        {
+            _ = CheckAsync(_runAsync);
+            return;
+        }
+        ShowItems(_run!());
+    }
+
+    /// <summary>
+    /// The asynchronous check. Its continuation runs on the UI thread (no ConfigureAwait(false)), so the rows are written there. A check that cannot run
+    /// says so in the summary, instead of leaving "Checking…" up.
+    /// </summary>
+    private async System.Threading.Tasks.Task CheckAsync(Func<System.Threading.Tasks.Task<IReadOnlyList<SetupItem>>> run)
+    {
+        _summary.Text = "Checking…";
+        _rows.Children.Clear();
+        try
+        {
+            ShowItems(await run());
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            _summary.Text = "The check could not run: " + e.Message;
+        }
+    }
+
+    private void ShowItems(IReadOnlyList<SetupItem> items)
+    {
         var ok = items.Count(i => i.State == SetupState.Ok);
         var warnings = items.Count(i => i.State == SetupState.Warning);
         var problems = items.Count(i => i.State == SetupState.Problem);

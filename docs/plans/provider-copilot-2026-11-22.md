@@ -160,6 +160,16 @@ Open for G2 and G3: `CopilotScratchFolder.RemoveOld` has no caller yet, and it m
 
 ### Stage G2: App, rail and tabs
 
+**G2 status (2026-11-22): built and reviewed; committed with this note.** Items G2.1 to G2.8 and G2.10 are done. G2.9 (the tab linked to a session id) is skipped: it needs probe P-C1, which is deferred. Tests, run by the orchestrator with the **full** target names (`net10.0-windows10.0.19041.0` and `net11.0-windows10.0.19041.0`; the short `net10.0` matches no App target and runs zero tests, with exit 0): App.Tests **228 passed** on each target (146 before), 0 failed; Core.Tests **2883** (net10.0) and **2897** (net11.0), unchanged. The only build warning is the existing CS8601 in `MainWindow.xaml.cs:23`.
+
+Review changes: the Copilot setup row ran `GetAwaiter().GetResult()` on the UI thread, which would stall it and can deadlock (the check's awaits have no `ConfigureAwait(false)`). `SetupCheckDialog` now takes an optional async check, shows "Checking…", and reports a failure in the summary; Claude and Codex keep the synchronous path. The start-up sweep (`SweepCopilotScratch`) runs right after the single-instance guard is taken (`SessionWindow.xaml.cs`), and only when a supervisor is held.
+
+Deviations: the row menu follows the Codex menu's order and items (Resume…, Resume in a terminal tab, View transcript, Pin, Archive, Edit…) instead of the list in G2.5, as the step's "same items and order" asks; the All/History/Archived views, the tag filter and group-by-tag are copied from Codex (parity P5, P11); `TabKind.CopilotSearchResults` is added; the transcript reads the whole file so the "first 5,000 of N" note shows the true N. Resume… opens nothing yet ("not built yet"), and G3 builds it.
+
+Not checked on screen (owner or G3.3): the rail and its empty state in both themes, the menus, the setup dialog, the transcript and search tabs, a real `copilot --resume` tab and its ended state, and the start-up sweep against real scratch folders.
+
+**Test-run note:** the G2 coder's counts were taken with the short target name, which runs zero App tests and still exits 0. The counts above come from the full names, run by the orchestrator.
+
 - [ ] G2.1 `ProviderStore`: a third choice saved in `ui.json` as `"provider": "copilot"`, on both targets. *Tests:* round-trip; an unknown value falls back to Claude. The startup check at `SessionWindow.xaml.cs:211-213` looks only for Codex, so `copilot` must be handled there too (G1 review). At startup the window also calls `CopilotScratchFolder.RemoveOld(ParentBeside(statePath), StartupAge, now)`.
 - [ ] G2.2 `App/CopilotRailGroups.cs` and the rail: history by folder (copy of `CodexRailGroups`); the empty state says why and gives the path (`~/.copilot/session-state`, or `COPILOT_HOME`) and the count of empty sessions; "New Copilot session…". *Tests:* grouping and sort (subagents last inside a folder).
 - [ ] G2.3 Library marks under `copilot:<id>`: tags, notes, archive, pin, colour, rename; search (`CopilotSearch.Matches`: titles, names, tags, notes; no minimum word length; a query of only `#` matches every tagged session). *Tests:* copies of the Codex search and library-view tests on Copilot keys.

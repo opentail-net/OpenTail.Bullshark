@@ -7,6 +7,7 @@ using OpenTail.Bullshark.Core.Behaviour;
 using OpenTail.Bullshark.Core.Cache;
 using OpenTail.Bullshark.Core.Claude;
 using OpenTail.Bullshark.Core.Codex;
+using OpenTail.Bullshark.Core.Copilot;
 using OpenTail.Bullshark.Core.Folders;
 using OpenTail.Bullshark.Core.Health;
 using OpenTail.Bullshark.Core.Providers;
@@ -41,6 +42,9 @@ public partial class SessionWindow : Window
 
     /// <summary>Codex, made when it is first chosen (C4). Null until then, and on a build where Codex is not offered.</summary>
     private CodexProvider? _codex;
+
+    /// <summary>Copilot, made when it is first chosen or saved (G2.1). Null until then.</summary>
+    private CopilotProvider? _copilot;
 
     /// <summary>The window's Claude provider: the history and digests the rail and the transcript tabs read (R-2).</summary>
     private ClaudeProvider ActiveClaude => _claude;
@@ -209,8 +213,12 @@ public partial class SessionWindow : Window
         _claude = new ClaudeProvider(new ProviderPaths(options.ClaudeHome ?? ClaudePaths.ConfigDir(), options.ProjectsRoot, options.ArchiveRoot));
         // The provider the saved choice names (C4). Codex is started only where this build offers it (C-D2): otherwise Claude, as before.
         _activeProvider = _claude;
-        if (ProviderStore.Load(options.StatePath) == ProviderId.Codex && CodexProvider.Available)
+        var savedProvider = ProviderStore.Load(options.StatePath);
+        if (savedProvider == ProviderId.Codex && CodexProvider.Available)
             _activeProvider = _codex = new CodexProvider();
+        // Copilot is offered on both targets (G2.1): the saved choice starts its rail.
+        else if (savedProvider == ProviderId.Copilot)
+            _activeProvider = _copilot = new CopilotProvider();
         // The version probes (R4). Their recheck window is read from the behaviour settings at each check, so they are made here (see _claudeVersion).
         _claudeVersion = ToolVersionProbe.ForClaude(new ProcessCliRunner(), () => _behaviour.Versions.RecheckWindow);
         _codexVersion = ToolVersionProbe.ForCodex(new ProcessCliRunner("cmd.exe"), () => _behaviour.Versions.RecheckWindow);
@@ -228,6 +236,9 @@ public partial class SessionWindow : Window
             _watching = _supervisor is null;
             NoteSupervisorProblem(problem);
         }
+        // G-D15: the Copilot scratch folders of earlier runs go here, once this instance holds the guard for the state file (their parent is beside it).
+        // Before any Copilot summary call could start in this process; a window that only watches (or runs no pass) removes nothing.
+        if (_supervisor is not null) SweepCopilotScratch(options.StatePath);
         InitLibrary(options.StatePath);
         LoadMagicAuto();
         var runner = new SupervisorRunner(_cli, _store, TimeProvider.System, log: AppLog.Write)
@@ -255,6 +266,7 @@ public partial class SessionWindow : Window
         Pane.Children.Add(_search);
         InitSearch();
         InitCodexSearch();
+        InitCopilotSearch();
         InitChanges();
         InitReview();
         InitStorage();
@@ -277,6 +289,8 @@ public partial class SessionWindow : Window
             else await LoadHistoryAsync();
             // The Codex history is read at start too when Codex is the window's provider (C4); Claude's is read as before.
             if (IsCodexActive) _ = LoadCodexHistoryAsync();
+            // The Copilot history is read at start too when Copilot is the window's provider (G2.1).
+            if (IsCopilotActive) _ = LoadCopilotHistoryAsync();
             await PassAndRefreshAsync();
             if (_options.OpenSessionId is { } openId) await OpenHistorySessionAsync(openId);
             // --find (test only): the shown transcript opens with its find bar on the query, as a search result does (find and jump batch, T4).
