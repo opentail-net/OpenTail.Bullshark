@@ -7,6 +7,20 @@ This licence applies to everything in this repository: OpenTail.Bullshark's code
 Any commercial use, including use inside a business, needs a separate commercial licence from the licensor. Personal and other
 noncommercial use is permitted on the terms below.
 
+## Independence and the names of other products
+
+OpenTail.Bullshark is an independent project. It is not affiliated with, endorsed by, sponsored by or approved by Microsoft, GitHub, Anthropic (Claude) or OpenAI (Codex).
+
+Claude, Claude Code, Anthropic, Codex, OpenAI, GitHub, Copilot and Microsoft are names or trademarks of their owners. The project uses them only to say which tools it works with. It claims no rights in them and uses none of their logos.
+
+The project is not a derivative work of Claude Code, GitHub Copilot CLI or the Codex CLI. It does not contain, modify, translate, adapt or redistribute any part of them. It runs the copies a user has installed, through their documented command-line options, and reads files those tools write to the user's own computer. It writes into no folder of those tools.
+
+No code, schema, bundled file, icon or test fixture is taken from those tools or their packages. Test data is written by hand. Other projects studied for design were read for ideas only, and no code from them is included.
+
+Questions or concerns about any of this can be raised on the project's issue tracker: https://github.com/opentail-net/OpenTail
+
+This section does not change the terms below.
+
 The terms, unchanged from <https://polyformproject.org/licenses/strict/1.0.0>:
 
 ---
