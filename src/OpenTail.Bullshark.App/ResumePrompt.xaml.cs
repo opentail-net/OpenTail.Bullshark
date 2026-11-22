@@ -30,7 +30,7 @@ public enum ResumeMode
 /// The choice made in the resume prompt. Level is set for a summary; Turns is the number of turns kept verbatim. Model and Effort
 /// are the model and effort of the resumed or new session (the summary itself is always Haiku at low effort). Remember is the
 /// "Remember for this session" tick: the prompt only returns it, and the window writes the mark (Continue, stage C6). Target is the platform
-/// the new session starts in (RS-D14). Until the target chooser is built it is always Claude, the screen's own platform.
+/// the new session starts in (RS-D14). In a summary it is the chooser's pick; otherwise it is Claude, the screen's own platform.
 /// </summary>
 public sealed record ResumeChoice(ResumeMode Mode, SummaryLevel? Level, int Turns, string Model, string Effort, bool Remember, ProviderId Target)
 {
@@ -125,6 +125,10 @@ public partial class ResumePrompt : Window
         foreach (var model in Choices.Models) ModelRow.Children.Add(Segment(model, "Model", model == defaultModel));
         foreach (var effort in Choices.Efforts) EffortRow.Children.Add(Segment(effort, "Effort", effort == defaultEffort));
 
+        // The target chooser (RS-D3): the source is the default. A change of the pick hides the preview (RS-D18); it does not rebuild it.
+        ResumeTargetBox.Fill(TargetBox, ProviderId.Claude);
+        TargetBox.SelectionChanged += (_, _) => OnTargetChanged();
+
         UpdateCost();
     }
 
@@ -166,10 +170,46 @@ public partial class ResumePrompt : Window
         var model = SelectedTag(ModelRow) ?? Choices.Models[0];
         var effort = SelectedTag(EffortRow) ?? Choices.Efforts[0];
 
-        if (FullChoice.IsChecked == true) return new ResumeChoice(ResumeMode.Full, null, 0, model, effort);
-        if (SummaryChoice.IsChecked == true) return new ResumeChoice(ResumeMode.Summary, SelectedLevel(), kept, model, effort);
-        if (TailChoice.IsChecked == true) return new ResumeChoice(ResumeMode.TailOnly, null, kept, model, effort);
+        if (FullChoice.IsChecked == true) return Targeted(new ResumeChoice(ResumeMode.Full, null, 0, model, effort));
+        if (SummaryChoice.IsChecked == true) return Targeted(new ResumeChoice(ResumeMode.Summary, SelectedLevel(), kept, model, effort));
+        if (TailChoice.IsChecked == true) return Targeted(new ResumeChoice(ResumeMode.TailOnly, null, kept, model, effort));
         return null;
+    }
+
+    /// <summary>The choice with its target (RS-D3, RS-D14): the preview is built for the target on screen, and Start sends the same one.</summary>
+    private ResumeChoice Targeted(ResumeChoice choice) => choice with { Target = StartTarget(choice.Mode) };
+
+    /// <summary>
+    /// The platform the new session starts in, for the mode (<see cref="ResumeTarget.ChosenTarget"/>): the chooser's pick in a summary, else Claude.
+    /// </summary>
+    private ProviderId StartTarget(ResumeMode mode) =>
+        ResumeTarget.ChosenTarget(ProviderId.Claude, RememberChoice.ModeOf(mode), ResumeTargetBox.SelectedOf(TargetBox, ProviderId.Claude));
+
+    /// <summary>
+    /// Shows the target on screen (RS-D3, RS-D4, RS-O2): the chooser only in a summary, the line "Summary of ... session, new ... session" when the target
+    /// is another platform, and the button that names the target.
+    /// </summary>
+    private void ShowTarget(ProviderId target)
+    {
+        var summary = SummaryChoice.IsChecked == true;
+        TargetRow.Visibility = summary ? Visibility.Visible : Visibility.Collapsed;
+        TargetBox.Visibility = TargetRow.Visibility;
+        var line = ResumeTarget.SummaryLine(ProviderId.Claude, target);
+        TargetLine.Text = line ?? string.Empty;
+        TargetLine.Visibility = summary && line is not null ? Visibility.Visible : Visibility.Collapsed;
+        var startLabel = ResumeTarget.ButtonOf(target);
+        ResumeButton.Content = startLabel;
+        AutomationProperties.SetName(ResumeButton, startLabel);
+    }
+
+    /// <summary>
+    /// Runs when the owner picks another platform (RS-D18). The preview on screen is for the old target, so it is taken away. Nothing is rebuilt and no
+    /// model is called: Preview builds the text again with the kept summary, and Start builds its text the same way.
+    /// </summary>
+    private void OnTargetChanged()
+    {
+        HidePreview();
+        Refresh();
     }
 
     /// <summary>
@@ -178,6 +218,8 @@ public partial class ResumePrompt : Window
     /// </summary>
     private void UpdateCost()
     {
+        // RS-D3: the target goes back to the source when the mode leaves a summary; the chooser is hidden then.
+        if (SummaryChoice.IsChecked != true) ResumeTargetBox.Select(TargetBox, ProviderId.Claude);
         HidePreview();
         if (KeptSummary is { } kept && !kept.MatchesLevel(SelectedLevelOrNull())) KeptSummary = null;
         Refresh();
@@ -193,6 +235,7 @@ public partial class ResumePrompt : Window
         var choice = Selected(out var turnsValid);
         LevelBlock.Visibility = SummaryChoice.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         TurnsBlock.Visibility = FullChoice.IsChecked == true ? Visibility.Collapsed : Visibility.Visible;
+        ShowTarget(choice?.Target ?? ProviderId.Claude);
 
         var sizes = turnsValid ? string.Empty : $" Enter a whole number from 0 to {MaxTurns} for the turns.";
         var runs = choice is null ? string.Empty : $" The new session runs at {choice.Model} {choice.Effort}.";
@@ -217,6 +260,7 @@ public partial class ResumePrompt : Window
         Enable(SummaryChoice, free);
         Enable(TailChoice, free);
         Enable(TurnsBox, free);
+        Enable(TargetBox, free);
         foreach (var segment in LevelRow.Children.OfType<RadioButton>()) Enable(segment, free);
         ResumeButton.IsEnabled = free && !_refused;
         ResumeMenuButton.IsEnabled = free;
@@ -401,7 +445,7 @@ public partial class ResumePrompt : Window
             return;
         }
 
-        Choice = choice with { Remember = RememberBox.IsChecked == true, Target = ProviderId.Claude };
+        Choice = choice with { Remember = RememberBox.IsChecked == true, Target = StartTarget(choice.Mode) };
         Close();
     }
 

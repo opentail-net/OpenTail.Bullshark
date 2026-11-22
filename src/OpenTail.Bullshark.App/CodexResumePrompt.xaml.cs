@@ -29,7 +29,7 @@ public enum CodexResumeMode
 /// <summary>
 /// The choice made in the Codex resume screen. Level is set only for a summary; Turns is the number kept verbatim (0 for In full). Model is the model
 /// id the new session is started with (P9), or null for Codex's own default (also the case for In full, which sends no model). Remember is the
-/// "Remember for this session" tick: it is only returned to the caller, which decides what to do with it (the screen writes nothing). Target is the platform the new session starts in (RS-D14). Until the target chooser is built it is always
+/// "Remember for this session" tick: it is only returned to the caller, which decides what to do with it (the screen writes nothing). Target is the platform the new session starts in (RS-D14). In a summary it is the chooser's pick; otherwise it is
 /// Codex, the screen's own platform.
 /// </summary>
 public sealed record CodexResumeChoice(CodexResumeMode Mode, SummaryLevel? Level, int Turns, string? Model, bool Remember, ProviderId Target)
@@ -122,6 +122,10 @@ public partial class CodexResumePrompt : Window
         foreach (var radio in new[] { FullChoice, TailChoice, SummaryChoice }) radio.Checked += (_, _) => OnChoiceChanged();
         TurnsBox.TextChanged += (_, _) => OnChoiceChanged();
 
+        // The target chooser (RS-D3): the source is the default. A change of the pick hides the preview (RS-D18); it does not rebuild it.
+        ResumeTargetBox.Fill(TargetBox, ProviderId.Codex);
+        TargetBox.SelectionChanged += (_, _) => OnTargetChanged();
+
         OnChoiceChanged();
 
         if (models is null)
@@ -204,16 +208,54 @@ public partial class CodexResumePrompt : Window
         if (FullChoice.IsChecked == true)
         {
             turnsValid = true;
-            return new CodexResumeChoice(CodexResumeMode.Full, null, 0);
+            return Targeted(new CodexResumeChoice(CodexResumeMode.Full, null, 0));
         }
         turnsValid = valid;
-        if (TailChoice.IsChecked == true) return new CodexResumeChoice(CodexResumeMode.LastTurns, null, turns, SelectedModel());
-        if (SummaryChoice.IsChecked == true) return new CodexResumeChoice(CodexResumeMode.Summary, SelectedLevel(), turns, SelectedModel());
+        if (TailChoice.IsChecked == true) return Targeted(new CodexResumeChoice(CodexResumeMode.LastTurns, null, turns, SelectedModel()));
+        if (SummaryChoice.IsChecked == true) return Targeted(new CodexResumeChoice(CodexResumeMode.Summary, SelectedLevel(), turns, SelectedModel()));
         return null;
     }
 
     /// <summary>True when the summary the dialog holds is for the choice's level. It is kept only for the level and turns it was made at (R-D3).</summary>
     private bool KeptMatches(CodexResumeChoice? choice) => ProviderResumeRules.KeptMatches(choice?.Level, _kept);
+
+    /// <summary>The choice with its target (RS-D3, RS-D14): the preview is built for the target on screen, and Start sends the same one.</summary>
+    private CodexResumeChoice Targeted(CodexResumeChoice choice) => choice with { Target = StartTarget(choice.Mode) };
+
+    /// <summary>
+    /// The platform the new session starts in, for the mode (<see cref="ResumeTarget.ChosenTarget"/>): the chooser's pick in a summary, else Codex.
+    /// </summary>
+    private ProviderId StartTarget(CodexResumeMode mode) =>
+        ResumeTarget.ChosenTarget(ProviderId.Codex, RememberChoice.ModeOf(mode), ResumeTargetBox.SelectedOf(TargetBox, ProviderId.Codex));
+
+    /// <summary>
+    /// Shows the target on screen (RS-D3, RS-D4, RS-O2): the chooser only in a summary, the line "Summary of ... session, new ... session" when the target
+    /// is another platform, and the button that names the target.
+    /// </summary>
+    private void ShowTarget(ProviderId target)
+    {
+        var summary = SummaryChoice.IsChecked == true;
+        TargetRow.Visibility = summary ? Visibility.Visible : Visibility.Collapsed;
+        TargetBox.Visibility = TargetRow.Visibility;
+        var line = ResumeTarget.SummaryLine(ProviderId.Codex, target);
+        TargetLine.Text = line ?? string.Empty;
+        TargetLine.Visibility = summary && line is not null ? Visibility.Visible : Visibility.Collapsed;
+        var startLabel = ResumeTarget.ButtonOf(target);
+        StartButton.Content = startLabel;
+        AutomationProperties.SetName(StartButton, startLabel);
+    }
+
+    /// <summary>
+    /// Runs when the owner picks another platform (RS-D18). A request in progress is for the old target, so it is cancelled, and the preview on screen is
+    /// taken away. Nothing is rebuilt here: Make summary builds the text again for the target on screen, with the kept summary (no call when it is kept).
+    /// </summary>
+    private void OnTargetChanged()
+    {
+        CancelRequest();
+        _busy = false;
+        HidePreview();
+        Refresh();
+    }
 
     /// <summary>
     /// Runs when the mode, the level or the turns change. The preview on screen is for the old choice, so it is taken away. A summary depends on the
@@ -222,6 +264,8 @@ public partial class CodexResumePrompt : Window
     /// </summary>
     private void OnChoiceChanged()
     {
+        // RS-D3: the target goes back to the source when the mode leaves a summary; the chooser is hidden then.
+        if (SummaryChoice.IsChecked != true) ResumeTargetBox.Select(TargetBox, ProviderId.Codex);
         CancelRequest();
         _busy = false;
         var choice = Selected(out var turnsValid);
@@ -249,6 +293,8 @@ public partial class CodexResumePrompt : Window
         Enable(SummaryChoice, free);
         Enable(LevelRow, free && mode == CodexResumeMode.Summary);
         Enable(TurnsBox, free && turnsApply);
+        Enable(TargetBox, free);
+        ShowTarget(choice?.Target ?? ProviderId.Codex);
         Enable(MakeSummaryButton, free && mode == CodexResumeMode.Summary && turnsValid);
         Enable(RememberBox, free);
         var previewReady = _previewText is not null;
@@ -409,7 +455,7 @@ public partial class CodexResumePrompt : Window
         if (choice is null || _busy) return;
         if (!ModelReady(choice.Mode)) return;
         if (!CodexResumeRules.CanStart(choice.Mode, _previewText is not null, KeptMatches(choice))) return;
-        Choice = choice with { Remember = RememberBox.IsChecked == true, Target = ProviderId.Codex };
+        Choice = choice with { Remember = RememberBox.IsChecked == true, Target = StartTarget(choice.Mode) };
         PreviewText = choice.Mode == CodexResumeMode.Full ? null : _previewText;
         KeptSummary = _kept;
         Close();

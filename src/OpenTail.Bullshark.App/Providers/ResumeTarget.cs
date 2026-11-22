@@ -17,6 +17,13 @@ public static class ResumeTarget
     public static ProviderId DefaultTarget(ProviderId source) => source;
 
     /// <summary>
+    /// The platform a resume starts in (RS-D2, RS-D3): the owner's pick when the mode is a summary, else the source's own platform. Full and Last turns
+    /// always start where the session is, whatever the chooser shows. Pure: the three resume screens use it for their preview and their Start.
+    /// </summary>
+    public static ProviderId ChosenTarget(ProviderId source, ContinueMode mode, ProviderId selected) =>
+        mode == ContinueMode.Summary ? selected : source;
+
+    /// <summary>
     /// Whether a resume from <paramref name="source"/> in <paramref name="mode"/> may start in <paramref name="target"/>. The source's own platform is
     /// always allowed (RS-D1, RS-D2). Another platform is allowed only from a summary (RS-D2), and Copilot as a target only while
     /// <paramref name="copilotEnabled"/> is true (RS-D8).

@@ -159,6 +159,12 @@
         <RadioButton x:Name="SummaryChoice" GroupName="Resume" Content="From a summary, then a new session" />
 
         <StackPanel x:Name="LevelBlock" Margin="22,0,0,4">
+            <!-- The platform the new session starts in (RS-D3, RS-D4): a summary only. The line names both platforms when they differ. -->
+            <StackPanel x:Name="TargetRow" Orientation="Horizontal" Margin="0,0,0,6">
+                <TextBlock Text="Start in" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <ComboBox x:Name="TargetBox" MinWidth="200" VerticalContentAlignment="Center" AutomationProperties.Name="Start in the platform" />
+            </StackPanel>
+            <TextBlock x:Name="TargetLine" Style="{StaticResource Muted}" Margin="0,0,0,6" />
             <WrapPanel x:Name="LevelRow" Orientation="Horizontal" />
             <TextBlock Style="{StaticResource Muted}" Margin="0,0,0,4"
                        Text="Haiku writes it from your messages and Claude's replies. The tool output is left out." />

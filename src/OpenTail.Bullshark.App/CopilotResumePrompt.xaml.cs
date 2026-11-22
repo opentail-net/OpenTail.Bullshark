@@ -28,7 +28,7 @@ public enum CopilotResumeMode
 /// <summary>
 /// The choice made in the Copilot resume screen. Level is set only for a summary; Turns is the number kept verbatim (0 for In full). Copilot has no model
 /// choice in v1 (G-O3): the new session uses Copilot's own default. Remember is the "Remember for this session" tick: it is only returned to the caller,
-/// which decides what to do with it (the screen writes nothing). Target is the platform the new session starts in (RS-D14). Until the target chooser is built it is always
+/// which decides what to do with it (the screen writes nothing). Target is the platform the new session starts in (RS-D14). In a summary it is the chooser's pick; otherwise it is
 /// Copilot, the screen's own platform.
 /// </summary>
 public sealed record CopilotResumeChoice(CopilotResumeMode Mode, SummaryLevel? Level, int Turns, bool Remember, ProviderId Target)
@@ -116,6 +116,10 @@ public partial class CopilotResumePrompt : Window
         foreach (var radio in new[] { FullChoice, TailChoice, SummaryChoice }) radio.Checked += (_, _) => OnChoiceChanged();
         TurnsBox.TextChanged += (_, _) => OnChoiceChanged();
 
+        // The target chooser (RS-D3): the source is the default. A change of the pick hides the preview (RS-D18); it does not rebuild it.
+        ResumeTargetBox.Fill(TargetBox, ProviderId.Copilot);
+        TargetBox.SelectionChanged += (_, _) => OnTargetChanged();
+
         OnChoiceChanged();
     }
 
@@ -157,16 +161,54 @@ public partial class CopilotResumePrompt : Window
         if (FullChoice.IsChecked == true)
         {
             turnsValid = true;
-            return new CopilotResumeChoice(CopilotResumeMode.Full, null, 0);
+            return Targeted(new CopilotResumeChoice(CopilotResumeMode.Full, null, 0));
         }
         turnsValid = valid;
-        if (TailChoice.IsChecked == true) return new CopilotResumeChoice(CopilotResumeMode.LastTurns, null, turns);
-        if (SummaryChoice.IsChecked == true) return new CopilotResumeChoice(CopilotResumeMode.Summary, SelectedLevel(), turns);
+        if (TailChoice.IsChecked == true) return Targeted(new CopilotResumeChoice(CopilotResumeMode.LastTurns, null, turns));
+        if (SummaryChoice.IsChecked == true) return Targeted(new CopilotResumeChoice(CopilotResumeMode.Summary, SelectedLevel(), turns));
         return null;
     }
 
     /// <summary>True when the summary the dialog holds is for the choice's level. It is kept only for the level and turns it was made at (R-D3).</summary>
     private bool KeptMatches(CopilotResumeChoice? choice) => ProviderResumeRules.KeptMatches(choice?.Level, _kept);
+
+    /// <summary>The choice with its target (RS-D3, RS-D14): the preview is built for the target on screen, and Start sends the same one.</summary>
+    private CopilotResumeChoice Targeted(CopilotResumeChoice choice) => choice with { Target = StartTarget(choice.Mode) };
+
+    /// <summary>
+    /// The platform the new session starts in, for the mode (<see cref="ResumeTarget.ChosenTarget"/>): the chooser's pick in a summary, else Copilot.
+    /// </summary>
+    private ProviderId StartTarget(CopilotResumeMode mode) =>
+        ResumeTarget.ChosenTarget(ProviderId.Copilot, RememberChoice.ModeOf(mode), ResumeTargetBox.SelectedOf(TargetBox, ProviderId.Copilot));
+
+    /// <summary>
+    /// Shows the target on screen (RS-D3, RS-D4, RS-O2): the chooser only in a summary, the line "Summary of ... session, new ... session" when the target
+    /// is another platform, and the button that names the target.
+    /// </summary>
+    private void ShowTarget(ProviderId target)
+    {
+        var summary = SummaryChoice.IsChecked == true;
+        TargetRow.Visibility = summary ? Visibility.Visible : Visibility.Collapsed;
+        TargetBox.Visibility = TargetRow.Visibility;
+        var line = ResumeTarget.SummaryLine(ProviderId.Copilot, target);
+        TargetLine.Text = line ?? string.Empty;
+        TargetLine.Visibility = summary && line is not null ? Visibility.Visible : Visibility.Collapsed;
+        var startLabel = ResumeTarget.ButtonOf(target);
+        StartButton.Content = startLabel;
+        AutomationProperties.SetName(StartButton, startLabel);
+    }
+
+    /// <summary>
+    /// Runs when the owner picks another platform (RS-D18). A request in progress is for the old target, so it is cancelled, and the preview on screen is
+    /// taken away. Nothing is rebuilt here: Make summary builds the text again for the target on screen, with the kept summary (no call when it is kept).
+    /// </summary>
+    private void OnTargetChanged()
+    {
+        CancelRequest();
+        _busy = false;
+        HidePreview();
+        Refresh();
+    }
 
     /// <summary>
     /// Runs when the mode, the level or the turns change. The preview on screen is for the old choice, so it is taken away. A summary depends on the
@@ -175,6 +217,8 @@ public partial class CopilotResumePrompt : Window
     /// </summary>
     private void OnChoiceChanged()
     {
+        // RS-D3: the target goes back to the source when the mode leaves a summary; the chooser is hidden then.
+        if (SummaryChoice.IsChecked != true) ResumeTargetBox.Select(TargetBox, ProviderId.Copilot);
         CancelRequest();
         _busy = false;
         var choice = Selected(out var turnsValid);
@@ -202,6 +246,8 @@ public partial class CopilotResumePrompt : Window
         Enable(SummaryChoice, free);
         Enable(LevelRow, free && mode == CopilotResumeMode.Summary);
         Enable(TurnsBox, free && turnsApply);
+        Enable(TargetBox, free);
+        ShowTarget(choice?.Target ?? ProviderId.Copilot);
         Enable(MakeSummaryButton, free && mode == CopilotResumeMode.Summary && turnsValid);
         Enable(RememberBox, free);
         var previewReady = _previewText is not null;
@@ -361,7 +407,7 @@ public partial class CopilotResumePrompt : Window
         var choice = Selected(out _);
         if (choice is null || _busy) return;
         if (!CopilotResumeRules.CanStart(choice.Mode, _previewText is not null, KeptMatches(choice))) return;
-        Choice = choice with { Remember = RememberBox.IsChecked == true, Target = ProviderId.Copilot };
+        Choice = choice with { Remember = RememberBox.IsChecked == true, Target = StartTarget(choice.Mode) };
         PreviewText = choice.Mode == CopilotResumeMode.Full ? null : _previewText;
         KeptSummary = _kept;
         Close();
