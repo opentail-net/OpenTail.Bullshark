@@ -1,6 +1,6 @@
 # Resume: the source session and the target platform
 
-Date: 2026-11-22. Status: **plan, not started.** Owner's rule, 2026-11-22 (the rule is the spec; defaults below are mine and are marked as such):
+Date: 2026-11-22. Version 2 (after the plan review in `resume-source-target-2026-11-22-review-notes.md`). Status: **plan, no code yet.** Owner's rule, 2026-11-22 (the rule is the spec; defaults below are mine and are marked as such):
 
 > The default should be to resume into the session's own platform. Resuming into something else can only happen from a summary, not in full.
 
@@ -10,77 +10,103 @@ Example from the owner: Claude's summary resumed into Codex, or a Copilot summar
 
 Each resume screen shows two things: the **source** (the session being resumed) and the **target** (the platform the new session starts in). The target is the source's platform unless the owner picks another, and another is allowed only when resuming from a **summary**.
 
-**Parity target:** not applicable. This is an app-level rule, the same for all providers. What is left out, with a reason: a *full* transcript into another platform (a native session id belongs to one CLI, so it cannot be resumed elsewhere).
+**Parity target:** not applicable. This is an app-level rule, the same for all providers. Left out, with a reason: a *full* transcript into another platform (a native session id belongs to one CLI, so it cannot be resumed elsewhere).
 
 ## 2. Decisions
 
 - **RS-D1 Full resume targets the source platform only.** A native session id belongs to one CLI. Owner rule, 2026-11-22.
-- **RS-D2 Cross-platform start only in Summary mode.** Last-turns is not a summary, so it resumes into its own platform. *Default, mine; owner item RS-O1.*
+- **RS-D2 Cross-platform start only in Summary mode.** Last-turns is not a summary, so it resumes into its own platform. *Default, mine; owner item RS-O1.* A Summary-mode start still carries the verbatim last turns, as now.
 - **RS-D3 The target defaults to the source platform.** A target choice is shown only in Summary mode. Owner rule, 2026-11-22.
 - **RS-D4 Screen wording.** The title names the source: "Resume a <Source> session" on all three screens (Claude's today is "Resume a session"). When the target differs, a line reads "Summary of <Source> session → new <Target> session". The button reads "Start in <Target>" everywhere (today "Resume" on Claude, "Start" on Codex and Copilot). *Default, mine; owner item RS-O2.*
-- **RS-D5 A cross-platform start is a new session.** It opens in the target CLI, in the source session's folder. It does not reuse or claim the source session's id, and it is not recorded as a continuation of it. If the folder is missing, it is refused with a status line (the existing rule).
+- **RS-D5 A cross-platform start is a new session.** It opens in the target CLI, in the source session's folder. It does not reuse or claim the source session's id and is not recorded as a continuation of it. Refusals, each with a status line and before any model call: a missing folder; for Claude as target, the folder's trust status (`FolderCheck`, `FolderStatus.NotTrusted` refuses); for Codex and Copilot as targets, the launch check (`pwsh` and the shim present).
 - **RS-D6 The new session's first text names the source.** It is the summary, headed with the source platform's phrase and the summary level, then the target's usual start. Same-platform text is unchanged byte for byte. *Default, mine.*
-- **RS-D7 The remembered mode is for the source session.** Remember (C6) saves the mode under the source's key. It never saves a target. *Default, mine.*
-- **RS-D8 Copilot as a target waits for G-O5.** Copilot is listed but disabled, with the reason, until the copy that runs is confirmed to have the flags the app passes (see `provider-copilot-2026-11-22.md`, G-O5, measured 2026-11-22). *Default, mine; owner item RS-O3.*
+- **RS-D7 The remembered mode is for the source session.** Remember (C6) saves the mode under the source's key and never saves a target. Remember saves when Start is pressed, as now (C6 decision 1), so it is kept even if a cross-platform start is refused. *Default, mine.*
+- **RS-D8 Copilot as a target is disabled by a constant.** `ResumeTarget.CopilotTargetEnabled = false`, with the reason "G-O5: the copy that runs is not confirmed to have the flags the app passes" (see `provider-copilot-2026-11-22.md`, G-O5, measured 2026-11-23). The owner flips it when the install question is settled. The setup check does not read flags today, so a version-based gate cannot be built from what the code knows. *Default, mine; owner item RS-O3.*
 - **RS-D9 No extra model call.** A cross-platform summary is one call, made by the source platform's CLI, as now, with its cost line shown before the call. The target's start is a normal start with that text.
 - **RS-D10 Summaries are saved as now**, beside the state file. A cross-platform start saves nothing new.
-- **RS-D11 Privacy.** Logs carry provider names and counts only. The summary text reaches the target as a prompt through the file route the start already uses, never on a command line.
+- **RS-D11 Privacy, corrected.** Logs carry provider names and counts only; no summary text goes to a log. The summary text reaches the target CLI as its start argument, as the existing starts already do: Claude's on its command line, fitted to `ClaudeCli.MaxLaunchCharacters`; Codex's and Copilot's through the start file, then as the CLI's prompt argument. So the text appears on the target process's command line. This is existing practice, accepted, and it is **not** avoided by the file route (the file route only keeps long text out of the `cmd.exe` line).
+- **RS-D12 Model and effort.** A cross-platform start uses the target's own default model and effort, as its screen starts them by default. The source's choice is not carried over (the choice records differ: `ResumeChoice` has Model and Effort, `CodexResumeChoice` an optional Model, `CopilotResumeChoice` neither). *Default, mine.*
+- **RS-D13 Checks before the summary call.** The target's launch check and folder check run before the source's one summary call, so a refusal costs no model call.
+- **RS-D14 The target lives in the choice record.** A `Target` field is added to each choice record, defaulting to the source. The preview rebuilds when the target changes, because the text depends on it.
+- **RS-D15 The kind of run differs by target.** Claude's Summary start is a supervised, kept-alive run (`SessionWindow.xaml.cs:995`, reviewer's citation, to verify at S3); Codex and Copilot starts open a plain tab. A cross-platform start into Claude is therefore supervised, and its tab rules follow Claude's, not the target's usual tab. Stated, not changed.
+- **RS-D16 The Copilot source guard stays.** Copilot as a source keeps its supervisor-guard refusal (`CopilotResume.cs:160`).
 
 ## 3. Owner items (defaults are safe to run on)
 
-- **RS-O1** Last-turns into another platform. *Default: no* (RS-D2).
+- **RS-O1** Last-turns into another platform. *Default: no* (RS-D2). The owner's words could also allow it; only "not in full" is banned.
 - **RS-O2** Button wording "Start in <Target>". *Default: as RS-D4.*
-- **RS-O3** Copilot as a target before G-O5 is settled. *Default: disabled with a reason* (RS-D8).
+- **RS-O3** Copilot as a target before G-O5 is settled. *Default: disabled* (RS-D8).
 - **RS-O4** Claude's title changes from "Resume a session" to "Resume a Claude session". *Default: change* (a visible change to Claude's screen, asked for by the owner).
 
 ## 4. Parity table: what each screen does today
 
 | Screen | Full | Last turns | Summary |
 |---|---|---|---|
-| Claude (`SessionWindow.Resume.cs`) | `ResumeInFullAsync` (:144), native id | `BuildStartTextAsync` (:270), no call | `BuildStartTextAsync` (:270), one call, then `StartFromTextAsync` (:312) |
+| Claude (`SessionWindow.Resume.cs`) | `ResumeInFullAsync` (:144), native id | `BuildStartTextAsync` (:270), no call | `BuildStartTextAsync` (:270), one call, then the start (`StartFromTextAsync`, :312) |
 | Codex (`SessionWindow.CodexResume.cs`) | resume command, native id | `BuildCodexStartTextAsync` (:142), no call | same builder, one call; `StartCodexFromTextAsync` (:222) |
 | Copilot (`SessionWindow.CopilotResume.cs`) | `--resume=<id>` terminal, native id | `BuildCopilotStartTextAsync` (:137), no call | same builder, one call; `StartCopilotFromText` (:241) |
 
-The change adds a target to the Summary column only. Full and Last turns keep their own platform.
+The change adds a target to the Summary column only. Full and Last turns keep their own platform. Verified in review: Claude's Last turns and Summary both use `BuildStartTextAsync`.
 
 ## 5. Contracts this must satisfy (read in the code, 2026-11-22)
 
-- `SessionWindow.Resume.cs:45` `ResumeAsync(digest, initialMode)`, `:75` `ResumeOnceAsync`. Callers rely on the mode and the `Remember` flag in the choice.
-- `SessionWindow.Resume.cs:218` Claude's background start (`_cli.StartBackgroundAsync`). The cross-platform start into Claude uses the same route.
-- `SessionWindow.CodexResume.cs:60` `ShowCodexResumeAsync(session, forScreenshot, screenshotSummary, initialMode)`; `:222` `StartCodexFromTextAsync(session, folder, choice, text)`; `:258` writes the start file and builds the command line with the folder and the model.
-- `SessionWindow.CopilotResume.cs:40` `ShowCopilotResumeAsync`; `:241` `StartCopilotFromText(choice, text, folder, title)`.
-- `Core/Resume/ProviderResumeText.cs:56` `Compose(cliPhrase, summary, level, tail, turns, sourceSessionId)`. The header comes from the CLI phrase passed in. Codex and Copilot wrap it (`CodexResumeText.cs:37`, `CopilotResumeText.cs:38`). Claude uses `Core/Resume/ResumeText.cs:194`.
+- `SessionWindow.Resume.cs:45` `ResumeAsync(digest, initialMode)`, `:75` `ResumeOnceAsync`, `:144` `ResumeInFullAsync`, `:180` `StartFullResumeAsync`. Callers rely on the mode and the `Remember` flag in the choice. (The Claude start at `:218` is the Full resume's start, not the summary's.)
+- `SessionWindow.Resume.cs:201` `FolderCheck.Check(folder, ...)`; `:202` `Missing` or `NotTrusted` refuses. `:127`, `:208`, `:317` the Claude launch check.
+- **`Core/Resume/ResumeText.cs:148` `Fit(summary, level, lines, turns, sourceSessionId, commandLineOf, limit)` calls `Tail` and `Compose` directly.** A `Compose` overload alone is not enough: S3 needs a `Fit` overload that takes compose and tail as delegates, or a parameter for the header. Its limit is `ClaudeCli.MaxLaunchCharacters`.
+- `SessionWindow.CodexResume.cs:60` `ShowCodexResumeAsync`; `:142` `BuildCodexStartTextAsync`; `:222` `StartCodexFromTextAsync(session, folder, choice, text)`; `:258` writes the start file and builds the command line.
+- `SessionWindow.CopilotResume.cs:40` `ShowCopilotResumeAsync`; `:137` `BuildCopilotStartTextAsync`; `:241` `StartCopilotFromText(choice, text, folder, title)`; `:160` the supervisor-guard refusal.
+- The builders hand a **preview** to the start (`PreviewText`), and Codex and Copilot start from the finished text. Claude's `StartFromTextAsync` rebuilds from the digest and lines. So each target needs a *start-from-finished-text* method (S3).
+- `Core/Resume/ProviderResumeText.cs:56` `Compose(cliPhrase, summary, level, tail, turns, sourceSessionId)`: the header takes the target phrase only, so a source-named header needs an overload. `CodexResumeText.cs:37` and `CopilotResumeText.cs:38` wrap it. Claude's is `ResumeText.cs:194`.
+- Strings that name the platform, which the cross-platform start must take from the *target* (or name the source where the plan says so). Found in review; each to verify at S3: `SessionWindow.CodexResume.cs` tab title "Codex: resume of" (:269) and `SessionWindow.CopilotResume.cs` "Copilot: resume of" (:273); `StartedLine`; the status line at `SessionWindow.Resume.cs:368`; the wording rules; the cost lines in the dialogs; "Continues session: <id>" (a foreign id must not be shown as the new session's); the tail label (Claude "tool calls…", the providers' "messages only").
 - `Core/Resume/SummaryFiles.cs:36` `Save(...)`: the summary folder beside the state file.
 - `App/Providers/ProviderResumeRules.cs` (`ProviderResumeWording`): the words each CLI uses.
 
-Gap found: `Compose` takes the target's phrase only. A cross-platform start needs a header that names the source platform. That is an additive overload in Core. Existing output must stay byte-identical.
-
 ## 6. Stages
 
-- **S0 Plan and review.** This document. Review by a Sonnet reviewer at S4 (medium-high risk: a start that carries text across platforms, privacy, and the Copilot gate).
-- **S1 Pure rules.** New `App/Providers/ResumeTarget.cs`: `Allowed(source, mode, target, copilotGate)`, `DefaultTarget(source)`, the labels, and the refusal reason. Tests: every source × mode × target combination (3 × 3 × 3 = 27 cases). *Gate:* tests pass; Full and Last turns allow only the source; Summary allows all three, with Copilot gated.
-- **S2 Screens.** Titles (RS-D4, RS-O4), button wording (RS-O2), the target chooser (Summary only), the "Summary of … → new …" line. *Gate:* existing tests change only where they assert the old title or button text, and each such change is named in the review log. Codex and Copilot strings other than these are byte-identical.
-- **S3 Cross-platform start.** An additive Core overload of `Compose` with the source header (RS-D6). The target's start is called with the source's folder (RS-D5). Missing folder and Copilot gate refusals each end in a status line. *Gate:* a dump of the existing `Compose` output before and after is identical; new tests for the cross-platform header.
-- **S4 Tests and review.** The four suites: Core short names `net10.0` and `net11.0`; App full names `net10.0-windows10.0.19041.0` and `net11.0-windows10.0.19041.0`. Sonnet reviews S1 to S3 for privacy, the Claude and Codex and Copilot defaults, and the new-session rule. Dispositions go in `resume-source-target-2026-11-22-review-notes.md`.
-- **S5 Screen check (owner, at the PC, devenv closed).** Each source platform, Full, Last turns and Summary, each target. Not run by me in AFK mode.
+- **S0 Plan and review.** Done 2026-11-22: a Sonnet review of v1 (must 6, should 8, notes 3); every must item is dispositioned in section 9. Version 2 is this document.
+- **S1 Pure rules.** New `App/Providers/ResumeTarget.cs`: `Allowed(source, mode, target)`, `DefaultTarget(source)`, `CopilotTargetEnabled` (RS-D8), the labels, and the refusal reason. Tests: every source × mode × target combination (3 × 3 × 3 = 27 cases). *Gate:* tests pass; Full and Last turns allow only the source; Summary allows all three, with Copilot disabled while the constant is false.
+- **S2 Screens.** Titles (RS-D4, RS-O4), button wording (RS-O2), the target chooser (Summary only, RS-D14: the choice records get a `Target` field defaulting to the source), the "Summary of … → new …" line, the preview rebuilt on a target change, and the wrong-platform strings listed in section 5 (each either taken from the target or named as the source on purpose). *Gate:* existing tests change only where they assert an old title, button or string, and each change is named in the review log. Other Codex and Copilot strings are byte-identical.
+- **S3 Cross-platform start.** (a) A `Fit` overload with compose and tail delegates (section 5). (b) An additive `Compose` overload with the source-named header (RS-D6). (c) A start-from-finished-text method per target (section 5). (d) The target's default model and effort (RS-D12). (e) The target's checks before the summary call (RS-D13, RS-D5). *Gate:* a dump of the existing `Compose` and `Fit` output before and after is identical (the dump test is named when the stage starts); new tests for the cross-platform header and for each refusal.
+- **S4 Code review and tests.** The four suites: Core short names `net10.0` and `net11.0`; App full names `net10.0-windows10.0.19041.0` and `net11.0-windows10.0.19041.0`. A Sonnet review of the S1 to S3 **code** (privacy, the Claude, Codex and Copilot defaults, the new-session rule, the supervised run in RS-D15). Dispositions go in the review log and in section 9.
+- **S5 Screen check (owner, at the PC, devenv closed).** Each source platform, Full, Last turns and Summary, each enabled target. Includes the Copilot symptoms in section 7. Not run in AFK mode.
 
 ## 7. Copilot symptoms: diagnosis deferred
 
-The owner reports that much of Copilot does not work, with no errors shown. What is known, from files and version strings only (see G-O5):
+The owner reports that much of Copilot does not work, with no errors shown. What is known, from files and version strings only (see G-O5, measured 2026-11-23):
 
 - The `cmd.exe` route runs the WinGet copy, 1.0.34. Its help lists neither `-C` nor `--sync-session`.
 - The start route runs the npm shim, which reports 1.0.51.
 - The flags the app passes exist only in the two auto-updated builds (1.0.103, 1.0.104-3).
 
-A click-through of the Copilot path was **not run** in AFK mode, for three reasons: it would start the owner's Copilot CLI against the owner's own `~/.copilot` folder (the standing rule forbids probes writing there); Visual Studio is open (the screen check is for devenv closed); and the owner is away. The next step is the owner's screen check (S5 covers Copilot too) with the symptom written down: which action, what was on screen.
+A click-through was **not run** in AFK mode, for three reasons: it would start the owner's Copilot CLI against the owner's own `~/.copilot` folder (the standing rule forbids probes writing there); Visual Studio is open (the screen check is for devenv closed); and the owner is away. The next step is the owner's screen check (S5) with the symptom written down: which action, what was on screen.
 
 ## 8. Risks
 
 - A summary's quality differs between CLIs. The new session may start from a weaker summary than the source's own history. Mitigation: the header says it is a summary.
-- The target CLI may refuse a long prompt. Mitigation: the existing file route (the Codex and Copilot start files).
+- The target CLI may refuse a long prompt. Mitigation: the fitting limit (Claude) and the start file (Codex and Copilot). Not a full fix: RS-D11.
+- The summary text is visible on the target's process command line (RS-D11). Accepted as existing practice; owner may want it changed.
 - A new session in another CLI can look like the same session in the tab list. Mitigation: its title is its own, and the header names the source.
-- The Copilot target depends on G-O5.
+- The Copilot target depends on G-O5 (RS-D8).
 
-## 9. Review disposition
+## 9. Review disposition (plan review, v1, 2026-11-22)
 
-*(Filled in at S4.)*
+| Item | Disposition |
+|---|---|
+| Must 1: RS-D11 "never on a command line" is false | Fixed: RS-D11 rewritten; the file route claim removed from section 8. |
+| Must 2: `Fit` hard-codes `Compose` and `Tail` | Fixed: S3(a), section 5. Verified at `ResumeText.cs:148-160`. |
+| Must 3: start rebuilds from digest or preview | Fixed: start-from-finished-text per target, S3(c). |
+| Must 4: target needs model and effort | Fixed: RS-D12. |
+| Must 5: target launch checks before the summary | Fixed: RS-D5, RS-D13. |
+| Must 6: RS-D8 default not implementable as worded | Fixed: RS-D8 is now a constant with a reason; the version gate is dropped. |
+| Should: wrong-platform strings | Fixed: section 5 list, to verify at S3. |
+| Should: preview rebuild and where the target lives | Fixed: RS-D14. |
+| Should: Remember after a failed cross start | Fixed: RS-D7. |
+| Should: Claude's supervised run vs plain tabs | Fixed: RS-D15. |
+| Should: Copilot source guard | Fixed: RS-D16. |
+| Should: RS-D2 reading | Kept as RS-O1; the Summary-mode caveat added to RS-D2. |
+| Should: S0 and S4 wording (plan review vs code review) | Fixed: S0 is the plan review, S4 is the code review. |
+| Notes: S3 dump test named; S5 owner-only | The dump test is named at S3's start. S5 is owner-only, as stated. |
+| Citation: `Resume.cs:218` is the Full start | Fixed in section 5. |
+| Citation: G-O5 date | Fixed: measured 2026-11-23. |
+
+Not checked by the reviewer, and to check at S3: whether existing tests assert the old titles, and what the real Codex and Copilot CLIs do with a long prompt. Neither process was run.
