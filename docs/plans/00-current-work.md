@@ -51,6 +51,28 @@ G1 (trust a throwaway folder) comes first; the owner's word is needed. Then G2 (
 
 Start after the phase 1 sitting passes, because the seam changes the rail that the sitting checks. Follow that plan's own stage order, and its own decisions of 2026-11-21. Its design notes are in [provider-seam-design-2026-11-19.md](provider-seam-design-2026-11-19.md).
 
+### Phase 6: research backlog (clean-room ideas from [docs/research/](../research/), 2026-11-22)
+
+Each row is one idea from the concept notes in `docs/research/concept-notes-*-2026-11-22.md`. Status comes from a read-only gap audit, so nothing already built is rebuilt. Each row gets its own plan only when the owner picks it. We implement from the concept note only: no names, no code, nothing carried across from the sources. Medium and large rows wait for their own decisions.
+
+| # | Idea | Note | Status | Effort | Owner decision needed |
+|---|---|---|---|---|---|
+| R1 | Rollout lookup by start time, with a full-search fallback | index-usage A | built, commit 2de5071 | small | no |
+| R2 | Alert on change, not on state; focus gate; cooldown; a click selects the session | notify-prompts A | partly: transition alerts, acknowledge and snooze exist; re-alerts repeat (up to 3 times, every 15 min) | small | focus gate; re-alert policy (the note says never; the code does it by design); default alert kinds |
+| R3 | Approval and trust text: show hidden characters; collapse runs; arm buttons after a delay; expire old requests | notify-prompts B | not at all: agent text is never shown; paste drops control characters silently | small | arming delay; expiry length |
+| R4 | Minimum CLI version before launch, with an update offer | notify-prompts C | partly: existence check and version read exist; no minimum, no refusal, no update offer | small | minimum version per tool; unparseable output: refuse or warn |
+| R5 | One versioned record per session; state kept apart from "seen" | records-exit-resume A | partly: locked updates and newer-start-wins exist; no version field; records are dropped on close | medium | whether "working" decays; clock-change policy |
+| R6 | End a session from the process exit, not from polling | records-exit-resume B | not at all: ending comes only from the agents listing | small to medium | retry policy when the replacement check fails |
+| R7 | Resume fallback chain; one tab per conversation | records-exit-resume C | partly: one-tab guards exist; no picker, no newest-in-folder; failed resumes are only logged | medium | allow newest-in-folder?; ambiguous candidates |
+| R8 | Usage totals without double counting | index-usage C | partly: Claude is covered; Codex usage is not read at all | medium | attribution time; which duplicate wins |
+| R9 | Folder stamps and scoped rescans for the session list; atomic index write | index-usage B | partly: per-file cache and atomic write exist; no folder stamps; no file watcher | medium | refresh trigger; stamp strength |
+| R10 | Negative memory for failed lookups | index-usage A | not at all: a miss is deliberately not kept, so an absent id is searched again every pass | small | memory window |
+
+**Reuse first, build last** (from the gap audit, read-only, 2026-11-22):
+- Reuse: R9 (the transcript index cache, the atomic write under the file lock); R2 (the attention list, the escalation rules, the toast text); R8 (the usage ledger, which already keeps one record per message across files).
+- Build from nothing: R3 (approval-text safety and arming), R6 (an exit waiter with identity checks), R10 (miss memory).
+- Owner decision found by the audit: R2's note says an alert never repeats while a state persists, but the code re-alerts by design (up to three times, every 15 minutes). Choose which to keep. The default is the code's behaviour until you say otherwise.
+
 ## Owner decisions still open
 
 1. **Gate G2.** Trust one throwaway git folder so the gate can run, or name a folder that is already trusted. (Source: [additions record](Done/additions-2026-11-17.md), decision D3.2.)
