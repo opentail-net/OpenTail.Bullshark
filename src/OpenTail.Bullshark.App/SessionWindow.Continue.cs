@@ -18,6 +18,9 @@ public partial class SessionWindow
     /// <summary>True while Continue looks for its session. A press meanwhile is refused with a status line.</summary>
     private bool _continuing;
 
+    /// <summary>How long one press waits for a Codex or Copilot list before it gives up (S3). The read goes on, and a later press uses its list.</summary>
+    private static readonly TimeSpan ContinueListWait = TimeSpan.FromSeconds(30);
+
     /// <summary>The Continue button beside the provider box.</summary>
     private void ContinueButton_Click(object sender, RoutedEventArgs e) => ContinueLastSession();
 
@@ -70,12 +73,17 @@ public partial class SessionWindow
                 continue;
             }
             var listed = await ContinueListAsync(scopeProvider);
-            if (listed is null)
+            if (listed.TimedOut)
+            {
+                SetStatus($"The {ContinueDecision.NameOf(scopeProvider)} history is taking too long. Try Continue again in a moment.");
+                return;
+            }
+            if (listed.Sessions is null)
             {
                 SetStatus($"Not continued: the {ContinueDecision.NameOf(scopeProvider)} history could not be read. Nothing opened.");
                 return;
             }
-            sessions.AddRange(listed);
+            sessions.AddRange(listed.Sessions);
         }
 
         var decision = ContinueDecision.Decide(settings, _activeProvider.Id, sessions, ContinueMarks());
@@ -137,17 +145,16 @@ public partial class SessionWindow
 
     /// <summary>
     /// The listed sessions of Codex or Copilot, read again by the window's own loader: a fresh read off the UI thread, which also keeps the rail's list
-    /// current (the Copilot screen checks that list). Null when the read did not give a list.
+    /// current (the Copilot screen checks that list). A read already running is awaited, not skipped, so the list is the one it gives (S1). The wait is
+    /// <see cref="ContinueListWait"/> (S3): past it, TimedOut is true and the read goes on. Sessions is null when the read did not give a list.
     /// </summary>
-    private async Task<IReadOnlyList<SessionSummary>?> ContinueListAsync(ProviderId provider)
+    private async Task<(bool TimedOut, IReadOnlyList<SessionSummary>? Sessions)> ContinueListAsync(ProviderId provider)
     {
-        if (provider == ProviderId.Codex)
-        {
-            await LoadCodexHistoryAsync();
-            return _codexRead && !_codexFailed ? _codexSessions : null;
-        }
-        await LoadCopilotHistoryAsync();
-        return _copilotRead && !_copilotFailed ? _copilotSessions : null;
+        var load = provider == ProviderId.Codex ? LoadCodexHistoryAsync() : LoadCopilotHistoryAsync();
+        if (await Task.WhenAny(load, Task.Delay(ContinueListWait)) != load) return (true, null);
+        await load;
+        if (provider == ProviderId.Codex) return (false, _codexRead && !_codexFailed ? _codexSessions : null);
+        return (false, _copilotRead && !_copilotFailed ? _copilotSessions : null);
     }
 
     /// <summary>

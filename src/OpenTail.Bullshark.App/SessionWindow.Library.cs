@@ -165,7 +165,7 @@ public partial class SessionWindow
         catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {
             AppLog.Write($"library not changed: {ex.GetType().Name}");
-            SetStatus($"Not saved: {ex.Message}");
+            SetStatus($"Not saved ({ex.GetType().Name}).");
             RefreshRail();
             return false;
         }

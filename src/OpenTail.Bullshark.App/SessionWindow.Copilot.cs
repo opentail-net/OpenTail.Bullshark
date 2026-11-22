@@ -32,6 +32,12 @@ public partial class SessionWindow
     /// <summary>True while the Copilot history is being read, so a second read does not start.</summary>
     private bool _copilotLoading;
 
+    /// <summary>
+    /// The Copilot read that is running, or null when none is. A second caller is given this task, so it waits for the read and does not take a stale list
+    /// (Continue, S1). Set when a read starts, cleared when it ends.
+    /// </summary>
+    private Task? _copilotLoadTask;
+
     /// <summary>True when the last read failed. The rail then says so, and the status line says why.</summary>
     private bool _copilotFailed;
 
@@ -282,11 +288,21 @@ public partial class SessionWindow
 
     /// <summary>
     /// Loads the Copilot history off the UI thread. Nothing is written. A failed read keeps the list it had and says so in the status line. A read that
-    /// skipped something says so too (risk R-C1).
+    /// skipped something says so too (risk R-C1). A read that is already running is not started again: the returned task is that read, so an awaiting
+    /// caller gets its list (S1).
     /// </summary>
-    private async Task LoadCopilotHistoryAsync()
+    private Task LoadCopilotHistoryAsync()
     {
-        if (_copilotLoading) return;
+        // While a read runs (the flag), its task is returned and nothing new starts. The task is null only during that read's first synchronous part.
+        if (_copilotLoading) return _copilotLoadTask ?? Task.CompletedTask;
+        var load = ReadCopilotHistoryAsync();
+        _copilotLoadTask = load;
+        return load;
+    }
+
+    /// <summary>The read itself: sets the loading flag, reads the sessions, and records the result (see <see cref="LoadCopilotHistoryAsync"/>).</summary>
+    private async Task ReadCopilotHistoryAsync()
+    {
         _copilotLoading = true;
         if (IsCopilotActive) RefreshRail();
         try
@@ -313,6 +329,7 @@ public partial class SessionWindow
         finally
         {
             _copilotLoading = false;
+            _copilotLoadTask = null;
             if (IsCopilotActive) RefreshRail();
         }
     }

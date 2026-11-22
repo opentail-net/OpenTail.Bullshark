@@ -40,6 +40,12 @@ public partial class SessionWindow
     private bool _codexLoading;
 
     /// <summary>
+    /// The Codex read that is running, or null when none is. A second caller is given this task, so it waits for the read and does not take a stale list
+    /// (Continue, S1). Set when a read starts, cleared when it ends.
+    /// </summary>
+    private Task? _codexLoadTask;
+
+    /// <summary>
     /// True once the window's Closing has started (R6). A Codex process that ends because the app detaches its terminals is then expected, and is not
     /// shown as ended.
     /// </summary>
@@ -439,11 +445,21 @@ public partial class SessionWindow
         ChangeMarkOf(ProviderId.Codex, sessionId, mark => mark with { Archived = archived });
 
     /// <summary>
-    /// Loads the Codex history off the UI thread (C1). Nothing is written. A failed read keeps the list it had and says so in the status line.
+    /// Loads the Codex history off the UI thread (C1). Nothing is written. A failed read keeps the list it had and says so in the status line. A read that
+    /// is already running is not started again: the returned task is that read, so an awaiting caller gets its list (S1).
     /// </summary>
-    private async Task LoadCodexHistoryAsync()
+    private Task LoadCodexHistoryAsync()
     {
-        if (_codexLoading) return;
+        // While a read runs (the flag), its task is returned and nothing new starts. The task is null only during that read's first synchronous part.
+        if (_codexLoading) return _codexLoadTask ?? Task.CompletedTask;
+        var load = ReadCodexHistoryAsync();
+        _codexLoadTask = load;
+        return load;
+    }
+
+    /// <summary>The read itself: sets the loading flag, reads the sessions, and records the result (see <see cref="LoadCodexHistoryAsync"/>).</summary>
+    private async Task ReadCodexHistoryAsync()
+    {
         _codexLoading = true;
         if (IsCodexActive) RefreshRail();
         try
@@ -466,6 +482,7 @@ public partial class SessionWindow
         finally
         {
             _codexLoading = false;
+            _codexLoadTask = null;
             if (IsCodexActive) RefreshRail();
         }
     }
