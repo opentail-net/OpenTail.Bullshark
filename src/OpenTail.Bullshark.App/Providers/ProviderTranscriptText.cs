@@ -1,5 +1,6 @@
 using System.Globalization;
 using OpenTail.Bullshark.Core.Activity;
+using OpenTail.Bullshark.Core.Providers;
 
 namespace OpenTail.Bullshark.App;
 
@@ -14,7 +15,7 @@ public static class ProviderTranscriptText
     /// view says so, which keeps a long session from freezing the window. A longer session shows its first messages only. The Copilot reader caps its
     /// read at the same number (CopilotTranscriptReader.MaxMessages, 5000).
     /// </summary>
-    public const int MaxMessages = 5000;
+    public const int MaxMessages = TranscriptLimits.MaxMessages;
 
     /// <summary>The line at the top of the view: what is left out (T-D1). Tool calls and their results are not in this version (R-D5).</summary>
     public const string ScopeLine = "Messages only. Tool calls and their output are not shown.";

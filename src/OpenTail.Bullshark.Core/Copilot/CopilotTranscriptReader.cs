@@ -13,7 +13,7 @@ namespace OpenTail.Bullshark.Core.Copilot;
 public sealed class CopilotTranscriptReader(ProviderPaths paths) : ITranscriptReader
 {
     /// <summary>The most messages a transcript shows (P7).</summary>
-    public const int MaxMessages = 5000;
+    public const int MaxMessages = TranscriptLimits.MaxMessages;
 
     /// <summary>
     /// A page of messages from <paramref name="firstLine"/> (zero-based, a message index), at most <paramref name="count"/> of them, each as
