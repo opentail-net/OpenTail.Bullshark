@@ -13,11 +13,14 @@ public sealed record EscalationChoice(int Minutes, string Label, bool IsCustom);
 /// </summary>
 public static class EscalationChoices
 {
-    /// <summary>The presets in the page's order: Off, then 5, 15 (the default), 30 and 60 minutes.</summary>
+    /// <summary>The presets in the page's order: Off (the default, behaviour batch R2), then 5, 15, 30 and 60 minutes.</summary>
     public static readonly IReadOnlyList<int> Presets = [0, 5, 15, 30, 60];
 
-    /// <summary>The minutes the engine uses for a stored value: a missing or unusable value is the default, zero is off.</summary>
-    public static int MinutesOf(JsonNode? stored) => (int)Math.Round(AttentionEscalation.IntervalOf(stored).TotalMinutes);
+    /// <summary>
+    /// The minutes for a stored value. A missing value is off (the default since the behaviour batch R2, so the page and the engine agree); zero is off;
+    /// a present value is read as before.
+    /// </summary>
+    public static int MinutesOf(JsonNode? stored) => stored is null ? 0 : (int)Math.Round(AttentionEscalation.IntervalOf(stored).TotalMinutes);
 
     /// <summary>The choice that a stored value shows on the page.</summary>
     public static EscalationChoice Of(JsonNode? stored)

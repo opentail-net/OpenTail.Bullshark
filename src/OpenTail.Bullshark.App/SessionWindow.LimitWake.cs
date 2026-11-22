@@ -3,6 +3,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using OpenTail.Bullshark.Core.Activity;
+using OpenTail.Bullshark.Core.Behaviour;
 using OpenTail.Bullshark.Core.Folders;
 using OpenTail.Bullshark.Core.Library;
 using OpenTail.Bullshark.Core.Resume;
@@ -402,7 +403,9 @@ public partial class SessionWindow
         var quiet = _passSettings.IsQuietAt(now);
         if (IsActive || quiet || !_passSettings.Notify || !_passSettings.Toast) return;
         if (!AnnouncePolicy.SilentToastShown(_passSettings, ToastCategory.LimitReset, IsActive, quiet)) return;
-        ToastNotifier.ShowLimitWake(LiveTitleOf(sessionId));
+        // The focus gate also holds it back for the selected session (behaviour.json, R2); the toast names that session for a click.
+        if (!AlertRules.Shows(AlertGroup.Notice, AlertTrigger.Change, AlertFocusNow(), sessionId, _behaviour.Alerts)) return;
+        ToastNotifier.ShowLimitWake(LiveTitleOf(sessionId), sessionId);
     }
 
     /// <summary>

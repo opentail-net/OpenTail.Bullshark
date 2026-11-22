@@ -37,8 +37,11 @@ internal static class ToastNotifier
     public static void Show(IReadOnlyList<AttentionItem> gained, IReadOnlyList<ReAlert> due, Func<AttentionReason, bool>? allow = null) =>
         Post(() => ToastText.Build(gained, due, allow), NeedsTag);
 
-    /// <summary>The silent toast for coders that newly joined the Ready-for-review list. Names only.</summary>
-    public static void ShowReady(IReadOnlyList<string> names) => Post(() => ToastText.Ready(names), ReadyTag);
+    /// <summary>
+    /// The silent toast for coders that newly joined the Ready-for-review list. Names only, and the first one's session,
+    /// so a click selects it (behaviour batch, R2).
+    /// </summary>
+    public static void ShowReady(IReadOnlyList<string> names, string? firstSessionId) => Post(() => ToastText.Ready(names, firstSessionId), ReadyTag);
 
     /// <summary>The toast for a supervisor pass that failed, once when it starts (reliability batch R9). Its category is the caller's to check.</summary>
     public static void ShowProblem(string reason) => Post(() => ToastText.Problem(reason), ProblemTag);
@@ -46,8 +49,11 @@ internal static class ToastNotifier
     /// <summary>The silent toast for usage limits that reset: their labels, such as "5-hour".</summary>
     public static void ShowLimitReset(IReadOnlyList<string> labels) => Post(() => ToastText.LimitReset(labels), LimitTag);
 
-    /// <summary>The silent toast for a session that stopped at the usage limit, whose reset has passed, and that is still running (limit wake).</summary>
-    public static void ShowLimitWake(string name) => Post(() => ToastText.LimitWake(name), LimitWakeTag);
+    /// <summary>
+    /// The silent toast for a session that stopped at the usage limit, whose reset has passed, and that is still running (limit wake).
+    /// A click selects the session.
+    /// </summary>
+    public static void ShowLimitWake(string name, string? sessionId) => Post(() => ToastText.LimitWake(name, sessionId), LimitWakeTag);
 
     /// <summary>Removes this app's toasts from the action centre, so old ones do not pile up. Called when the window is activated.</summary>
     public static void ClearHistory()
@@ -78,9 +84,12 @@ internal static class ToastNotifier
             var message = build();
             if (message is null) return;
 
-            new ToastContentBuilder()
+            var builder = new ToastContentBuilder()
                 .AddText(message.Title)
-                .AddText(message.Body)
+                .AddText(message.Body);
+            // The session travels with the toast, so a click on it selects that session (behaviour batch, R2).
+            if (message.SessionId is { } sessionId) builder.AddArgument(ToastActivation.SessionKey, sessionId);
+            builder
                 .AddAudio(new ToastAudio { Silent = true })
                 .Show(toast =>
                 {

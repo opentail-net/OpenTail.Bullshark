@@ -143,7 +143,7 @@ public sealed class SettingsView : UserControl
             Note("To rename them now, use the palette or the History mark."),
             Heading("Re-alert an unanswered wait"),
             Note("A session that still waits for you sounds again after this time, up to three times. Acknowledge it or snooze it on its row "
-                 + "under Needs you to stop. The default is 15 minutes."),
+                 + "under Needs you to stop. Off by default (behaviour.json, alerts.repeatMinutes)."),
             _escalate,
             Heading("A session that is working but silent"),
             Note("A session listed as working that has made no request for this long gets a notice under Needs you. It is a notice only: "

@@ -15,7 +15,7 @@ public sealed class ToastTextTests
     {
         var message = ToastText.Build([Item("ovc-coder")], []);
 
-        Assert.Equal(new ToastMessage("Needs you", "ovc-coder · blocked"), message);
+        Assert.Equal(new ToastMessage("Needs you", "ovc-coder · blocked", "session-ovc-coder"), message);
     }
 
     [Fact]
@@ -23,7 +23,7 @@ public sealed class ToastTextTests
     {
         var message = ToastText.Build([Item("ovc-coder"), Item("ovc-review"), Item("ovc-merge")], []);
 
-        Assert.Equal(new ToastMessage("Needs you", "ovc-coder · blocked, and 2 more"), message);
+        Assert.Equal(new ToastMessage("Needs you", "ovc-coder · blocked, and 2 more", "session-ovc-coder"), message);
     }
 
     [Fact]
@@ -32,7 +32,7 @@ public sealed class ToastTextTests
         // A session can wait for a reason and also share a file (overlap). It is one session, so no "and 1 more".
         var message = ToastText.Build([Item("ovc-coder"), Item("ovc-coder", AttentionReason.Overlap)], []);
 
-        Assert.Equal(new ToastMessage("Needs you", "ovc-coder · blocked"), message);
+        Assert.Equal(new ToastMessage("Needs you", "ovc-coder · blocked", "session-ovc-coder"), message);
     }
 
     [Fact]
@@ -40,7 +40,7 @@ public sealed class ToastTextTests
     {
         var message = ToastText.Build([], [new ReAlert(Item("ovc-coder"), 1)]);
 
-        Assert.Equal(new ToastMessage("Still waiting", "ovc-coder · blocked"), message);
+        Assert.Equal(new ToastMessage("Still waiting", "ovc-coder · blocked", "session-ovc-coder"), message);
     }
 
     [Fact]
@@ -48,7 +48,7 @@ public sealed class ToastTextTests
     {
         var message = ToastText.Build([Item("ovc-merge", AttentionReason.Stopped)], [new ReAlert(Item("ovc-coder"), 2)]);
 
-        Assert.Equal(new ToastMessage("Needs you", "ovc-merge · stopped, and 1 more"), message);
+        Assert.Equal(new ToastMessage("Needs you", "ovc-merge · stopped, and 1 more", "session-ovc-merge"), message);
     }
 
     [Fact]
@@ -56,7 +56,7 @@ public sealed class ToastTextTests
     {
         var message = ToastText.Build([Item("ovc-coder")], [new ReAlert(Item("ovc-coder"), 1)]);
 
-        Assert.Equal(new ToastMessage("Needs you", "ovc-coder · blocked"), message);
+        Assert.Equal(new ToastMessage("Needs you", "ovc-coder · blocked", "session-ovc-coder"), message);
     }
 
     [Fact]
@@ -119,7 +119,7 @@ public sealed class ToastTextTests
 
         var message = ToastText.Build([secret], []);
 
-        Assert.Equal(new ToastMessage("Needs you", "ovc-coder · blocked"), message);
+        Assert.Equal(new ToastMessage("Needs you", "ovc-coder · blocked", "session-ovc-coder"), message);
         Assert.DoesNotContain("Secret", message!.Body, StringComparison.Ordinal);
         Assert.DoesNotContain("Bash", message.Body, StringComparison.Ordinal);
     }

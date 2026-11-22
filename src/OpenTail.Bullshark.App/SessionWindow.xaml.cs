@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
 using OpenTail.Bullshark.Core.Activity;
+using OpenTail.Bullshark.Core.Behaviour;
 using OpenTail.Bullshark.Core.Cache;
 using OpenTail.Bullshark.Core.Claude;
 using OpenTail.Bullshark.Core.Codex;
@@ -377,13 +378,23 @@ public partial class SessionWindow : Window
         VersionDrift? Drift,
         string? DaemonNotice,
         string? DaemonStatusNotice,
-        PassSettings? Settings);
+        PassSettings? Settings,
+        BehaviourLoad? Behaviour);
 
     /// <summary>
     /// The ui.json values the pass uses (perf and testability batch, Q2). Read once per pass on the pool thread and kept here for the pass's drawing and
     /// announcements; the UI thread does not read ui.json on the pass path. Kept at the last values read when the file stayed busy.
     /// </summary>
     private PassSettings _passSettings = PassSettings.Defaults;
+
+    /// <summary>
+    /// The behaviour settings (behaviour.json, decisions of 2026-11-22), read with each pass on the pool thread: the alerts, the re-alert interval and the
+    /// focus gate read them. Kept at the last values read when the file stayed busy. UI thread only.
+    /// </summary>
+    private BehaviourSettings _behaviour = BehaviourSettings.Defaults;
+
+    /// <summary>The last note logged about behaviour.json (a problem, or values not used), so the note is logged once and not on every pass.</summary>
+    private string? _behaviourNote;
 
     /// <summary>
     /// Runs one supervisor pass, then refreshes the rail. The reads and the pass itself run on a pool thread, so the window does
@@ -413,6 +424,7 @@ public partial class SessionWindow : Window
             _listingKnown = true;
             _runningFacts = read.Facts;
             if (read.Settings is { } settings) _passSettings = settings;
+            if (read.Behaviour is { } behaviour) NoteBehaviour(behaviour);
             foreach (var pair in read.NewPaths) _transcriptPaths[pair.Key] = pair.Value;
             _storeProblem = read.StoreProblem;
             // The limits this pass is held to are set before it runs (round 6 item 1): a run at its limit gets no start or resume from the
@@ -639,9 +651,13 @@ public partial class SessionWindow : Window
         foreach (var pair in newPaths) paths[pair.Key] = pair.Value;
         var budgets = BudgetsOf(runs, records, paths);
         // The ui.json values the pass draws and announces with (perf and testability batch, Q2): one read, here on the pool thread.
-        var settings = UiFile.TryReadAllInBackground(_options.StatePath, out var uiRoot) ? PassSettings.From(uiRoot) : null;
+        var uiReadable = UiFile.TryReadAllInBackground(_options.StatePath, out var uiRoot);
+        var settings = uiReadable ? PassSettings.From(uiRoot) : null;
+        // behaviour.json is read with ui.json (behaviour batch, R2). Its legacy re-alert value is ui.json's escalateMinutes, when the key is there.
+        // A busy ui.json keeps the last behaviour values too, so the interval does not flicker to zero for one pass.
+        var behaviour = uiReadable ? BehaviourStore.LoadBeside(_options.StatePath, uiRoot?[PassSettings.EscalateKey]) : null;
         return new PassReads(agents, passAgents, records, plan, facts, newPaths, budgets, recordsProblem ?? runsProblem, daemon, drift,
-            daemonNotice, daemonStatusNotice, settings);
+            daemonNotice, daemonStatusNotice, settings, behaviour);
     }
 
     /// <summary>

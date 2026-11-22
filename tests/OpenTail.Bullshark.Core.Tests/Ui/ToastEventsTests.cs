@@ -123,7 +123,7 @@ public sealed class ToastEventsTests
 
         var message = ToastText.Build([Item("ovc-coder"), Item("ovc-merge", AttentionReason.Stopped)], [], Allowed);
 
-        Assert.Equal(new ToastMessage("Needs you", "ovc-merge · stopped"), message);
+        Assert.Equal(new ToastMessage("Needs you", "ovc-merge · stopped", "session-ovc-merge"), message);
     }
 
     [Fact]
@@ -140,7 +140,7 @@ public sealed class ToastEventsTests
         bool Allowed(AttentionReason reason) => ToastCategories.Of(reason) == ToastCategory.Blocked;
         var message = ToastText.Build([Item("ovc-merge", AttentionReason.Stopped)], [new ReAlert(Item("ovc-coder"), 1)], Allowed);
 
-        Assert.Equal(new ToastMessage("Still waiting", "ovc-coder · blocked"), message);
+        Assert.Equal(new ToastMessage("Still waiting", "ovc-coder · blocked", "session-ovc-coder"), message);
     }
 
     [Fact]

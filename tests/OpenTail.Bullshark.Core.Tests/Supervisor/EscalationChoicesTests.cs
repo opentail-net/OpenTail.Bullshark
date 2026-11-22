@@ -32,11 +32,12 @@ public sealed class EscalationChoicesTests
     }
 
     [Fact]
-    public void AMissingValueShowsTheDefaultOfFifteenMinutes()
+    public void AMissingValueShowsOffAsTheDefault()
     {
         var choice = EscalationChoices.Of(null);
 
-        Assert.Equal(15, choice.Minutes);
+        Assert.Equal(0, choice.Minutes);
+        Assert.Equal("Off", choice.Label);
         Assert.False(choice.IsCustom);
     }
 

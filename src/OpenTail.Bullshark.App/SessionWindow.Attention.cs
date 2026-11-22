@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using CommunityToolkit.WinUI.Notifications;
+using OpenTail.Bullshark.Core.Behaviour;
 using OpenTail.Bullshark.Core.Claude;
 using OpenTail.Bullshark.Core.Setup;
 using OpenTail.Bullshark.Core.Supervisor;
@@ -88,7 +89,9 @@ public partial class SessionWindow
     {
         AppLog.Write($"supervisor problem: {reason}");
         // The rule is AnnouncePolicy's (perf and testability batch, Q6 d): the switches, quiet hours and the window in front.
-        if (AnnouncePolicy.ProblemToastShown(_passSettings, IsActive, _passSettings.IsQuietAt(DateTimeOffset.Now)))
+        // The kinds (behaviour.json, R2) hold it too: a supervisor problem is errored.
+        if (AnnouncePolicy.ProblemToastShown(_passSettings, IsActive, _passSettings.IsQuietAt(DateTimeOffset.Now))
+            && AlertRules.Shows(AlertGroup.Errored, AlertTrigger.Change, AlertFocusNow(), null, _behaviour.Alerts))
             ToastNotifier.ShowProblem(reason);
     }
 
@@ -214,7 +217,8 @@ public partial class SessionWindow
 
     /// <summary>
     /// Called after each pass. When a session joined the list since the last pass, the window flashes its taskbar button until it
-    /// is in front and plays the notification sound once. Both are off when ui.json says "notify": false. When the window is not in front, a
+    /// is in front and plays the notification sound once. Both are off when ui.json says "notify": false. Which changes alert at all, and whether a focused
+    /// window or the selected session holds a banner back, is the rule of behaviour.json (R2); the list keeps every change. When the window is not in front, a
     /// silent Windows toast is shown too, unless ui.json says "toast": false (toasts-2026-11-18); each kind of toast can be switched off
     /// (toasts by event). The first pass after the window opens only sets the baselines. The escalation runs on every pass: a session that still
     /// waits after its interval sounds again, with the same sound and flash, and is logged as "again" (escalation-2026-11-18). A coder that becomes
@@ -234,7 +238,8 @@ public partial class SessionWindow
         var now = DateTimeOffset.Now;
         // Every pass updates the escalation, so a session that was already waiting when the window opened is counted from the first pass.
         // A re-alert that falls while "notify" is false is used up without a sound: the owner chose silence.
-        var due = _escalation.Update(_attention, now, _passSettings.EscalateEvery);
+        // The interval is behaviour.json's alerts.repeatMinutes (zero: never re-alert). The count limit and the schedule are the escalation's own.
+        var due = _escalation.Update(_attention, now, _behaviour.Alerts.RepeatInterval);
         // The ready and limit states are read on every pass, shown or not, so each pass is compared with the one before it.
         var readyNew = ReadyGained();
         var limitsReset = LimitsReset(now);
@@ -251,8 +256,15 @@ public partial class SessionWindow
         _announcedNotices.UnionWith(AttentionList.NoticeKeys(_attention));
         // Quiet hours (night batch N4) silence the sound, the flash and the toasts only. The list, the escalation and the notices above still ran.
         var quiet = _passSettings.IsQuietAt(now);
-        if (gained.Count > 0 || due.Count > 0) AnnounceWaits(gained, due, quiet);
-        AnnounceQuiet(readyNew, limitsReset, quiet);
+        // Which changes alert is the behaviour rule's (behaviour.json, R2): the kinds, the focus gate and the selected session. The lists above keep every
+        // change; only the banner, the sound and the flash are held back, and the count of the held ones is logged.
+        var focus = AlertFocusNow();
+        var waits = AlertRules.Changes(gained, focus, _behaviour.Alerts);
+        var repeats = AlertRules.Repeats(due, focus, _behaviour.Alerts);
+        var held = gained.Count - waits.Count + due.Count - repeats.Count;
+        if (held > 0) AppLog.Write($"needs you: {held} not alerted (focus gate or kinds)");
+        if (waits.Count > 0 || repeats.Count > 0) AnnounceWaits(waits, repeats, quiet);
+        AnnounceQuiet(readyNew, limitsReset, quiet, focus);
     }
 
     /// <summary>
@@ -291,11 +303,33 @@ public partial class SessionWindow
         return reason => AnnouncePolicy.WaitToastAllowed(settings, reason);
     }
 
+    /// <summary>The session the rail selects, or null when the selection is not a session. The alert rules read it (behaviour batch, R2).</summary>
+    private string? SelectedSessionId() => _selected is { Kind: RailKind.Session } selected ? selected.Key : null;
+
+    /// <summary>The window state the alert rules read now: whether the window is in front, and the selected session.</summary>
+    private AlertFocus AlertFocusNow() => new(IsActive, SelectedSessionId());
+
+    /// <summary>
+    /// Takes the behaviour settings a pass read (behaviour batch, R2). A problem with the file, or values that were not usable, is logged once,
+    /// as the exception
+    /// type or a count: the log never gets the content of the file.
+    /// </summary>
+    private void NoteBehaviour(BehaviourLoad load)
+    {
+        _behaviour = load.Settings;
+        string? note = load.Problem is { } problem ? $"behaviour.json not read ({problem}); defaults apply"
+            : load.Ignored > 0 ? $"behaviour.json: {load.Ignored} value(s) not used; defaults apply"
+            : null;
+        if (note == _behaviourNote) return;
+        _behaviourNote = note;
+        if (note is not null) AppLog.Write(note);
+    }
+
     /// <summary>
     /// The silent toasts of a pass: a coder newly ready for review, and a usage limit that reset (toasts by event, 2026-11-18). No sound and no flash.
     /// Each is shown only when "notify" and "toast" are on, its own switch is on, and the window is not in front, as the Needs-you toast is.
     /// </summary>
-    private void AnnounceQuiet(IReadOnlyList<ReviewItem> readyNew, IReadOnlyList<string> limitsReset, bool quiet)
+    private void AnnounceQuiet(IReadOnlyList<ReviewItem> readyNew, IReadOnlyList<string> limitsReset, bool quiet, AlertFocus focus)
     {
         if (readyNew.Count == 0 && limitsReset.Count == 0) return;
         if (IsActive) return;
@@ -310,11 +344,13 @@ public partial class SessionWindow
             return;
         }
 
-        if (readyNew.Count > 0 && AnnouncePolicy.SilentToastShown(_passSettings, ToastCategory.Ready, IsActive, quiet))
+        // A coder that is ready alerts under the kind "finished" (off by default) and the focus gate (behaviour.json, R2). Its toast names the first one.
+        var readyAlerting = AlertRules.Ready(readyNew, focus, _behaviour.Alerts);
+        if (readyAlerting.Count > 0 && AnnouncePolicy.SilentToastShown(_passSettings, ToastCategory.Ready, IsActive, quiet))
         {
-            var names = readyNew.Select(item => item.Name).ToList();
+            var names = readyAlerting.Select(item => item.Name).ToList();
             AppLog.Write($"ready for review: {string.Join(", ", names)}");
-            ToastNotifier.ShowReady(names);
+            ToastNotifier.ShowReady(names, readyAlerting[0].SessionId);
         }
         if (limitsReset.Count > 0 && AnnouncePolicy.SilentToastShown(_passSettings, ToastCategory.LimitReset, IsActive, quiet))
         {
@@ -382,9 +418,52 @@ public partial class SessionWindow
     /// A click on a toast: the window is shown and brought to the front. The library calls this on a background thread,
     /// so the work goes to the UI thread.
     /// </summary>
-    private void OnToastActivated(ToastNotificationActivatedEventArgsCompat args) => Dispatcher.BeginInvoke(new Action(() =>
+    private void OnToastActivated(ToastNotificationActivatedEventArgsCompat args)
     {
-        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
-        Activate();
-    }));
+        // The session the banner is about (behaviour batch, R2): a click selects its row as well as bringing the window forward.
+        var sessionId = SessionOfToast(args.Argument);
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+            Activate();
+            if (sessionId is not null) SelectSessionRow(sessionId);
+        }));
+    }
+
+    /// <summary>
+    /// The session id in a toast's activation argument, or null. An argument that cannot be read gives null, and the window is still brought forward.
+    /// </summary>
+    private static string? SessionOfToast(string? argument)
+    {
+        try
+        {
+            return ToastArguments.Parse(argument ?? string.Empty).TryGetValue(ToastActivation.SessionKey, out var id) && !string.IsNullOrWhiteSpace(id)
+                ? id
+                : null;
+        }
+        catch (Exception ex)
+        {
+            ToastNotifier.LogFailure("click argument not read", ex);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Selects a session's row in the rail, as a click on its banner asks (behaviour batch, R2). A session with no row (not listed, or in its own window)
+    /// selects nothing. UI thread only.
+    /// </summary>
+    private void SelectSessionRow(string sessionId)
+    {
+        var tag = new RailTag(RailKind.Session, sessionId);
+        var item = FindItem(Rail.Items, tag);
+        if (item is null) return;
+        // A row that is already selected raises no selection event, so its pane is shown here, as a return from a window does (PopOut).
+        if (item.IsSelected)
+        {
+            _ = ShowRailItemAsync(tag);
+            return;
+        }
+        item.IsSelected = true;
+        item.BringIntoView();
+    }
 }
