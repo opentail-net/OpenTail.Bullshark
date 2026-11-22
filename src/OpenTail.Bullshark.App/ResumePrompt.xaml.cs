@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using OpenTail.Bullshark.Core.Continue;
 using OpenTail.Bullshark.Core.Resume;
 using OpenTail.Bullshark.Core.Setup;
 
@@ -54,7 +55,7 @@ public partial class ResumePrompt : Window
     private bool _refused;
 
     public ResumePrompt(string heading, string facts, long contextTokens, RailPalette palette, string defaultModel, string defaultEffort,
-        Func<ResumeChoice, KeptSummary?, CancellationToken, Task<ResumePromptPreview>>? previewAsync = null)
+        Func<ResumeChoice, KeptSummary?, CancellationToken, Task<ResumePromptPreview>>? previewAsync = null, ContinueMode? initialMode = null)
     {
         InitializeComponent();
         _previewAsync = previewAsync;
@@ -82,7 +83,14 @@ public partial class ResumePrompt : Window
               "before the first reply.";
         FullChoice.Content = "In full: the whole conversation as context" + (fullRecommended ? " 👍 (recommended)" : string.Empty);
         SummaryChoice.Content = "From a summary, then a new session" + (fullRecommended ? string.Empty : " 👍 (recommended)");
-        (fullRecommended ? FullChoice : SummaryChoice).IsChecked = true;
+        // The start: the mode given (CN-D9, stage C4), or with none the recommendation, as before. The recommendation text above does not change.
+        (ProviderResumeRules.StartMode(initialMode) switch
+        {
+            ProviderResumeMode.Full => FullChoice,
+            ProviderResumeMode.LastTurns => TailChoice,
+            ProviderResumeMode.Summary => SummaryChoice,
+            _ => fullRecommended ? FullChoice : SummaryChoice,
+        }).IsChecked = true;
 
         foreach (var (level, label) in new[]
                  {

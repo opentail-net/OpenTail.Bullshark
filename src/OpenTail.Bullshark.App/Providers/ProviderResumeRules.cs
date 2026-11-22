@@ -1,4 +1,5 @@
 using System.Globalization;
+using OpenTail.Bullshark.Core.Continue;
 using OpenTail.Bullshark.Core.Resume;
 
 namespace OpenTail.Bullshark.App;
@@ -110,6 +111,19 @@ public static class ProviderResumeRules
     /// </summary>
     public static bool RunsAtOnce(ProviderResumeMode mode, bool keptMatches) =>
         mode == ProviderResumeMode.LastTurns || (mode == ProviderResumeMode.Summary && keptMatches);
+
+    /// <summary>
+    /// The mode a resume screen opens on, for the Continue mode it is given (stage C4). Null when no mode is given: the screen keeps its own start (CN-D2).
+    /// Opening on a mode never makes a summary (CN-D3): the Summary mode only checks the summary radio, and the call stays with "Make summary".
+    /// Each screen maps the result to its own radio (In full, the last turns, the summary); Claude's last-turns radio is its TailOnly choice.
+    /// </summary>
+    public static ProviderResumeMode? StartMode(ContinueMode? mode) => mode switch
+    {
+        ContinueMode.Full => ProviderResumeMode.Full,
+        ContinueMode.LastTurns => ProviderResumeMode.LastTurns,
+        ContinueMode.Summary => ProviderResumeMode.Summary,
+        _ => null,
+    };
 
     /// <summary>
     /// The size line above a preview: "About N tokens (C characters). Start sends exactly this text." The tokens are the characters over four, rounded

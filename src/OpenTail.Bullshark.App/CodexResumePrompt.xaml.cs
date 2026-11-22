@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using OpenTail.Bullshark.Core.Codex;
+using OpenTail.Bullshark.Core.Continue;
 using OpenTail.Bullshark.Core.Resume;
 
 namespace OpenTail.Bullshark.App;
@@ -25,9 +26,10 @@ public enum CodexResumeMode
 
 /// <summary>
 /// The choice made in the Codex resume screen. Level is set only for a summary; Turns is the number kept verbatim (0 for In full). Model is the model
-/// id the new session is started with (P9), or null for Codex's own default (also the case for In full, which sends no model).
+/// id the new session is started with (P9), or null for Codex's own default (also the case for In full, which sends no model). Remember is the
+/// "Remember for this session" tick: it is only returned to the caller, which decides what to do with it (the screen writes nothing).
 /// </summary>
-public sealed record CodexResumeChoice(CodexResumeMode Mode, SummaryLevel? Level, int Turns, string? Model = null);
+public sealed record CodexResumeChoice(CodexResumeMode Mode, SummaryLevel? Level, int Turns, string? Model = null, bool Remember = false);
 
 /// <summary>
 /// What the screen's preview callback gives: the start text (empty when the session has no messages), the summary it made or reused (null for
@@ -58,9 +60,10 @@ public partial class CodexResumePrompt : Window
     /// <param name="palette">The theme, as the rest of the window's dialogs use it.</param>
     /// <param name="previewAsync">Makes the start text for a choice. It is given the summary kept for the choice (or null), and returns the text and the summary it used.</param>
     /// <param name="models">The model list, read off the UI thread. The model box shows that it is loading until the list is in, and Start waits for it (except In full). Null: no list, so Codex's default.</param>
+    /// <param name="initialMode">The mode the screen opens on (stage C4). Null keeps the screen's own start, the last turns. Opening on a mode never makes a summary.</param>
     public CodexResumePrompt(string heading, string facts, RailPalette palette,
         Func<CodexResumeChoice, KeptSummary?, CancellationToken, Task<CodexPreview>>? previewAsync = null,
-        Task<CodexModelReading>? models = null)
+        Task<CodexModelReading>? models = null, ContinueMode? initialMode = null)
     {
         InitializeComponent();
         _previewAsync = previewAsync;
@@ -86,6 +89,15 @@ public partial class CodexResumePrompt : Window
         TailChoice.Content = CodexResumeRules.ModeLabel(CodexResumeMode.LastTurns);
         SummaryChoice.Content = CodexResumeRules.ModeLabel(CodexResumeMode.Summary);
         TurnsBox.Text = CodexResumeRules.DefaultTurns.ToString(CultureInfo.InvariantCulture);
+
+        // The start mode is set before the handlers below are attached, so the screen's first build runs once, for the mode it opens on.
+        // Null selects nothing: the XAML's last-turns radio stays as it is.
+        switch (ProviderResumeRules.StartMode(initialMode))
+        {
+            case ProviderResumeMode.Full: FullChoice.IsChecked = true; break;
+            case ProviderResumeMode.Summary: SummaryChoice.IsChecked = true; break;
+            case ProviderResumeMode.LastTurns: TailChoice.IsChecked = true; break;
+        }
 
         foreach (var level in new[] { SummaryLevel.Minimal, SummaryLevel.Normal, SummaryLevel.Complete })
         {
@@ -225,6 +237,7 @@ public partial class CodexResumePrompt : Window
         Enable(LevelRow, free && mode == CodexResumeMode.Summary);
         Enable(TurnsBox, free && turnsApply);
         Enable(MakeSummaryButton, free && mode == CodexResumeMode.Summary && turnsValid);
+        Enable(RememberBox, free);
         var previewReady = _previewText is not null;
         Enable(CopyButton, free && previewReady);
         var modelRow = mode != CodexResumeMode.Full;
@@ -383,7 +396,7 @@ public partial class CodexResumePrompt : Window
         if (choice is null || _busy) return;
         if (!ModelReady(choice.Mode)) return;
         if (!CodexResumeRules.CanStart(choice.Mode, _previewText is not null, KeptMatches(choice))) return;
-        Choice = choice;
+        Choice = choice with { Remember = RememberBox.IsChecked == true };
         PreviewText = choice.Mode == CodexResumeMode.Full ? null : _previewText;
         KeptSummary = _kept;
         Close();

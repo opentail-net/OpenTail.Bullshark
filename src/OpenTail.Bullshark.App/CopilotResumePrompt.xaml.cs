@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using OpenTail.Bullshark.Core.Continue;
 using OpenTail.Bullshark.Core.Resume;
 
 namespace OpenTail.Bullshark.App;
@@ -24,9 +25,10 @@ public enum CopilotResumeMode
 
 /// <summary>
 /// The choice made in the Copilot resume screen. Level is set only for a summary; Turns is the number kept verbatim (0 for In full). Copilot has no model
-/// choice in v1 (G-O3): the new session uses Copilot's own default.
+/// choice in v1 (G-O3): the new session uses Copilot's own default. Remember is the "Remember for this session" tick: it is only returned to the caller,
+/// which decides what to do with it (the screen writes nothing).
 /// </summary>
-public sealed record CopilotResumeChoice(CopilotResumeMode Mode, SummaryLevel? Level, int Turns);
+public sealed record CopilotResumeChoice(CopilotResumeMode Mode, SummaryLevel? Level, int Turns, bool Remember = false);
 
 /// <summary>
 /// What the screen's preview callback gives: the start text (empty when the session has no messages), the summary it made or reused (null for none),
@@ -53,8 +55,9 @@ public partial class CopilotResumePrompt : Window
     /// <param name="facts">The line under the heading: turns, last activity and folder.</param>
     /// <param name="palette">The theme, as the rest of the window's dialogs use it.</param>
     /// <param name="previewAsync">Makes the start text for a choice. It is given the summary kept for the choice (or null), and returns the text and the summary it used.</param>
+    /// <param name="initialMode">The mode the screen opens on (stage C4). Null keeps the screen's own start, the last turns. Opening on a mode never makes a summary.</param>
     public CopilotResumePrompt(string heading, string facts, RailPalette palette,
-        Func<CopilotResumeChoice, KeptSummary?, CancellationToken, Task<CopilotPreview>>? previewAsync = null)
+        Func<CopilotResumeChoice, KeptSummary?, CancellationToken, Task<CopilotPreview>>? previewAsync = null, ContinueMode? initialMode = null)
     {
         InitializeComponent();
         _previewAsync = previewAsync;
@@ -80,6 +83,15 @@ public partial class CopilotResumePrompt : Window
         TailChoice.Content = CopilotResumeRules.ModeLabel(CopilotResumeMode.LastTurns);
         SummaryChoice.Content = CopilotResumeRules.ModeLabel(CopilotResumeMode.Summary);
         TurnsBox.Text = CopilotResumeRules.DefaultTurns.ToString(CultureInfo.InvariantCulture);
+
+        // The start mode is set before the handlers below are attached, so the screen's first build runs once, for the mode it opens on.
+        // Null selects nothing: the XAML's last-turns radio stays as it is.
+        switch (ProviderResumeRules.StartMode(initialMode))
+        {
+            case ProviderResumeMode.Full: FullChoice.IsChecked = true; break;
+            case ProviderResumeMode.Summary: SummaryChoice.IsChecked = true; break;
+            case ProviderResumeMode.LastTurns: TailChoice.IsChecked = true; break;
+        }
 
         foreach (var level in new[] { SummaryLevel.Minimal, SummaryLevel.Normal, SummaryLevel.Complete })
         {
@@ -178,6 +190,7 @@ public partial class CopilotResumePrompt : Window
         Enable(LevelRow, free && mode == CopilotResumeMode.Summary);
         Enable(TurnsBox, free && turnsApply);
         Enable(MakeSummaryButton, free && mode == CopilotResumeMode.Summary && turnsValid);
+        Enable(RememberBox, free);
         var previewReady = _previewText is not null;
         Enable(CopyButton, free && previewReady);
         Enable(StartButton, free && CopilotResumeRules.CanStart(mode, previewReady, KeptMatches(choice)));
@@ -335,7 +348,7 @@ public partial class CopilotResumePrompt : Window
         var choice = Selected(out _);
         if (choice is null || _busy) return;
         if (!CopilotResumeRules.CanStart(choice.Mode, _previewText is not null, KeptMatches(choice))) return;
-        Choice = choice;
+        Choice = choice with { Remember = RememberBox.IsChecked == true };
         PreviewText = choice.Mode == CopilotResumeMode.Full ? null : _previewText;
         KeptSummary = _kept;
         Close();
