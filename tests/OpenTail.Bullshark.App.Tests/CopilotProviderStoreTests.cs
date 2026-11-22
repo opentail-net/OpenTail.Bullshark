@@ -63,7 +63,6 @@ public sealed class CopilotProviderStoreTests : IDisposable
 
     [Theory]
     [InlineData("\"claude\"")]
-    [InlineData("\"opencode\"")]
     [InlineData("\"\"")]
     [InlineData("42")]
     [InlineData("true")]

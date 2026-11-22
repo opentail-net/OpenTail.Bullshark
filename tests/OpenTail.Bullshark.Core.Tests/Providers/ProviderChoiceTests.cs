@@ -24,7 +24,6 @@ public sealed class ProviderChoiceTests
     [Theory]
     [InlineData("claude")]
     [InlineData("")]
-    [InlineData("opencode")]
     [InlineData("codex2")]
     [InlineData(null)]
     public void AnyOtherValueIsClaude(string? text)
@@ -38,5 +37,21 @@ public sealed class ProviderChoiceTests
         Assert.Equal("claude", ProviderChoice.TextOf(ProviderId.Claude));
         Assert.Equal("codex", ProviderChoice.TextOf(ProviderId.Codex));
         Assert.Equal(ProviderId.Codex, ProviderChoice.Parse(ProviderChoice.TextOf(ProviderId.Codex)));
+    }
+
+    [Theory]
+    [InlineData("opencode")]
+    [InlineData("OpenCode")]
+    [InlineData(" OPENCODE ")]
+    public void OpenCodeInAnyCaseIsOpenCode(string text)
+    {
+        Assert.Equal(ProviderId.OpenCode, ProviderChoice.Parse(text));
+    }
+
+    [Fact]
+    public void TheTextKeptForOpenCodeIsItsName()
+    {
+        Assert.Equal("opencode", ProviderChoice.TextOf(ProviderId.OpenCode));
+        Assert.Equal(ProviderId.OpenCode, ProviderChoice.Parse(ProviderChoice.TextOf(ProviderId.OpenCode)));
     }
 }

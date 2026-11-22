@@ -15,5 +15,8 @@ public readonly record struct ProviderId(string Value)
     /// <summary>GitHub Copilot CLI. Its history is plain files, so it is read on net10.0 and net11.0 alike.</summary>
     public static readonly ProviderId Copilot = new("copilot");
 
+    /// <summary>opencode (the npm CLI, read against 1.4.x). Its history is one SQLite database, which is only read, never written (OC-D2).</summary>
+    public static readonly ProviderId OpenCode = new("opencode");
+
     public override string ToString() => Value;
 }
