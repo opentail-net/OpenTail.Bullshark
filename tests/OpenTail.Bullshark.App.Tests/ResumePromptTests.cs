@@ -41,7 +41,7 @@ public sealed class ResumePromptTests
     }
 
     /// <summary>A prompt for a large context (a summary is the recommendation), with the given preview. Made on the WPF thread.</summary>
-    private static ResumePrompt NewPrompt(Func<ResumeChoice, KeptSummary?, CancellationToken, Task<ResumePreview>> preview)
+    private static ResumePrompt NewPrompt(Func<ResumeChoice, KeptSummary?, CancellationToken, Task<ResumePromptPreview>> preview)
     {
         EnsureAppResources();
         return new ResumePrompt(
@@ -63,8 +63,8 @@ public sealed class ResumePromptTests
     /// <summary>Presses a menu item, the way a click does.</summary>
     private static void Press(MenuItem item) => item.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
 
-    private static Task<ResumePreview> TailPreview(ResumeChoice choice, KeptSummary? kept, CancellationToken token) =>
-        Task.FromResult(new ResumePreview(TailText, 0, true, null));
+    private static Task<ResumePromptPreview> TailPreview(ResumeChoice choice, KeptSummary? kept, CancellationToken token) =>
+        Task.FromResult(new ResumePromptPreview(new ResumePreview(TailText, 0, true, null)));
 
     [Fact]
     public void AFullResumeHasNoPreviewAndSaysWhy()
@@ -147,7 +147,7 @@ public sealed class ResumePromptTests
                 seen.Add(kept);
                 // The window's method reuses a kept summary of the same level: the fake does the same, and makes one only otherwise.
                 var made = kept is not null && kept.MatchesLevel(choice.Level) ? kept : summary;
-                return Task.FromResult(new ResumePreview(SummaryText, 0, true, made));
+                return Task.FromResult(new ResumePromptPreview(new ResumePreview(SummaryText, 0, true, made)));
             });
             Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
 
@@ -174,7 +174,7 @@ public sealed class ResumePromptTests
         UiThread.Run(() =>
         {
             var summary = new KeptSummary(SummaryLevel.Normal, "An example summary.", Saved: true);
-            var prompt = NewPrompt((choice, kept, token) => Task.FromResult(new ResumePreview(SummaryText, 0, true, summary)));
+            var prompt = NewPrompt((choice, kept, token) => Task.FromResult(new ResumePromptPreview(new ResumePreview(SummaryText, 0, true, summary))));
             Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
             Press(Named<MenuItem>(prompt, "PreviewItem"));
             Assert.Equal(Visibility.Visible, Named<StackPanel>(prompt, "PreviewBlock").Visibility);
@@ -192,7 +192,7 @@ public sealed class ResumePromptTests
         UiThread.Run(() =>
         {
             var summary = new KeptSummary(SummaryLevel.Normal, "An example summary.", Saved: true);
-            var prompt = NewPrompt((choice, kept, token) => Task.FromResult(new ResumePreview(SummaryText, 0, true, summary)));
+            var prompt = NewPrompt((choice, kept, token) => Task.FromResult(new ResumePromptPreview(new ResumePreview(SummaryText, 0, true, summary))));
             Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
             Press(Named<MenuItem>(prompt, "PreviewItem"));
 
@@ -208,7 +208,7 @@ public sealed class ResumePromptTests
     {
         UiThread.Run(() =>
         {
-            var prompt = NewPrompt((choice, kept, token) => Task.FromException<ResumePreview>(new InvalidOperationException("boom")));
+            var prompt = NewPrompt((choice, kept, token) => Task.FromException<ResumePromptPreview>(new InvalidOperationException("boom")));
             Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
 
             Press(Named<MenuItem>(prompt, "PreviewItem"));
@@ -222,11 +222,38 @@ public sealed class ResumePromptTests
     }
 
     [Fact]
+    public void ARefusedLaunchShowsTheRefusalAndResumeStaysOffUntilTheChoiceChanges()
+    {
+        UiThread.Run(() =>
+        {
+            const string refusal = "Not started: the sample tool is older than the minimum, the version this build needs.";
+            var prompt = NewPrompt((choice, kept, token) => Task.FromResult(new ResumePromptPreview(null, refusal)));
+            Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
+
+            Press(Named<MenuItem>(prompt, "PreviewItem"));
+
+            Assert.Equal(refusal, Named<TextBlock>(prompt, "PreviewHeader").Text);
+            Assert.Equal(Visibility.Collapsed, Named<TextBox>(prompt, "PreviewText").Visibility);
+            Assert.Equal(Visibility.Visible, Named<StackPanel>(prompt, "PreviewBlock").Visibility);
+            Assert.False(Named<Button>(prompt, "ResumeButton").IsEnabled);
+            Assert.False(Named<MenuItem>(prompt, "CopyItem").IsEnabled);
+            Assert.True(Named<MenuItem>(prompt, "PreviewItem").IsEnabled);
+            Assert.Null(prompt.KeptSummary);
+
+            // A changed level takes the refusal away, and Resume is on again.
+            LevelSegment(prompt, "Minimal").IsChecked = true;
+            Assert.Equal(Visibility.Collapsed, Named<StackPanel>(prompt, "PreviewBlock").Visibility);
+            Assert.True(Named<Button>(prompt, "ResumeButton").IsEnabled);
+            Assert.Null(prompt.Choice);
+        });
+    }
+
+    [Fact]
     public void ABuildCancelledWithTheDialogShowsNothing()
     {
         UiThread.Run(() =>
         {
-            var prompt = NewPrompt((choice, kept, token) => Task.FromCanceled<ResumePreview>(new CancellationToken(canceled: true)));
+            var prompt = NewPrompt((choice, kept, token) => Task.FromCanceled<ResumePromptPreview>(new CancellationToken(canceled: true)));
             Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
 
             Press(Named<MenuItem>(prompt, "PreviewItem"));
@@ -246,7 +273,7 @@ public sealed class ResumePromptTests
         UiThread.Run(() =>
         {
             var summary = new KeptSummary(SummaryLevel.Normal, "An example summary.", Saved: true);
-            var prompt = NewPrompt((choice, kept, token) => Task.FromResult(new ResumePreview(SummaryText, 0, true, summary)));
+            var prompt = NewPrompt((choice, kept, token) => Task.FromResult(new ResumePromptPreview(new ResumePreview(SummaryText, 0, true, summary))));
             Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
             Press(Named<MenuItem>(prompt, "PreviewItem"));
 

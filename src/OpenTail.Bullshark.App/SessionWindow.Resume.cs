@@ -99,16 +99,24 @@ public partial class SessionWindow
 
     /// <summary>
     /// The prompt's preview (and its copy): the start text the choice would send, built by the same method the start uses, so the two cannot
-    /// drift. It starts nothing and types into no session. A summary is made once here and the prompt keeps it for the start.
+    /// drift. It starts nothing and types into no session. A summary is made once here and the prompt keeps it for the start. The launch check
+    /// comes first (R4d): a refused launch gives the refusal as the preview, with no message read and no summary call, because the start would be
+    /// refused too. The start keeps its own check in <see cref="StartRunAsync"/>.
     /// </summary>
-    private async Task<ResumePreview> PreviewAsync(
+    private async Task<ResumePromptPreview> PreviewAsync(
         SessionDigest digest, string folder, IReadOnlyList<TranscriptLine> lines, ResumeChoice choice, KeptSummary? kept, CancellationToken cancellationToken)
     {
         if (choice.Mode == ResumeMode.Full) throw new InvalidOperationException("A full resume sends no prompt, so there is none to preview.");
+        var launch = await ClaudeLaunchCheckAsync(cancellationToken);
+        if (launch.Refusal is { } refusal)
+        {
+            AppLog.Write("claude resume preview: launch refused, no summary");
+            return new ResumePromptPreview(null, refusal);
+        }
         var start = await BuildStartTextAsync(digest, folder, lines, choice, kept, cancellationToken);
         // The text itself is the owner's transcript, so only its size is logged.
         AppLog.Write($"preview built, {start.Fitted.Text.Length:N0} chars");
-        return new ResumePreview(start.Fitted.Text, start.Fitted.CutCharacters, start.Fitted.Fits, start.Summary);
+        return new ResumePromptPreview(new ResumePreview(start.Fitted.Text, start.Fitted.CutCharacters, start.Fitted.Fits, start.Summary));
     }
 
     /// <summary>
@@ -287,6 +295,16 @@ public partial class SessionWindow
     private async Task StartFromTextAsync(
         SessionDigest digest, string folder, IReadOnlyList<TranscriptLine> lines, ResumeChoice choice, KeptSummary? kept)
     {
+        // The launch check comes before the summary call (R4d, the Start path too): a refused launch makes no model call. StartRunAsync checks again
+        // before it writes the run, as before; a Supported reading is cached, and a refused one is kept, so the second check costs nothing.
+        var early = await ClaudeLaunchCheckAsync();
+        if (early.Refusal is { } earlyRefusal)
+        {
+            AppLog.Write("claude resume start: launch refused, no summary");
+            SetStatus(earlyRefusal);
+            return;
+        }
+
         if (choice.Level is { } level && !(kept is not null && kept.MatchesLevel(level)))
             SetStatus($"Summarising {ShortId(digest.SessionId)} ({level.ToString().ToLowerInvariant()}): one model call…");
 

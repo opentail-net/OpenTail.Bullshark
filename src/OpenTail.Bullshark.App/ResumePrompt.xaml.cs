@@ -30,6 +30,12 @@ public enum ResumeMode
 public sealed record ResumeChoice(ResumeMode Mode, SummaryLevel? Level, int Turns, string Model, string Effort);
 
 /// <summary>
+/// What the Claude resume prompt's preview callback gives: the built preview, or, when the launch is refused, null with the refusal in
+/// <see cref="Problem"/>. A refused launch builds no text and makes no summary (R4d), so Preview is null exactly when Problem is set.
+/// </summary>
+public sealed record ResumePromptPreview(ResumePreview? Preview, string? Problem = null);
+
+/// <summary>
 /// The resume prompt (D14, D-S11). One list of ways to continue, with the recommended one already selected: a full resume only
 /// when the context is small (ResumeAdvice), otherwise a summary. It shows what each choice would send before anything runs. The Resume
 /// menu previews that text, and copies it, through the window's own method, so the text shown is the text sent. A summary made for the
@@ -40,12 +46,15 @@ public partial class ResumePrompt : Window
 {
     private const int MaxTurns = 200;
     private readonly int _contextTokens;
-    private readonly Func<ResumeChoice, KeptSummary?, CancellationToken, Task<ResumePreview>>? _previewAsync;
+    private readonly Func<ResumeChoice, KeptSummary?, CancellationToken, Task<ResumePromptPreview>>? _previewAsync;
     private CancellationTokenSource? _previewCts;
     private bool _previewing;
 
+    /// <summary>True while the preview on screen is a refusal of the launch: Resume and Copy stay off, as the Codex Start does (R4d).</summary>
+    private bool _refused;
+
     public ResumePrompt(string heading, string facts, long contextTokens, RailPalette palette, string defaultModel, string defaultEffort,
-        Func<ResumeChoice, KeptSummary?, CancellationToken, Task<ResumePreview>>? previewAsync = null)
+        Func<ResumeChoice, KeptSummary?, CancellationToken, Task<ResumePromptPreview>>? previewAsync = null)
     {
         InitializeComponent();
         _previewAsync = previewAsync;
@@ -187,12 +196,12 @@ public partial class ResumePrompt : Window
         Enable(TailChoice, free);
         Enable(TurnsBox, free);
         foreach (var segment in LevelRow.Children.OfType<RadioButton>()) Enable(segment, free);
-        ResumeButton.IsEnabled = free;
+        ResumeButton.IsEnabled = free && !_refused;
         ResumeMenuButton.IsEnabled = free;
 
         var canBuild = free && choice is not null && choice.Mode != ResumeMode.Full && turnsValid && _previewAsync is not null;
         PreviewItem.IsEnabled = canBuild;
-        CopyItem.IsEnabled = canBuild;
+        CopyItem.IsEnabled = canBuild && !_refused;
         PreviewItem.ToolTip = MenuTip(choice, turnsValid, copy: false);
         CopyItem.ToolTip = MenuTip(choice, turnsValid, copy: true);
     }
@@ -253,12 +262,19 @@ public partial class ResumePrompt : Window
         if (_previewAsync is null || _previewing || choice is null || choice.Mode == ResumeMode.Full || !turnsValid) return;
 
         _previewing = true;
+        _refused = false;
         var cts = new CancellationTokenSource();
         _previewCts = cts;
         Refresh();
         try
         {
-            var preview = await _previewAsync(choice, KeptSummary, cts.Token);
+            var built = await _previewAsync(choice, KeptSummary, cts.Token);
+            if (built.Preview is not { } preview)
+            {
+                _refused = true;
+                ShowRefusal(built.Problem ?? "The prompt could not be built.");
+                return;
+            }
             if (preview.Summary is { } summary) KeptSummary = summary;
             ShowPreview(preview);
             if (copy) CopyText(preview.Text);
@@ -293,6 +309,20 @@ public partial class ResumePrompt : Window
         PreviewText.ScrollToHome();
     }
 
+    /// <summary>
+    /// Shows why the launch is refused: the refusal in the danger colour, and no prompt text. It is the Codex preview's refusal, shown the same
+    /// way (R4d). Resume and Copy stay off while it shows; the dialog stays open, so the owner can change the choice, update the tool or cancel.
+    /// </summary>
+    private void ShowRefusal(string problem)
+    {
+        PreviewHeader.Text = problem;
+        PreviewHeader.SetResourceReference(TextBlock.ForegroundProperty, "UiDanger");
+        PreviewText.Text = string.Empty;
+        PreviewText.Visibility = Visibility.Collapsed;
+        PreviewNote.Visibility = Visibility.Collapsed;
+        PreviewBlock.Visibility = Visibility.Visible;
+    }
+
     /// <summary>Shows why the prompt could not be built. The dialog stays open, so the owner can change the choice or cancel.</summary>
     private void ShowError(string message)
     {
@@ -322,9 +352,10 @@ public partial class ResumePrompt : Window
         PreviewNote.Visibility = Visibility.Visible;
     }
 
-    /// <summary>Takes the preview away. The text is cleared too, so no stale prompt stays in the dialog.</summary>
+    /// <summary>Takes the preview away. The text is cleared too, so no stale prompt stays in the dialog. A refusal shown there goes with it.</summary>
     private void HidePreview()
     {
+        _refused = false;
         PreviewBlock.Visibility = Visibility.Collapsed;
         PreviewText.Text = string.Empty;
         PreviewNote.Visibility = Visibility.Collapsed;
