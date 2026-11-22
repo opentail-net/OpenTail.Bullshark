@@ -58,7 +58,7 @@ public partial class SessionWindow
         var turns = session.UserMessages is { } count ? $"{count} {(count == 1 ? "turn" : "turns")}" : "turns not counted";
         var facts = $"{turns} · last active {AgeOf(session.LastActivity)} · in {folder}";
         var dialog = new CopilotResumePrompt($"Resume: {title}", facts, Palette,
-            (choice, kept, ct) => BuildCopilotStartTextAsync(session, choice, kept, ct), initialMode)
+            (choice, kept, ct) => BuildCopilotStartTextAsync(session, choice, kept, ct, choice.Target), initialMode)
         {
             Owner = this,
         };
@@ -132,15 +132,29 @@ public partial class SessionWindow
     /// For a summary, the summary is made (one Copilot call) unless the kept one is for the level; it is saved as a file. The last turns are copied
     /// (<see cref="CopilotResumeText.Tail"/>) and the text is composed (<see cref="CopilotResumeText.Compose"/>). A session with no messages gives an empty
     /// text and makes no call. A failure is logged by type only, shown in the screen, and never escapes this method. A cancellation passes through to the
-    /// screen, which is quiet about it.
+    /// screen, which is quiet about it. With a <paramref name="target"/> other than Copilot (null is Copilot), the text is the cross-platform start text
+    /// (S3b-A): the target's checks run before the summary call (RS-D13), and the summary is the one Copilot makes, with its own guards.
     /// </summary>
     private async Task<CopilotPreview> BuildCopilotStartTextAsync(
-        SessionSummary session, CopilotResumeChoice choice, KeptSummary? kept, CancellationToken ct)
+        SessionSummary session, CopilotResumeChoice choice, KeptSummary? kept, CancellationToken ct, ProviderId? target = null)
     {
         var provider = _copilot ??= new CopilotProvider();
         var sessionId = session.Key.SessionId;
+        var to = target ?? ProviderId.Copilot;
+        var folder = session.Folder ?? string.Empty;
         try
         {
+            if (to != ProviderId.Copilot)
+            {
+                var crossRefusal = await CrossPlatformStartText.RefusalBeforeSummaryAsync(
+                    ProviderId.Copilot, to, RememberChoice.ModeOf(choice.Mode), () => CrossTargetCheckAsync(ProviderId.Copilot, to, folder, ct));
+                if (crossRefusal is not null)
+                {
+                    AppLog.Write("copilot cross start refused: no summary");
+                    return new CopilotPreview(string.Empty, null, crossRefusal);
+                }
+            }
+
             // The whole session is read (no cap): the default cap keeps the first messages, and the tail needs the newest turns (as Codex's tail reads all).
             var lines = await Task.Run(() => CopilotTranscriptReader.ReadSession(provider.Paths, sessionId, ct, int.MaxValue), ct);
             AppLog.Write($"copilot start text: {lines.Count} messages read");
@@ -169,6 +183,14 @@ public partial class SessionWindow
                     }
                     summary = await MakeCopilotSummaryAsync(session, provider, level, ct);
                 }
+            }
+
+            if (to != ProviderId.Copilot)
+            {
+                var cross = CrossStartTextFor(ProviderId.Copilot, to, folder, summary, choice.Level, lines, choice.Turns);
+                if (!cross.Fits) return new CopilotPreview(string.Empty, null, "Not started: " + CrossPlatformStartText.TooLongMessage);
+                AppLog.Write($"copilot cross start text built: {cross.Text.Length:N0} characters");
+                return new CopilotPreview(cross.Text, summary);
             }
 
             var tail = CopilotResumeText.Tail(lines, choice.Turns);

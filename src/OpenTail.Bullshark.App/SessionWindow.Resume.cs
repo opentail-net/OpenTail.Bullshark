@@ -130,7 +130,12 @@ public partial class SessionWindow
             AppLog.Write("claude resume preview: launch refused, no summary");
             return new ResumePromptPreview(null, refusal);
         }
-        var start = await BuildStartTextAsync(digest, folder, lines, choice, kept, cancellationToken);
+        var start = await BuildStartTextAsync(digest, folder, lines, choice, kept, cancellationToken, target: choice.Target);
+        if (start.Refusal is { } targetRefusal)
+        {
+            AppLog.Write("claude resume preview: target refused, no summary");
+            return new ResumePromptPreview(null, targetRefusal);
+        }
         // The text itself is the owner's transcript, so only its size is logged.
         AppLog.Write($"preview built, {start.Fitted.Text.Length:N0} chars");
         return new ResumePromptPreview(new ResumePreview(start.Fitted.Text, start.Fitted.CutCharacters, start.Fitted.Fits, start.Summary));
@@ -258,34 +263,35 @@ public partial class SessionWindow
         return new FullResume(null, name, shortId, fullId, Warning: launch.Warning);
     }
 
-    /// <summary>The start text of a resume: the fitted text, the request that launches it, and the summary it carries (null for none).</summary>
-    private sealed record StartText(ResumeText.FittedStart Fitted, SetupRequest Request, KeptSummary? Summary);
+    /// <summary>
+    /// The start text of a resume: the fitted text, the request that launches it, and the summary it carries (null for none). A start in another
+    /// platform has no request of Claude's (<paramref name="Request"/> is null), and a refused one (RS-D13) has a <paramref name="Refusal"/> instead.
+    /// </summary>
+    private sealed record StartText(ResumeText.FittedStart Fitted, SetupRequest? Request, KeptSummary? Summary, string? Refusal = null);
 
     /// <summary>
     /// The start text of a resume, built once for the preview and for the start alike: the summary (one Haiku call when the owner chose a
     /// level, or none when the kept summary of that level is reused), then the last turns, fitted to the command line the session is
     /// launched with. The request is the one the start launches, for the fitted text. It starts nothing and shows nothing. A summary that is
-    /// not made throws ClaudeCliException; a cancelled one throws OperationCanceledException.
+    /// not made throws ClaudeCliException; a cancelled one throws OperationCanceledException. With a <paramref name="target"/> other than Claude
+    /// (null is Claude), the target's checks run before the summary call (RS-D13), and the text is the cross-platform start text (S3b-A).
     /// </summary>
     private async Task<StartText> BuildStartTextAsync(
         SessionDigest digest, string folder, IReadOnlyList<TranscriptLine> lines, ResumeChoice choice, KeptSummary? kept,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, ProviderId? target = null)
     {
-        KeptSummary? summary = null;
-        if (choice.Level is { } level)
+        var to = target ?? ProviderId.Claude;
+        if (to != ProviderId.Claude)
         {
-            if (kept is not null && kept.MatchesLevel(level))
-            {
-                summary = kept;
-            }
-            else
-            {
-                var input = await Task.Run(() => ResumeText.SummaryInput(lines, digest.FilesWritten), cancellationToken);
-                var text = await _cli.SummariseAsync(ResumeText.Instructions(level), input, cancellationToken);
-                await SaveSummaryFileAsync(digest, level, text);
-                summary = new KeptSummary(level, text, Saved: true);
-            }
+            var refusal = await CrossPlatformStartText.RefusalBeforeSummaryAsync(
+                ProviderId.Claude, to, RememberChoice.ModeOf(choice.Mode),
+                () => CrossTargetCheckAsync(ProviderId.Claude, to, folder, cancellationToken));
+            if (refusal is not null) return new StartText(new ResumeText.FittedStart(string.Empty, 0, Fits: false), null, null, refusal);
+            var crossSummary = await SummaryForAsync(digest, lines, choice, kept, cancellationToken);
+            return new StartText(CrossStartTextFor(ProviderId.Claude, to, folder, crossSummary, choice.Level, lines, choice.Turns), null, crossSummary);
         }
+
+        var summary = await SummaryForAsync(digest, lines, choice, kept, cancellationToken);
 
         // The start text names the session it continues, on its first line (D-L8). It is fitted to the command line the session is
         // launched with, before the run is written: when the latest turn makes it too long, that turn is cut in its middle.
@@ -302,6 +308,67 @@ public partial class SessionWindow
         var fitted = ResumeText.Fit(summary?.Text, choice.Level, lines, choice.Turns, digest.SessionId,
             text => SetupPlan.LongestCommandLine(RequestFor(text)));
         return new StartText(fitted, RequestFor(fitted.Text), summary);
+    }
+
+    /// <summary>
+    /// The summary of a resume at the chosen level: the kept one when it is for that level (no call), else one model call of the session's own CLI,
+    /// which is saved as a file. Null when the choice has no level. The call is the one the same-platform start has always made (RS-D9).
+    /// </summary>
+    private async Task<KeptSummary?> SummaryForAsync(
+        SessionDigest digest, IReadOnlyList<TranscriptLine> lines, ResumeChoice choice, KeptSummary? kept, CancellationToken cancellationToken)
+    {
+        if (choice.Level is not { } level) return null;
+        if (kept is not null && kept.MatchesLevel(level)) return kept;
+        var input = await Task.Run(() => ResumeText.SummaryInput(lines, digest.FilesWritten), cancellationToken);
+        var text = await _cli.SummariseAsync(ResumeText.Instructions(level), input, cancellationToken);
+        await SaveSummaryFileAsync(digest, level, text);
+        return new KeptSummary(level, text, Saved: true);
+    }
+
+    /// <summary>
+    /// The start text of a cross-platform start (S3b-A), built from the source's summary by <see cref="CrossPlatformStartText.Build"/>. A Claude target is
+    /// fitted to the Claude command line of the request it would launch: the Claude screen's default planner model and effort (RS-D12) and the session's
+    /// folder (RS-D5). Codex and Copilot targets take no fit.
+    /// </summary>
+    private ResumeText.FittedStart CrossStartTextFor(
+        ProviderId source, ProviderId target, string folder, KeptSummary? summary, SummaryLevel? level, IReadOnlyList<TranscriptLine> lines, int turns)
+    {
+        if (target != ProviderId.Claude)
+            return CrossPlatformStartText.Build(source, target, summary?.Text, level, lines, turns);
+
+        var solo = SavedSolo();
+        var (model, effort) = CrossPlatformStartText.ClaudeDefaults(solo);
+        SetupRequest RequestFor(string text) => new(
+            PatternKey: "solo",
+            Folder: folder,
+            Task: text,
+            Coders: 1,
+            PlannerModel: model,
+            PlannerEffort: effort,
+            CoderModel: solo.CoderModel,
+            CoderEffort: solo.CoderEffort);
+        return CrossPlatformStartText.Build(
+            source, target, summary?.Text, level, lines, turns, text => SetupPlan.LongestCommandLine(RequestFor(text)));
+    }
+
+    /// <summary>
+    /// The target's checks for a cross-platform start, run before the summary call (RS-D5, RS-D13), with the checks the target's own start makes. A
+    /// missing folder refuses. A Claude target: the folder's trust (<see cref="FolderCheck"/>, Missing and NotTrusted refuse) and the launch check. A Codex
+    /// target: PowerShell 7 and the shim, then the launch check. A Copilot target has no launch check here yet (RS-D8): it is refused with
+    /// <see cref="ResumeTarget"/>'s reason, even if the enabling constant were turned on. Returns the refusal, or null when the start may go on.
+    /// </summary>
+    private async Task<string?> CrossTargetCheckAsync(ProviderId source, ProviderId target, string folder, CancellationToken cancellationToken)
+    {
+        if (!FolderExists(folder)) return "Not started: the session's folder is missing.";
+        if (target == ProviderId.Claude)
+        {
+            var check = FolderCheck.Check(folder, TrustCheck.DefaultClaudeJsonPath);
+            if (check.Status is FolderStatus.Missing or FolderStatus.NotTrusted) return $"Not started: {check.Message}";
+            return (await ClaudeLaunchCheckAsync(cancellationToken)).Refusal;
+        }
+        if (target == ProviderId.Codex)
+            return CodexStartToolRefusal() ?? (await CodexLaunchCheckAsync(cancellationToken)).Refusal;
+        return ResumeTarget.RefusalReason(source, ContinueMode.Summary, target, copilotEnabled: false);
     }
 
     /// <summary>
@@ -328,12 +395,17 @@ public partial class SessionWindow
         StartText start;
         try
         {
-            start = await BuildStartTextAsync(digest, folder, lines, choice, kept);
+            start = await BuildStartTextAsync(digest, folder, lines, choice, kept, target: choice.Target);
         }
         catch (ClaudeCliException ex)
         {
             AppLog.Write($"summary not made: {ex.Message}");
             SetStatus($"Not started: {ex.Message}");
+            return;
+        }
+        if (start.Refusal is { } targetRefusal)
+        {
+            SetStatus(targetRefusal);
             return;
         }
 
@@ -343,7 +415,8 @@ public partial class SessionWindow
             SetStatus("Not started: the start text is too long for the command line, even with its latest turn cut.");
             return;
         }
-        var request = start.Request;
+        // Only a start in Claude has a request of Claude's. A cross-platform start into another CLI is started by its own start (S3b-B).
+        var request = start.Request ?? throw new InvalidOperationException("A start in another platform takes no Claude request.");
 
         var check = SetupPlan.Validate(request, TrustCheck.DefaultClaudeJsonPath);
         if (!check.IsValid)

@@ -76,7 +76,7 @@ public partial class SessionWindow
         var turns = session.UserMessages is { } count ? $"{count} {(count == 1 ? "turn" : "turns")}" : "turns not counted";
         var facts = $"{turns} · last active {AgeOf(session.LastActivity)} · in {folder}";
         var dialog = new CodexResumePrompt($"Resume: {title}", facts, Palette,
-            (choice, kept, ct) => BuildCodexStartTextAsync(session, folder, choice, kept, ct), CodexModels(), initialMode)
+            (choice, kept, ct) => BuildCodexStartTextAsync(session, folder, choice, kept, ct, choice.Target), CodexModels(), initialMode)
         {
             Owner = this,
         };
@@ -138,12 +138,15 @@ public partial class SessionWindow
     /// text and makes no call. The launch check comes first (R4c): a refused launch gives the refusal as the preview, with no message read and no summary
     /// call, because the start would be refused too. A failure is logged by type and message only, shown in the screen, and never escapes this method.
     /// A cancellation passes through to the screen, which is quiet about it.
+    /// With a <paramref name="target"/> other than Codex (null is Codex), the text is the cross-platform start text (S3b-A): the target's checks run
+    /// before the summary call (RS-D13), and the summary is the one Codex makes, as it does for its own start.
     /// </summary>
     private async Task<CodexPreview> BuildCodexStartTextAsync(
-        SessionSummary session, string folder, CodexResumeChoice choice, KeptSummary? kept, CancellationToken ct)
+        SessionSummary session, string folder, CodexResumeChoice choice, KeptSummary? kept, CancellationToken ct, ProviderId? target = null)
     {
         var provider = _codex ??= new CodexProvider();
         var sessionId = session.Key.SessionId;
+        var to = target ?? ProviderId.Codex;
         try
         {
             var launch = await CodexLaunchCheckAsync(ct);
@@ -151,6 +154,16 @@ public partial class SessionWindow
             {
                 AppLog.Write("codex resume preview: launch refused, no summary");
                 return new CodexPreview(string.Empty, null, refusal);
+            }
+            if (to != ProviderId.Codex)
+            {
+                var crossRefusal = await CrossPlatformStartText.RefusalBeforeSummaryAsync(
+                    ProviderId.Codex, to, RememberChoice.ModeOf(choice.Mode), () => CrossTargetCheckAsync(ProviderId.Codex, to, folder, ct));
+                if (crossRefusal is not null)
+                {
+                    AppLog.Write("codex cross start refused: no summary");
+                    return new CodexPreview(string.Empty, null, crossRefusal);
+                }
             }
 
             var lines = await Task.Run(() => CodexTurns.ReadSession(provider.Paths, sessionId, ct), ct);
@@ -174,6 +187,14 @@ public partial class SessionWindow
                 }
             }
 
+            if (to != ProviderId.Codex)
+            {
+                var cross = CrossStartTextFor(ProviderId.Codex, to, folder, summary, choice.Level, lines, choice.Turns);
+                if (!cross.Fits) return new CodexPreview(string.Empty, null, "Not started: " + CrossPlatformStartText.TooLongMessage);
+                AppLog.Write($"codex cross start text built: {cross.Text.Length:N0} characters");
+                return new CodexPreview(cross.Text, summary);
+            }
+
             var tail = CodexResumeText.Tail(lines, choice.Turns);
             var start = CodexResumeText.Compose(summary?.Text, choice.Level, tail, choice.Turns, sessionId);
             AppLog.Write($"codex start text built: {start.Length:N0} characters");
@@ -189,6 +210,18 @@ public partial class SessionWindow
             SetStatus($"Not started: {problem}");
             return new CodexPreview(string.Empty, null, problem);
         }
+    }
+
+    /// <summary>
+    /// The refusal when a Codex start cannot run here, or null: PowerShell 7 (pwsh.exe) must be on PATH, and the Codex shim must be present. The Codex
+    /// start and a cross-platform start into Codex both ask it, before anything is written. The start runs codex.ps1 (the launcher's script); the terminal's
+    /// own codex may be codex.exe, so the start file is not written when the shim is missing.
+    /// </summary>
+    private static string? CodexStartToolRefusal()
+    {
+        if (CodexStartLauncher.FindPwsh() is null)
+            return "Not started: PowerShell 7 (pwsh.exe) is not on PATH. The start text is in the preview: use Copy and start Codex yourself.";
+        return CodexStartLauncher.FindShim() is null ? CodexResumeRules.NoShimOnPath : null;
     }
 
     /// <summary>
@@ -226,15 +259,10 @@ public partial class SessionWindow
             SetStatus("Not started: there is no start text to send.");
             return;
         }
-        if (CodexStartLauncher.FindPwsh() is null)
+        var toolRefusal = CodexStartToolRefusal();
+        if (toolRefusal is not null)
         {
-            SetStatus("Not started: PowerShell 7 (pwsh.exe) is not on PATH. The start text is in the preview: use Copy and start Codex yourself.");
-            return;
-        }
-        // The start runs codex.ps1 (the launcher's script). The terminal's own codex may be codex.exe, so the file is not written when the shim is missing.
-        if (CodexStartLauncher.FindShim() is null)
-        {
-            SetStatus(CodexResumeRules.NoShimOnPath);
+            SetStatus(toolRefusal);
             return;
         }
         // The model is checked before the start file is written (P9, M-D5): a refused model leaves no text on disk.
