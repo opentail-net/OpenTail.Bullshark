@@ -1,5 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using OpenTail.Bullshark.Core.Continue;
+using OpenTail.Bullshark.Core.Resume;
 using OpenTail.Bullshark.Core.Supervisor;
 
 namespace OpenTail.Bullshark.Core.Behaviour;
@@ -60,6 +62,19 @@ public static class BehaviourStore
         ["lastUpdate"] = UsageAttribution.LastUpdate,
         ["start"] = UsageAttribution.Start,
         ["event"] = UsageAttribution.Event,
+    };
+
+    private static readonly IReadOnlyDictionary<string, ContinueScope> ContinueScopes = new Dictionary<string, ContinueScope>(StringComparer.Ordinal)
+    {
+        [ContinueScopeText.ToText(ContinueScope.Provider)] = ContinueScope.Provider,
+        [ContinueScopeText.ToText(ContinueScope.All)] = ContinueScope.All,
+    };
+
+    private static readonly IReadOnlyDictionary<string, SummaryLevel> SummaryLevels = new Dictionary<string, SummaryLevel>(StringComparer.Ordinal)
+    {
+        ["minimal"] = SummaryLevel.Minimal,
+        ["normal"] = SummaryLevel.Normal,
+        ["complete"] = SummaryLevel.Complete,
     };
 
     /// <summary>The path of behaviour.json: the folder of <paramref name="stateFile"/>, with the file name.</summary>
@@ -129,6 +144,7 @@ public static class BehaviourStore
         var state = r.Section(root, "state");
         var index = r.Section(root, "index");
         var usage = r.Section(root, "usage");
+        var continueSection = r.Section(root, "continue");
 
         return new BehaviourSettings
         {
@@ -177,6 +193,12 @@ public static class BehaviourStore
                 Attribution = r.Choice(usage, "attribution", d.Usage.Attribution, AttributionNames),
                 ReasoningAsOutput = r.Bool(usage, "reasoningAsOutput", d.Usage.ReasoningAsOutput),
             },
+            Continue = new ContinueSettings
+            {
+                Scope = r.Choice(continueSection, "scope", d.Continue.Scope, ContinueScopes),
+                DefaultMode = r.Mode(continueSection, "defaultMode", d.Continue.DefaultMode),
+                SummaryLevel = r.Choice(continueSection, "summaryLevel", d.Continue.SummaryLevel, SummaryLevels),
+            },
         };
     }
 
@@ -219,6 +241,19 @@ public static class BehaviourStore
             var node = Node(section, key);
             if (node is null) return fallback;
             if (node is JsonValue value && value.TryGetValue<string>(out var text) && names.TryGetValue(text, out var chosen)) return chosen;
+            Ignored++;
+            return fallback;
+        }
+
+        /// <summary>
+        /// A continue mode text ("full", "lastTurns" or "summary", as <see cref="ContinueModeText"/> parses them). The default is null, which means
+        /// the screen decides. Any other text, or a value of another type, is counted and gives the default.
+        /// </summary>
+        public ContinueMode? Mode(JsonObject? section, string key, ContinueMode? fallback)
+        {
+            var node = Node(section, key);
+            if (node is null) return fallback;
+            if (node is JsonValue value && value.TryGetValue<string>(out var text) && ContinueModeText.Parse(text) is { } mode) return mode;
             Ignored++;
             return fallback;
         }

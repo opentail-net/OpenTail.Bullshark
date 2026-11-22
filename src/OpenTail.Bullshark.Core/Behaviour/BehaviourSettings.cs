@@ -1,3 +1,6 @@
+using OpenTail.Bullshark.Core.Continue;
+using OpenTail.Bullshark.Core.Resume;
+
 namespace OpenTail.Bullshark.Core.Behaviour;
 
 /// <summary>When a banner and its sound are held back: the app window's focus, and whether the session is the one the rail selects (<c>alerts.focusGate</c>).</summary>
@@ -173,6 +176,28 @@ public sealed record UsageSettings
     public bool ReasoningAsOutput { get; init; } = true;
 }
 
+/// <summary>The continue settings (Continue plan, C2): what the Continue action looks at and which resume mode it starts on.</summary>
+public sealed record ContinueSettings
+{
+    /// <summary>
+    /// Which sessions Continue looks at (<c>continue.scope</c>): "provider" (the active provider only) or "all" (the most recent session of any
+    /// provider). Default <see cref="ContinueScope.Provider"/>.
+    /// </summary>
+    public ContinueScope Scope { get; init; } = ContinueScope.Provider;
+
+    /// <summary>
+    /// The mode the resume screen starts on (<c>continue.defaultMode</c>): "full", "lastTurns" or "summary". Default null, which means the screen
+    /// decides: Claude's resume screen keeps its own recommendation (Full or Summary), and Codex and Copilot start on last turns. Opening the screen
+    /// never makes a summary; a summary mode only selects it.
+    /// </summary>
+    public ContinueMode? DefaultMode { get; init; } = null;
+
+    /// <summary>
+    /// The summary level (<c>continue.summaryLevel</c>): "minimal", "normal" or "complete". Default <see cref="SummaryLevel.Normal"/>.
+    /// </summary>
+    public SummaryLevel SummaryLevel { get; init; } = SummaryLevel.Normal;
+}
+
 /// <summary>
 /// Every behaviour setting, one section per backlog row (behaviour.json, decisions of 2026-11-22). Each field's default is set here, in code: a missing
 /// file or key gives the default, and a change of default is a change here, not a configuration change.
@@ -205,4 +230,7 @@ public sealed record BehaviourSettings
 
     /// <summary>The usage settings (R8).</summary>
     public UsageSettings Usage { get; init; } = new();
+
+    /// <summary>The continue settings (C2).</summary>
+    public ContinueSettings Continue { get; init; } = new();
 }

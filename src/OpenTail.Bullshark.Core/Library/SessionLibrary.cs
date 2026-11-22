@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using OpenTail.Bullshark.Core.Activity;
+using OpenTail.Bullshark.Core.Continue;
 using OpenTail.Bullshark.Core.Providers;
 using OpenTail.Bullshark.Core.Supervisor;
 
@@ -16,6 +18,9 @@ namespace OpenTail.Bullshark.Core.Library;
 /// <see cref="AutoWake"/> is the owner's choice "Wake after the limit resets" for this session (limit wake, 2026-11-20). <see cref="AutoWokenHitAt"/> is
 /// the limit hit (its time) that was last woken, so the same hit is not woken twice, and <see cref="AutoWakeTimes"/> are the wakes of the last day,
 /// for the cap of three a day. Files written before them load with the defaults.
+/// <see cref="ResumeMode"/> is the resume mode the owner remembered for this session (Continue plan, C3, CN-D6). It is stored as its setting
+/// text (<c>full</c>, <c>lastTurns</c>, <c>summary</c>) by <see cref="ResumeModeJsonConverter"/>. Null is no mark, and a file written before it
+/// loads with null; an unknown stored text also loads as null.
 /// </summary>
 public sealed record LibraryEntry(
     string? Name = null,
@@ -29,16 +34,17 @@ public sealed record LibraryEntry(
     string? PlanFile = null,
     bool AutoWake = false,
     DateTimeOffset? AutoWokenHitAt = null,
-    IReadOnlyList<DateTimeOffset>? AutoWakeTimes = null)
+    IReadOnlyList<DateTimeOffset>? AutoWakeTimes = null,
+    [property: JsonConverter(typeof(ResumeModeJsonConverter))] ContinueMode? ResumeMode = null)
 {
     /// <summary>
     /// True when nothing is set. The wake fields count as set: an entry with only the flag, or with the record of a wake, is kept (the record stops
-    /// a second wake of the same hit, and the cap of the day).
+    /// a second wake of the same hit, and the cap of the day). A resume mode counts as set too, so an entry whose only mark is a mode is kept.
     /// </summary>
     public bool IsEmpty =>
         string.IsNullOrWhiteSpace(Name) && !Pinned && !Archived && (Tags is null || Tags.Count == 0)
         && string.IsNullOrWhiteSpace(Note) && string.IsNullOrWhiteSpace(Colour) && string.IsNullOrWhiteSpace(PlanFile)
-        && !AutoWake && AutoWokenHitAt is null && (AutoWakeTimes is null || AutoWakeTimes.Count == 0);
+        && !AutoWake && AutoWokenHitAt is null && (AutoWakeTimes is null || AutoWakeTimes.Count == 0) && ResumeMode is null;
 }
 
 /// <summary>
