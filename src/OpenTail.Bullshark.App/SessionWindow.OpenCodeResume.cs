@@ -21,11 +21,14 @@ public partial class SessionWindow
     /// <summary>True while the opencode resume screen is open or its start runs. A second request is refused with a status line.</summary>
     private bool _openCodeResuming;
 
-    /// <summary>Opens the opencode resume screen for a session (OC3). Nothing starts until the owner presses Start.</summary>
-    private void ShowOpenCodeResume(SessionSummary session) =>
-        FireAndForget.Observe(ShowOpenCodeResumeAsync(session), "opencode resume screen");
+    /// <summary>
+    /// Opens the opencode resume screen for a session (OC3). It opens on <paramref name="initialMode"/>, or on the last turns when that is null.
+    /// Nothing starts until the owner presses Start.
+    /// </summary>
+    private void ShowOpenCodeResume(SessionSummary session, ContinueMode? initialMode = null) =>
+        FireAndForget.Observe(ShowOpenCodeResumeAsync(session, initialMode), "opencode resume screen");
 
-    private async Task ShowOpenCodeResumeAsync(SessionSummary session)
+    private async Task ShowOpenCodeResumeAsync(SessionSummary session, ContinueMode? initialMode)
     {
         if (_openCodeResuming)
         {
@@ -51,7 +54,7 @@ public partial class SessionWindow
         var turns = session.UserMessages is { } count ? $"{count} {(count == 1 ? "turn" : "turns")}" : "turns not counted";
         var facts = $"{turns} · last active {AgeOf(session.LastActivity)} · {FolderFact.For(folder)}";
         var dialog = new OpenCodeResumePrompt($"Resume: {title}", facts, Palette,
-            (choice, ct) => BuildOpenCodeStartTextAsync(session, choice, ct), initialMode: null, folder, FolderExists(folder))
+            (choice, ct) => BuildOpenCodeStartTextAsync(session, choice, ct), initialMode: initialMode, folder, FolderExists(folder))
         {
             Owner = this,
         };

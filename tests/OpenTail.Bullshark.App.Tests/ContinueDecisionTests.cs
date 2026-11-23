@@ -137,6 +137,18 @@ public sealed class ContinueDecisionTests
         Assert.Null(decision.Mode);
     }
 
+    [Theory]
+    [InlineData(ContinueMode.Full)]
+    [InlineData(ContinueMode.LastTurns)]
+    [InlineData(ContinueMode.Summary)]
+    public void AnOpenCodeSessionOpensAtTheModeItsDecisionGives(ContinueMode mode)
+    {
+        var sessions = new[] { Session(ProviderId.OpenCode, "a", Late) };
+        var marks = Marks((new SessionKey(ProviderId.OpenCode, "a"), new LibraryEntry(ResumeMode: mode)));
+
+        Assert.Equal(mode, ContinueDecision.Decide(Settings(defaultMode: ContinueMode.LastTurns), ProviderId.OpenCode, sessions, marks).Mode);
+    }
+
     [Fact]
     public void TheModeTextsAndTheProviderNamesAreTheStatusWords()
     {

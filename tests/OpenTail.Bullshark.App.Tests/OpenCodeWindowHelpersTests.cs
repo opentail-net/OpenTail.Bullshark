@@ -178,9 +178,10 @@ public sealed class OpenCodeWindowHelpersTests
     }
 
     [Fact]
-    public void AContinuePickOfAnOpenCodeSessionIsRefusedWithTheResumeScreenText()
+    public void AContinuePickOfAnOpenCodeSessionOpensItsResumeScreen()
     {
-        Assert.Equal("The opencode resume screen is not built yet.", SessionWindow.ContinueScreenRefusalOf(ProviderId.OpenCode, copilotListed: true, copilotNotListed: "x"));
+        Assert.Null(SessionWindow.ContinueScreenRefusalOf(ProviderId.OpenCode, copilotListed: true, copilotNotListed: "x"));
+        Assert.Null(SessionWindow.ContinueScreenRefusalOf(ProviderId.OpenCode, copilotListed: false, copilotNotListed: "x"));
     }
 
     [Fact]

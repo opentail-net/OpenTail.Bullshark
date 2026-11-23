@@ -133,8 +133,9 @@ public partial class SessionWindow
         SetStatus(ContinueDecision.PickedText(title, provider, decision.Mode));
         if (digest is not null) _ = ResumeAsync(digest, decision.Mode);
         else if (provider == ProviderId.Codex) ShowCodexResume(picked, forScreenshot: false, screenshotSummary: false, initialMode: decision.Mode);
-        // An opencode pick never gets here: its refusal is above (ContinueScreenRefusalOf). It is not handed to Copilot's screen.
         else if (provider == ProviderId.Copilot) ShowCopilotResume(picked, forScreenshot: false, shotMode: string.Empty, initialMode: decision.Mode);
+        // The opencode pick opens its own screen at the decided mode, as the others do.
+        else if (provider == ProviderId.OpenCode) ShowOpenCodeResume(picked, initialMode: decision.Mode);
     }
 
     /// <summary>The providers whose sessions the scope holds: the active provider, or every provider (CN-D1). Codex is listed only where this build offers it.</summary>
@@ -202,12 +203,11 @@ public partial class SessionWindow
         ContinueScreenRefusalOf(session.Key.Provider, IsCopilotListed(session.Key.SessionId), CopilotRailText.NotListed);
 
     /// <summary>
-    /// The refusal of a Continue pick, by its provider (OC2). An opencode session is refused with the opencode resume screen's own wording, since that
-    /// screen is not built yet (OC2b): nothing opens and nothing starts. Every other provider keeps <see cref="ContinueDecision.ScreenRefusal"/>. Pure.
+    /// The refusal of a Continue pick, by its provider. An opencode session is not refused: its resume screen opens at the decided mode. Every other
+    /// provider keeps <see cref="ContinueDecision.ScreenRefusal"/>. Pure.
     /// </summary>
     internal static string? ContinueScreenRefusalOf(ProviderId provider, bool copilotListed, string copilotNotListed) =>
-        provider == ProviderId.OpenCode ? OpenCodeResumeScreenNotBuilt
-        : ContinueDecision.ScreenRefusal(provider, copilotListed, copilotNotListed);
+        ContinueDecision.ScreenRefusal(provider, copilotListed, copilotNotListed);
 
     /// <summary>Shows the open tab of a session of the given provider. True when there was one to show.</summary>
     private bool ShowOpenContinueTab(ProviderId provider, string id) =>

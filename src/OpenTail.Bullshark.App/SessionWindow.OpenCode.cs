@@ -16,12 +16,6 @@ namespace OpenTail.Bullshark.App;
 /// </summary>
 public partial class SessionWindow
 {
-    /// <summary>
-    /// The Continue refusal of an opencode session (<see cref="ContinueScreenRefusalOf"/>). Continue does not open the opencode resume screen yet; "Resume…"
-    /// does (<see cref="ResumeOpenCodeScreen"/>).
-    /// </summary>
-    private const string OpenCodeResumeScreenNotBuilt = "The opencode resume screen is not built yet.";
-
     /// <summary>The opencode sessions as the last read gave them: root sessions, newest first (OC-D3).</summary>
     private IReadOnlyList<SessionSummary> _openCodeSessions = [];
 
