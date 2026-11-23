@@ -57,7 +57,7 @@ public sealed class CodexModelPromptTests
         {
             var prompt = NewPrompt(Task.FromResult(new CodexModelReading([], 0, 0, CodexModelProblem.TimedOut)));
 
-            Assert.Equal(1, Named<ComboBox>(prompt, "ModelBox").Items.Count);
+            Assert.Single(Named<ComboBox>(prompt, "ModelBox").Items);
             Click(Named<Button>(prompt, "OkButton"));
 
             Assert.True(prompt.Accepted);

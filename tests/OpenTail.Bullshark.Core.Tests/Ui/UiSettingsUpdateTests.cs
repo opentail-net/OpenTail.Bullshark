@@ -111,7 +111,7 @@ public sealed class UiSettingsUpdateTests : IDisposable
     }
 
     [Fact]
-    public void AnUpdateThatCannotGetTheLockInTimeChangesNothing()
+    public async Task AnUpdateThatCannotGetTheLockInTimeChangesNothing()
     {
         UiSettingsFile.Set(_path, "zoomPercent", JsonValue.Create(110)!, Log);
         using var held = new ManualResetEventSlim();
@@ -129,13 +129,13 @@ public sealed class UiSettingsUpdateTests : IDisposable
         var written = UiSettingsFile.Update(_path, "zoomPercent", _ => JsonValue.Create(125), Log, TimeSpan.FromMilliseconds(150));
 
         release.Set();
-        holder.Wait();
+        await holder;
         Assert.False(written);
         Assert.Equal(110, (int)UiSettingsFile.Read(_path, "zoomPercent", Log)!);
     }
 
     [Fact]
-    public void TryReadSaysBusyWhileTheLockIsHeld()
+    public async Task TryReadSaysBusyWhileTheLockIsHeld()
     {
         UiSettingsFile.Set(_path, "zoomPercent", JsonValue.Create(110)!, Log);
         using var held = new ManualResetEventSlim();
@@ -152,8 +152,8 @@ public sealed class UiSettingsUpdateTests : IDisposable
 
         var busy = UiSettingsFile.TryRead(_path, "zoomPercent", TimeSpan.FromMilliseconds(150), out var busyValue, Log);
         release.Set();
-        holder.Wait();
-        var free = UiSettingsFile.TryRead(_path, "zoomPercent", TimeSpan.FromSeconds(2), out var freeValue, Log);
+        await holder;
+        var free =UiSettingsFile.TryRead(_path, "zoomPercent", TimeSpan.FromSeconds(2), out var freeValue, Log);
 
         Assert.False(busy);
         Assert.Null(busyValue);

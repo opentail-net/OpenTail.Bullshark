@@ -376,7 +376,7 @@ public sealed class CodexResumePromptTests
                 new CodexModelReading([], 0, 0, CodexModelProblem.ExitedWithoutReply)));
             var box = Named<ComboBox>(prompt, "ModelBox");
 
-            Assert.Equal(1, box.Items.Count);
+            Assert.Single(box.Items);
             Assert.Contains("ExitedWithoutReply", Named<TextBlock>(prompt, "ModelNote").Text);
 
             Click(Named<Button>(prompt, "StartButton"));
