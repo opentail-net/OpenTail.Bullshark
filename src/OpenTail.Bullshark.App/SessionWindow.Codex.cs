@@ -545,45 +545,17 @@ public partial class SessionWindow
         }
         if (ShowOpenCodexTab(id)) return;
 
-        // The newest-in-folder candidates are the history's sessions in the folder that exists (the one the saved session was in), without the saved one.
-        var sameFolder = session.Folder is { } saved && Directory.Exists(saved) ? saved : null;
-        var candidates = CodexHistoryQuery.NewestInFolderCandidates(_codexSessions, sameFolder, id);
-        var choice = ResumeLadder.Decide(found, candidates.TopRankCount, candidates.NewestId, candidates.EarliestTopRankId, _behaviour.Resume);
-        AppLog.Write($"codex resume step {choice.Step}: saved file found {found}, {candidates.TopRankCount} candidates at the top rank");
-
-        switch (choice.Step)
+        // PP-D3 (2026-11-23): a saved session whose file is not found is refused, as Copilot and opencode refuse. No picker tab and no newest-in-folder
+        // tab is opened, so the owner never resumes a different conversation by accident. The ladder's other steps are no longer reached from here; the
+        // setting resume.allowNewestInFolder has no effect now (see docs/plans/provider-parity-2026-11-23.md).
+        var choice = ResumeLadder.Decide(found, topRankCount: 0, newestId: null, earliestTopRankId: null, _behaviour.Resume);
+        AppLog.Write($"codex resume step {choice.Step}: saved file found {found}");
+        if (choice.Step != ResumeStep.Saved)
         {
-            case ResumeStep.Saved:
-                OpenCodexTab(id, CodexRowTitle(MarkOf(ProviderId.Codex, id)?.Name, session), command, folder).LadderStep = ResumeStep.Saved;
-                break;
-            case ResumeStep.Picker:
-                // The picker is not one conversation, so its tab has a unique key: it never stands in for the saved session's tab.
-                OpenCodexTab("picker-" + Guid.NewGuid().ToString("N"), choice.Label, provider.PickerCommandLine(), folder).LadderStep = ResumeStep.Picker;
-                break;
-            case ResumeStep.NewestInFolder:
-                // The candidate's own tab, keyed by its id, so one conversation keeps one tab (an open one is shown, not started again).
-                var newest = choice.CandidateId!;
-                if (ShowOpenCodexTab(newest))
-                {
-                    SetStatus(WithWarning(launch.Warning, choice.Label));
-                    return;
-                }
-                string newestCommand;
-                try
-                {
-                    newestCommand = provider.ResumeCommandLine(newest);
-                }
-                catch (ArgumentException)
-                {
-                    SetStatus(WithWarning(launch.Warning, "Not resumed: the newest session's id is not a valid Codex id."));
-                    return;
-                }
-                OpenCodexTab(newest, choice.Label, newestCommand, folder).LadderStep = ResumeStep.NewestInFolder;
-                break;
-            default:
-                SetStatus(WithWarning(launch.Warning, choice.Label));
-                return;
+            SetStatus(WithWarning(launch.Warning, "Not resumed: the saved session's file was not found. Nothing was started."));
+            return;
         }
+        OpenCodexTab(id, CodexRowTitle(MarkOf(ProviderId.Codex, id)?.Name, session), command, folder).LadderStep = ResumeStep.Saved;
         SetStatus(WithWarning(launch.Warning, choice.Label));
     }
 

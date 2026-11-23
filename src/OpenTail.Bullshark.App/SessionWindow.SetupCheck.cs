@@ -31,7 +31,7 @@ public partial class SessionWindow
                 // asynchronously: a blocking wait here would stall the UI thread, and the check's continuations need that thread (a deadlock).
                 ? new SetupCheckDialog(Palette, run: null,
                     noteText: "Looks for the Copilot CLI on PATH and reads the version of each copy the app runs. No session is started.",
-                    runAsync: () => CopilotSetupCheck.RunAsync(new ProcessCliRunner("cmd.exe"), new ProcessCliRunner("pwsh.exe"), log: AppLog.Write))
+                    runAsync: () => CopilotSetupCheck.RunAsync(new ProcessCliRunner("cmd.exe"), new ProcessCliRunner("pwsh.exe"), log: AppLog.Write, bundleRoot: CopilotBundles.DefaultRoot))
                 : IsOpenCodeActive
                     // The opencode row: the shim FindShimOnPath finds (or none), and the version read from the npm package file beside it (OC-D1). The path
                     // is shown on this page only; nothing is logged and no program is started.

@@ -7,7 +7,7 @@ namespace OpenTail.Bullshark.Core.Codex;
 /// lines (<see cref="CodexTranscriptReader"/>) and its terminal commands (<see cref="CodexTerminalOpener"/>). It implements no supervisor
 /// and no live list (B5, R-1), so the window hides those features for it through <see cref="ProviderFeatures.Has{T}"/>.
 /// </summary>
-public sealed class CodexProvider : IProvider, IHistorySource, ITranscriptReader, ITerminalOpener
+public sealed class CodexProvider : IProvider, IHistorySource, ITranscriptReader, ITerminalOpener, IMessageTextSource
 {
     private readonly CodexHistorySource _history;
     private readonly CodexTranscriptReader _reader;
@@ -39,6 +39,10 @@ public sealed class CodexProvider : IProvider, IHistorySource, ITranscriptReader
     /// <summary>The lines of one rollout, a page at a time (C2).</summary>
     public Task<TranscriptPage> ReadPageAsync(string sessionId, int firstLine, int count, CancellationToken ct) =>
         _reader.ReadPageAsync(sessionId, firstLine, count, ct);
+
+    /// <summary>The text of every message of one session, in order (PP-D4). The same messages the Codex tab shows, read from the rollout.</summary>
+    public Task<IReadOnlyList<string>> MessageTextsAsync(string sessionId, CancellationToken ct) => Task.Run<IReadOnlyList<string>>(() =>
+        CodexTurns.ReadSession(Paths, sessionId, ct).Select(line => line.Text).ToList(), ct);
 
     /// <summary>The command of a new Codex tab, in <paramref name="folder"/> (C3).</summary>
     public string NewCommandLine(string folder) => _opener.NewCommandLine(folder);

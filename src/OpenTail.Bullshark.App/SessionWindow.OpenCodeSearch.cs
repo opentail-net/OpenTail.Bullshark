@@ -1,3 +1,4 @@
+using OpenTail.Bullshark.Core.OpenCode;
 using System.Windows;
 using OpenTail.Bullshark.Core.Providers;
 
@@ -18,6 +19,12 @@ public partial class SessionWindow
 
     /// <summary>The results of an opencode search, shown in the opencode results tab (<see cref="TabKind.OpenCodeSearchResults"/>).</summary>
     private readonly ProviderSearchView _openCodeSearch = new ProviderSearchView("opencode") { Visibility = Visibility.Hidden };
+
+    /// <summary>The message texts the opencode search has read (PP-D4), by session. Read once per activity time.</summary>
+    private readonly MessageTextCache _openCodeMessages = new();
+
+    /// <summary>Counts the opencode searches, so a message read that ends for an older query does not replace the newer results (PP-D4).</summary>
+    private int _openCodeSearchVersion;
 
     /// <summary>Puts the opencode results view in the pane and connects it: a result opens its opencode transcript.</summary>
     private void InitOpenCodeSearch()
@@ -40,7 +47,9 @@ public partial class SessionWindow
             return;
         }
 
-        var rows = OpenCodeSearchRows(query);
+        var version = ++_openCodeSearchVersion;
+        var known = _openCodeMessages.Known(_openCodeSessions);
+        var rows = OpenCodeSearchRows(query, known);
         // The tab is found by its kind and its provider: a Copilot results tab is not reused for opencode.
         var tab = _tabs.FirstOrDefault(t => t.Kind == TabKind.OpenCodeSearchResults && t.Provider == ProviderId.OpenCode)
             ?? AddTab(TabKind.OpenCodeSearchResults, OpenCodeSearchKey, string.Empty, ProviderId.OpenCode);
@@ -48,20 +57,39 @@ public partial class SessionWindow
         SetActive(tab);
         ShowOnly(_openCodeSearch);
         _openCodeSearch.ShowResults(query, rows);
-        // The log holds the counts only: the query, the titles, the names, the tags and the notes stay out of it.
-        AppLog.Write($"opencode search: {rows.Count} of {_openCodeSessions.Count} sessions match");
-        SetStatus(rows.Count == 0
+        ReportOpenCodeSearch(query, rows.Count);
+        // Sessions whose messages are not read yet are read now; the results are then shown again with their message matches (PP-D4).
+        if (known.Count < _openCodeSessions.Count) _ = CompleteOpenCodeSearchAsync(query, version);
+    }
+
+    /// <summary>Shows the message matches of an opencode search once every session's messages are read, when the query is still the newest one (PP-D4).</summary>
+    private async Task CompleteOpenCodeSearchAsync(string query, int version)
+    {
+        var reader = new OpenCodeTranscriptReader(CurrentOpenCodeLocation());
+        var texts = await _openCodeMessages.LoadAllAsync(_openCodeSessions, reader, CancellationToken.None);
+        if (version != _openCodeSearchVersion || !_tabs.Any(t => t.Kind == TabKind.OpenCodeSearchResults && t.Provider == ProviderId.OpenCode)) return;
+        var rows = OpenCodeSearchRows(query, texts);
+        _openCodeSearch.ShowResults(query, rows);
+        ReportOpenCodeSearch(query, rows.Count);
+    }
+
+    /// <summary>The log holds the counts only; the status line names the query.</summary>
+    private void ReportOpenCodeSearch(string query, int matches)
+    {
+        AppLog.Write($"opencode search: {matches} of {_openCodeSessions.Count} sessions match");
+        SetStatus(matches == 0
             ? OpenCodeRailText.SearchNoMatch(query)
-            : OpenCodeRailText.SearchMatches(rows.Count, _openCodeSessions.Count, query));
+            : OpenCodeRailText.SearchMatches(matches, _openCodeSessions.Count, query));
     }
 
     /// <summary>
     /// The opencode sessions a query matches, newest first, as the results view's rows. Archived and pinned sessions are searched too.
     /// </summary>
-    private List<ProviderSearchRow> OpenCodeSearchRows(string query) =>
+    private List<ProviderSearchRow> OpenCodeSearchRows(string query, IReadOnlyDictionary<string, IReadOnlyList<string>> texts) =>
         _openCodeSessions
             .Select(session => (session, mark: OpenCodeMarkOf(session)))
-            .Where(pair => ProviderSearch.Matches(query, pair.session.Title, pair.mark?.Name, pair.mark?.Tags, pair.mark?.Note))
+            .Where(pair => ProviderSearch.Matches(query, pair.session.Title, pair.mark?.Name, pair.mark?.Tags, pair.mark?.Note,
+                texts.TryGetValue(pair.session.Key.SessionId, out var messages) ? messages : null))
             .OrderByDescending(pair => pair.session.LastActivity ?? DateTimeOffset.MinValue)
             .Select(pair => new ProviderSearchRow(
                 pair.session,

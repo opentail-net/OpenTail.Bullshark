@@ -10,8 +10,11 @@ namespace OpenTail.Bullshark.App;
 /// </summary>
 public static class ResumeTarget
 {
-    /// <summary>RS-D8: G-O5 — the copy of Copilot that runs is not confirmed to have the flags the app passes; the owner enables this when settled.</summary>
-    public const bool CopilotTargetEnabled = false;
+    /// <summary>
+    /// RS-D8, settled by PP-D2 (2026-11-23): the owner's direction is Copilot 1.0.104-3, which the WinGet launcher runs from its downloaded bundle, and
+    /// that bundle has the flags the app passes. So Copilot is a cross-platform target. (The earlier value, false, was G-O5.)
+    /// </summary>
+    public const bool CopilotTargetEnabled = true;
 
     /// <summary>The target a resume screen starts on: the source's own platform (RS-D3).</summary>
     public static ProviderId DefaultTarget(ProviderId source) => source;

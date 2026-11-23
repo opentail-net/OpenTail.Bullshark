@@ -96,10 +96,12 @@ public sealed class ResumeTargetTests
     }
 
     [Fact]
-    public void WithoutTheFlagTheConstantDecides()
+    public void WithTheFlagOnTheConstantCopilotIsATargetFromASummaryOnly()
     {
-        Assert.False(ResumeTarget.Allowed(ProviderId.Claude, ContinueMode.Summary, ProviderId.Copilot));
-        Assert.NotNull(ResumeTarget.RefusalReason(ProviderId.Claude, ContinueMode.Summary, ProviderId.Copilot));
+        // PP-D2 (2026-11-23): Copilot is an enabled target. From a summary it is allowed; a full or last-turns start stays in the source platform.
+        Assert.True(ResumeTarget.Allowed(ProviderId.Claude, ContinueMode.Summary, ProviderId.Copilot));
+        Assert.Null(ResumeTarget.RefusalReason(ProviderId.Claude, ContinueMode.Summary, ProviderId.Copilot));
+        Assert.False(ResumeTarget.Allowed(ProviderId.Claude, ContinueMode.Full, ProviderId.Copilot));
         Assert.True(ResumeTarget.Allowed(ProviderId.Claude, ContinueMode.Summary, ProviderId.Codex));
     }
 
@@ -157,8 +159,9 @@ public sealed class ResumeTargetTests
     }
 
     [Fact]
-    public void TheCopilotTargetIsDisabledByTheConstant()
+    public void TheCopilotTargetIsEnabledByTheConstant()
     {
-        Assert.False(ResumeTarget.CopilotTargetEnabled);
+        // PP-D2 (2026-11-23): the owner's direction is Copilot 1.0.104-3, so Copilot is a target.
+        Assert.True(ResumeTarget.CopilotTargetEnabled);
     }
 }

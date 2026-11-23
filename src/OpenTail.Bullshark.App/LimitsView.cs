@@ -1,3 +1,4 @@
+using OpenTail.Bullshark.Core.Copilot;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
@@ -45,6 +46,11 @@ public sealed class LimitsView : UserControl
     private readonly Grid _usageTable = new();
     private readonly Grid _projectTable = new();
     private readonly StackPanel _usageBlock = new();
+
+    /// <summary>The Copilot usage section (PP-D5): premium requests and model tokens per local day. Its own table, never in the token totals above.</summary>
+    private readonly StackPanel _copilotBlock = new();
+    private readonly TextBlock _copilotCaption = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 4) };
+    private readonly Grid _copilotTable = new();
 
     /// <summary>The line under the usage section that says how many Codex rollouts this build could not read (R8 part 2). Hidden when there are none.</summary>
     private readonly TextBlock _codexSkipped = new()
@@ -94,6 +100,15 @@ public sealed class LimitsView : UserControl
         _usageBlock.Children.Add(_projectTable);
         _usageBlock.Children.Add(_codexSkipped);
 
+        _copilotBlock.Children.Add(new TextBlock
+        {
+            Text = $"Copilot usage, last {LimitHistory.DefaultDays} days (local date)",
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 12, 0, 4),
+        });
+        _copilotBlock.Children.Add(_copilotCaption);
+        _copilotBlock.Children.Add(_copilotTable);
+
         var root = new StackPanel { Margin = new Thickness(12, 8, 12, 8) };
         // No page title here: the Insights tab's sub-tab row names the page (2026-11-18).
         root.Children.Add(_note);
@@ -102,6 +117,7 @@ public sealed class LimitsView : UserControl
         root.Children.Add(_tableBlock);
         root.Children.Add(_daysBlock);
         root.Children.Add(_usageBlock);
+        root.Children.Add(_copilotBlock);
         root.Children.Add(_footer);
         Content = new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     }
@@ -258,6 +274,27 @@ public sealed class LimitsView : UserControl
         };
         _bars.Add(bar);
         return bar;
+    }
+
+    /// <summary>
+    /// The Copilot usage (PP-D5): one row per local day, newest first: the sessions that ended that day, their premium requests, and their input and output
+    /// tokens. It is a separate table, because premium requests are Copilot's own unit and are not in the token totals above.
+    /// </summary>
+    public void ShowCopilot(CopilotUsageReport report)
+    {
+        Reset(_copilotTable, 5);
+        AddRow(_copilotTable, 0, bold: true, ["Day", "Sessions", "Premium requests", "Input tokens", "Output tokens"], lastTip: null);
+        for (var i = 0; i < report.Days.Count; i++)
+        {
+            var day = report.Days[i];
+            AddRow(_copilotTable, i + 1, bold: false,
+                [day.Day.ToString("yyyy-MM-dd ddd", CultureInfo.CurrentCulture), Count(day.Sessions), Count(day.PremiumRequests), Count(day.InputTokens), Count(day.OutputTokens)],
+                lastTip: null);
+        }
+        var lead = report.Days.Count == 0
+            ? $"No Copilot usage in the last {LimitHistory.DefaultDays} days."
+            : "Premium requests are Copilot's own unit; they are not in the token totals above.";
+        _copilotCaption.Text = report.SkippedFiles == 0 ? lead : $"{lead} {report.SkippedFiles} session file(s) could not be read.";
     }
 
     /// <summary>

@@ -233,16 +233,21 @@ public sealed class CrossPlatformStartTextTests
     }
 
     [Fact]
-    public async Task ACopilotTargetIsRefusedWithResumeTargetsReasonAndRunsNoCheck()
+    public async Task ACopilotTargetFromASummaryIsAllowedAndAFullStartIsRefusedWithoutACheck()
     {
+        // PP-D2 (2026-11-23): Copilot is an enabled target, so a summary to Copilot is not refused here.
         var checks = 0;
 
         var refusal = await CrossPlatformStartText.RefusalBeforeSummaryAsync(
             ProviderId.Claude, ProviderId.Copilot, ContinueMode.Summary, () => { checks++; return Task.FromResult<string?>(null); });
+        Assert.Null(refusal);
 
-        Assert.Equal(ResumeTarget.RefusalReason(ProviderId.Claude, ContinueMode.Summary, ProviderId.Copilot), refusal);
-        Assert.NotNull(refusal);
-        Assert.Equal(0, checks);
+        var full = await CrossPlatformStartText.RefusalBeforeSummaryAsync(
+            ProviderId.Claude, ProviderId.Copilot, ContinueMode.Full, () => { checks++; return Task.FromResult<string?>(null); });
+        Assert.Equal(ResumeTarget.RefusalReason(ProviderId.Claude, ContinueMode.Full, ProviderId.Copilot), full);
+        Assert.NotNull(full);
+        // The allowed summary ran its check once; the refused full start ran none.
+        Assert.Equal(1, checks);
     }
 
     [Fact]

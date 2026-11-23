@@ -63,7 +63,8 @@ public static class CopilotSetupCheck
         ICliRunner startRunner,
         string? pathVariable = null,
         CancellationToken ct = default,
-        Action<string>? log = null)
+        Action<string>? log = null,
+        string? bundleRoot = null)
     {
         var path = pathVariable ?? Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
         var found = SetupCheck.FindOnPath("copilot", path, ProgramExtensions);
@@ -77,6 +78,7 @@ public static class CopilotSetupCheck
 
         // The terminal row: the copy that cmd.exe runs for a terminal tab. The version read is the same as before.
         var terminal = await ReadRowAsync("copilot", TerminalCopy, "bundled version", found, terminalRunner, VersionArguments, log, ct);
+        terminal = AcceptDownloadedBundle(terminal, bundleRoot, log);
 
         // The start row: the copy that a start from text runs. The launcher's script finds copilot.ps1 with Get-Command, the first one on PATH, which
         // is the one searched for here. Without it the start row warns, and the start route refuses to start anyway.
@@ -142,6 +144,20 @@ public static class CopilotSetupCheck
                 + "Update it, or remove the older copy from PATH.");
         }
         return (SetupState.Ok, $"{label} {version} (read with auto-update off)");
+    }
+
+    /// <summary>
+    /// The terminal row when the launcher's own copy is older than the flags but the newest downloaded bundle has them (PP-D2). The launcher runs that
+    /// bundle, so the row is Ok and names it. Any other row is returned unchanged. The log names the bundle version, never a path.
+    /// </summary>
+    private static SetupItem AcceptDownloadedBundle(SetupItem terminal, string? root, Action<string>? log)
+    {
+        if (root is null || terminal.State != SetupState.Problem) return terminal;
+        var bundle = CopilotBundles.NewestVersion(root);
+        if (bundle is null || !CopilotFlagsVersion.HasFlags(bundle)) return terminal;
+        var detail = $"runs the downloaded bundle {bundle}; the launcher's own copy is older and is not what the app's commands run";
+        log?.Invoke($"Copilot setup check, {TerminalCopy}: Ok. Runs the downloaded bundle {bundle}.");
+        return new SetupItem(terminal.Area, terminal.Name, SetupState.Ok, detail);
     }
 
     /// <summary>The row's detail: the status, then the path it is about, clipped at <see cref="MaxDetail"/>.</summary>

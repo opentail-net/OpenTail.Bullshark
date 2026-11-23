@@ -8,7 +8,7 @@ namespace OpenTail.Bullshark.Core.Copilot;
 /// no live list (G-D7), so the window hides those features for it through <see cref="ProviderFeatures.Has{T}"/>. The summary call is a separate
 /// class (<see cref="CopilotSummarizer"/>), not a provider interface.
 /// </summary>
-public sealed class CopilotProvider : IProvider, IHistorySource, ITranscriptReader, ITerminalOpener
+public sealed class CopilotProvider : IProvider, IHistorySource, ITranscriptReader, ITerminalOpener, IMessageTextSource
 {
     private readonly CopilotHistorySource _history;
     private readonly CopilotTranscriptReader _reader;
@@ -37,6 +37,10 @@ public sealed class CopilotProvider : IProvider, IHistorySource, ITranscriptRead
     /// <summary>A page of the session's messages (at most 5,000 in all).</summary>
     public Task<TranscriptPage> ReadPageAsync(string sessionId, int firstLine, int count, CancellationToken ct) =>
         _reader.ReadPageAsync(sessionId, firstLine, count, ct);
+
+    /// <summary>The text of every message of one session, in order, with no cap (PP-D4). The same messages as the Copilot tab, before its 5,000 limit.</summary>
+    public Task<IReadOnlyList<string>> MessageTextsAsync(string sessionId, CancellationToken ct) => Task.Run<IReadOnlyList<string>>(() =>
+        CopilotTranscriptReader.ReadSession(Paths, sessionId, ct, int.MaxValue).Select(line => line.Text).ToList(), ct);
 
     /// <summary>The command of a new Copilot tab, in <paramref name="folder"/> (G1.5).</summary>
     public string NewCommandLine(string folder) => _opener.NewCommandLine(folder);

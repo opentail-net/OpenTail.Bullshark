@@ -1,3 +1,4 @@
+using OpenTail.Bullshark.Core.Copilot;
 using System.Windows;
 using OpenTail.Bullshark.Core.Library;
 using OpenTail.Bullshark.Core.Providers;
@@ -19,6 +20,12 @@ public partial class SessionWindow
 
     /// <summary>The results of a Copilot search, shown in the Copilot results tab (<see cref="TabKind.CopilotSearchResults"/>).</summary>
     private readonly ProviderSearchView _copilotSearch = new ProviderSearchView("Copilot") { Visibility = Visibility.Hidden };
+
+    /// <summary>The message texts the Copilot search has read (PP-D4), by session. Read once per activity time.</summary>
+    private readonly MessageTextCache _copilotMessages = new();
+
+    /// <summary>Counts the Copilot searches, so a message read that ends for an older query does not replace the newer results (PP-D4).</summary>
+    private int _copilotSearchVersion;
 
     /// <summary>Puts the Copilot results view in the pane and connects it: a result opens its Copilot transcript.</summary>
     private void InitCopilotSearch()
@@ -43,27 +50,47 @@ public partial class SessionWindow
             return;
         }
 
-        var rows = CopilotSearchRows(query);
+        var version = ++_copilotSearchVersion;
+        var known = _copilotMessages.Known(_copilotSessions);
+        var rows = CopilotSearchRows(query, known);
         var tab = _tabs.FirstOrDefault(t => t.Kind == TabKind.CopilotSearchResults)
             ?? AddTab(TabKind.CopilotSearchResults, CopilotSearchKey, string.Empty, ProviderId.Copilot);
         tab.Title = "Copilot search: " + ShortenForTab(query, 28);
         SetActive(tab);
         ShowOnly(_copilotSearch);
         _copilotSearch.ShowResults(query, rows);
-        // The log holds the counts only: the query, the titles, the names, the tags and the notes stay out of it.
-        AppLog.Write($"copilot search: {rows.Count} of {_copilotSessions.Count} sessions match");
-        SetStatus(rows.Count == 0
+        ReportCopilotSearch(query, rows.Count);
+        // Sessions whose messages are not read yet are read now; the results are then shown again with their message matches (PP-D4).
+        if (known.Count < _copilotSessions.Count) _ = CompleteCopilotSearchAsync(query, version);
+    }
+
+    /// <summary>Shows the message matches of a Copilot search once every session's messages are read, when the query is still the newest one (PP-D4).</summary>
+    private async Task CompleteCopilotSearchAsync(string query, int version)
+    {
+        var texts = await _copilotMessages.LoadAllAsync(_copilotSessions, _copilot ??= new CopilotProvider(), CancellationToken.None);
+        if (version != _copilotSearchVersion || !_tabs.Any(t => t.Kind == TabKind.CopilotSearchResults)) return;
+        var rows = CopilotSearchRows(query, texts);
+        _copilotSearch.ShowResults(query, rows);
+        ReportCopilotSearch(query, rows.Count);
+    }
+
+    /// <summary>The log holds the counts only; the status line names the query.</summary>
+    private void ReportCopilotSearch(string query, int matches)
+    {
+        AppLog.Write($"copilot search: {matches} of {_copilotSessions.Count} sessions match");
+        SetStatus(matches == 0
             ? $"No Copilot session matches \"{query}\"."
-            : $"{rows.Count} of {_copilotSessions.Count} Copilot sessions match \"{query}\". Newest first.");
+            : $"{matches} of {_copilotSessions.Count} Copilot sessions match \"{query}\". Newest first.");
     }
 
     /// <summary>
     /// The Copilot sessions a query matches, newest first, as the results view's rows. Archived and pinned sessions are searched too.
     /// </summary>
-    private List<ProviderSearchRow> CopilotSearchRows(string query) =>
+    private List<ProviderSearchRow> CopilotSearchRows(string query, IReadOnlyDictionary<string, IReadOnlyList<string>> texts) =>
         _copilotSessions
             .Select(session => (session, mark: MarkOf(ProviderId.Copilot, session.Key.SessionId)))
-            .Where(pair => ProviderSearch.Matches(query, pair.session.Title, pair.mark?.Name, pair.mark?.Tags, pair.mark?.Note))
+            .Where(pair => ProviderSearch.Matches(query, pair.session.Title, pair.mark?.Name, pair.mark?.Tags, pair.mark?.Note,
+                texts.TryGetValue(pair.session.Key.SessionId, out var messages) ? messages : null))
             .OrderByDescending(pair => pair.session.LastActivity ?? DateTimeOffset.MinValue)
             .Select(pair => new ProviderSearchRow(
                 pair.session,

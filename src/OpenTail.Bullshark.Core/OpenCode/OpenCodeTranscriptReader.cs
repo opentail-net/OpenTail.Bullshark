@@ -10,7 +10,7 @@ namespace OpenTail.Bullshark.Core.OpenCode;
 /// empty page; the id is checked before the database is opened. A message or part row whose data is not valid JSON is left out (json_valid), and the rest
 /// of the transcript is read.
 /// </summary>
-public sealed class OpenCodeTranscriptReader(DatabasePath location) : ITranscriptReader
+public sealed class OpenCodeTranscriptReader(DatabasePath location) : ITranscriptReader, IMessageTextSource
 {
     /// <summary>The most lines a transcript shows: the shared cap (<see cref="TranscriptLimits.MaxMessages"/>).</summary>
     public const int MaxLines = TranscriptLimits.MaxMessages;
@@ -36,6 +36,37 @@ public sealed class OpenCodeTranscriptReader(DatabasePath location) : ITranscrip
         var lines = ReadLines(sessionId, ct);
         var start = Math.Min(Math.Max(0, firstLine), lines.Count);
         return new TranscriptPage(lines.Skip(start).Take(Math.Max(0, count)).ToList(), start, null);
+    }, ct);
+
+    /// <summary>
+    /// The text of every text part of every message of the session, in order, with no cap (PP-D4). Synthetic parts are left out, as in the transcript. An
+    /// unsafe id gives no texts; a database that is not read gives no texts (the same rule as the transcript).
+    /// </summary>
+    public Task<IReadOnlyList<string>> MessageTextsAsync(string sessionId, CancellationToken ct) => Task.Run<IReadOnlyList<string>>(() =>
+    {
+        if (!OpenCodeSessionId.IsValid(sessionId)) return [];
+        var (_, connection) = OpenCodeDatabase.Open(location);
+        if (connection is null) return [];
+
+        try
+        {
+            using (connection)
+            {
+                var messages = ReadMessages(connection, sessionId, ct);
+                var textParts = ReadTextParts(connection, sessionId, ct);
+                var texts = new List<string>();
+                foreach (var (messageId, kind) in messages)
+                {
+                    if (kind is null || !textParts.TryGetValue(messageId, out var parts)) continue;
+                    texts.AddRange(parts);
+                }
+                return texts;
+            }
+        }
+        catch (Exception e) when (e is SqliteException or IOException or UnauthorizedAccessException)
+        {
+            return [];
+        }
     }, ct);
 
     private static TranscriptPage EmptyPage() => new([], 0, null);

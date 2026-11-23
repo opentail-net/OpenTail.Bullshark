@@ -22,8 +22,6 @@ public sealed class TargetChooserTests
 {
     private const string TailText = "you: an example message\nreply: an example reply";
 
-    /// <summary>The text the Copilot item shows as its tooltip while Copilot is not enabled as a target (RS-D8, ResumeTarget.CopilotTargetEnabled).</summary>
-    private const string CopilotRefusal = "Copilot cannot be the target yet: the Copilot install that runs is not confirmed (G-O5).";
 
     /// <summary>The tooltip of the narrow part of the Start split button in a summary (RS-D2).</summary>
     private const string MenuTipInSummary = "Start in another platform: only from a summary";
@@ -106,7 +104,8 @@ public sealed class TargetChooserTests
     /// The item is on in a summary where the rule allows it: the screen's own platform always, and another one unless it is Copilot, which is refused while
     /// Copilot is not enabled as a target (RS-D1, RS-D2, RS-D8).
     /// </summary>
-    private static bool OnInASummary(ProviderId source, ProviderId platform) => platform == source || platform != ProviderId.Copilot;
+    private static bool OnInASummary(ProviderId source, ProviderId platform) =>
+        platform == source || platform != ProviderId.Copilot || ResumeTarget.CopilotTargetEnabled;
 
     /// <summary>
     /// The Start menu is on only in a summary (RS-D2). Outside one, every platform item is off. On the Codex and Copilot screens the narrow part of the
@@ -147,7 +146,8 @@ public sealed class TargetChooserTests
             Assert.True(item.IsCheckable);
             Assert.Equal(OnInASummary(source, platform), item.IsEnabled);
         }
-        Assert.Equal(source == ProviderId.Copilot ? null : CopilotRefusal, (string?)ItemOf(window, ProviderId.Copilot).ToolTip);
+        // PP-D2 (2026-11-23): Copilot is an enabled target, so no item carries a refusal tooltip.
+        Assert.Null((string?)ItemOf(window, ProviderId.Copilot).ToolTip);
     }
 
     /// <summary>The default pick is the screen's own platform, and it is the one checked item (RS-D3).</summary>
@@ -242,7 +242,7 @@ public sealed class TargetChooserTests
     }
 
     [Fact]
-    public void TheClaudeStartMenuOffersTheThreePlatformsAndCopilotIsRefused()
+    public void TheClaudeStartMenuOffersTheThreePlatformsAndCopilotIsEnabled()
     {
         UiThread.Run(() => AssertThreePlatforms(NewClaudePrompt(ContinueMode.Summary), ProviderId.Claude));
     }
@@ -285,7 +285,7 @@ public sealed class TargetChooserTests
     }
 
     [Fact]
-    public void TheCodexStartMenuOffersTheThreePlatformsAndCopilotIsRefused()
+    public void TheCodexStartMenuOffersTheThreePlatformsAndCopilotIsEnabled()
     {
         UiThread.Run(() => AssertThreePlatforms(NewCodexPrompt(ContinueMode.Summary), ProviderId.Codex));
     }

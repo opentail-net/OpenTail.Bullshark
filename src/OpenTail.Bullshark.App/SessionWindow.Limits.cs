@@ -1,3 +1,4 @@
+using OpenTail.Bullshark.Core.Copilot;
 using System.Windows;
 using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Codex;
@@ -47,6 +48,12 @@ public partial class SessionWindow
             var projects = report.Usage.Projects.Select(project => project.Project);
             var tops = report.Usage.Days.Select(day => day.TopProject).OfType<string>();
             _limits.Show(report, FolderLabelsFor(projects.Concat(tops)));
+
+            // The Copilot usage (PP-D5) is read from its own history folder and drawn in its own table: nothing is added to the token totals above.
+            var copilotRoot = (_copilot ??= new CopilotProvider()).Paths.HistoryRoot;
+            var copilot = await Task.Run(() =>
+                CopilotUsageReader.Read(copilotRoot, DateTimeOffset.Now, LimitHistory.DefaultDays, CancellationToken.None));
+            _limits.ShowCopilot(copilot);
         }
         catch (Exception ex) when (StoreErrors.IsExpected(ex))
         {

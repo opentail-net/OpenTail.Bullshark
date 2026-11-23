@@ -1,3 +1,4 @@
+using OpenTail.Bullshark.Core.Codex;
 using System.Windows;
 using OpenTail.Bullshark.Core.Library;
 using OpenTail.Bullshark.Core.Providers;
@@ -20,6 +21,12 @@ public partial class SessionWindow
 
     /// <summary>The results of a Codex search, shown in the Codex results tab (<see cref="TabKind.CodexSearchResults"/>).</summary>
     private readonly ProviderSearchView _codexSearch = new ProviderSearchView("Codex") { Visibility = Visibility.Hidden };
+
+    /// <summary>The message texts the Codex search has read (PP-D4), by session. Read once per activity time.</summary>
+    private readonly MessageTextCache _codexMessages = new();
+
+    /// <summary>Counts the Codex searches, so a message read that ends for an older query does not replace the newer results (PP-D4).</summary>
+    private int _codexSearchVersion;
 
     /// <summary>True once the <c>--codex-search</c> screenshot has set the box, so it is set once.</summary>
     private bool _codexSearchShotSet;
@@ -48,28 +55,48 @@ public partial class SessionWindow
             return;
         }
 
-        var rows = CodexSearchRows(query);
+        var version = ++_codexSearchVersion;
+        var known = _codexMessages.Known(_codexSessions);
+        var rows = CodexSearchRows(query, known);
         var tab = _tabs.FirstOrDefault(t => t.Kind == TabKind.CodexSearchResults)
             ?? AddTab(TabKind.CodexSearchResults, CodexSearchKey, string.Empty, ProviderId.Codex);
         tab.Title = "Codex search: " + ShortenForTab(query, 28);
         SetActive(tab);
         ShowOnly(_codexSearch);
         _codexSearch.ShowResults(query, rows);
-        // The log holds the counts only: the query, the titles, the names, the tags and the notes stay out of it (S6-D1).
-        AppLog.Write($"codex search: {rows.Count} of {_codexSessions.Count} sessions match");
-        SetStatus(rows.Count == 0
+        ReportCodexSearch(query, rows.Count);
+        // Sessions whose messages are not read yet are read now; the results are then shown again with their message matches (PP-D4).
+        if (known.Count < _codexSessions.Count) _ = CompleteCodexSearchAsync(query, version);
+    }
+
+    /// <summary>Shows the message matches of a Codex search once every session's messages are read, when the query is still the newest one (PP-D4).</summary>
+    private async Task CompleteCodexSearchAsync(string query, int version)
+    {
+        var texts = await _codexMessages.LoadAllAsync(_codexSessions, _codex ??= new CodexProvider(), CancellationToken.None);
+        if (version != _codexSearchVersion || !_tabs.Any(t => t.Kind == TabKind.CodexSearchResults)) return;
+        var rows = CodexSearchRows(query, texts);
+        _codexSearch.ShowResults(query, rows);
+        ReportCodexSearch(query, rows.Count);
+    }
+
+    /// <summary>The log holds the counts only, and the status line names the query (S6-D1).</summary>
+    private void ReportCodexSearch(string query, int matches)
+    {
+        AppLog.Write($"codex search: {matches} of {_codexSessions.Count} sessions match");
+        SetStatus(matches == 0
             ? $"No Codex session matches \"{query}\"."
-            : $"{rows.Count} of {_codexSessions.Count} Codex sessions match \"{query}\". Newest first.");
+            : $"{matches} of {_codexSessions.Count} Codex sessions match \"{query}\". Newest first.");
     }
 
     /// <summary>
     /// The Codex sessions a query matches, newest first, as the results view's rows (S6-D1). Archived and pinned sessions are searched too (S6-D2). Each
     /// row's title, folder and time are those of the Codex row. Subagent sessions are searched as the rail lists them.
     /// </summary>
-    private List<ProviderSearchRow> CodexSearchRows(string query) =>
+    private List<ProviderSearchRow> CodexSearchRows(string query, IReadOnlyDictionary<string, IReadOnlyList<string>> texts) =>
         _codexSessions
             .Select(session => (session, mark: MarkOf(ProviderId.Codex, session.Key.SessionId)))
-            .Where(pair => ProviderSearch.Matches(query, pair.session.Title, pair.mark?.Name, pair.mark?.Tags, pair.mark?.Note))
+            .Where(pair => ProviderSearch.Matches(query, pair.session.Title, pair.mark?.Name, pair.mark?.Tags, pair.mark?.Note,
+                texts.TryGetValue(pair.session.Key.SessionId, out var messages) ? messages : null))
             .OrderByDescending(pair => pair.session.LastActivity ?? DateTimeOffset.MinValue)
             .Select(pair => new ProviderSearchRow(
                 pair.session,
