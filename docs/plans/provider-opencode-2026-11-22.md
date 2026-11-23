@@ -155,3 +155,10 @@ Read from the program's code (`opencode-windows-x64\bin\opencode.exe`, grep only
 
 Decisions changed by these results: OC-D5 (ignored parts kept), OC-D8 (the derived id check), OC-D10 (summary with every tool denied through the inline configuration, empty output is a failure).
 Still not verifiable without running: the real exit codes, the effective permissions under the owner's configuration and stored approvals, and whether the stdin read blocks in practice.
+
+## 11. Decisions taken while the owner was away (2026-11-23, AFK)
+
+- **OC-D18 opencode is not a cross-platform target in this version.** A session in another platform can be started from a summary of an opencode session (the summary is off, see OC-D19), but no start route into opencode is built for a cross start. The target chooser offers the three existing platforms only. Reason: the start route for a cross start is the owner's Start press with a summary; without a summary there is nothing to send, and the summary is off.
+- **OC-D19 The summary stays off until the owner decides OC-O4.** The summary path is built in stage OC3 and its control is disabled, with the reason shown ("the summary is off until the owner decides where it is written"). Reason: OC-O4 is an owner decision and the summary is one model call on the owner's login.
+- **OC-D20 Start from text stays on (OC-O5 default).** Last turns starts a session with the transcript as the prompt, and the cost line says it makes one model turn before Start is pressed. Reason: the default in OC-O5, accepted in the plan.
+- **Scope of OC2 (window wiring):** the rail, search, transcript, exit watch, setup row and the provider choice are wired as the Copilot provider is. The shared window files are changed only by branches for opencode. The resume screen is stage OC2b.
