@@ -126,19 +126,9 @@ public partial class SessionWindow
     /// <summary>
     /// Deletes the start files that are more than a day old (R-D8, R3). A folder or file that cannot be read is logged, and the screen opens all the same.
     /// </summary>
-    private void RemoveOldStartsQuietly()
-    {
-        try
-        {
-            var removed = CodexStartLauncher.RemoveOldStarts(
-                CodexStartLauncher.StartsFolderBeside(_options.StatePath), TimeSpan.FromDays(1), DateTimeOffset.Now);
-            if (removed > 0) AppLog.Write($"old codex start files removed: {removed}");
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            AppLog.Write($"old codex start files not removed: {ex.GetType().Name}");
-        }
-    }
+    private void RemoveOldStartsQuietly() => ResumeStartFiles.RemoveOldStartsQuietly(
+        _options.StatePath, "codex", CodexStartLauncher.StartsFolderBeside,
+        folder => CodexStartLauncher.RemoveOldStarts(folder, TimeSpan.FromDays(1), DateTimeOffset.Now));
 
     /// <summary>
     /// The start text of a Codex resume for a choice, built by one method for the preview and for the start. The messages are read off the UI thread.
@@ -245,23 +235,10 @@ public partial class SessionWindow
     /// name and path are not logged: the session's title can hold the owner's words. A file that cannot be written is logged by type, and the
     /// summary is still used. Returns true when the file was written.
     /// </summary>
-    private async Task<bool> SaveCodexSummaryFileAsync(SessionSummary session, SummaryLevel level, string summary)
-    {
-        var folder = SummaryFiles.FolderBeside(_options.StatePath);
-        var title = CodexRowTitle(MarkOf(ProviderId.Codex, session.Key.SessionId)?.Name, session);
-        var id = session.Key.SessionId;
-        try
-        {
-            await Task.Run(() => SummaryFiles.Save(folder, title, level, id, summary, DateTimeOffset.Now));
-            AppLog.Write($"codex summary saved as a file: {summary.Length:N0} characters");
-            return true;
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            AppLog.Write($"codex summary not saved as a file: {ex.GetType().Name}");
-            return false;
-        }
-    }
+    private Task<bool> SaveCodexSummaryFileAsync(SessionSummary session, SummaryLevel level, string summary) =>
+        ResumeStartFiles.SaveSummaryAsync(
+            _options.StatePath, "codex", CodexRowTitle(MarkOf(ProviderId.Codex, session.Key.SessionId)?.Name, session),
+            level, session.Key.SessionId, summary);
 
     /// <summary>
     /// Starts the text the preview showed, in a new Codex terminal tab (R6). The text is <paramref name="text"/>, as shown: it is not built again. The tab
