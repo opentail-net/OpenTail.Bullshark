@@ -21,6 +21,18 @@ public sealed class SingleInstanceTests
         return result;
     }
 
+    /// <summary><see cref="TryFromOtherThread"/> that also gives the reason when the name is not taken, for a failure message.</summary>
+    private static SingleInstance? TryFromOtherThreadWithReason(string name, out string? problem)
+    {
+        SingleInstance? result = null;
+        string? reason = null;
+        var thread = new Thread(() => result = SingleInstance.TryAcquire(name, out reason));
+        thread.Start();
+        thread.Join();
+        problem = reason;
+        return result;
+    }
+
     [Fact]
     public void ASecondAcquireOfTheSameNameFails()
     {
@@ -66,9 +78,21 @@ public sealed class SingleInstanceTests
         holder.Start();
         holder.Join();
 
-        using var taken = TryFromOtherThread(name);
-
-        Assert.NotNull(taken);
+        // The thread has ended, but the operating system may take a moment to mark the mutex abandoned: a null read here is that moment. The read is
+        // retried for up to two seconds, and the last reason is named if the name never comes free (the flake seen once in a full run, 2026-11-23).
+        SingleInstance? taken = null;
+        string? problem = null;
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(2);
+        do
+        {
+            taken = TryFromOtherThreadWithReason(name, out problem);
+            if (taken is null) Thread.Sleep(20);
+        }
+        while (taken is null && DateTime.UtcNow < deadline);
+        using (taken)
+        {
+            Assert.True(taken is not null, $"the abandoned name was not taken: {problem ?? "no reason was given"}");
+        }
     }
 
     [Theory]
