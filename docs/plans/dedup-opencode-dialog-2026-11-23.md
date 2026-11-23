@@ -1,6 +1,6 @@
 # Dedup: the OpenCode resume dialog onto the shared screen (2026-11-23)
 
-Status: plan, not started. Top-10 item 9. It follows the Codex and Copilot migration (`dedup-resume-dialogs-2026-11-23.md`, done). That plan left OpenCode out because the dialog is not a close copy of Copilot.
+Status: O-S1 and O-S2 done on 2026-11-23 (commits 1e2e4f1 and 9a89d76), in the revised scope below. O-S3 is the owner's decisions (D2 to D5), and O-S6 is the owner's check. Top-10 item 9. It follows the Codex and Copilot migration (`dedup-resume-dialogs-2026-11-23.md`, done). That plan left OpenCode out because the dialog is not a close copy of Copilot.
 
 Goal: the OpenCode screen uses `ProviderResumeScreen` for the logic it shares with the other screens, and keeps what is opencode's own. No change to what the screen shows or does.
 
@@ -42,22 +42,33 @@ Goal: the OpenCode screen uses `ProviderResumeScreen` for the logic it shares wi
 | Summary running line | "Making the summary: one X call" | `SummaryRunningLine` | the working line from a hook |
 | Mode enum | `OpenCodeResumeMode` | same members | map to `ProviderResumeMode` (as the other two do) |
 
-## Design
+## Revision (2026-11-23): the first design does not hold
 
-- Extend `IProviderResumeScreenHooks<TChoice>` with optional members, each with a default that gives today's shared behaviour: `bool HasTarget` (default true); `string? CostLine(ProviderResumeMode)`; `bool? RunsAtOnce(...)`; `bool? CanStart(...)`; `string? WorkingLine(...)`. Copilot and Codex keep the defaults, so they do not change.
-- `IProviderPreview.KeptSummary` becomes nullable-by-convention: an OpenCode preview returns null for it. The presenter already handles null.
-- OpenCode's `TChoice` has no target: its `WithTarget` returns `this`.
-- Keep `OpenCodeResumeRules` as the source of the words. The hooks call it; nothing moves out of it.
+The design first written here (optional hooks on the shared presenter) was checked against the dialog in full, and it does not fit. Five places in the OpenCode dialog differ in behaviour, not only in names. A hook for each would change what the screen does, and the plan says the screen must not change:
+
+1. **Failed summary.** Copilot and Codex fall back to In full when a summary fails (`ShowFailedSummary`). OpenCode shows the problem and stays on Summary.
+2. **Busy.** Copilot and Codex turn the whole screen off (choices, turns, Copy, Start) while a summary is made. OpenCode turns off only Make summary, and only while any request runs (`_cts is null`). Its Start is not gated by busy.
+3. **Summary can start.** OpenCode's `CanStart(Summary)` is `previewReady`, because it keeps no summary. The shared rule also needs a kept summary, so the presenter would never let an OpenCode summary start.
+4. **Level buttons.** OpenCode's three level radios are written in its XAML (`MinimalLevel`, `NormalLevel`, `CompleteLevel`). The other screens build theirs in code.
+5. **Cost line.** OpenCode adds the last-turns line once a summary is shown. The others do not.
+
+What is identical in all four screens is the **preview pane**: `ShowPreview`, `ShowMessage`, `HidePreview`, `Copy`, and the `Enable` helper. The revised scope moves those into one class. OpenCode keeps its own gating, fallback, level and cost logic.
+
+## Design (revised)
+
+- `ResumePreviewPane` (App): holds the shown text (null when there is none) and the preview's four controls. Methods: `Show(text, sizeLine)`, `ShowMessage(message, problem)`, `Hide()`, `Copy()`. The code is moved, not changed.
+- `ResumeScreenElements.Enable(element, enabled)`: the same helper, moved.
+- The presenter (Copilot and Codex) uses the pane. Its behaviour does not change.
+- OpenCode uses the pane. Its gating, fallback, level and cost logic stay as they are.
 
 ## Steps (checkboxes, with why)
 
-- [ ] O-S1. Add the optional hooks with defaults that reproduce the shared behaviour. Build, and run the App tests: they must still pass unchanged. Why: the presenter changes before any OpenCode code does.
-- [ ] O-S2. Make `OpenCodeResumeChoice` and `OpenCodePreview` implement the interfaces (`SharedMode` maps `OpenCodeResumeMode` as the other rules classes do). No behaviour change. Why: the same shape as the other two.
-- [ ] O-S3. `OpenCodeResumePrompt` builds the presenter, with `HasTarget = false`, its cost, run and can-start hooks, and no kept summary. Keep the window's handlers (the Start, Cancel and Copy clicks, and the mode radio buttons if they differ). Why: the screen moves onto the shared logic.
-- [ ] O-S4. Keep the public surface: `Choice`, `PreviewText`, `OpenCodeTitle`, `OpenCodeStartText`, the constructor. Why: the contracts table.
-- [ ] O-S5. Tests: `OpenCodeResumePromptTests`, `OpenCodeResumeRulesTests`, `OpenCodeWindowHelpersTests`, and the rest of the App suite pass unchanged. Why: the tests are the check that the screen still behaves the same.
-- [ ] O-S6. Line count and diff: record them in this file, as the dialog plan did. Why: the saving has to be real.
-- [ ] O-S7. Live check (owner): the opencode resume screen at the PC: the three modes, the cost lines, the Start gate, Copy. Not run here.
+- [x] O-S1. Move the preview pane and `Enable` into `ResumePreviewPane.cs`. The presenter uses them. App tests pass unchanged. Why: the same code in one place, with the Copilot and Codex tests as the check.
+- [x] O-S2. OpenCode uses the pane for its preview, message, hide and copy, and the shared `Enable`. Its gating, fallback, level and cost logic stay. App tests pass unchanged. Why: removes the copy without changing the screen.
+- [x] O-S3. The differences are recorded as owner decisions D2 to D5. The fifth difference, the level buttons written in OpenCode's XAML, changes no behaviour and needs no decision. Not changed. Why: each of D2 to D5 is a choice about what the screen should do, not a refactor.
+- [x] O-S4. Line counts before and after, recorded below. Why: the saving has to be real.
+- [x] O-S5. Build, run the App tests on net10.0 and net11.0, commit, and push when they pass. Why: the normal gate.
+- [ ] O-S6. Live check (owner): the opencode resume screen at the PC: the three modes, the cost lines, the Start gate, Copy. Not run here.
 
 ## Not in this plan
 
@@ -67,3 +78,15 @@ Goal: the OpenCode screen uses `ProviderResumeScreen` for the logic it shares wi
 ## Decisions for the owner
 
 - D1. Is the OpenCode summary still not kept (OC-O4)? This plan assumes yes. If the owner wants it kept, `KeptSummary` must be kept for opencode too, and that is a behaviour change, not a refactor.
+- D2. A failed summary. OpenCode shows the problem and stays on Summary. Copilot and Codex fall back to In full. Keep OpenCode's behaviour (the default), or align it with the other two?
+- D3. Busy gating. Copilot and Codex turn the whole screen off while a summary is made. OpenCode turns off only Make summary, and only while any request runs. Keep (default), or align?
+- D4. A summary's start. On OpenCode a summary can start on its preview alone, because it keeps no summary. The shared rule needs a kept summary. This is the same question as D1: it stays as it is unless D1 changes.
+- D5. The cost line. OpenCode adds the last-turns line once a summary is shown; the other screens do not. Keep (default), or align?
+
+## Results (2026-11-23)
+
+- **O-S1 (1e2e4f1).** `ResumePreviewPane` (Show, ShowMessage, Hide, Copy) and `ResumeScreenElements.Enable` move out of the shared presenter, unchanged. `ResumePreviewPaneTests` (5) check each one on the WPF thread, so the Copy path has a test of its own. App: 688 passed on net10.0 and net11.0.
+- **O-S2 (9a89d76).** The OpenCode dialog uses the pane and the shared `Enable`. Its gating, fallback, level and cost logic are untouched. App: 688 passed on net10.0 and net11.0.
+- **Line counts.** OpenCode dialog 326 → 284. Shared presenter 525 → 484. The new pane file is 92 lines, with its docs and the `Enable` helper. The total is about nine lines higher. The gain is one copy of the preview pane, not fewer lines.
+- **Not done, by design:** the presenter hooks in the first design (see Revision). Doing them would change behaviour: D2 to D5 above.
+- **O-S6 (owner):** the opencode resume screen at the PC: the three modes, the cost lines, the Start gate, Copy. Not run here.
