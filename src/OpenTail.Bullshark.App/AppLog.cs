@@ -1,4 +1,5 @@
 using System.IO;
+using OpenTail.Bullshark.Core.Storage;
 
 namespace OpenTail.Bullshark.App;
 
@@ -52,9 +53,8 @@ public static class AppLog
     {
         try
         {
-            var info = new FileInfo(path);
-            if (!info.Exists || info.Length <= MaxBytes) return;
-            File.Move(path, path + ".1", overwrite: true);
+            // Over MaxBytes is the same rule as at least MaxBytes + 1 whole bytes (the shared rule is "at least").
+            _ = LogRotation.RotateIfAtLeast(path, path + ".1", MaxBytes + 1);
         }
         catch (Exception)
         {

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using OpenTail.Bullshark.Core.Storage;
 
 namespace OpenTail.Bullshark.Core.Supervisor;
 
@@ -63,8 +64,8 @@ public sealed class EventLog : IEventSink
         if (!string.IsNullOrEmpty(folder)) Directory.CreateDirectory(folder);
 
         using var _ = FileLock.Hold(FilePath);
-        var current = new FileInfo(FilePath);
-        if (current.Exists && current.Length >= _rotateBytes) TryRotate();
+        var failure = LogRotation.RotateIfAtLeast(FilePath, RotatedFilePath, _rotateBytes);
+        if (failure is not null) ReportRotationFailure(failure);
         // A write that was cut off leaves a last line with no newline. The new event would be glued onto it and lost with it, so the
         // cut-off line is ended first; the reader then skips that line alone (round 5 item 5).
         var prefix = EndsWithoutNewline(FilePath) ? "\n" : string.Empty;
@@ -72,22 +73,15 @@ public sealed class EventLog : IEventSink
     }
 
     /// <summary>
-    /// Moves the current file to the rotated one. When the rotated file cannot be replaced (another program holds it, or it is denied), the
-    /// current file stays as it is and goes on taking the events, so none is lost; the failure is said once (round 5 item 18). Before, the
-    /// failure stopped every later event, until the owner removed the rotated file.
+    /// Says a failed rotation, once. The rotation itself is <see cref="LogRotation.RotateIfAtLeast"/>: when the rotated file cannot be replaced (another
+    /// program holds it, or it is denied), the current file stays as it is and goes on taking the events, so none is lost; the failure is said once
+    /// (round 5 item 18). Before, the failure stopped every later event, until the owner removed the rotated file.
     /// </summary>
-    private void TryRotate()
+    private void ReportRotationFailure(Exception ex)
     {
-        try
-        {
-            File.Move(FilePath, RotatedFilePath, overwrite: true);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            if (_rotationFailureLogged) return;
-            _rotationFailureLogged = true;
-            _log?.Invoke($"events: not rotated, so the log keeps growing: {ex.GetType().Name}");
-        }
+        if (_rotationFailureLogged) return;
+        _rotationFailureLogged = true;
+        _log?.Invoke($"events: not rotated, so the log keeps growing: {ex.GetType().Name}");
     }
 
     /// <summary>True when the file has bytes and its last byte is not a newline. A missing or empty file is not.</summary>
