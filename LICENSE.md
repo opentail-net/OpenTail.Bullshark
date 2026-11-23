@@ -17,6 +17,8 @@ The project is not a derivative work of Claude Code, GitHub Copilot CLI or the C
 
 No code, schema, bundled file, icon or test fixture is taken from those tools or their packages. Test data is written by hand. Other projects studied for design were read for ideas only, and no code from them is included.
 
+The coding you perform uses the tools you have. OpenTail.Bullshark does not code for you. What you do in the terminals is your choice, and so you are encouraged to code (and back up) responsibly.
+
 Questions or concerns about any of this can be raised on the project's issue tracker: https://github.com/opentail-net/OpenTail
 
 This section does not change the terms below.
