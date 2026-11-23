@@ -1,6 +1,6 @@
 # Dedup: the three process runners (2026-11-23)
 
-Status: plan, not started. Found by the project-wide duplication review of 2026-11-23. Item 3 of that review (the summary call) is done (commit aae96ef).
+Status: S1 to S7 done on 2026-11-23 (commits 088f318 to dca8906); S8, the push, is done with them. Results at the end. Found by the project-wide duplication review of 2026-11-23. Item 3 of that review (the summary call) is done (commit aae96ef).
 
 Goal: one place for the process set-up and the kill-the-tree step that `ProcessCliRunner`, `ProcessGitRunner` and `CodexModelList` each repeat. No change to what any caller receives.
 
@@ -30,14 +30,14 @@ Goal: one place for the process set-up and the kill-the-tree step that `ProcessC
 
 ## Steps (checkboxes, with why)
 
-- [ ] S1. Add `Core/Processes/ProcessLaunch.cs` with `Create` and `Kill`. Why first: no caller changes yet, so it can be reviewed alone.
-- [ ] S2. Tests `Core.Tests/Processes/ProcessLaunchTests.cs`: `Create` gives the redirects, `UseShellExecute` false, the encodings passed in, and the arguments in order; `Kill` on a process that has already exited does not throw. Why: pins the helper before callers use it.
-- [ ] S3. `ProcessGitRunner`: `StartInfo` builds through `Create` (same argument list, same environment); `Stop` calls `Kill`. Why: the static `StartInfo` must keep its test passing unchanged. Add an assertion that the argument list and the environment keys are the same as before.
-- [ ] S4. `ProcessCliRunner`: `Create` for the start info, `Kill` in the timeout and cancel path. Why: the timeout path is the one that changes (D1).
-- [ ] S5. `CodexModelList`: `Start()` uses `Create` with `redirectStandardInput: true`, input encoding UTF-8 without a byte-order mark; `StopTree` calls `Kill`. Why: keeps its no-byte-order-mark encoding exactly.
-- [ ] S6. Contract test: a missing executable name gives the three conventions: `ProcessCliRunner` throws `Win32Exception`; `ProcessGitRunner` returns `GitOutput` with exit -1 and "git could not be started"; `CodexModelList.ReadAsync` returns `NotStarted`. Why: this is the test that a later refactor would break first.
-- [ ] S7. Build Core and App, run Core tests (net10.0 and net11.0) and App tests. Record the counts. Baseline at the start of this plan: Core 3368, App 681.
-- [ ] S8. Commit per step. Push only when S7 passes.
+- [x] S1. Add `Core/Processes/ProcessLaunch.cs` with `Create` and `Kill`. Why first: no caller changes yet, so it can be reviewed alone.
+- [x] S2. Tests `Core.Tests/Processes/ProcessLaunchTests.cs`: `Create` gives the redirects, `UseShellExecute` false, the encodings passed in, and the arguments in order; `Kill` on a process that has already exited does not throw. Why: pins the helper before callers use it.
+- [x] S3. `ProcessGitRunner`: `StartInfo` builds through `Create` (same argument list, same environment); `Stop` calls `Kill`. Why: the static `StartInfo` must keep its test passing unchanged. Add an assertion that the argument list and the environment keys are the same as before.
+- [x] S4. `ProcessCliRunner`: `Create` for the start info, `Kill` in the timeout and cancel path. Why: the timeout path is the one that changes (D1).
+- [x] S5. `CodexModelList`: `Start()` uses `Create` with `redirectStandardInput: true`, input encoding UTF-8 without a byte-order mark; `StopTree` calls `Kill`. Why: keeps its no-byte-order-mark encoding exactly.
+- [x] S6. Contract test: a missing executable name gives the three conventions: `ProcessCliRunner` throws `Win32Exception`; `ProcessGitRunner` returns `GitOutput` with exit -1 and "git could not be started"; `CodexModelList.ReadAsync` returns `NotStarted`. Why: this is the test that a later refactor would break first.
+- [x] S7. Build Core and App, run Core tests (net10.0 and net11.0) and App tests. Record the counts. Baseline at the start of this plan: Core 3368, App 681.
+- [x] S8. Commit per step. Push only when S7 passes.
 
 ## Decisions for the owner (defaults in place)
 
@@ -49,3 +49,13 @@ Goal: one place for the process set-up and the kill-the-tree step that `ProcessC
 - [ ] Every row of the contracts table has a test or a named reading. S6 covers the start-failure rows; the timeout and cancel rows are covered by the existing runner tests.
 - [ ] "To verify" (minor): that `Process.Kill(entireProcessTree: true)` throws only `InvalidOperationException` and `Win32Exception`. The existing code already relies on both. Check the .NET documentation before S4.
 - [ ] No caller's behaviour depends on the argument-list order of `ProcessGitRunner`. Checked by reading `GitRunner.cs` lines 102-108: the `-c` and `-C` flags come first, then the caller's arguments. S3 keeps that order.
+
+## Results (2026-11-23)
+
+- Commits: `088f318` (S1 helper, S2 tests), `c0f1002` (S3 Git), `ea344d0` (S4 CLI runner), `2bfa9a3` (S5 Codex model list), `dca8906` (S6 convention tests). Then one status commit for this file.
+- S7: Core 3380 passed on net10.0 and net11.0 (baseline 3368, plus 8 helper tests, 1 Git pin, 3 convention tests). App 681 passed on net10.0 and net11.0 (baseline 681). Build with `-nodeReuse:false`.
+- D1 applied to all three runners, not only the CLI runner: `Kill` ignores `Win32Exception`. So a Git stop and a Codex stop that used to throw now return. No test pins the old throw; none was expected.
+- D2 kept: Git's standard error keeps its default decoding (no encoding is set for it).
+- The start-failure conventions are unchanged and pinned by `StartFailureConventionTests`.
+- Not done: the check of `Process.Kill`'s exception types against the .NET documentation, planned before S4. The existing code already catches `InvalidOperationException` and `Win32Exception` there, and the tests pass, but the documentation was not read in this pass. Open, minor.
+- Not run: the owner's live checks. None of these runners is shown on screen, so the sitting has nothing new to check here.
