@@ -264,6 +264,20 @@ public sealed class ProcessGitRunnerTests : IDisposable
     }
 
     [Fact]
+    public void TheRepositoryFlagsComeFirstAndTheCallerArgumentsFollow()
+    {
+        // Pinned by the dedup of the process runners (plan 2026-11-23, S3): the start information built through ProcessLaunch is the same as before.
+        var info = ProcessGitRunner.StartInfo("git", _root, ["status", "--porcelain"]);
+
+        Assert.Equal(["-c", "core.fsmonitor=false", "-c", "core.hooksPath=NUL", "-C", _root, "status", "--porcelain"], info.ArgumentList.ToArray());
+        Assert.Equal("0", info.Environment["GIT_OPTIONAL_LOCKS"]);
+        Assert.Equal("0", info.Environment["GIT_TERMINAL_PROMPT"]);
+        Assert.True(info.RedirectStandardOutput);
+        Assert.True(info.RedirectStandardError);
+        Assert.False(info.UseShellExecute);
+    }
+
+    [Fact]
     public void GitIsAskedForItsEnglishMessages()
     {
         // The not-a-repository check reads git's text (review R10): with the locale C, a localised git still says the English words.

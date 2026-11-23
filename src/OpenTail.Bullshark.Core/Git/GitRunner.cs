@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
+using OpenTail.Bullshark.Core.Processes;
 
 namespace OpenTail.Bullshark.Core.Git;
 
@@ -91,21 +92,10 @@ public sealed class ProcessGitRunner : IGitRunner
     /// </summary>
     public static ProcessStartInfo StartInfo(string executable, string folder, IReadOnlyList<string> arguments)
     {
-        var info = new ProcessStartInfo(executable)
-        {
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-        };
-        // --no-textconv and --no-ext-diff are passed by the callers.
-        info.ArgumentList.Add("-c");
-        info.ArgumentList.Add("core.fsmonitor=false");
-        info.ArgumentList.Add("-c");
-        info.ArgumentList.Add("core.hooksPath=NUL");
-        info.ArgumentList.Add("-C");
-        info.ArgumentList.Add(folder);
-        foreach (var argument in arguments) info.ArgumentList.Add(argument);
+        // --no-textconv and --no-ext-diff are passed by the callers. The repository flags come first, as they always have.
+        var all = new List<string> { "-c", "core.fsmonitor=false", "-c", "core.hooksPath=NUL", "-C", folder };
+        all.AddRange(arguments);
+        var info = ProcessLaunch.Create(executable, all);
         info.Environment["GIT_OPTIONAL_LOCKS"] = "0";
         info.Environment["GIT_TERMINAL_PROMPT"] = "0";
         info.Environment["LC_ALL"] = "C";
@@ -132,15 +122,5 @@ public sealed class ProcessGitRunner : IGitRunner
         }
     }
 
-    private static void Stop(Process process)
-    {
-        try
-        {
-            if (!process.HasExited) process.Kill(entireProcessTree: true);
-        }
-        catch (InvalidOperationException)
-        {
-            // It ended on its own between the check and the kill.
-        }
-    }
+    private static void Stop(Process process) => ProcessLaunch.Kill(process);
 }
