@@ -61,5 +61,10 @@ public static class ProcessLaunch
         {
             // It could not be stopped; it is left to end on its own.
         }
+        catch (AggregateException)
+        {
+            // Not all of its descendants could be stopped (Process.Kill, entireProcessTree, documents this). The ones that ended are gone; the rest
+            // are left to end on their own, as with a Win32Exception.
+        }
     }
 }
