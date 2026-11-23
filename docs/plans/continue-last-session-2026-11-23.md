@@ -44,8 +44,8 @@ C0 to C6 and C8 are built and committed. Their text is in [Done/continue-last-se
 - [ ] Owner decides deviation 1 (from C5): the status line Continue sets is replaced at once by each resume screen's "Reading session..." line. Keeping it needs a status hook on the screens.
 - [ ] Owner decides deviation 3 (from C5): Claude's screen refuses a missing folder only at Start, while Continue refuses at open with the Codex screen's text. Accept, or align.
 - [ ] Owner decides (from C4): on Claude's screen a Summary start leaves "Recommended: in full" beside a checked Summary radio. The owner may want the text to follow the start.
-- [ ] Test defect (from C4): `RunGuardTests.ClaudeProcessesDidNotGrowUpToThisPoint` counts every claude.exe on the machine, so another Claude session starting during a run fails it. It should count only the processes this run starts.
-- [ ] Small Core change (from C5, deviation 2): make Core's `ClaudeProvider.SummaryOf` non-private and remove the copy `ContinueSummaryOf`.
+- [x] Test defect (from C4), done 2026-11-23 in `13e59e4`: `TestGuard.ClaudeCount` counts only the claude.exe processes that the test host starts (directly or through its children). Two tests pin it: one started by the run is counted, one started outside it is not.
+- [x] Small Core change (from C5, deviation 2), already done in `2e8b5ef`, checked 2026-11-23: `ClaudeProvider.SummaryOf` is public static in Core, the App calls it (`SessionWindow.Continue.cs`), and no `ContinueSummaryOf` copy remains anywhere in `src` or `tests`.
 - [ ] Log paths (from C8, not changed): the rail's library banner and one log line show the library path when the library cannot be read (`Rail.cs:631`, `Library.cs:73`, `:76`). Owner decides.
 
 ## Risks
