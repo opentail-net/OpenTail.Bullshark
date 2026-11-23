@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using OpenTail.Bullshark.Core.Processes;
 
 namespace OpenTail.Bullshark.Core.Claude;
 
@@ -84,21 +85,13 @@ public sealed class ProcessCliRunner : ICliEnvRunner
         CancellationToken cancellationToken,
         string? standardInput)
     {
-        var info = new ProcessStartInfo(_executable)
-        {
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            RedirectStandardInput = standardInput is not null,
-            StandardOutputEncoding = Encoding.UTF8,
-            StandardErrorEncoding = Encoding.UTF8,
-            WorkingDirectory = workingDirectory ?? Environment.CurrentDirectory,
-        };
-        // Only meaningful when standard input is redirected; ProcessStartInfo refuses it otherwise.
-        if (standardInput is not null) info.StandardInputEncoding = Encoding.UTF8;
-        foreach (var argument in arguments)
-            info.ArgumentList.Add(argument);
+        var info = ProcessLaunch.Create(
+            _executable,
+            arguments,
+            workingDirectory ?? Environment.CurrentDirectory,
+            redirectStandardInput: standardInput is not null,
+            outputEncoding: Encoding.UTF8,
+            inputEncoding: Encoding.UTF8);
         if (environment is not null)
             foreach (var (name, value) in environment)
                 info.Environment[name] = value;
@@ -137,7 +130,7 @@ public sealed class ProcessCliRunner : ICliEnvRunner
         catch (OperationCanceledException)
         {
             // A timeout or a cancel: the command and whatever it started are stopped, so nothing is left running.
-            try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+            ProcessLaunch.Kill(process);
             if (cancellationToken.IsCancellationRequested) throw;
             return new CliResult(-1, await TextAfterDrain(stdoutDrain, stdout), await TextAfterDrain(stderrDrain, stderr), TimedOut: true);
         }
