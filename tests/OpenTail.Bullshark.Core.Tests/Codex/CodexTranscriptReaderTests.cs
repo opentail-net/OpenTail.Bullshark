@@ -109,6 +109,13 @@ public sealed class CodexTranscriptReaderTests : IDisposable
         File.WriteAllBytes(path, whole[..(whole.Length / 2)]);
 
         // A count past the end reads the file to its end, so the failure is reached.
-        await Assert.ThrowsAnyAsync<IOException>(() => Reader().ReadPageAsync(CodexHome.SecondId, 0, 1000, CancellationToken.None));
+        var error = await Assert.ThrowsAnyAsync<IOException>(() => Reader().ReadPageAsync(CodexHome.SecondId, 0, 1000, CancellationToken.None));
+
+        // Only the two types this path can give: a plain IOException (the decoder's own failure, translated by DecodedStream) or
+        // EndOfStreamException (a cut-short stream, which DecodedStream passes through; net10.0 gives this one). Any other IOException
+        // subclass would mean the failure came from somewhere else, so it fails here.
+        Assert.True(
+            error.GetType() == typeof(IOException) || error.GetType() == typeof(EndOfStreamException),
+            $"Unexpected exception type: {error.GetType().FullName}");
     }
 }
