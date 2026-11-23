@@ -22,6 +22,16 @@ public sealed class SummariseTests
     }
 
     [Fact]
+    public async Task ATimedOutSummaryIsAFailureWithTheTimeoutMessage()
+    {
+        var cli = new ClaudeCli(new FakeCliRunner(_ => new CliResult(-1, string.Empty, string.Empty, TimedOut: true)));
+
+        var error = await Assert.ThrowsAsync<ClaudeCliException>(() => cli.SummariseAsync("Summarise.", "you: hello"));
+
+        Assert.Equal("the summary timed out after five minutes", error.Message);
+    }
+
+    [Fact]
     public async Task AFailedSummaryNamesItsExitCodeButNoOutput()
     {
         var cli = new ClaudeCli(new FakeCliRunner(_ => FakeCliRunner.Fail("CANARY-TRANSCRIPT-7731 no credit")));

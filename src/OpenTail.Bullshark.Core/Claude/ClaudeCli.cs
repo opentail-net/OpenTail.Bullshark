@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.RegularExpressions;
+using OpenTail.Bullshark.Core.Providers.Summary;
 
 namespace OpenTail.Bullshark.Core.Claude;
 
@@ -316,17 +317,15 @@ public sealed class ClaudeCli
     /// </summary>
     public async Task<string> SummariseAsync(string instructions, string transcript, CancellationToken cancellationToken = default)
     {
-        var result = await _runner.RunAsync(
+        // The shared summary run (provider kit R2) gives the same three messages this method used to write itself.
+        return await CliProcessRun.RunAsync(
+            _runner,
             ["-p", instructions, "--model", "haiku", "--effort", "low", "--no-session-persistence"],
             null,
             TimeSpan.FromMinutes(5),
             cancellationToken,
-            transcript);
-        if (result.TimedOut) throw new ClaudeCliException("the summary timed out after five minutes");
-        if (result.ExitCode != 0) throw new ClaudeCliException($"the summary failed (exit {result.ExitCode})");
-        var text = result.StdOut.Trim();
-        if (text.Length == 0) throw new ClaudeCliException("the summary came back empty");
-        return text;
+            standardInput: transcript,
+            message => new ClaudeCliException(message));
     }
 
     /// <summary>
