@@ -6,9 +6,9 @@ The supervisor is the pass that starts, resumes and watches the `claude` session
 
 - [ ] Resume: solo restart prompt (9), refuse a listed session (10), drop "ask one short question" and cap the summary at 6000 characters (11): all met. Not as written: "one write for run and record" cannot be one write, because the record and the run are two files. The record is written first, and a failed run write is logged with the status line. Partly met; the rest is a design limit.
 
-Still open from this item: accept the design limit it states, or reopen it. A planner's call, not a build item.
+- [ ] Still open from this item: accept the design limit it states, or reopen it. A planner's call, not a build item.
 
-Check, 2026-11-16: `grep -rnE "ovc-|OverClaude|Legacy|NudgePolicy|PlanFile" src` finds nothing. `Assistant` still finds the parked feature (SetupView, SetupPlan, RunPlan, PatternStore, and the transcript's own "assistant" messages), so the full check cannot pass until that feature is cut or the check is narrowed.
+- [ ] Check, 2026-11-16: `grep -rnE "ovc-|OverClaude|Legacy|NudgePolicy|PlanFile" src` finds nothing. `Assistant` still finds the parked feature (SetupView, SetupPlan, RunPlan, PatternStore, and the transcript's own "assistant" messages), so the full check cannot pass until that feature is cut or the check is narrowed.
 
 ## 2. The spike and `--smoke` (review of 2026-11-15, phase 2)
 
@@ -66,7 +66,7 @@ Check, 2026-11-16: `grep -rnE "ovc-|OverClaude|Legacy|NudgePolicy|PlanFile" src`
 
 ## 5. Open for the owner
 
-- `ProcessCliRunner` kills the whole process tree on a 60 s timeout. For a `--bg` launch this may also kill the background session it started.
+- [ ] `ProcessCliRunner` kills the whole process tree on a 60 s timeout. For a `--bg` launch this may also kill the background session it started.
   And if the background process inherits the redirected pipes, the output read waits until it exits. The live tests pass today, so neither seems
   to happen, but nobody has checked on purpose.
 
@@ -76,35 +76,35 @@ Each line is copied from the record it came from, so its context is there. Check
 
 From the magic-rename batch:
 
-- **Existing code noticed, not changed:** `ClaudeCli.SummariseAsync` runs `claude -p` without `--no-session-persistence` (its working folder is the App's current folder). Whether that writes a transcript into History was not checked here.
+- [ ] **Existing code noticed, not changed:** `ClaudeCli.SummariseAsync` runs `claude -p` without `--no-session-persistence` (its working folder is the App's current folder). Whether that writes a transcript into History was not checked here.
 
 From the perf and testability batch:
 
-  - Tests: `TranscriptWindowTests` (10), `TranscriptPagerCancellationTests` (2). The App test for the cap and the jump (`TranscriptViewTests`) is written but NOT runnable now (Q7).
+  - [ ] Tests: `TranscriptWindowTests` (10), `TranscriptPagerCancellationTests` (2). The App test for the cap and the jump (`TranscriptViewTests`) is written but NOT runnable now (Q7).
 
 From the features batch:
 
-- Open: the viewed ticks are one key in ui.json. Two windows ticking at the same moment can lose one window's ticks (each save replaces the whole key); the file lock covers one write, not the read-then-write pair.
+- [ ] Open: the viewed ticks are one key in ui.json. Two windows ticking at the same moment can lose one window's ticks (each save replaces the whole key); the file lock covers one write, not the read-then-write pair.
 
-- Open: the Ready-for-review tooltip "3 of 7 viewed" is not done (optional in G1; it needs a git read per row).
+- [ ] Open: the Ready-for-review tooltip "3 of 7 viewed" is not done (optional in G1; it needs a git read per row).
 
-- Open: `--rail-group tag` is a test flag only (for the screenshot), like `--rail-tag`.
+- [ ] Open: `--rail-group tag` is a test flag only (for the screenshot), like `--rail-tag`.
 
 From the escalation and backlog batches:
 
-- Review (orchestrator) of D2 escalation: read the App diff; checked that the tab-acknowledge hook in `SetActive` is reached by rail selection only when not `_rebuilding` (a pass refresh does not acknowledge), and that no other pass-driven path calls `SetActive` on a session tab. Suite rerun by me. Open: a session whose tab is already the active one when it starts waiting is not acknowledged (it re-alerts; judged right, the owner may not be at the PC); sound, flash and menu not seen in a window.
+- [ ] Review (orchestrator) of D2 escalation: read the App diff; checked that the tab-acknowledge hook in `SetActive` is reached by rail selection only when not `_rebuilding` (a pass refresh does not acknowledge), and that no other pass-driven path calls `SetActive` on a session tab. Suite rerun by me. Open: a session whose tab is already the active one when it starts waiting is not acknowledged (it re-alerts; judged right, the owner may not be at the PC); sound, flash and menu not seen in a window.
 
 From the ready-for-review batch:
 
-- **Open idea (not built):** a mark is written with the pass's time, so a transcript write in the seconds between the pass and the click shows the coder again. Not seen happening.
+- [ ] **Open idea (not built):** a mark is written with the pass's time, so a transcript write in the seconds between the pass and the click shows the coder again. Not seen happening.
 
 From the batch B (review prompt, digest, capture):
 
-- **Open:** `Process.Start` with `UseShellExecute`. A file with no program associated (`Win32Exception`) is said in the status line.
+- [ ] **Open:** `Process.Start` with `UseShellExecute`. A file with no program associated (`Win32Exception`) is said in the status line.
 
 From the fixes batch:
 
-- F4: `ArgumentException: Process with an Id of ... is not running` (app.log, 2026-11-17) is a process-gone case the new filter does not
+- [ ] F4: `ArgumentException: Process with an Id of ... is not running` (app.log, 2026-11-17) is a process-gone case the new filter does not
   catch (it lists only ObjectDisposed, IO and InvalidOperation). Its site is not known; not widened without a run that shows it.
 
 From round 5 (status line):
@@ -121,14 +121,14 @@ Status: items 1-8 built on branch `round9-2026-11-17`, one commit per item (b319
 
 From review round 6 notes:
 
-- Item 14: TextToSave returns the file text when only line breaks differ; lone CR no longer converted (WPF TextBox handling of a lone CR was not checked).
+- [ ] Item 14: TextToSave returns the file text when only line breaks differ; lone CR no longer converted (WPF TextBox handling of a lone CR was not checked).
 
 From the desktop and Codex ideas (findings to check, not ideas):
 
 - `claude agents --json` states, per docs: `working`, `blocked`, `done`, `failed`, `stopped`; `idle` is UI-only (https://code.claude.com/docs/en/agent-view). Answers
   the README's open state-values item from docs, not from a run.
 
-- Unattached sessions that finished or wait for input are stopped after about an hour. `Ctrl+T` pins one; no CLI pin is documented (UNCONFIRMED). The supervisor's
+- [ ] Unattached sessions that finished or wait for input are stopped after about an hour. `Ctrl+T` pins one; no CLI pin is documented (UNCONFIRMED). The supervisor's
   restart path must handle `stopped`.
 
 From the bugs of round 3 (status line; its open points were not re-checked in this restructure):

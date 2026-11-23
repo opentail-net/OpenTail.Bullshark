@@ -1,6 +1,6 @@
 # R4b and R4c: version probe throttle and Codex preview order (2026-11-22)
 
-Status: planned and built by the coder on 2026-11-22; boxes ticked as built. Follow-ups of row R4 in [00-current-work.md](00-current-work.md). Not run on
+Status: planned and built by the coder on 2026-11-22; boxes ticked as built. Follow-ups of row R4 in [00-current-work.md](../00-current-work.md). Not run on
 screen: R4c is checked by reading only.
 
 ## Goal

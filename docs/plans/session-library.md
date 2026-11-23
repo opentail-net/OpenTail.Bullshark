@@ -118,45 +118,28 @@ Decided while building (2026-11-16; accepted by the planner, git-fb):
 
 ## Steps
 
+L1 and L3 are built, and their check records are in [Done/session-library-done.md](Done/session-library-done.md). L2, L4 and L5 have open checks, below.
+
 The on-screen checks of L2 to L5 are in [live-run-checklist.md](live-run-checklist.md), section C6 (library), not repeated here. Parked ideas from the table at the end of this plan are in [docs/later/ideas.md](../later/ideas.md).
-
-### L1 Free facts from the transcripts (Core)
-
-Check: `dotnet test` passes. Checked 2026-11-16: `dotnet test tests/OpenTail.Bullshark.Core.Tests --filter "FullyQualifiedName!~Live"`
-passes 262 (254 before this slice, plus the 8 new tests).
-
-Real folder, read-only, `scripts/Check-Titles.ps1`, 2026-11-16 (7 seconds):
-- transcript files: 137, of which 11 are in subagents folders (the grep count in "What the transcripts already hold" was 126 files;
-  the folder has grown since, and the title and custom-title counts did not change)
-- files with an `ai-title`: 70 of 137; with a `custom-title`: 46; with an `away_summary` recap: 39 (grep: 40); with a
-  `compact_boundary`: 23 (grep: 24); with a user message: 137
-- the ten newest titles were read by eye: all ten read as fair descriptions of their sessions. Their content is not written here.
-- finding (corrected 2026-11-16): the reader already skips a first message that starts with `<` (`SessionTitle.Clean`), so a `<local-command-caveat>` record never becomes the title. The first wording of this finding was wrong: the check script read the raw record, not what the reader reads. See question 6.
 
 ### L2 The rail shows them (App)
 
 
-Check: the screenshot shows the three rows; the titles of the first two differ as expected. Result, 2026-11-16 (a scratch
+- [ ] Check: the screenshot shows the three rows; the titles of the first two differ as expected. Result, 2026-11-16 (a scratch
 state folder, `--no-pass`, `--shot`): the row "OpenTail.Bullshark review..." (session 29b84a3b, has an `ai-title`) and the row
 "Hello from git-86..." (session f8045ed8, has no `ai-title`; its first message is the title) differ, as expected. No subagent
 row is visible, so the three-row check is not complete.
 
-### L3 The library store (Core)
-
-Check: `dotnet test` passes. Checked 2026-11-16: the Core suite passes 270 with the Live tests filtered out. The eight tests are in
-`tests/.../Library/SessionLibraryTests.cs`: the six named, plus `TheEntryIsKeptAcrossALoad` and
-`BesideTheStateFileIsLibraryJsonInTheSameFolder`.
-
 ### L4 Organise in the rail (App)
 
 
-Check: the on-screen list is not complete; the boxes above say what is. `scripts\Test-Library.ps1` passes 6 of 6 with no clicks
+- [ ] Check: the on-screen list is not complete; the boxes above say what is. `scripts\Test-Library.ps1` passes 6 of 6 with no clicks
 (2026-11-16, scratch state folders).
 
 ### L5 Search and lineage
 
 
-Check: `dotnet test` passes: 287 with the Live tests filtered out (2026-11-16). One real resume is not run. Its box waits for the owner's
+- [ ] Check: `dotnet test` passes: 287 with the Live tests filtered out (2026-11-16). One real resume is not run. Its box waits for the owner's
 word. The on-screen boxes above are unticked until a click or a hover is checked.
 
 ### L6 Later, only if measured: a cache for the index
@@ -170,12 +153,11 @@ Reading every transcript took 3.6 s for 137 files (830 MB), measured 2026-11-16 
 
 ## Questions for the owner
 
-1. Is `ai-title` wanted as the default title (D-L1)? It is Claude Code's wording, not yours. *Used as recommended; not yet confirmed
+- [ ] Is `ai-title` wanted as the default title (D-L1)? It is Claude Code's wording, not yours. *Used as recommended; not yet confirmed
    by the owner.*
-2. One row per pinned session, under Pinned only (D-L4)? *Used as recommended; not yet confirmed.*
-3. Should a search list archived sessions (D-L5)? *Used as recommended; not yet confirmed.*
-4. May L5 run one real resume in a scratch folder as its check? *Open. The L5 resume box stays unticked until the owner says yes.*
-6. The first user message is often a `<local-command-caveat>` record (from `/model` or `/effort`). Should the title fallback skip it? *Answered 2026-11-16: no change needed. The reader already skips it (see L1). The test is `ACaveatIsNotTheFirstMessage`.*
+- [ ] One row per pinned session, under Pinned only (D-L4)? *Used as recommended; not yet confirmed.*
+- [ ] Should a search list archived sessions (D-L5)? *Used as recommended; not yet confirmed.*
+- [ ] May L5 run one real resume in a scratch folder as its check? *Open. The L5 resume box stays unticked until the owner says yes.*
 
 ## Not verified
 

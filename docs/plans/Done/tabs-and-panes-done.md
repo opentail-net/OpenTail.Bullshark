@@ -23,3 +23,15 @@
 - [x] A tab moves by its right-click menu, or by a drag released over the other half of the pane. Closing the last tab of the
       right pane closes the split. Which sessions are at the right is saved in `tabs.json`.
 - [x] `scripts/Test-Split.ps1`: two counters as sessions, 13 checks pass, 2 click checks skipped (the window was covered).
+
+## Check records moved from the plan (2026-11-23)
+
+> T1 and T2 were built when they moved; their check records are kept here as written. Their on-screen checks are in the live-run checklist, section C7.
+
+### T1 Reorder (built; on-screen check in the checklist)
+
+Check: `dotnet test` passes; the on-screen steps are seen.
+
+### T2 Split (built; on-screen check in the checklist)
+
+Check: the spike's finding is written; the on-screen steps are seen; no terminal is restarted by a move.

@@ -2,6 +2,15 @@
 
 Status: **partly superseded by `provider-codex-2026-11-21.md` (2026-11-21).** The plan replaces the single `ISessionProvider` below with separate small interfaces (history, transcript reader, terminal opener, supervised launcher, live source) and takes precedence wherever the two differ. Tier 4 (Ollama naming) is **not part of the Codex plan: deferred, unscheduled.** Tier 0 (plain terminal tab) is folded into the plan's stage C. Status of this file: **proposal for the owner.** No code change is planned from this file without their word. It exists so the decision can be taken with the facts in one place. Research: `../research/other-ai-tools-research-2026-11-19.md`.
 
+## Checklist (open)
+
+- [ ] Owner decides the product scope and name (risk 1: the pitch changes if it supervises "AI terminals").
+- [ ] Owner gives the word before any code is started from this file, and chooses the order (suggested: tier 4, then tier 0, then a tier-1 spike).
+- [ ] Tier 4 (local model for naming and tagging): not built.
+- [ ] Tier 0 (plain terminal tab): not built.
+- [ ] Tiers 1 and 2 (provider seam, supervised start): superseded in part by `provider-codex-2026-11-21.md`, which replaces `ISessionProvider` with smaller interfaces. Decide what, if anything, of these tiers is still wanted.
+
+
 ## Goal
 Let the window show, search and watch sessions of other AI terminals (and use local models for its own small jobs) without weakening the Claude Code path, and without ever typing into a session for the owner or accepting/merging on their behalf (principle 3).
 

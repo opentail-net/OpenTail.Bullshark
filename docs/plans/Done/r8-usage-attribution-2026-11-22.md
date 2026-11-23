@@ -1,7 +1,7 @@
 # R8 part 1: Codex usage reader and the attribution rule (2026-11-22)
 
-Status: planned and built by the coder on 2026-11-22 for orchestrator review. Not committed. Row R8 in [00-current-work.md](00-current-work.md);
-concept note C in [../research/concept-notes-index-usage-2026-11-22.md](../research/concept-notes-index-usage-2026-11-22.md).
+Status: planned and built by the coder on 2026-11-22 for orchestrator review. Not committed. Row R8 in [00-current-work.md](../00-current-work.md);
+concept note C in [../research/concept-notes-index-usage-2026-11-22.md](../../research/concept-notes-index-usage-2026-11-22.md).
 
 ## Goal
 

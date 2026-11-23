@@ -4,11 +4,11 @@ Limit wake itself is in [limit-wake-2026-11-20.md](limit-wake-2026-11-20.md). Th
 
 ## Paused-on-limit attention reason (backlog A3)
 
-- [!] A3 (GATED, not built AFK). **"Paused on limit" attention reason**: a session whose last transcript entry is `usage_limit_reached` is shown as paused until HH:mm, not as stale/blocked, and raises no flash or sound (it is not the owner's to fix). Why: avoids false "needs you" and false restart-loop alerts. Goes through `AttentionList` (contract: new reasons only there). Must check the supervisor never restarts such a session in a loop. **Gate:** what `agents --json` lists (state) for a session sitting on a limit is not known: no sample in the owner's data. Needs one real hit with a Bullshark session running, then record the state value here before any code.
+- [ ] A3 (GATED, not built AFK). **"Paused on limit" attention reason**: a session whose last transcript entry is `usage_limit_reached` is shown as paused until HH:mm, not as stale/blocked, and raises no flash or sound (it is not the owner's to fix). Why: avoids false "needs you" and false restart-loop alerts. Goes through `AttentionList` (contract: new reasons only there). Must check the supervisor never restarts such a session in a loop. **Gate:** what `agents --json` lists (state) for a session sitting on a limit is not known: no sample in the owner's data. Needs one real hit with a Bullshark session running, then record the state value here before any code.
 
 ## Pre-limit warning (backlog B3)
 
-- [!] B3. Pre-limit warning ("you are at N% of a typical 5-hour budget"): needs a budget figure; none is exposed to us and `rate_limit_info` only appears when rejected. Do not invent a number. Revisit if a `status: allowed_warning` style entry shows up in transcripts (search the owner's transcripts for other `status` values first).
+- [ ] B3. Pre-limit warning ("you are at N% of a typical 5-hour budget"): needs a budget figure; none is exposed to us and `rate_limit_info` only appears when rejected. Do not invent a number. Revisit if a `status: allowed_warning` style entry shows up in transcripts (search the owner's transcripts for other `status` values first).
 
 ## Usage report: tokens by day and project
 
@@ -28,14 +28,14 @@ Limit wake itself is in [limit-wake-2026-11-20.md](limit-wake-2026-11-20.md). Th
 - Timing (scratch console app, read only, scratch cache, deleted afterwards; the OS file cache was probably warm, so no true cold read):
   `ReadReportWithCache` cold 2.72 s; warm 0.16 s; the old `ReadWithCache` warm 0.12 to 0.13 s. Owner's data: 10 hits, 30 days, 11 rows in the
   project table (10 projects and Other, which holds 26 projects).
-- Not checked in a running window: the new tables' layout (long encoded folder names are not wrapped; the page scrolls vertically only).
-- Dollars (needs a dated rate table from the owner; not built).
-- A 14-day toggle (30 only).
-- Per-model split (`IndexTotals.ByModel` is a separate idea, cost 2).
-- Whether cache reads count toward the limit: unknown; the page does not say.
+- [ ] Not checked in a running window: the new tables' layout (long encoded folder names are not wrapped; the page scrolls vertically only).
+- [ ] Dollars (needs a dated rate table from the owner; not built).
+- [ ] A 14-day toggle (30 only).
+- [ ] Per-model split (`IndexTotals.ByModel` is a separate idea, cost 2).
+- [ ] Whether cache reads count toward the limit: unknown; the page does not say.
 
 ## API-key accounts and the limit reset
 
 
 - Waking sessions already paused on the limit (native `quota_auto_resume_*`): not in this plan.
-- API-key accounts (no `rate_limit_info`): not verified.
+- [ ] API-key accounts (no `rate_limit_info`): not verified.

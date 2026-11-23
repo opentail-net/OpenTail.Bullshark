@@ -54,13 +54,7 @@ Recommended by the assistant. The owner has not confirmed them.
 
 ## Steps
 
-### T1 Reorder (built; on-screen check in the checklist)
-
-Check: `dotnet test` passes; the on-screen steps are seen.
-
-### T2 Split (built; on-screen check in the checklist)
-
-Check: the spike's finding is written; the on-screen steps are seen; no terminal is restarted by a move.
+T1 and T2 are built. Their text is in [Done/tabs-and-panes-done.md](Done/tabs-and-panes-done.md); their on-screen checks are in [live-run-checklist.md](live-run-checklist.md), section C7.
 
 ### T3 Second window (parked)
 
@@ -75,25 +69,25 @@ a session on a second monitor.
 
 ## Not verified
 
-- The drag on screen, the right-click menu, and a click moving the paste target (see F55).
-- A real `claude attach` client after a move to a narrower pane: redraw and input.
-- Two attach clients on one session (T3).
-- How the terminal control behaves under a `GridSplitter` between two terminals. The rail splitter beside one terminal works (F51).
-- How the review's Phase 4 item "attach on first select; re-attach when the attach exits" fits with two panes. T2 should come
+- [ ] - The drag on screen, the right-click menu, and a click moving the paste target (see F55).
+- [ ] - A real `claude attach` client after a move to a narrower pane: redraw and input.
+- [ ] - Two attach clients on one session (T3).
+- [ ] - How the terminal control behaves under a `GridSplitter` between two terminals. The rail splitter beside one terminal works (F51).
+- [ ] - How the review's Phase 4 item "attach on first select; re-attach when the attach exits" fits with two panes. T2 should come
   after it, or be planned with it.
 
 ## Questions for the owner
 
-1. Is T1 then T2 the right order, with T3 only if you still want it after using the split?
-2. Two panes side by side: enough, or do you see three sessions at once as the normal case (plan, code, review)?
+- [ ] Is T1 then T2 the right order, with T3 only if you still want it after using the split?
+- [ ] Two panes side by side: enough, or do you see three sessions at once as the normal case (plan, code, review)?
 
 ## Zoom: open points
 
 Zoom is built and checked. These two points stayed open.
 
 
-1. The palette is Windows Terminal's default, written in. A user with a different Windows Terminal scheme would see the default palette, not theirs. The library's own default colours were not read, because they are not exposed.
-2. Only the 16 Campbell colours and the greys are exact. The 256-colour cube follows the xterm values. Claude Code's output was not checked with 256 colours on screen.
+- [ ] The palette is Windows Terminal's default, written in. A user with a different Windows Terminal scheme would see the default palette, not theirs. The library's own default colours were not read, because they are not exposed.
+- [ ] Only the 16 Campbell colours and the greys are exact. The 256-colour cube follows the xterm values. Claude Code's output was not checked with 256 colours on screen.
 
 
 The package is WPF-UI.Terminal 1.0.39 over Microsoft.Terminal.Wpf 1.25. The source is not in the package cache, so this was read from the compiled code by reflection.

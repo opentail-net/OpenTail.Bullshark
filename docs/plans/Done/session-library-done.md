@@ -47,3 +47,30 @@
       continues…"). Its title is "↪ " and the earlier session's title when it has no `ai-title` and no name:
       `SessionLibrary.TitleFor(digest, entry, continued)`, tested in `LineageTitleTests.cs` (five tests). Not seen on screen: no resumed
       session exists.
+
+## Check records moved from the plan (2026-11-23)
+
+> L1 and L3 were finished when they moved; their check records are kept here as written. Question 6 was answered (2026-11-16).
+
+### L1 Free facts from the transcripts (Core)
+
+Check: `dotnet test` passes. Checked 2026-11-16: `dotnet test tests/OpenTail.Bullshark.Core.Tests --filter "FullyQualifiedName!~Live"`
+passes 262 (254 before this slice, plus the 8 new tests).
+
+Real folder, read-only, `scripts/Check-Titles.ps1`, 2026-11-16 (7 seconds):
+- transcript files: 137, of which 11 are in subagents folders (the grep count in "What the transcripts already hold" was 126 files;
+  the folder has grown since, and the title and custom-title counts did not change)
+- files with an `ai-title`: 70 of 137; with a `custom-title`: 46; with an `away_summary` recap: 39 (grep: 40); with a
+  `compact_boundary`: 23 (grep: 24); with a user message: 137
+- the ten newest titles were read by eye: all ten read as fair descriptions of their sessions. Their content is not written here.
+- finding (corrected 2026-11-16): the reader already skips a first message that starts with `<` (`SessionTitle.Clean`), so a `<local-command-caveat>` record never becomes the title. The first wording of this finding was wrong: the check script read the raw record, not what the reader reads. See question 6.
+
+### L3 The library store (Core)
+
+Check: `dotnet test` passes. Checked 2026-11-16: the Core suite passes 270 with the Live tests filtered out. The eight tests are in
+`tests/.../Library/SessionLibraryTests.cs`: the six named, plus `TheEntryIsKeptAcrossALoad` and
+`BesideTheStateFileIsLibraryJsonInTheSameFolder`.
+
+### Question 6 (answered)
+
+6. The first user message is often a `<local-command-caveat>` record (from `/model` or `/effort`). Should the title fallback skip it? *Answered 2026-11-16: no change needed. The reader already skips it (see L1). The test is `ACaveatIsNotTheFirstMessage`.*

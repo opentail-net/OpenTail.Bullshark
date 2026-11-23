@@ -1,7 +1,7 @@
 # R9: folder stamps and scoped history refresh (2026-11-22)
 
-Status: built by the coder on 2026-11-22 and reviewed by the orchestrator (one fix: the signature uses the message count the row shows). Core 2668 (net11.0) and 2655 (net10.0), App 145 on each target, all passing. Not run on screen. Row R9 in [00-current-work.md](00-current-work.md). Concept note B in
-[../research/concept-notes-index-usage-2026-11-22.md](../research/concept-notes-index-usage-2026-11-22.md).
+Status: built by the coder on 2026-11-22 and reviewed by the orchestrator (one fix: the signature uses the message count the row shows). Core 2668 (net11.0) and 2655 (net10.0), App 145 on each target, all passing. Not run on screen. Row R9 in [00-current-work.md](../00-current-work.md). Concept note B in
+[../research/concept-notes-index-usage-2026-11-22.md](../../research/concept-notes-index-usage-2026-11-22.md).
 
 ## Goal
 
