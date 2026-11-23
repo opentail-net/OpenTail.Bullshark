@@ -76,7 +76,7 @@ public partial class SessionWindow
         var lines = await TryReadLinesAsync(() => CodexTurns.ReadSession(provider.Paths, session.Key.SessionId, CancellationToken.None));
         var dialog = new CodexResumePrompt($"Resume: {title}", facts, Palette,
             (choice, kept, ct) => BuildCodexStartTextAsync(session, folder, choice, kept, ct, choice.Target), CodexModels(), initialMode,
-            folder, FolderExists(folder), summaryHasLines: SummaryHasLinesOf(lines, "codex"))
+            folder, FolderExists(folder), summaryHasLines: SummaryHasLinesOf(lines, "codex"), lines: lines?.Count)
         {
             Owner = this,
         };
@@ -170,14 +170,21 @@ public partial class SessionWindow
 
             var lines = await Task.Run(() => CodexTurns.ReadSession(provider.Paths, sessionId, ct), ct);
             AppLog.Write($"codex start text: {lines.Count} messages read");
-            if (lines.Count == 0) return new CodexPreview(string.Empty, null);
+            if (lines.Count == 0) return new CodexPreview(string.Empty, null, Lines: lines.Count);
 
             KeptSummary? summary = null;
             if (choice.Level is { } level)
             {
-                if (kept is not null && kept.MatchesChoice(level, choice.Turns))
+                // A kept summary is reused only when it was made from this transcript (RS-D21, FIX 1 of the S6c review). One made for the setting from an
+                // earlier read of a transcript that has since changed is out of date: no call is made for it here, and the screen is told.
+                var sameSetting = kept is not null && kept.MatchesChoice(level, choice.Turns, kept.Lines);
+                if (kept is not null && kept.MatchesChoice(level, choice.Turns, lines.Count))
                 {
                     summary = kept;
+                }
+                else if (sameSetting)
+                {
+                    return new CodexPreview(string.Empty, null, Lines: lines.Count, Stale: true);
                 }
                 else
                 {
@@ -194,22 +201,22 @@ public partial class SessionWindow
                         .SummariseLinesAsync(part, level, folder, ct);
                     AppLog.Write($"codex summary made: {made.Length:N0} characters");
                     var saved = await SaveCodexSummaryFileAsync(session, level, made);
-                    summary = new KeptSummary(level, made, Saved: saved, Turns: choice.Turns);
+                    summary = new KeptSummary(level, made, Saved: saved, Turns: choice.Turns, Lines: lines.Count);
                 }
             }
 
             if (to != ProviderId.Codex)
             {
                 var cross = CrossStartTextFor(ProviderId.Codex, to, folder, summary, choice.Level, lines, choice.Turns);
-                if (!cross.Fits) return new CodexPreview(string.Empty, null, "Not started: " + CrossPlatformStartText.TooLongMessage);
+                if (!cross.Fits) return new CodexPreview(string.Empty, null, "Not started: " + CrossPlatformStartText.TooLongMessage, lines.Count);
                 AppLog.Write($"codex cross start text built: {cross.Text.Length:N0} characters");
-                return new CodexPreview(cross.Text, summary);
+                return new CodexPreview(cross.Text, summary, Lines: lines.Count);
             }
 
             var tail = CodexResumeText.Tail(lines, choice.Turns);
             var start = CodexResumeText.Compose(summary?.Text, choice.Level, tail, choice.Turns, sessionId);
             AppLog.Write($"codex start text built: {start.Length:N0} characters");
-            return new CodexPreview(start, summary);
+            return new CodexPreview(start, summary, Lines: lines.Count);
         }
         catch (Exception ex) when (ex is CodexSummaryException or ArgumentException or FileNotFoundException or IOException
                                        or UnauthorizedAccessException or NotSupportedException)

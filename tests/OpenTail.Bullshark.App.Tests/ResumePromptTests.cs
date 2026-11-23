@@ -184,7 +184,7 @@ public sealed class ResumePromptTests
                 calls++;
                 seen.Add(kept);
                 // The window's method reuses a kept summary of the same level and tail: the fake does the same, and makes one only otherwise.
-                return kept is not null && kept.MatchesChoice(choice.Level, choice.Turns)
+                return kept is not null && kept.MatchesChoice(choice.Level, choice.Turns, kept.Lines)
                     ? Task.FromResult(new ResumePromptPreview(new ResumePreview(SummaryText, 0, true, kept)))
                     : Task.FromResult(SummaryOf(choice));
             });

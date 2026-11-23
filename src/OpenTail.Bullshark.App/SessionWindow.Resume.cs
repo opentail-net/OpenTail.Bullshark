@@ -88,7 +88,8 @@ public partial class SessionWindow
         var prompt = new ResumePrompt($"Resume: {DisplayTitle(digest)}", facts, digest.ContextTokensAtLastTurn, Palette,
             defaults.PlannerModel, defaults.PlannerEffort,
             (choice, kept, cancellationToken) => PreviewAsync(digest, folder, lines, choice, kept, cancellationToken), initialMode,
-            folder, folderExists: check.Status != FolderStatus.Missing, summaryHasLines: turns => ResumeText.SummaryHasLines(lines, turns, ResumeText.TurnTokens))
+            folder, folderExists: check.Status != FolderStatus.Missing, summaryHasLines: turns => ResumeText.SummaryHasLines(lines, turns, ResumeText.TurnTokens),
+            lines: lines.Count)
         {
             Owner = this,
         };
@@ -326,12 +327,12 @@ public partial class SessionWindow
         SessionDigest digest, IReadOnlyList<TranscriptLine> lines, ResumeChoice choice, KeptSummary? kept, CancellationToken cancellationToken)
     {
         if (choice.Level is not { } level) return null;
-        if (kept is not null && kept.MatchesChoice(level, choice.Turns)) return kept;
+        if (kept is not null && kept.MatchesChoice(level, choice.Turns, lines.Count)) return kept;
         var input = await Task.Run(() => ResumeText.SummaryInput(
             ResumeText.SummaryPart(lines, choice.Turns, ResumeText.TailTokenCap, ResumeText.TurnTokens), digest.FilesWritten), cancellationToken);
         var text = await _cli.SummariseAsync(ResumeText.Instructions(level), input, cancellationToken);
         await SaveSummaryFileAsync(digest, level, text);
-        return new KeptSummary(level, text, Saved: true, Turns: choice.Turns);
+        return new KeptSummary(level, text, Saved: true, Turns: choice.Turns, Lines: lines.Count);
     }
 
     /// <summary>
@@ -408,7 +409,7 @@ public partial class SessionWindow
         SessionDigest digest, string folder, IReadOnlyList<TranscriptLine> lines, ResumeChoice choice, KeptSummary? kept)
     {
         // A summary is made by Make summary only (RS-D21): Start never makes one. A summary kept for another level or tail is out of date, and Start is refused.
-        if (choice.Level is not null && !(kept is not null && kept.MatchesChoice(choice.Level, choice.Turns)))
+        if (choice.Level is not null && !(kept is not null && kept.MatchesChoice(choice.Level, choice.Turns, lines.Count)))
         {
             SetStatus(ResumeSummaryState.OutOfDateLine);
             return;

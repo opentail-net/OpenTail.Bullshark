@@ -95,7 +95,7 @@ public static class ProviderResumeText
     /// that the source session is not continued. The tail and the closing line are written as <see cref="Compose"/> writes them. There is no session
     /// line: a cross-platform start is not a continuation of the source session (RS-D5).
     /// With no summary and no level, the start is Zero (RS-D25): two header lines that say the new session starts from the last <paramref name="turns"/>
-    /// turns of the source, then the tail and the closing line. Zero makes no model call, so it needs a tail. A summary and its level go together (RS-D2):
+    /// turns of the source, then the tail and the closing line. Zero makes no summary call, so it needs a tail. A summary and its level go together (RS-D2):
     /// one without the other throws, and so does a summary that is blank.
     /// </summary>
     public static string ComposeFrom(

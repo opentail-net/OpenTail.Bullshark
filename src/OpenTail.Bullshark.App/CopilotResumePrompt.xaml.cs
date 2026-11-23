@@ -46,7 +46,7 @@ public sealed record CopilotResumeChoice(CopilotResumeMode Mode, SummaryLevel? L
 /// What the screen's preview callback gives: the start text (empty when the session has no messages), the summary it made or reused (null for none),
 /// and the reason no text was made (null when there is text, or when the session has no messages).
 /// </summary>
-public sealed record CopilotPreview(string Text, KeptSummary? KeptSummary, string? Problem = null) : IProviderPreview;
+public sealed record CopilotPreview(string Text, KeptSummary? KeptSummary, string? Problem = null, int? Lines = null, bool Stale = false) : IProviderPreview;
 
 /// <summary>
 /// The Copilot resume screen (step G3.1): a copy of the Codex resume screen for a Copilot session, with three ways to continue. Nothing runs until Start.
@@ -66,7 +66,7 @@ public partial class CopilotResumePrompt : Window
     /// <param name="folderExists">Whether the folder exists. Null: no folder notice is shown. Start is off only with no folder on record.</param>
     public CopilotResumePrompt(string heading, string facts, RailPalette palette,
         Func<CopilotResumeChoice, KeptSummary?, CancellationToken, Task<CopilotPreview>>? previewAsync = null, ContinueMode? initialMode = null,
-        string? folder = null, bool? folderExists = null, Func<int, bool>? summaryHasLines = null)
+        string? folder = null, bool? folderExists = null, Func<int, bool>? summaryHasLines = null, int? lines = null)
     {
         InitializeComponent();
         // The window grows to the screen's work area at most: the body scrolls and the buttons stay in view (owner, 2026-11-22).
@@ -101,7 +101,7 @@ public partial class CopilotResumePrompt : Window
                 FullChoice, SummaryChoice, LevelBlock, LevelRow, TailBox, TurnsBox, TailBlock, TargetLine, StartButton, TargetMenuButton, TargetMenu,
                 TargetClaudeItem, TargetCodexItem, TargetCopilotItem, MakeSummaryButton, RememberBox, CostText, FolderNotice,
                 PreviewHeader, PreviewBox, PreviewBlock, PreviewNote, CopyButton, (Style)Resources["Segment"]),
-            new CopilotHooks(), previewAsync, summaryHasLines, initialMode, folderNotice, blocksStart, Close);
+            new CopilotHooks(), previewAsync, summaryHasLines, initialMode, folderNotice, blocksStart, Close, lines);
     }
 
     /// <summary>The choice, or null when the owner cancelled.</summary>

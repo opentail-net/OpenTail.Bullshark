@@ -9,14 +9,6 @@ namespace OpenTail.Bullshark.App.Tests;
 public sealed class CodexResumeRulesTests
 {
     [Fact]
-    public void TheThreeModesAreLabelledAsTheScreenShowsThem()
-    {
-        Assert.Equal("In full: the whole conversation, with codex resume", CodexResumeRules.ModeLabel(CodexResumeMode.Full));
-        Assert.Equal("From the last turns (no model call)", CodexResumeRules.ModeLabel(CodexResumeMode.LastTurns));
-        Assert.Equal("From a Codex summary (one Codex call)", CodexResumeRules.ModeLabel(CodexResumeMode.Summary));
-    }
-
-    [Fact]
     public void TheThreeLevelsAreLabelledWithTheirLengths()
     {
         Assert.Equal("Minimal · about 120 words", CodexResumeRules.LevelLabel(SummaryLevel.Minimal));
@@ -33,9 +25,9 @@ public sealed class CodexResumeRulesTests
     }
 
     [Fact]
-    public void TheLastTurnsModeSaysItMakesNoModelCall()
+    public void TheLastTurnsModeSaysItMakesNoSummaryCall()
     {
-        Assert.Equal("No model call. The text is shown before anything starts.", CodexResumeRules.CostLine(CodexResumeMode.LastTurns));
+        Assert.Equal("No summary call. The text is shown before anything starts.", CodexResumeRules.CostLine(CodexResumeMode.LastTurns));
     }
 
     [Fact]
@@ -71,29 +63,6 @@ public sealed class CodexResumeRulesTests
         Assert.Equal(10, CodexResumeRules.DefaultTurns);
         Assert.Equal(200, CodexResumeRules.MaxTurns);
         Assert.Equal("Enter a whole number from 0 to 200 for the turns.", CodexResumeRules.TurnsMessage);
-    }
-
-    [Fact]
-    public void InFullStartIsAlwaysOn()
-    {
-        Assert.True(CodexResumeRules.CanStart(CodexResumeMode.Full, previewReady: false, keptMatches: false));
-        Assert.True(CodexResumeRules.CanStart(CodexResumeMode.Full, previewReady: true, keptMatches: true));
-    }
-
-    [Fact]
-    public void FromTheLastTurnsStartNeedsOnlyAReadyPreview()
-    {
-        Assert.False(CodexResumeRules.CanStart(CodexResumeMode.LastTurns, previewReady: false, keptMatches: false));
-        Assert.True(CodexResumeRules.CanStart(CodexResumeMode.LastTurns, previewReady: true, keptMatches: false));
-    }
-
-    [Fact]
-    public void FromASummaryStartNeedsAReadyPreviewAndASummaryForTheChoice()
-    {
-        Assert.False(CodexResumeRules.CanStart(CodexResumeMode.Summary, previewReady: false, keptMatches: false));
-        Assert.False(CodexResumeRules.CanStart(CodexResumeMode.Summary, previewReady: false, keptMatches: true));
-        Assert.False(CodexResumeRules.CanStart(CodexResumeMode.Summary, previewReady: true, keptMatches: false));
-        Assert.True(CodexResumeRules.CanStart(CodexResumeMode.Summary, previewReady: true, keptMatches: true));
     }
 
     [Fact]

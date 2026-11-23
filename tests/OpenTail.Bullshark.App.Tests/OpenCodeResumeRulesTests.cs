@@ -61,15 +61,6 @@ public sealed class OpenCodeResumeRulesTests
     }
 
     [Fact]
-    public void TheModeLabelsNameOpencodeAndTheLastTurnsLabelHasNoModelCallWording()
-    {
-        Assert.Contains("opencode", OpenCodeResumeRules.ModeLabel(OpenCodeResumeMode.Full));
-        Assert.Equal("From the last turns", OpenCodeResumeRules.ModeLabel(OpenCodeResumeMode.LastTurns));
-        Assert.Contains("opencode", OpenCodeResumeRules.ModeLabel(OpenCodeResumeMode.Summary));
-        Assert.DoesNotContain("model call", OpenCodeResumeRules.ModeLabel(OpenCodeResumeMode.LastTurns), StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
     public void TheTurnsBoxAcceptsTheWholeRangeAndNothingElse()
     {
         Assert.True(OpenCodeResumeRules.TryTurns("0", out var zero));
@@ -82,20 +73,6 @@ public sealed class OpenCodeResumeRulesTests
         Assert.Equal(OpenCodeResumeRules.DefaultTurns, over);
         Assert.False(OpenCodeResumeRules.TryTurns("-1", out _));
         Assert.False(OpenCodeResumeRules.TryTurns("many", out _));
-    }
-
-    [Fact]
-    public void TheLastTurnsAndTheSummaryStartNeedAPreviewAndOnlyTheLastTurnsBuildsOneAtOnce()
-    {
-        Assert.True(OpenCodeResumeRules.CanStart(OpenCodeResumeMode.Full, previewReady: false));
-        Assert.False(OpenCodeResumeRules.CanStart(OpenCodeResumeMode.LastTurns, previewReady: false));
-        Assert.True(OpenCodeResumeRules.CanStart(OpenCodeResumeMode.LastTurns, previewReady: true));
-        Assert.False(OpenCodeResumeRules.CanStart(OpenCodeResumeMode.Summary, previewReady: false));
-        Assert.True(OpenCodeResumeRules.CanStart(OpenCodeResumeMode.Summary, previewReady: true));
-
-        Assert.True(OpenCodeResumeRules.RunsAtOnce(OpenCodeResumeMode.LastTurns));
-        Assert.False(OpenCodeResumeRules.RunsAtOnce(OpenCodeResumeMode.Full));
-        Assert.False(OpenCodeResumeRules.RunsAtOnce(OpenCodeResumeMode.Summary));
     }
 
     [Fact]

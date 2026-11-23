@@ -63,7 +63,7 @@ public partial class SessionWindow
         var lines = await TryReadLinesAsync(() => CopilotTranscriptReader.ReadSession(copilotProvider.Paths, id, CancellationToken.None, int.MaxValue));
         var dialog = new CopilotResumePrompt($"Resume: {title}", facts, Palette,
             (choice, kept, ct) => BuildCopilotStartTextAsync(session, choice, kept, ct, choice.Target), initialMode, folder, FolderExists(folder),
-            SummaryHasLinesOf(lines, "copilot"))
+            SummaryHasLinesOf(lines, "copilot"), lines: lines?.Count)
         {
             Owner = this,
         };
@@ -171,14 +171,21 @@ public partial class SessionWindow
             // The whole session is read (no cap): the default cap keeps the first messages, and the tail needs the newest turns (as Codex's tail reads all).
             var lines = await Task.Run(() => CopilotTranscriptReader.ReadSession(provider.Paths, sessionId, ct, int.MaxValue), ct);
             AppLog.Write($"copilot start text: {lines.Count} messages read");
-            if (lines.Count == 0) return new CopilotPreview(string.Empty, null);
+            if (lines.Count == 0) return new CopilotPreview(string.Empty, null, Lines: lines.Count);
 
             KeptSummary? summary = null;
             if (choice.Level is { } level)
             {
-                if (kept is not null && kept.MatchesChoice(level, choice.Turns))
+                // A kept summary is reused only when it was made from this transcript (RS-D21, FIX 1 of the S6c review). One made from an earlier read of a
+                // transcript that has since changed is out of date: no call is made for it here, and the screen is told.
+                var sameSetting = kept is not null && kept.MatchesChoice(level, choice.Turns, kept.Lines);
+                if (kept is not null && kept.MatchesChoice(level, choice.Turns, lines.Count))
                 {
                     summary = kept;
+                }
+                else if (sameSetting)
+                {
+                    return new CopilotPreview(string.Empty, null, Lines: lines.Count, Stale: true);
                 }
                 else
                 {
@@ -201,15 +208,15 @@ public partial class SessionWindow
             if (to != ProviderId.Copilot)
             {
                 var cross = CrossStartTextFor(ProviderId.Copilot, to, folder, summary, choice.Level, lines, choice.Turns);
-                if (!cross.Fits) return new CopilotPreview(string.Empty, null, "Not started: " + CrossPlatformStartText.TooLongMessage);
+                if (!cross.Fits) return new CopilotPreview(string.Empty, null, "Not started: " + CrossPlatformStartText.TooLongMessage, lines.Count);
                 AppLog.Write($"copilot cross start text built: {cross.Text.Length:N0} characters");
-                return new CopilotPreview(cross.Text, summary);
+                return new CopilotPreview(cross.Text, summary, Lines: lines.Count);
             }
 
             var tail = CopilotResumeText.Tail(lines, choice.Turns);
             var start = CopilotResumeText.Compose(summary?.Text, choice.Level, tail, choice.Turns, sessionId);
             AppLog.Write($"copilot start text built: {start.Length:N0} characters");
-            return new CopilotPreview(start, summary);
+            return new CopilotPreview(start, summary, Lines: lines.Count);
         }
         catch (Exception ex) when (ex is CopilotSummaryException or ArgumentException or FileNotFoundException or IOException
                                        or UnauthorizedAccessException or NotSupportedException)
@@ -239,7 +246,7 @@ public partial class SessionWindow
             var made = await new CopilotSummarizer().SummariseLinesAsync(part, level, _options.StatePath, ct);
             AppLog.Write($"copilot summary made: {made.Length:N0} characters");
             var saved = await SaveCopilotSummaryFileAsync(session, level, made);
-            return new KeptSummary(level, made, Saved: saved, Turns: turns);
+            return new KeptSummary(level, made, Saved: saved, Turns: turns, Lines: lines.Count);
         }
         finally
         {

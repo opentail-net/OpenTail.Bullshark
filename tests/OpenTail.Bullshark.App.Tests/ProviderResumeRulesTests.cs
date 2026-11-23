@@ -11,24 +11,20 @@ public sealed class ProviderResumeRulesTests
 {
     private static readonly ProviderResumeWording Demo = new("Demo", "demo resume", "demo.ps1", () => "One Demo call.");
 
-    private static readonly KeptSummary KeptNormal = new(SummaryLevel.Normal, "An example summary.", Saved: true);
-
     [Fact]
-    public void TheFullLineAndTheModeLabelsNameTheProvidersResumeCommandAndName()
+    public void TheFullLineNamesTheProvidersResumeCommand()
     {
         Assert.Equal(
             "No model call from OpenTail. The session opens in a terminal tab with demo resume, and OpenTail sends it no text.",
             ProviderResumeRules.FullCostLine(Demo));
-        Assert.Equal("In full: the whole conversation, with demo resume", ProviderResumeRules.ModeLabel(ProviderResumeMode.Full, Demo));
-        Assert.Equal("From a Demo summary (one Demo call)", ProviderResumeRules.ModeLabel(ProviderResumeMode.Summary, Demo));
-        Assert.Equal("From the last turns (no model call)", ProviderResumeRules.ModeLabel(ProviderResumeMode.LastTurns, Demo));
     }
 
     [Fact]
-    public void TheCostLineOfTheSummaryIsTheProvidersOwnAndTheLastTurnsSaysNoModelCall()
+    public void TheCostLineOfTheSummaryIsTheProvidersOwnAndTheLastTurnsSaysNoSummaryCall()
     {
         Assert.Equal("One Demo call.", ProviderResumeRules.CostLine(ProviderResumeMode.Summary, Demo));
-        Assert.Equal(ProviderResumeRules.NoModelCallLine, ProviderResumeRules.CostLine(ProviderResumeMode.LastTurns, Demo));
+        Assert.Equal(ProviderResumeRules.NoSummaryCallLine, ProviderResumeRules.CostLine(ProviderResumeMode.LastTurns, Demo));
+        Assert.DoesNotContain("model call", ProviderResumeRules.NoSummaryCallLine, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -43,34 +39,6 @@ public sealed class ProviderResumeRulesTests
     }
 
     [Fact]
-    public void AKeptSummaryMatchesOnlyTheLevelItWasMadeAt()
-    {
-        Assert.True(ProviderResumeRules.KeptMatches(SummaryLevel.Normal, KeptNormal));
-        Assert.False(ProviderResumeRules.KeptMatches(SummaryLevel.Minimal, KeptNormal));
-        Assert.False(ProviderResumeRules.KeptMatches(null, KeptNormal));
-        Assert.False(ProviderResumeRules.KeptMatches(SummaryLevel.Normal, null));
-    }
-
-    [Fact]
-    public void AKeptSummaryIsDroppedOnlyWhenASummaryAtAnotherLevelIsChosen()
-    {
-        Assert.Null(ProviderResumeRules.KeptAfterChange(summaryChosen: true, SummaryLevel.Minimal, KeptNormal));
-        Assert.Same(KeptNormal, ProviderResumeRules.KeptAfterChange(summaryChosen: true, SummaryLevel.Normal, KeptNormal));
-        Assert.Same(KeptNormal, ProviderResumeRules.KeptAfterChange(summaryChosen: false, SummaryLevel.Minimal, KeptNormal));
-        Assert.Same(KeptNormal, ProviderResumeRules.KeptAfterChange(summaryChosen: false, level: null, KeptNormal));
-        Assert.Null(ProviderResumeRules.KeptAfterChange(summaryChosen: true, SummaryLevel.Minimal, null));
-    }
-
-    [Fact]
-    public void TheTextIsBuiltAtOnceOnlyForTheLastTurnsOrAKeptSummary()
-    {
-        Assert.True(ProviderResumeRules.RunsAtOnce(ProviderResumeMode.LastTurns, keptMatches: false));
-        Assert.True(ProviderResumeRules.RunsAtOnce(ProviderResumeMode.Summary, keptMatches: true));
-        Assert.False(ProviderResumeRules.RunsAtOnce(ProviderResumeMode.Summary, keptMatches: false));
-        Assert.False(ProviderResumeRules.RunsAtOnce(ProviderResumeMode.Full, keptMatches: true));
-    }
-
-    [Fact]
     public void ARefusalUsesTheTextsItIsGiven()
     {
         string Missing(string? folder) => "missing: " + (folder ?? "none");
@@ -82,14 +50,9 @@ public sealed class ProviderResumeRulesTests
     }
 
     [Fact]
-    public void AnUnknownModeIsRefusedByTheLabelsAndTheCostLineButNotByStart()
+    public void AnUnknownModeIsRefusedByTheCostLine()
     {
-        Assert.Throws<ArgumentOutOfRangeException>(() => CodexResumeRules.ModeLabel((CodexResumeMode)99));
         Assert.Throws<ArgumentOutOfRangeException>(() => CodexResumeRules.CostLine((CodexResumeMode)99));
-        Assert.Throws<ArgumentOutOfRangeException>(() => CopilotResumeRules.ModeLabel((CopilotResumeMode)99));
         Assert.Throws<ArgumentOutOfRangeException>(() => CopilotResumeRules.CostLine((CopilotResumeMode)99));
-        Assert.False(CodexResumeRules.CanStart((CodexResumeMode)99, previewReady: true, keptMatches: true));
-        Assert.False(CopilotResumeRules.CanStart((CopilotResumeMode)99, previewReady: true, keptMatches: true));
-        Assert.False(CopilotResumeRules.RunsAtOnce((CopilotResumeMode)99, keptMatches: true));
     }
 }

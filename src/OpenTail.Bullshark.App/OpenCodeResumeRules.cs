@@ -30,7 +30,7 @@ public sealed record OpenCodeResumeChoice(OpenCodeResumeMode Mode, int Turns, bo
 /// What the screen's preview callback gives: the start text (empty when the session has no messages, or when there is a problem) and the reason no text
 /// was made (null when there is none).
 /// </summary>
-public sealed record OpenCodePreview(string Text, string? Problem = null, KeptSummary? KeptSummary = null);
+public sealed record OpenCodePreview(string Text, string? Problem = null, KeptSummary? KeptSummary = null, int? Lines = null);
 
 /// <summary>
 /// The rules and words of the opencode resume screen (OC3). The cost lines are opencode's own (OC-D9): neither the "No model call" line of the other
@@ -88,15 +88,6 @@ public static class OpenCodeResumeRules
     public static string LongSessionRefusal =>
         $"Not started: this session has more messages than the reader gives ({OpenCodeTranscriptReader.MaxLines:N0}), so its last turns cannot be read. In full resumes it.";
 
-    /// <summary>The label of a mode, as its radio button shows it.</summary>
-    public static string ModeLabel(OpenCodeResumeMode mode) => mode switch
-    {
-        OpenCodeResumeMode.Full => "In full: the whole conversation, in opencode's own terminal",
-        OpenCodeResumeMode.LastTurns => "From the last turns",
-        OpenCodeResumeMode.Summary => "From an opencode summary (one model call)",
-        _ => throw new ArgumentOutOfRangeException(nameof(mode)),
-    };
-
     /// <summary>
     /// The cost line of a mode (<see cref="FullCostLine"/>, <see cref="LastTurnsCostLine"/>, <see cref="SummaryCostLine"/>). The summary's line is shown
     /// before its call. Its start makes one model turn, as the last turns do (<see cref="LastTurnsCostLine"/>).
@@ -113,21 +104,6 @@ public static class OpenCodeResumeRules
     /// The turns in the box: a whole number from 0 to <see cref="MaxTurns"/>. Returns false, with <see cref="DefaultTurns"/>, when it is not one.
     /// </summary>
     public static bool TryTurns(string text, out int turns) => ProviderResumeRules.TryTurns(text, out turns);
-
-    /// <summary>
-    /// True when Start may be pressed. In full is always allowed. From the last turns, and from a summary, it needs a preview for the current choice: a
-    /// summary is made only by its Make summary button, never by Start.
-    /// </summary>
-    public static bool CanStart(OpenCodeResumeMode mode, bool previewReady) => mode switch
-    {
-        OpenCodeResumeMode.Full => true,
-        OpenCodeResumeMode.LastTurns => previewReady,
-        OpenCodeResumeMode.Summary => previewReady,
-        _ => false,
-    };
-
-    /// <summary>True when the preview is built at once, with no press: the last turns only.</summary>
-    public static bool RunsAtOnce(OpenCodeResumeMode mode) => mode == OpenCodeResumeMode.LastTurns;
 
     /// <summary>The Continue mode of a mode, for the "Remember for this session" mark (CN-D6). The mapping is kept here, so the shared choice file is not changed.</summary>
     public static ContinueMode ContinueModeOf(OpenCodeResumeMode mode) => mode switch

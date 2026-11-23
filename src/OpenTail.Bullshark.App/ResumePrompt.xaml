@@ -170,7 +170,7 @@
                     <TextBlock x:Name="TargetLine" Style="{StaticResource Muted}" Margin="0,0,0,6" />
                     <WrapPanel x:Name="LevelRow" Orientation="Horizontal" />
                     <TextBlock Style="{StaticResource Muted}" Margin="0,0,0,4"
-                               Text="Haiku writes it from your messages and Claude's replies. The tool output is left out. Zero makes no model call." />
+                               Text="Haiku writes it from your messages and Claude's replies. The tool output is left out. Zero makes no summary call." />
                     <!-- The summary is made only here (RS-D21). A change of the level or the tail after it marks it out of date. -->
                     <Button x:Name="MakeSummaryButton" Content="Make summary" Click="MakeSummary_Click" HorizontalAlignment="Left"
                             Margin="0,2,0,6"

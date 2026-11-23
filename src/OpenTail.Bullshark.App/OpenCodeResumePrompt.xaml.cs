@@ -35,6 +35,9 @@ public partial class OpenCodeResumePrompt : Window
     /// <summary>The summary made for the setting on screen, or for an earlier one; it is used again only for the setting it was made at (RS-D21).</summary>
     private OpenCodePreview? _keptPreview;
 
+    /// <summary>The transcript's line count the screen holds: the count at open, then the count each build read (RS-D21, FIX 1 of the S6c review).</summary>
+    private int? _lines;
+
     /// <summary>The folder notice shown in red, or null. Start is off only with no folder on record; the choices and Copy stay on.</summary>
     private readonly string? _folderNotice;
 
@@ -53,11 +56,13 @@ public partial class OpenCodeResumePrompt : Window
     /// <param name="folder">The session's folder, for the folder notice. Used only with <paramref name="folderExists"/>.</param>
     /// <param name="folderExists">Whether the folder exists. Null: no folder notice is shown.</param>
     /// <param name="summaryHasLines">True when the summary of the session, with the given tail turns, has messages to read (RS-D26). Null: not known, so Make summary is on.</param>
+    /// <param name="lines">The transcript's line count when the screen opens, or null when it is not known.</param>
     public OpenCodeResumePrompt(string heading, string facts, RailPalette palette,
         Func<OpenCodeResumeChoice, CancellationToken, Task<OpenCodePreview>>? previewAsync = null, ContinueMode? initialMode = null,
-        string? folder = null, bool? folderExists = null, Func<int, bool>? summaryHasLines = null)
+        string? folder = null, bool? folderExists = null, Func<int, bool>? summaryHasLines = null, int? lines = null)
     {
         InitializeComponent();
+        _lines = lines;
         _preview = new ResumePreviewPane(PreviewHeader, PreviewBox, PreviewBlock, PreviewNote);
         // The window grows to the screen's work area at most: the body scrolls and the buttons stay in view.
         MaxHeight = SystemParameters.WorkArea.Height - 40;
@@ -168,7 +173,7 @@ public partial class OpenCodeResumePrompt : Window
             _ = RunRequestAsync(choice);
             return;
         }
-        if (_keptPreview is { KeptSummary: { } kept } shown && ResumeSummaryState.KeptMatches(choice.Level, choice.Turns, kept))
+        if (_keptPreview is { KeptSummary: { } kept } shown && ResumeSummaryState.KeptMatches(choice.Level, choice.Turns, _lines, kept))
         {
             ShowPreview(shown);
             Refresh();
@@ -191,7 +196,7 @@ public partial class OpenCodeResumePrompt : Window
         var zeroRefusal = inSummary ? ResumeSummaryState.ZeroRefusal(level, TailOn, turns) : null;
         var hasLines = _summaryHasLines?.Invoke(turns) ?? true;
         var nothingToSummarise = inSummary && level is not null && turnsValid && !hasLines;
-        var outOfDate = inSummary && ResumeSummaryState.IsOutOfDate(level, turns, kept);
+        var outOfDate = inSummary && ResumeSummaryState.IsOutOfDate(level, turns, _lines, kept);
         var status = zeroRefusal ?? (nothingToSummarise ? ResumeSummaryState.NothingToSummariseLine
             : outOfDate ? ResumeSummaryState.OutOfDateLine : null);
 
@@ -213,7 +218,7 @@ public partial class OpenCodeResumePrompt : Window
         Enable(MakeSummaryButton, inSummary && makeAllowed && _cts is null);
         Enable(CopyButton, previewReady);
         var startAllowed = choice is not null && (!inSummary
-            || ResumeSummaryState.StartAllowed(level, TailOn, turns, turnsValid, previewReady, kept));
+            || ResumeSummaryState.StartAllowed(level, TailOn, turns, turnsValid, previewReady, _lines, kept));
         Enable(StartButton, startAllowed && !_blocksStart);
     }
 
@@ -237,6 +242,7 @@ public partial class OpenCodeResumePrompt : Window
         {
             var preview = await _previewAsync(choice, cts.Token);
             if (id != _request) return;
+            if (preview.Lines is { } read) _lines = read;
             if (preview.Problem is { } problem && preview.Text.Length == 0) ShowMessage(problem, problem: true);
             else
             {
@@ -312,7 +318,7 @@ public partial class OpenCodeResumePrompt : Window
         var choice = Selected(out var turnsValid);
         if (choice is null) return;
         var allowed = choice.Mode == OpenCodeResumeMode.Full
-            || ResumeSummaryState.StartAllowed(choice.Level, TailOn, choice.Turns, turnsValid, _preview.Text is not null, _keptPreview?.KeptSummary);
+            || ResumeSummaryState.StartAllowed(choice.Level, TailOn, choice.Turns, turnsValid, _preview.Text is not null, _lines, _keptPreview?.KeptSummary);
         if (!allowed) return;
         Choice = choice with { Remember = RememberBox.IsChecked == true };
         PreviewText = choice.Mode == OpenCodeResumeMode.Full ? null : _preview.Text;

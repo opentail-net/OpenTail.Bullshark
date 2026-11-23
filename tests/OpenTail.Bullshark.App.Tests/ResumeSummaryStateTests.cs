@@ -4,12 +4,13 @@ using Xunit;
 namespace OpenTail.Bullshark.App.Tests;
 
 /// <summary>
-/// The Summary mode's decisions (RS-D19 to RS-D26): the Zero level, the tail, a summary tied to its tail (RS-D21), the refusal of a Zero start with no tail,
-/// and Make summary when the tail covers the whole session. Pure: no window.
+/// The Summary mode's decisions (RS-D19 to RS-D26): the Zero level, the tail, a summary tied to its tail and to its transcript (RS-D21, FIX 1 of the
+/// S6c review), the refusal of a Zero start with no tail, and Make summary when the tail covers the whole session. Pure: no window.
 /// </summary>
 public sealed class ResumeSummaryStateTests
 {
-    private static KeptSummary Kept(SummaryLevel level, int turns) => new(level, "A summary.", Saved: true, Turns: turns);
+    /// <summary>A summary made at <paramref name="turns"/> tail turns from a transcript of <paramref name="lines"/> lines.</summary>
+    private static KeptSummary Kept(SummaryLevel level, int turns, int lines = 240) => new(level, "A summary.", Saved: true, Turns: turns, Lines: lines);
 
     [Fact]
     public void TheTurnsAreZeroWhenTheTailIsOff()
@@ -62,21 +63,44 @@ public sealed class ResumeSummaryStateTests
     }
 
     [Fact]
-    public void ZeroHasNoSummaryToKeep()
+    public void ZeroHasNoSummaryToKeepAndIsUnaffectedByTheTranscriptCount()
     {
-        Assert.True(ResumeSummaryState.KeptMatches(null, 10, kept: null));
+        // FIX 1: Zero has no summary, so a change of the line count never matters to it (the Zero text is built at once, with no call).
+        Assert.True(ResumeSummaryState.KeptMatches(null, 10, lines: 240, kept: null));
+        Assert.True(ResumeSummaryState.KeptMatches(null, 10, lines: 999, kept: Kept(SummaryLevel.Normal, turns: 10)));
+        Assert.False(ResumeSummaryState.IsOutOfDate(null, 10, lines: 999, Kept(SummaryLevel.Normal, turns: 10)));
     }
 
     [Fact]
-    public void ASummaryMatchesOnlyItsLevelAndItsTail()
+    public void ASummaryMatchesOnlyItsLevelTailAndTranscript()
     {
         var kept = Kept(SummaryLevel.Normal, turns: 10);
 
-        Assert.True(ResumeSummaryState.KeptMatches(SummaryLevel.Normal, 10, kept));
-        Assert.False(ResumeSummaryState.KeptMatches(SummaryLevel.Minimal, 10, kept));
-        Assert.False(ResumeSummaryState.KeptMatches(SummaryLevel.Normal, 5, kept));
-        Assert.False(ResumeSummaryState.KeptMatches(SummaryLevel.Normal, 0, kept));
-        Assert.False(ResumeSummaryState.KeptMatches(SummaryLevel.Normal, 10, kept: null));
+        Assert.True(ResumeSummaryState.KeptMatches(SummaryLevel.Normal, 10, lines: 240, kept));
+        Assert.False(ResumeSummaryState.KeptMatches(SummaryLevel.Minimal, 10, lines: 240, kept));
+        Assert.False(ResumeSummaryState.KeptMatches(SummaryLevel.Normal, 5, lines: 240, kept));
+        Assert.False(ResumeSummaryState.KeptMatches(SummaryLevel.Normal, 0, lines: 240, kept));
+        Assert.False(ResumeSummaryState.KeptMatches(SummaryLevel.Normal, 10, lines: 240, kept: null));
+    }
+
+    [Fact]
+    public void ASummaryIsOutOfDateWhenTheTranscriptGrew()
+    {
+        // FIX 1 (S6c review): the summary was made from 240 lines and the transcript now has 250. The summary covers the old turns, so it does not match.
+        var kept = Kept(SummaryLevel.Normal, turns: 10, lines: 240);
+
+        Assert.False(ResumeSummaryState.KeptMatches(SummaryLevel.Normal, 10, lines: 250, kept));
+        Assert.True(ResumeSummaryState.IsOutOfDate(SummaryLevel.Normal, 10, lines: 250, kept));
+        Assert.Equal(ResumeSummaryState.OutOfDateLine, "The summary no longer matches the tail you chose. Make summary again.");
+    }
+
+    [Fact]
+    public void AnUnknownTranscriptCountIsNotChecked()
+    {
+        var kept = Kept(SummaryLevel.Normal, turns: 10, lines: 240);
+
+        Assert.True(ResumeSummaryState.KeptMatches(SummaryLevel.Normal, 10, lines: null, kept));
+        Assert.False(ResumeSummaryState.IsOutOfDate(SummaryLevel.Normal, 10, lines: null, kept));
     }
 
     [Fact]
@@ -84,15 +108,15 @@ public sealed class ResumeSummaryStateTests
     {
         var kept = Kept(SummaryLevel.Normal, turns: 0);
 
-        Assert.True(ResumeSummaryState.IsOutOfDate(SummaryLevel.Normal, 10, kept));
-        Assert.False(ResumeSummaryState.IsOutOfDate(SummaryLevel.Normal, 0, kept));
+        Assert.True(ResumeSummaryState.IsOutOfDate(SummaryLevel.Normal, 10, lines: 240, kept));
+        Assert.False(ResumeSummaryState.IsOutOfDate(SummaryLevel.Normal, 0, lines: 240, kept));
     }
 
     [Fact]
     public void NothingIsOutOfDateWithoutASummaryOrAtZero()
     {
-        Assert.False(ResumeSummaryState.IsOutOfDate(SummaryLevel.Normal, 10, kept: null));
-        Assert.False(ResumeSummaryState.IsOutOfDate(null, 10, Kept(SummaryLevel.Normal, turns: 10)));
+        Assert.False(ResumeSummaryState.IsOutOfDate(SummaryLevel.Normal, 10, lines: 240, kept: null));
+        Assert.False(ResumeSummaryState.IsOutOfDate(null, 10, lines: 240, Kept(SummaryLevel.Normal, turns: 10)));
     }
 
     [Fact]
@@ -101,8 +125,8 @@ public sealed class ResumeSummaryStateTests
         var kept = Kept(SummaryLevel.Normal, turns: 10);
 
         // The owner changes N to 5: the preview is hidden (previewReady false), the summary is out of date, and Start is off.
-        Assert.True(ResumeSummaryState.IsOutOfDate(SummaryLevel.Normal, 5, kept));
-        Assert.False(ResumeSummaryState.StartAllowed(SummaryLevel.Normal, tailOn: true, turns: 5, turnsValid: true, previewReady: false, kept));
+        Assert.True(ResumeSummaryState.IsOutOfDate(SummaryLevel.Normal, 5, lines: 240, kept));
+        Assert.False(ResumeSummaryState.StartAllowed(SummaryLevel.Normal, tailOn: true, turns: 5, turnsValid: true, previewReady: false, lines: 240, kept));
     }
 
     [Fact]
@@ -110,25 +134,34 @@ public sealed class ResumeSummaryStateTests
     {
         var kept = Kept(SummaryLevel.Normal, turns: 10);
 
-        Assert.True(ResumeSummaryState.StartAllowed(SummaryLevel.Normal, tailOn: true, turns: 10, turnsValid: true, previewReady: true, kept));
-        Assert.False(ResumeSummaryState.StartAllowed(SummaryLevel.Normal, tailOn: true, turns: 10, turnsValid: true, previewReady: true, kept: null));
-        Assert.False(ResumeSummaryState.StartAllowed(SummaryLevel.Normal, tailOn: true, turns: 10, turnsValid: false, previewReady: true, kept));
+        Assert.True(ResumeSummaryState.StartAllowed(SummaryLevel.Normal, tailOn: true, turns: 10, turnsValid: true, previewReady: true, lines: 240, kept));
+        Assert.False(ResumeSummaryState.StartAllowed(SummaryLevel.Normal, tailOn: true, turns: 10, turnsValid: true, previewReady: true, lines: 240, kept: null));
+        Assert.False(ResumeSummaryState.StartAllowed(SummaryLevel.Normal, tailOn: true, turns: 10, turnsValid: false, previewReady: true, lines: 240, kept));
+    }
+
+    [Fact]
+    public void StartWaitsWhenTheTranscriptGrewAfterTheSummary()
+    {
+        var kept = Kept(SummaryLevel.Normal, turns: 10, lines: 240);
+
+        Assert.False(ResumeSummaryState.StartAllowed(SummaryLevel.Normal, tailOn: true, turns: 10, turnsValid: true, previewReady: true, lines: 250, kept));
     }
 
     [Fact]
     public void AZeroStartNeedsItsTailAndNoSummary()
     {
-        Assert.True(ResumeSummaryState.StartAllowed(null, tailOn: true, turns: 10, turnsValid: true, previewReady: true, kept: null));
-        Assert.False(ResumeSummaryState.StartAllowed(null, tailOn: false, turns: 0, turnsValid: true, previewReady: true, kept: null));
-        Assert.False(ResumeSummaryState.StartAllowed(null, tailOn: true, turns: 10, turnsValid: true, previewReady: false, kept: null));
+        Assert.True(ResumeSummaryState.StartAllowed(null, tailOn: true, turns: 10, turnsValid: true, previewReady: true, lines: 240, kept: null));
+        Assert.False(ResumeSummaryState.StartAllowed(null, tailOn: false, turns: 0, turnsValid: true, previewReady: true, lines: 240, kept: null));
+        Assert.False(ResumeSummaryState.StartAllowed(null, tailOn: true, turns: 10, turnsValid: true, previewReady: false, lines: 240, kept: null));
     }
 
     [Fact]
     public void AZeroTextIsBuiltAtOnceAndASummaryOnlyWhenKeptForTheSetting()
     {
-        Assert.True(ResumeSummaryState.RunsAtOnce(null, 10, kept: null));
-        Assert.False(ResumeSummaryState.RunsAtOnce(SummaryLevel.Normal, 10, kept: null));
-        Assert.True(ResumeSummaryState.RunsAtOnce(SummaryLevel.Normal, 10, Kept(SummaryLevel.Normal, turns: 10)));
-        Assert.False(ResumeSummaryState.RunsAtOnce(SummaryLevel.Normal, 5, Kept(SummaryLevel.Normal, turns: 10)));
+        Assert.True(ResumeSummaryState.RunsAtOnce(null, 10, lines: 240, kept: null));
+        Assert.False(ResumeSummaryState.RunsAtOnce(SummaryLevel.Normal, 10, lines: 240, kept: null));
+        Assert.True(ResumeSummaryState.RunsAtOnce(SummaryLevel.Normal, 10, lines: 240, Kept(SummaryLevel.Normal, turns: 10)));
+        Assert.False(ResumeSummaryState.RunsAtOnce(SummaryLevel.Normal, 5, lines: 240, Kept(SummaryLevel.Normal, turns: 10)));
+        Assert.False(ResumeSummaryState.RunsAtOnce(SummaryLevel.Normal, 10, lines: 250, Kept(SummaryLevel.Normal, turns: 10)));
     }
 }

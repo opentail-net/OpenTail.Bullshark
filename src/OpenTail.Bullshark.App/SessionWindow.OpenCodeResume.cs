@@ -58,7 +58,7 @@ public partial class SessionWindow
         var lines = await TryReadOpenCodeLinesAsync(session);
         var dialog = new OpenCodeResumePrompt($"Resume: {title}", facts, Palette,
             (choice, ct) => BuildOpenCodeStartTextAsync(session, choice, ct), initialMode: initialMode, folder, FolderExists(folder),
-            summaryHasLines: SummaryHasLinesOf(lines, "opencode"))
+            summaryHasLines: SummaryHasLinesOf(lines, "opencode"), lines: lines?.Count)
         {
             Owner = this,
         };
@@ -256,7 +256,7 @@ public partial class SessionWindow
             }
             var lines = OpenCodeTranscriptLines(page.Lines);
             AppLog.Write($"opencode start text: {lines.Count} messages read");
-            if (lines.Count == 0) return new OpenCodePreview(string.Empty);
+            if (lines.Count == 0) return new OpenCodePreview(string.Empty, Lines: lines.Count);
 
             // Zero (no level) makes no summary. A summary reads only the messages before the tail (RS-D20, RS-D23); the tail is copied from all of them.
             var level = choice.Level;
@@ -269,8 +269,8 @@ public partial class SessionWindow
             var tail = ProviderResumeText.Tail(lines, "opencode", choice.Turns);
             var start = ProviderResumeText.Compose("opencode", summary, level, tail, choice.Turns);
             AppLog.Write($"opencode start text built: {start.Length:N0} characters");
-            var kept = summary is null || level is null ? null : new KeptSummary(level.Value, summary, Saved: false, Turns: choice.Turns);
-            return new OpenCodePreview(start, null, kept);
+            var kept = summary is null || level is null ? null : new KeptSummary(level.Value, summary, Saved: false, Turns: choice.Turns, Lines: lines.Count);
+            return new OpenCodePreview(start, null, kept, lines.Count);
         }
         catch (OpenCodeSummaryException ex)
         {

@@ -84,7 +84,7 @@ public sealed class CopilotResumePromptTests
             Assert.True(Named<Button>(prompt, "StartButton").IsEnabled);
             Assert.True(Named<Button>(prompt, "CopyButton").IsEnabled);
             Assert.False(Named<Button>(prompt, "MakeSummaryButton").IsEnabled);
-            Assert.Equal(ProviderResumeRules.NoModelCallLine, Named<TextBlock>(prompt, "CostText").Text);
+            Assert.Equal(ProviderResumeRules.NoSummaryCallLine, Named<TextBlock>(prompt, "CostText").Text);
         });
     }
 
@@ -137,7 +137,7 @@ public sealed class CopilotResumePromptTests
             var prompt = NewPrompt((choice, kept, token) =>
             {
                 if (choice.Level is null || choice.Mode != CopilotResumeMode.Summary) return TailPreview(choice, kept, token);
-                if (kept is not null && kept.MatchesChoice(choice.Level, choice.Turns)) return Task.FromResult(new CopilotPreview(SummaryText, null));
+                if (kept is not null && kept.MatchesChoice(choice.Level, choice.Turns, kept.Lines)) return Task.FromResult(new CopilotPreview(SummaryText, null));
                 made.Add(choice.Level.Value);
                 return Task.FromResult(SummaryOf(choice));
             });
@@ -234,7 +234,7 @@ public sealed class CopilotResumePromptTests
             var prompt = NewPrompt((choice, kept, token) =>
             {
                 if (choice.Level is null) return TailPreview(choice, kept, token);
-                if (kept is not null && kept.MatchesChoice(choice.Level, choice.Turns)) return Task.FromResult(new CopilotPreview(SummaryText + "\n" + choice.Turns, null));
+                if (kept is not null && kept.MatchesChoice(choice.Level, choice.Turns, kept.Lines)) return Task.FromResult(new CopilotPreview(SummaryText + "\n" + choice.Turns, null));
                 made++;
                 return Task.FromResult(SummaryOf(choice));
             });
@@ -268,7 +268,7 @@ public sealed class CopilotResumePromptTests
             var prompt = NewPrompt((choice, kept, token) =>
             {
                 if (choice.Mode != CopilotResumeMode.Summary || choice.Level is null) return TailPreview(choice, kept, token);
-                if (kept is not null && kept.MatchesChoice(choice.Level, choice.Turns)) return Task.FromResult(new CopilotPreview(SummaryText, null));
+                if (kept is not null && kept.MatchesChoice(choice.Level, choice.Turns, kept.Lines)) return Task.FromResult(new CopilotPreview(SummaryText, null));
                 made++;
                 return Task.FromResult(SummaryOf(choice));
             });

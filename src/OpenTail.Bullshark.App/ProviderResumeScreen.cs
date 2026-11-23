@@ -21,7 +21,7 @@ public interface IProviderResumeChoice<TSelf> where TSelf : class
     /// <summary>The mode as the shared rules see it.</summary>
     ProviderResumeMode SharedMode { get; }
 
-    /// <summary>The summary level, or null for Zero (no summary, no model call).</summary>
+    /// <summary>The summary level, or null for Zero (no summary, so no summary call).</summary>
     SummaryLevel? Level { get; }
 
     /// <summary>The tail's turns, zero when the tail is off (RS-D21).</summary>
@@ -46,6 +46,12 @@ public interface IProviderPreview
     KeptSummary? KeptSummary { get; }
 
     string? Problem { get; }
+
+    /// <summary>The transcript's line count the build read, or null when it read none (FIX 1 of the S6c review).</summary>
+    int? Lines { get; }
+
+    /// <summary>True when a kept summary was for the setting but not for the transcript the build read: no summary was made, and the screen says it is out of date.</summary>
+    bool Stale { get; }
 }
 
 /// <summary>
@@ -125,6 +131,9 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
     private readonly ResumePreviewPane _preview;
     private KeptSummary? _kept;
 
+    /// <summary>The transcript's line count the screen holds: the count at open, then the count each build read (RS-D21, FIX 1 of the S6c review).</summary>
+    private int? _lines;
+
     /// <summary>The platform the Start menu picks (RS-D3): the provider's own by default, and back to it when the mode leaves a summary.</summary>
     private ProviderId _target;
 
@@ -133,11 +142,12 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
     /// <param name="previewAsync">Makes the start text for a choice (off the UI thread), given the kept summary; returns the text and the summary it used.</param>
     /// <param name="summaryHasLines">True when the summary of the session, with the given tail turns, has messages to read (RS-D26). False disables Make summary
     /// with its status line. Null: not known here, so Make summary is on.</param>
-    /// <param name="initialMode">The mode the screen opens on. Null keeps the screen's own start: Summary at Zero with the tail (no model call). A stored
+    /// <param name="initialMode">The mode the screen opens on. Null keeps the screen's own start: Summary at Zero with the tail (no summary call). A stored
     /// last-turns mode opens at Zero with the tail (RS-D27). Opening on a mode never makes a summary.</param>
     /// <param name="folderNotice">The folder notice shown in red, or null.</param>
     /// <param name="blocksStart">True when the folder notice blocks Start (a session with no folder on record).</param>
     /// <param name="close">Closes the window (Start and Cancel).</param>
+    /// <param name="lines">The transcript's line count the screen holds when it opens, or null when it is not known. Each build updates it (FIX 1 of the S6c review).</param>
     public ProviderResumeScreen(
         ResumeScreenControls controls,
         IProviderResumeScreenHooks<TChoice> hooks,
@@ -146,7 +156,8 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
         ContinueMode? initialMode,
         string? folderNotice,
         bool blocksStart,
-        Action close)
+        Action close,
+        int? lines = null)
     {
         _c = controls;
         _hooks = hooks;
@@ -155,6 +166,7 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
         _folderNotice = folderNotice;
         _blocksStart = blocksStart;
         _close = close;
+        _lines = lines;
         _target = hooks.Provider;
         _preview = new ResumePreviewPane(controls.PreviewHeader, controls.PreviewBox, controls.PreviewBlock, controls.PreviewNote);
 
@@ -320,7 +332,7 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
         var choice = Selected(out var turnsValid);
         if (choice is null || !turnsValid || choice.SharedMode != ProviderResumeMode.Summary) return;
         if (ResumeSummaryState.ZeroRefusal(choice.Level, TailOn, choice.Turns) is not null) return;
-        if (ResumeSummaryState.RunsAtOnce(choice.Level, choice.Turns, _kept)) _ = RunRequestAsync(choice);
+        if (ResumeSummaryState.RunsAtOnce(choice.Level, choice.Turns, _lines, _kept)) _ = RunRequestAsync(choice);
     }
 
     /// <summary>
@@ -340,13 +352,13 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
         var zeroRefusal = inSummary ? ResumeSummaryState.ZeroRefusal(level, TailOn, turns) : null;
         var hasLines = _summaryHasLines?.Invoke(turns) ?? true;
         var nothingToSummarise = inSummary && level is not null && turnsValid && !hasLines;
-        var outOfDate = inSummary && ResumeSummaryState.IsOutOfDate(level, turns, _kept);
+        var outOfDate = inSummary && ResumeSummaryState.IsOutOfDate(level, turns, _lines, _kept);
 
         // The status line (RS-D21, RS-D25, RS-D26) is shown after the cost line, as the other messages of the screen are.
         var status = zeroRefusal ?? (nothingToSummarise ? ResumeSummaryState.NothingToSummariseLine
             : outOfDate ? ResumeSummaryState.OutOfDateLine : null);
         var costLine = !inSummary ? ProviderResumeRules.CostLine(mode, _hooks.Wording)
-            : level is null ? ProviderResumeRules.NoModelCallLine
+            : level is null ? ProviderResumeRules.NoSummaryCallLine
             : _hooks.Wording.SummaryCostLine();
         _c.CostText.Text = costLine + (inSummary && !turnsValid ? " " + ProviderResumeRules.TurnsMessage : string.Empty)
             + (status is null ? string.Empty : " " + status);
@@ -370,7 +382,7 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
         Enable(_c.CopyButton, free && previewReady);
         _hooks.RefreshOwnControls(choice, mode, free);
         var startAllowed = choice is not null && (!inSummary
-            || ResumeSummaryState.StartAllowed(level, TailOn, turns, turnsValid, previewReady, _kept));
+            || ResumeSummaryState.StartAllowed(level, TailOn, turns, turnsValid, previewReady, _lines, _kept));
         Enable(_c.StartButton, free && !_blocksStart && _hooks.StartReady(choice) && startAllowed);
     }
 
@@ -413,8 +425,17 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
         Refresh();
         try
         {
-            var preview = await _previewAsync(choice, _kept, cts.Token);
+            // The kept summary is given only when it is for this setting on the transcript the screen holds (RS-D21): a Make summary press then reuses it,
+            // and a build that finds the transcript changed says so (Stale) rather than making a call for a choice change.
+            var kept = choice.Level is not null && ResumeSummaryState.KeptMatches(choice.Level, choice.Turns, _lines, _kept) ? _kept : null;
+            var preview = await _previewAsync(choice, kept, cts.Token);
             if (id != _request) return;
+            if (preview.Lines is { } read) _lines = read;
+            if (preview.Stale)
+            {
+                HidePreview();
+                return;
+            }
             if (preview.KeptSummary is { } made) _kept = made;
             if (preview.Problem is { } problem && preview.Text.Length == 0) ShowFailedSummary(choice, problem);
             else ShowPreview(preview);
@@ -507,7 +528,7 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
         var choice = Selected(out var turnsValid);
         if (choice is null || _busy) return;
         var inSummary = choice.SharedMode == ProviderResumeMode.Summary;
-        var allowed = !inSummary || ResumeSummaryState.StartAllowed(choice.Level, TailOn, choice.Turns, turnsValid, _preview.Text is not null, _kept);
+        var allowed = !inSummary || ResumeSummaryState.StartAllowed(choice.Level, TailOn, choice.Turns, turnsValid, _preview.Text is not null, _lines, _kept);
         if (!allowed) return;
         if (!_hooks.StartReady(choice)) return;
         Choice = choice.WithTarget(StartTarget(choice.SharedMode)).WithRemember(_c.RememberBox.IsChecked == true);

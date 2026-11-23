@@ -39,8 +39,11 @@ public static class ProviderResumeRules
     /// <summary>The turns kept when the box is not a valid number. The same default as Claude's resume prompt.</summary>
     public const int DefaultTurns = ResumeText.DefaultTurns;
 
-    /// <summary>The cost line of the mode that makes no model call from the summary path (the last turns).</summary>
-    public const string NoModelCallLine = "No model call. The text is shown before anything starts.";
+    /// <summary>
+    /// The cost line of Zero, and of the old last-turns mode (RS-D27): no summary call is made. The start text is still sent as the new session's first
+    /// message, so this does not say the start makes no model call (S6c review, FIX 3).
+    /// </summary>
+    public const string NoSummaryCallLine = "No summary call. The text is shown before anything starts.";
 
     /// <summary>The line under the turns box when the box is not a valid number.</summary>
     public static readonly string TurnsMessage = $"Enter a whole number from 0 to {MaxTurns} for the turns.";
@@ -52,15 +55,6 @@ public static class ProviderResumeRules
     public static string FullCostLine(ProviderResumeWording wording) =>
         $"No model call from OpenTail. The session opens in a terminal tab with {wording.ResumeCommand}, and OpenTail sends it no text.";
 
-    /// <summary>The label of a mode, as its radio button shows it.</summary>
-    public static string ModeLabel(ProviderResumeMode mode, ProviderResumeWording wording) => mode switch
-    {
-        ProviderResumeMode.Full => $"In full: the whole conversation, with {wording.ResumeCommand}",
-        ProviderResumeMode.LastTurns => "From the last turns (no model call)",
-        ProviderResumeMode.Summary => $"From a {wording.CliName} summary (one {wording.CliName} call)",
-        _ => throw new ArgumentOutOfRangeException(nameof(mode)),
-    };
-
     /// <summary>
     /// The cost line of a mode. The summary line is the provider's own (it states the model, if the provider names one, and the cap on the characters
     /// sent).
@@ -68,7 +62,7 @@ public static class ProviderResumeRules
     public static string CostLine(ProviderResumeMode mode, ProviderResumeWording wording) => mode switch
     {
         ProviderResumeMode.Full => FullCostLine(wording),
-        ProviderResumeMode.LastTurns => NoModelCallLine,
+        ProviderResumeMode.LastTurns => NoSummaryCallLine,
         ProviderResumeMode.Summary => wording.SummaryCostLine(),
         _ => throw new ArgumentOutOfRangeException(nameof(mode)),
     };
@@ -92,25 +86,6 @@ public static class ProviderResumeRules
         turns = DefaultTurns;
         return false;
     }
-
-    /// <summary>
-    /// True when Start may be pressed. In full is always allowed. From the last turns needs a preview for the current choice. From a summary needs a
-    /// preview and a summary kept for the current level (<paramref name="keptMatches"/>): a summary is never made by Start.
-    /// </summary>
-    public static bool CanStart(ProviderResumeMode mode, bool previewReady, bool keptMatches) => mode switch
-    {
-        ProviderResumeMode.Full => true,
-        ProviderResumeMode.LastTurns => previewReady,
-        ProviderResumeMode.Summary => previewReady && keptMatches,
-        _ => false,
-    };
-
-    /// <summary>
-    /// True when the preview is built at once, with no button press: the last turns, or a summary kept for the level on screen. A summary is never
-    /// made by a change of the choice; only a kept one is shown again.
-    /// </summary>
-    public static bool RunsAtOnce(ProviderResumeMode mode, bool keptMatches) =>
-        mode == ProviderResumeMode.LastTurns || (mode == ProviderResumeMode.Summary && keptMatches);
 
     /// <summary>
     /// The mode a resume screen opens on, for the Continue mode it is given (stage C4). Null when no mode is given: the screen keeps its own start (CN-D2).
@@ -148,19 +123,6 @@ public static class ProviderResumeRules
         var tokens = (int)Math.Round(characters / 4.0, MidpointRounding.AwayFromZero);
         return $"About {tokens.ToString("N0", CultureInfo.InvariantCulture)} tokens ({characters.ToString("N0", CultureInfo.InvariantCulture)} characters). Start sends exactly this text.";
     }
-
-    /// <summary>True when the kept summary is for the level chosen. It is kept only for the level and turns it was made at (R-D3).</summary>
-    public static bool KeptMatches(SummaryLevel? level, KeptSummary? kept) => level is { } chosen && kept is not null && kept.MatchesLevel(chosen);
-
-    /// <summary>
-    /// The kept summary after a change of the choice (R-D3): a change of mode or of turns keeps it, and a change of level to another level than the
-    /// summary was made at drops it. Only a summary choice can drop it.
-    /// </summary>
-    /// <param name="summaryChosen">True when the choice on screen is a summary.</param>
-    /// <param name="level">The level on screen (null when there is no choice).</param>
-    /// <param name="kept">The summary the dialog holds, or null.</param>
-    public static KeptSummary? KeptAfterChange(bool summaryChosen, SummaryLevel? level, KeptSummary? kept) =>
-        kept is not null && summaryChosen && level != kept.Level ? null : kept;
 
     /// <summary>
     /// The refusal of a resume or a start, or null when it may go on: the id must be in the app's own list of the CLI's sessions, and the session's

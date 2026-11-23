@@ -27,7 +27,7 @@ public enum ResumeMode
 }
 
 /// <summary>
-/// The choice made in the resume prompt. Level is set for a summary, and null for Zero (no summary, no model call). Turns is the number of turns kept
+/// The choice made in the resume prompt. Level is set for a summary, and null for Zero (no summary, so no summary call). Turns is the number of turns kept
 /// verbatim, zero when the tail is off (RS-D19, RS-D21). Model and Effort are the model and effort of the resumed or new session (the summary itself is
 /// always Haiku at low effort). Remember is the "Remember for this session" tick: the prompt only returns it, and the window writes the mark (Continue, stage
 /// C6). Target is the platform the new session starts in (RS-D14). In a summary it is the chooser's pick; otherwise it is Claude, the screen's own platform.
@@ -47,7 +47,7 @@ public sealed record ResumePromptPreview(ResumePreview? Preview, string? Problem
 
 /// <summary>
 /// The resume prompt (D14, D-S11, RS-D3 to RS-D28). Two ways to continue: Full (the same session, with its whole conversation) and Summary. A summary has
-/// the level row (Zero, Minimal, Normal, Complete) and the tail, "Include last [N] turns". Zero is built at once, with no model call; the other levels are
+/// the level row (Zero, Minimal, Normal, Complete) and the tail, "Include last [N] turns". Zero is built at once, with no summary call; the other levels are
 /// made only by Make summary, and a summary made for another tail or level is out of date (RS-D21). The owner picks the model and effort of the session
 /// that continues. Cancel is the default.
 /// </summary>
@@ -61,6 +61,9 @@ public partial class ResumePrompt : Window
     private readonly int _contextTokens;
     private readonly Func<ResumeChoice, KeptSummary?, CancellationToken, Task<ResumePromptPreview>>? _previewAsync;
     private readonly Func<int, bool>? _summaryHasLines;
+
+    /// <summary>The transcript's line count the dialog holds: the lines read when it opened (Claude's summary reads only those, RS-D21, FIX 1 of the S6c review).</summary>
+    private readonly int? _lines;
     private CancellationTokenSource? _previewCts;
 
     /// <summary>The platform the Start menu picks (RS-D3): Claude by default, and back to Claude when the mode leaves a summary.</summary>
@@ -87,7 +90,7 @@ public partial class ResumePrompt : Window
     /// <param name="summaryHasLines">True when the summary of the session, with the given tail turns, has messages to read (RS-D26). Null: not known, so Make summary is on.</param>
     public ResumePrompt(string heading, string facts, long contextTokens, RailPalette palette, string defaultModel, string defaultEffort,
         Func<ResumeChoice, KeptSummary?, CancellationToken, Task<ResumePromptPreview>>? previewAsync = null, ContinueMode? initialMode = null,
-        string? folder = null, bool? folderExists = null, Func<int, bool>? summaryHasLines = null)
+        string? folder = null, bool? folderExists = null, Func<int, bool>? summaryHasLines = null, int? lines = null)
     {
         InitializeComponent();
         // The window grows to the screen's work area at most: the body scrolls and the buttons stay in view (owner, 2026-11-22).
@@ -99,6 +102,7 @@ public partial class ResumePrompt : Window
         AutomationProperties.SetName(ResumeButton, startLabel);
         _previewAsync = previewAsync;
         _summaryHasLines = summaryHasLines;
+        _lines = lines;
         _folderNotice = folderExists is { } exists ? ResumeFolderNotice.For(folder, exists) : null;
         _blocksStart = ResumeFolderNotice.BlocksStart(folder, folderExists);
         UiTheme.Apply(palette);
@@ -273,7 +277,7 @@ public partial class ResumePrompt : Window
         var choice = Selected(out var turnsValid);
         if (choice is null || !turnsValid || choice.Mode != ResumeMode.Summary) return;
         if (ResumeSummaryState.ZeroRefusal(choice.Level, TailOn, choice.Turns) is not null) return;
-        if (ResumeSummaryState.RunsAtOnce(choice.Level, choice.Turns, KeptSummary)) _ = BuildAsync(choice);
+        if (ResumeSummaryState.RunsAtOnce(choice.Level, choice.Turns, _lines, KeptSummary)) _ = BuildAsync(choice);
     }
 
     /// <summary>
@@ -301,7 +305,7 @@ public partial class ResumePrompt : Window
         var zeroRefusal = summary ? ResumeSummaryState.ZeroRefusal(level, TailOn, turns) : null;
         var hasLines = _summaryHasLines?.Invoke(turns) ?? true;
         var nothingToSummarise = summary && level is not null && turnsValid && !hasLines;
-        var outOfDate = summary && ResumeSummaryState.IsOutOfDate(level, turns, KeptSummary);
+        var outOfDate = summary && ResumeSummaryState.IsOutOfDate(level, turns, _lines, KeptSummary);
         var status = zeroRefusal ?? (nothingToSummarise ? ResumeSummaryState.NothingToSummariseLine
             : outOfDate ? ResumeSummaryState.OutOfDateLine : null);
 
@@ -315,7 +319,7 @@ public partial class ResumePrompt : Window
                 $"Resuming in full re-reads all of the context, about {_contextTokens:N0} tokens, before the first reply. " +
                 "A warm cache makes that cheap; a cold one charges it at full price. Nothing runs until you press Resume.",
             ResumeMode.Summary when level is null =>
-                "No model call. The last turns are copied word for word into a new session.",
+                "No summary call. The last turns are copied word for word into a new session.",
             ResumeMode.Summary =>
                 $"One Haiku call (low effort) reads your messages and Claude's replies, not the tool output, up to about " +
                 $"{ResumeText.SummaryInputChars / 4:N0} tokens, and writes the {level.Value.ToString().ToLowerInvariant()} " +
@@ -336,7 +340,7 @@ public partial class ResumePrompt : Window
         var makeAllowed = ResumeSummaryState.MakeSummaryAllowed(level, turnsValid, hasLines);
         Enable(MakeSummaryButton, free && summary && makeAllowed);
         var startAllowed = choice is not null && (!summary
-            || ResumeSummaryState.StartAllowed(level, TailOn, turns, turnsValid, previewReady, KeptSummary));
+            || ResumeSummaryState.StartAllowed(level, TailOn, turns, turnsValid, previewReady, _lines, KeptSummary));
         ResumeButton.IsEnabled = free && !_refused && !_blocksStart && startAllowed;
         ResumeMenuButton.IsEnabled = free;
         Enable(RememberBox, free);
@@ -348,7 +352,7 @@ public partial class ResumePrompt : Window
 
     /// <summary>True when the choice needs a model call that has not been made yet: a summary (a level), and no kept summary for its setting.</summary>
     private bool NeedsSummaryCall(ResumeChoice? choice) =>
-        choice?.Mode == ResumeMode.Summary && choice.Level is not null && !ResumeSummaryState.KeptMatches(choice.Level, choice.Turns, KeptSummary);
+        choice?.Mode == ResumeMode.Summary && choice.Level is not null && !ResumeSummaryState.KeptMatches(choice.Level, choice.Turns, _lines, KeptSummary);
 
     private static void Enable(UIElement element, bool enabled)
     {
@@ -520,7 +524,7 @@ public partial class ResumePrompt : Window
         var choice = Selected(out var turnsValid);
         if (choice is null) return;
         if (choice.Mode == ResumeMode.Summary
-            && !ResumeSummaryState.StartAllowed(choice.Level, TailOn, choice.Turns, turnsValid, _previewText is not null, KeptSummary))
+            && !ResumeSummaryState.StartAllowed(choice.Level, TailOn, choice.Turns, turnsValid, _previewText is not null, _lines, KeptSummary))
         {
             UpdateCost();
             return;

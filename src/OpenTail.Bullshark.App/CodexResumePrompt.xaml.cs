@@ -48,7 +48,7 @@ public sealed record CodexResumeChoice(CodexResumeMode Mode, SummaryLevel? Level
 /// What the screen's preview callback gives: the start text (empty when the session has no messages), the summary it made or reused (null for
 /// none), and the reason no text was made (null when there is text, or when the session has no messages).
 /// </summary>
-public sealed record CodexPreview(string Text, KeptSummary? KeptSummary, string? Problem = null) : IProviderPreview;
+public sealed record CodexPreview(string Text, KeptSummary? KeptSummary, string? Problem = null, int? Lines = null, bool Stale = false) : IProviderPreview;
 
 /// <summary>
 /// The Codex resume screen (step R5): a copy of Claude's resume prompt for a Codex session, with three ways to continue. Nothing runs until Start.
@@ -73,7 +73,7 @@ public partial class CodexResumePrompt : Window
     public CodexResumePrompt(string heading, string facts, RailPalette palette,
         Func<CodexResumeChoice, KeptSummary?, CancellationToken, Task<CodexPreview>>? previewAsync = null,
         Task<CodexModelReading>? models = null, ContinueMode? initialMode = null, string? folder = null, bool? folderExists = null,
-        Func<int, bool>? summaryHasLines = null)
+        Func<int, bool>? summaryHasLines = null, int? lines = null)
     {
         InitializeComponent();
         // The window grows to the screen's work area at most: the body scrolls and the buttons stay in view (owner, 2026-11-22).
@@ -108,7 +108,7 @@ public partial class CodexResumePrompt : Window
                 FullChoice, SummaryChoice, LevelBlock, LevelRow, TailBox, TurnsBox, TailBlock, TargetLine, StartButton, TargetMenuButton, TargetMenu,
                 TargetClaudeItem, TargetCodexItem, TargetCopilotItem, MakeSummaryButton, RememberBox, CostText, FolderNotice,
                 PreviewHeader, PreviewBox, PreviewBlock, PreviewNote, CopyButton, (Style)Resources["Segment"]),
-            new CodexHooks(this), previewAsync, summaryHasLines, initialMode, folderNotice, blocksStart, Close);
+            new CodexHooks(this), previewAsync, summaryHasLines, initialMode, folderNotice, blocksStart, Close, lines);
 
         // The screen's first build runs before the model list is read: the list then turns Start on (or the model box) when it is in.
         if (models is null)

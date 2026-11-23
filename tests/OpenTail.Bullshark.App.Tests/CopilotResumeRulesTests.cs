@@ -10,14 +10,6 @@ namespace OpenTail.Bullshark.App.Tests;
 public sealed class CopilotResumeRulesTests
 {
     [Fact]
-    public void TheThreeModesAreLabelledAsTheScreenShowsThem()
-    {
-        Assert.Equal("In full: the whole conversation, with copilot --resume", CopilotResumeRules.ModeLabel(CopilotResumeMode.Full));
-        Assert.Equal("From the last turns (no model call)", CopilotResumeRules.ModeLabel(CopilotResumeMode.LastTurns));
-        Assert.Equal("From a Copilot summary (one Copilot call)", CopilotResumeRules.ModeLabel(CopilotResumeMode.Summary));
-    }
-
-    [Fact]
     public void TheThreeLevelsAreLabelledWithTheirLengths()
     {
         Assert.Equal("Minimal · about 120 words", CopilotResumeRules.LevelLabel(SummaryLevel.Minimal));
@@ -34,9 +26,9 @@ public sealed class CopilotResumeRulesTests
     }
 
     [Fact]
-    public void TheLastTurnsModeSaysItMakesNoModelCall()
+    public void TheLastTurnsModeSaysItMakesNoSummaryCall()
     {
-        Assert.Equal("No model call. The text is shown before anything starts.", CopilotResumeRules.CostLine(CopilotResumeMode.LastTurns));
+        Assert.Equal("No summary call. The text is shown before anything starts.", CopilotResumeRules.CostLine(CopilotResumeMode.LastTurns));
     }
 
     [Fact]
@@ -73,29 +65,6 @@ public sealed class CopilotResumeRulesTests
         Assert.Equal(10, CopilotResumeRules.DefaultTurns);
         Assert.Equal(200, CopilotResumeRules.MaxTurns);
         Assert.Equal("Enter a whole number from 0 to 200 for the turns.", CopilotResumeRules.TurnsMessage);
-    }
-
-    [Fact]
-    public void InFullStartIsAlwaysOn()
-    {
-        Assert.True(CopilotResumeRules.CanStart(CopilotResumeMode.Full, previewReady: false, keptMatches: false));
-        Assert.True(CopilotResumeRules.CanStart(CopilotResumeMode.Full, previewReady: true, keptMatches: true));
-    }
-
-    [Fact]
-    public void FromTheLastTurnsStartNeedsOnlyAReadyPreview()
-    {
-        Assert.False(CopilotResumeRules.CanStart(CopilotResumeMode.LastTurns, previewReady: false, keptMatches: false));
-        Assert.True(CopilotResumeRules.CanStart(CopilotResumeMode.LastTurns, previewReady: true, keptMatches: false));
-    }
-
-    [Fact]
-    public void FromASummaryStartNeedsAReadyPreviewAndASummaryForTheChoice()
-    {
-        Assert.False(CopilotResumeRules.CanStart(CopilotResumeMode.Summary, previewReady: false, keptMatches: false));
-        Assert.False(CopilotResumeRules.CanStart(CopilotResumeMode.Summary, previewReady: false, keptMatches: true));
-        Assert.False(CopilotResumeRules.CanStart(CopilotResumeMode.Summary, previewReady: true, keptMatches: false));
-        Assert.True(CopilotResumeRules.CanStart(CopilotResumeMode.Summary, previewReady: true, keptMatches: true));
     }
 
     [Fact]

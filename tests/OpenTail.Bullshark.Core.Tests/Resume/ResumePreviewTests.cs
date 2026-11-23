@@ -1,3 +1,4 @@
+using OpenTail.Bullshark.Core.Providers;
 using OpenTail.Bullshark.Core.Resume;
 using Xunit;
 
@@ -58,5 +59,44 @@ public sealed class ResumePreviewTests
         var kept = new KeptSummary(SummaryLevel.Normal, "The summary.", Saved: true);
 
         Assert.False(kept.MatchesLevel(null));
+        Assert.False(kept.MatchesChoice(null, 0, 0));
+    }
+
+    [Fact]
+    public void AKeptSummaryMatchesTheSameLevelTailAndLineCount()
+    {
+        var kept = new KeptSummary(SummaryLevel.Normal, "The summary.", Saved: true, Turns: 10, Lines: 240);
+
+        Assert.True(kept.MatchesChoice(SummaryLevel.Normal, 10, 240));
+    }
+
+    [Fact]
+    public void AKeptSummaryDoesNotMatchAGrownTranscript()
+    {
+        // FIX 1 (S6c review): the summary was made from 240 lines. A transcript of 250 lines gives another input, so the summary is out of date.
+        var kept = new KeptSummary(SummaryLevel.Normal, "The summary.", Saved: true, Turns: 10, Lines: 240);
+
+        Assert.False(kept.MatchesChoice(SummaryLevel.Normal, 10, 250));
+        Assert.False(kept.MatchesChoice(SummaryLevel.Normal, 10, 239));
+    }
+
+    [Fact]
+    public void AKeptSummaryStillNeedsItsLevelAndTail()
+    {
+        var kept = new KeptSummary(SummaryLevel.Normal, "The summary.", Saved: true, Turns: 10, Lines: 240);
+
+        Assert.False(kept.MatchesChoice(SummaryLevel.Minimal, 10, 240));
+        Assert.False(kept.MatchesChoice(SummaryLevel.Normal, 5, 240));
+    }
+
+    [Fact]
+    public void AKeptSummaryKeepsItsWriterOnlyWhenOneIsGiven()
+    {
+        var sourceMade = new KeptSummary(SummaryLevel.Normal, "The summary.", Saved: true);
+        var targetMade = sourceMade with { WrittenBy = new ProviderId("codex") };
+
+        Assert.Null(sourceMade.WrittenBy);
+        Assert.Equal(new ProviderId("codex"), targetMade.WrittenBy);
+        Assert.False(sourceMade.Equals(targetMade));
     }
 }

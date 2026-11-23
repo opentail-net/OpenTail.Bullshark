@@ -24,9 +24,6 @@ public static class CopilotResumeRules
     /// <summary>The turns kept when the box is not a valid number. The same default as Claude's resume prompt.</summary>
     public const int DefaultTurns = ProviderResumeRules.DefaultTurns;
 
-    /// <summary>The cost line of the mode that makes no model call from the summary path (the last turns).</summary>
-    public const string NoModelCallLine = ProviderResumeRules.NoModelCallLine;
-
     /// <summary>The cost line of In full: it runs <c>copilot --resume</c> in a terminal tab, and OpenTail sends no text.</summary>
     public static readonly string FullCostLine = ProviderResumeRules.FullCostLine(Wording);
 
@@ -67,10 +64,6 @@ public static class CopilotResumeRules
         _ => throw new ArgumentOutOfRangeException(nameof(mode)),
     };
 
-    /// <summary>The label of a mode, as its radio button shows it.</summary>
-    public static string ModeLabel(CopilotResumeMode mode) =>
-        ProviderResumeRules.ModeLabel(ToShared(mode) ?? throw new ArgumentOutOfRangeException(nameof(mode)), Wording);
-
     /// <summary>
     /// The cost line of a mode. The summary line states the cap on the characters sent (the Core's constant, so the screen says what the call does).
     /// </summary>
@@ -84,17 +77,6 @@ public static class CopilotResumeRules
     /// The turns in the box: a whole number from 0 to <see cref="MaxTurns"/>. Returns false, with <see cref="DefaultTurns"/>, when it is not one.
     /// </summary>
     public static bool TryTurns(string text, out int turns) => ProviderResumeRules.TryTurns(text, out turns);
-
-    /// <summary>
-    /// True when Start may be pressed. In full is always allowed. From the last turns needs a preview for the current choice. From a summary needs a
-    /// preview and a summary kept for the current level (<paramref name="keptMatches"/>): a summary is never made by Start.
-    /// </summary>
-    public static bool CanStart(CopilotResumeMode mode, bool previewReady, bool keptMatches) =>
-        ToShared(mode) is { } shared && ProviderResumeRules.CanStart(shared, previewReady, keptMatches);
-
-    /// <summary>True when the preview of a choice is built at once, with no press: the last turns, or a kept summary for the level on screen.</summary>
-    public static bool RunsAtOnce(CopilotResumeMode mode, bool keptMatches) =>
-        ToShared(mode) is { } shared && ProviderResumeRules.RunsAtOnce(shared, keptMatches);
 
     /// <summary>
     /// The size line above a preview: "About N tokens (C characters). Start sends exactly this text." The tokens are the characters over four, rounded
