@@ -39,6 +39,15 @@ public static class RememberChoice
         _ => throw new ArgumentOutOfRangeException(nameof(mode)),
     };
 
+    /// <summary>The shared mode of a resume screen, as the Continue mode. The same three modes as each screen's own enum (D-S3: the presenter uses this one).</summary>
+    public static ContinueMode ModeOf(ProviderResumeMode mode) => mode switch
+    {
+        ProviderResumeMode.Full => ContinueMode.Full,
+        ProviderResumeMode.LastTurns => ContinueMode.LastTurns,
+        ProviderResumeMode.Summary => ContinueMode.Summary,
+        _ => throw new ArgumentOutOfRangeException(nameof(mode)),
+    };
+
     /// <summary>The key of a session's mark: <c>provider:id</c>, the text the library file uses for every provider's entries.</summary>
     public static string KeyOf(ProviderId provider, string sessionId) => new SessionKey(provider, sessionId).ToString();
 

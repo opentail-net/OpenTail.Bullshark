@@ -11,7 +11,7 @@ namespace OpenTail.Bullshark.App;
 public static class CodexResumeRules
 {
     /// <summary>Codex's words: the name, the resume command, the shim, and the summary's cost line (it names the model and the cap on the characters sent).</summary>
-    private static readonly ProviderResumeWording Wording = new(
+    internal static readonly ProviderResumeWording Wording = new(
         CliName: "Codex",
         ResumeCommand: "codex resume",
         ShimName: "codex.ps1",
@@ -40,12 +40,21 @@ public static class CodexResumeRules
         "Not started: codex.ps1 is not on PATH, so a start from text cannot run.";
 
     /// <summary>The shared mode of one of Codex's modes, or null for a value Codex does not have.</summary>
-    private static ProviderResumeMode? ToShared(CodexResumeMode mode) => mode switch
+    internal static ProviderResumeMode? ToShared(CodexResumeMode mode) => mode switch
     {
         CodexResumeMode.Full => ProviderResumeMode.Full,
         CodexResumeMode.LastTurns => ProviderResumeMode.LastTurns,
         CodexResumeMode.Summary => ProviderResumeMode.Summary,
         _ => null,
+    };
+
+    /// <summary>Codex's own mode for a shared one (the presenter works on the shared modes).</summary>
+    internal static CodexResumeMode FromShared(ProviderResumeMode mode) => mode switch
+    {
+        ProviderResumeMode.Full => CodexResumeMode.Full,
+        ProviderResumeMode.LastTurns => CodexResumeMode.LastTurns,
+        ProviderResumeMode.Summary => CodexResumeMode.Summary,
+        _ => throw new ArgumentOutOfRangeException(nameof(mode)),
     };
 
     /// <summary>The label of a mode, as its radio button shows it.</summary>

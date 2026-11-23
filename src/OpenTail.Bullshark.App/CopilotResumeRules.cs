@@ -12,7 +12,7 @@ namespace OpenTail.Bullshark.App;
 public static class CopilotResumeRules
 {
     /// <summary>Copilot's words: the name, the resume command, the shim, and the summary's cost line (the cap on the characters sent).</summary>
-    private static readonly ProviderResumeWording Wording = new(
+    internal static readonly ProviderResumeWording Wording = new(
         CliName: "Copilot",
         ResumeCommand: "copilot --resume",
         ShimName: "copilot.ps1",
@@ -50,12 +50,21 @@ public static class CopilotResumeRules
     public static readonly string TurnsMessage = ProviderResumeRules.TurnsMessage;
 
     /// <summary>The shared mode of one of Copilot's modes, or null for a value Copilot does not have.</summary>
-    private static ProviderResumeMode? ToShared(CopilotResumeMode mode) => mode switch
+    internal static ProviderResumeMode? ToShared(CopilotResumeMode mode) => mode switch
     {
         CopilotResumeMode.Full => ProviderResumeMode.Full,
         CopilotResumeMode.LastTurns => ProviderResumeMode.LastTurns,
         CopilotResumeMode.Summary => ProviderResumeMode.Summary,
         _ => null,
+    };
+
+    /// <summary>Copilot's own mode for a shared one (the presenter works on the shared modes).</summary>
+    internal static CopilotResumeMode FromShared(ProviderResumeMode mode) => mode switch
+    {
+        ProviderResumeMode.Full => CopilotResumeMode.Full,
+        ProviderResumeMode.LastTurns => CopilotResumeMode.LastTurns,
+        ProviderResumeMode.Summary => CopilotResumeMode.Summary,
+        _ => throw new ArgumentOutOfRangeException(nameof(mode)),
     };
 
     /// <summary>The label of a mode, as its radio button shows it.</summary>
