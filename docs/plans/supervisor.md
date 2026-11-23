@@ -84,7 +84,7 @@ From the perf and testability batch:
 
 From the features batch:
 
-- [ ] Open: the viewed ticks are one key in ui.json. Two windows ticking at the same moment can lose one window's ticks (each save replaces the whole key); the file lock covers one write, not the read-then-write pair.
+- [x] Closed 2026-11-23 (stale item): the viewed ticks are one key in ui.json, and a save is a read-change-write under one lock hold. `SessionWindow.Changes.cs` `SaveViewed` calls `UiFile.Update`, which calls `UiSettingsFile.Update` (reliability batch R5, with the test `UiSettingsUpdateTests`). The read-then-write pair is now under one lock hold; no two-window run was done to show it.
 
 - [ ] Open: the Ready-for-review tooltip "3 of 7 viewed" is not done (optional in G1; it needs a git read per row).
 
