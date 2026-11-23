@@ -97,17 +97,16 @@ public sealed class TargetChooserTests
 
     /// <summary>
     /// The Start menu is on only in a summary (RS-D2). Outside one, every platform item is off. On the Codex and Copilot screens the narrow part of the
-    /// split button is off too, with its tooltip. On the Claude screen the Resume menu stays on for its Preview and Copy items, so only its platform items
-    /// follow the mode (<paramref name="splitName"/> is null there).
+    /// split button is off too, with its tooltip. On the Claude screen the Resume menu stays on for its Copy item, so only its platform items follow the mode
+    /// (<paramref name="splitName"/> is null there).
     /// </summary>
     private static void AssertStartMenuOnlyInASummary(
-        Window window, string fullName, string tailName, string summaryName, ProviderId source, string? splitName)
+        Window window, string fullName, string summaryName, ProviderId source, string? splitName)
     {
-        foreach (var name in new[] { fullName, tailName })
+        Named<RadioButton>(window, fullName).IsChecked = true;
+        foreach (var platform in Platforms) Assert.False(ItemOf(window, platform).IsEnabled);
+        if (splitName is not null)
         {
-            Named<RadioButton>(window, name).IsChecked = true;
-            foreach (var platform in Platforms) Assert.False(ItemOf(window, platform).IsEnabled);
-            if (splitName is null) continue;
             var part = Named<Button>(window, splitName);
             Assert.False(part.IsEnabled);
             Assert.Equal(MenuTipOutside, (string?)part.ToolTip);
@@ -205,8 +204,8 @@ public sealed class TargetChooserTests
         UiThread.Run(() =>
         {
             var prompt = NewClaudePrompt(ContinueMode.Summary);
-            AssertStartMenuOnlyInASummary(prompt, "FullChoice", "TailChoice", "SummaryChoice", ProviderId.Claude, splitName: null);
-            // The Resume menu itself stays on in every mode: its Preview and Copy items work there (ResumePrompt.xaml).
+            AssertStartMenuOnlyInASummary(prompt, "FullChoice", "SummaryChoice", ProviderId.Claude, splitName: null);
+            // The Resume menu itself stays on in every mode: its Copy item and the platform items are in it (ResumePrompt.xaml).
             Named<RadioButton>(prompt, "FullChoice").IsChecked = true;
             Assert.True(Named<Button>(prompt, "ResumeMenuButton").IsEnabled);
         });
@@ -219,13 +218,13 @@ public sealed class TargetChooserTests
         {
             var prompt = NewClaudePrompt(ContinueMode.Summary);
             var menu = Named<ContextMenu>(prompt, "ResumeMenu");
-            Assert.Equal(6, menu.Items.Count);
-            Assert.Same(Named<MenuItem>(prompt, "PreviewItem"), menu.Items[0]);
-            Assert.Same(Named<MenuItem>(prompt, "CopyItem"), menu.Items[1]);
-            Assert.IsType<Separator>(menu.Items[2]);
-            Assert.Same(ItemOf(prompt, ProviderId.Claude), menu.Items[3]);
-            Assert.Same(ItemOf(prompt, ProviderId.Codex), menu.Items[4]);
-            Assert.Same(ItemOf(prompt, ProviderId.Copilot), menu.Items[5]);
+            // Make summary is a button of the screen now (RS-D21), so the menu holds Copy, a separator and the three platforms.
+            Assert.Equal(5, menu.Items.Count);
+            Assert.Same(Named<MenuItem>(prompt, "CopyItem"), menu.Items[0]);
+            Assert.IsType<Separator>(menu.Items[1]);
+            Assert.Same(ItemOf(prompt, ProviderId.Claude), menu.Items[2]);
+            Assert.Same(ItemOf(prompt, ProviderId.Codex), menu.Items[3]);
+            Assert.Same(ItemOf(prompt, ProviderId.Copilot), menu.Items[4]);
         });
     }
 
@@ -269,7 +268,7 @@ public sealed class TargetChooserTests
     public void TheCodexStartMenuIsOnlyInASummary()
     {
         UiThread.Run(() => AssertStartMenuOnlyInASummary(
-            NewCodexPrompt(ContinueMode.Summary), "FullChoice", "TailChoice", "SummaryChoice", ProviderId.Codex, splitName: "TargetMenuButton"));
+            NewCodexPrompt(ContinueMode.Summary), "FullChoice", "SummaryChoice", ProviderId.Codex, splitName: "TargetMenuButton"));
     }
 
     [Fact]
@@ -325,7 +324,7 @@ public sealed class TargetChooserTests
     public void TheCopilotStartMenuIsOnlyInASummary()
     {
         UiThread.Run(() => AssertStartMenuOnlyInASummary(
-            NewCopilotPrompt(ContinueMode.Summary), "FullChoice", "TailChoice", "SummaryChoice", ProviderId.Copilot, splitName: "TargetMenuButton"));
+            NewCopilotPrompt(ContinueMode.Summary), "FullChoice", "SummaryChoice", ProviderId.Copilot, splitName: "TargetMenuButton"));
     }
 
     [Fact]

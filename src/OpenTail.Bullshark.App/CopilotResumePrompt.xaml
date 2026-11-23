@@ -200,7 +200,6 @@
 
                 <TextBlock Style="{StaticResource Section}" Text="How to continue" />
                 <RadioButton x:Name="FullChoice" GroupName="CopilotResume" />
-                <RadioButton x:Name="TailChoice" GroupName="CopilotResume" IsChecked="True" />
                 <RadioButton x:Name="SummaryChoice" GroupName="CopilotResume" />
 
                 <StackPanel x:Name="LevelBlock" Margin="22,0,0,4">
@@ -211,9 +210,10 @@
                                Text="Copilot writes it from this session's messages. Tool calls and their output are left out." />
                 </StackPanel>
 
-                <StackPanel x:Name="TurnsBlock" Margin="22,0,0,0">
+                <!-- The tail (RS-D19): "Include last [N] turns", in Summary only. The summary covers the messages before these turns (RS-D20). -->
+                <StackPanel x:Name="TailBlock" Margin="22,0,0,0">
                     <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                        <TextBlock Text="Keep the last" VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <CheckBox x:Name="TailBox" Content="Include last" VerticalAlignment="Center" Margin="0,0,8,0" />
                         <TextBox x:Name="TurnsBox" Width="56" Padding="6,3" VerticalContentAlignment="Center" />
                         <TextBlock Text="turns" VerticalAlignment="Center" Margin="8,0,0,0" />
                     </StackPanel>

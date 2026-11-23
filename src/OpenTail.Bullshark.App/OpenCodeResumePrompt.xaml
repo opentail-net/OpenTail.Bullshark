@@ -102,12 +102,12 @@
 
                 <TextBlock Style="{StaticResource Section}" Text="How to continue" />
                 <RadioButton x:Name="FullChoice" GroupName="OpenCodeResume" />
-                <RadioButton x:Name="TailChoice" GroupName="OpenCodeResume" IsChecked="True" />
                 <RadioButton x:Name="SummaryChoice" GroupName="OpenCodeResume" />
 
                 <!-- The level row and Make summary: the summary is made only by its button (one model call, OC-O4). Enabled for the summary only. -->
                 <StackPanel x:Name="LevelBlock" Margin="22,0,0,4">
                     <WrapPanel x:Name="LevelRow" Orientation="Horizontal">
+                        <RadioButton x:Name="ZeroLevel" GroupName="OpenCodeLevel" Margin="0,0,16,6" />
                         <RadioButton x:Name="MinimalLevel" GroupName="OpenCodeLevel" Margin="0,0,16,6" />
                         <RadioButton x:Name="NormalLevel" GroupName="OpenCodeLevel" Margin="0,0,16,6" IsChecked="True" />
                         <RadioButton x:Name="CompleteLevel" GroupName="OpenCodeLevel" Margin="0,0,16,6" />
@@ -119,9 +119,10 @@
                                Text="opencode writes the summary from this session's messages. Tool calls and their output are left out." />
                 </StackPanel>
 
-                <StackPanel x:Name="TurnsBlock" Margin="22,0,0,0">
+                <!-- The tail (RS-D19): "Include last [N] turns", in Summary only. The summary covers the messages before these turns (RS-D20). -->
+                <StackPanel x:Name="TailBlock" Margin="22,0,0,0">
                     <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                        <TextBlock Text="Keep the last" VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <CheckBox x:Name="TailBox" Content="Include last" VerticalAlignment="Center" Margin="0,0,8,0" />
                         <TextBox x:Name="TurnsBox" Width="56" Padding="6,3" VerticalContentAlignment="Center" />
                         <TextBlock Text="turns" VerticalAlignment="Center" Margin="8,0,0,0" />
                     </StackPanel>

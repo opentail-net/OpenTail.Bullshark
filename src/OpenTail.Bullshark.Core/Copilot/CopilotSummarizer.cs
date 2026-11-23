@@ -1,4 +1,5 @@
 using System.Text;
+using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Claude;
 using OpenTail.Bullshark.Core.Providers;
 using OpenTail.Bullshark.Core.Providers.Summary;
@@ -85,10 +86,20 @@ public sealed class CopilotSummarizer(ICliRunner runner)
         ProviderPaths paths, string sessionId, string statePath, SummaryLevel level, CancellationToken ct)
     {
         CopilotFiles.RequireSafeId(sessionId);
+        CommandLineRules.RequireFolder(CopilotScratchFolder.ParentBeside(statePath));
+        var messages = await Task.Run(() => CopilotTranscriptReader.ReadSession(paths, sessionId, ct, int.MaxValue), ct);
+        return await SummariseLinesAsync(messages, level, statePath, ct);
+    }
+
+    /// <summary>
+    /// Summarises the messages of <paramref name="part"/> (RS-D20, RS-D23): the lines before the tail, as the resume screen's Make summary gives them. The
+    /// scratch folder is beside <paramref name="statePath"/>, as <see cref="SummariseSessionAsync"/> makes it. Errors as <see cref="SummariseSessionAsync"/>.
+    /// </summary>
+    public async Task<string> SummariseLinesAsync(IReadOnlyList<TranscriptLine> part, SummaryLevel level, string statePath, CancellationToken ct)
+    {
         var parent = CopilotScratchFolder.ParentBeside(statePath);
         CommandLineRules.RequireFolder(parent);
-        var messages = await Task.Run(() => CopilotTranscriptReader.ReadSession(paths, sessionId, ct, int.MaxValue), ct);
-        var input = CopilotSummaryInput.Build(messages);
+        var input = CopilotSummaryInput.Build(part);
 
         var folder = CopilotScratchFolder.Create(parent);
         try

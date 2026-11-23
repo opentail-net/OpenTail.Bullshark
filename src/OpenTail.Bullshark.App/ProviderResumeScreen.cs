@@ -14,15 +14,17 @@ namespace OpenTail.Bullshark.App;
 
 /// <summary>
 /// A resume choice as the shared screen logic sees it (dedup plan 2026-11-23, D-S3). Each provider's choice record implements it: the shared mode
-/// (the rules take the shared one), the level, the turns, the Remember tick and the target.
+/// (the rules take the shared one), the level (null is Zero), the turns (zero when the tail is off), the Remember tick and the target.
 /// </summary>
 public interface IProviderResumeChoice<TSelf> where TSelf : class
 {
     /// <summary>The mode as the shared rules see it.</summary>
     ProviderResumeMode SharedMode { get; }
 
+    /// <summary>The summary level, or null for Zero (no summary, no model call).</summary>
     SummaryLevel? Level { get; }
 
+    /// <summary>The tail's turns, zero when the tail is off (RS-D21).</summary>
     int Turns { get; }
 
     bool Remember { get; }
@@ -58,7 +60,7 @@ public interface IProviderResumeScreenHooks<TChoice> where TChoice : class
     /// <summary>The provider's words: its name, its resume command and its summary cost line.</summary>
     ProviderResumeWording Wording { get; }
 
-    /// <summary>The choice for a mode, a level and a number of turns. A provider adds its own fields to it (Codex: the model).</summary>
+    /// <summary>The choice for a mode, a level (null for Zero) and a number of turns. A provider adds its own fields to it (Codex: the model).</summary>
     TChoice MakeChoice(ProviderResumeMode mode, SummaryLevel? level, int turns);
 
     /// <summary>True when Start may go on for the choice. Codex waits for its model list (unless the choice needs none); Copilot never waits.</summary>
@@ -70,14 +72,16 @@ public interface IProviderResumeScreenHooks<TChoice> where TChoice : class
 
 /// <summary>
 /// The controls the shared screen logic uses. Each window builds one from its own <c>x:Name</c> controls, so the names in the XAML stay as they are
-/// (the tests find them by name).
+/// (the tests find them by name). <see cref="LevelBlock"/> and <see cref="TailBlock"/> are shown in Summary only (RS-D3, RS-D19).
 /// </summary>
 public sealed record ResumeScreenControls(
     RadioButton FullChoice,
-    RadioButton TailChoice,
     RadioButton SummaryChoice,
+    Panel LevelBlock,
     Panel LevelRow,
+    CheckBox TailBox,
     TextBox TurnsBox,
+    Panel TailBlock,
     TextBlock TargetLine,
     Button StartButton,
     Button TargetMenuButton,
@@ -98,16 +102,20 @@ public sealed record ResumeScreenControls(
 
 /// <summary>
 /// The resume screen's logic, shared by the providers' screens (dedup plan 2026-11-23, D-S4 to D-S6). It holds what the Codex and Copilot screens
-/// did one each: the choice on screen, what is on and off, the preview and its request, the summary kept for a level, the Start menu, Copy and Start.
-/// A window keeps its own XAML handlers and forwards them here. Nothing here changes what a screen shows or does.
+/// did one each: the choice on screen (Full, or Summary with its level, the tail and its turns), what is on and off, the preview and its request, the
+/// summary kept for its setting, the Start menu, Copy and Start. A window keeps its own XAML handlers and forwards them here.
 /// </summary>
 public sealed class ProviderResumeScreen<TChoice, TPreview>
     where TChoice : class, IProviderResumeChoice<TChoice>
     where TPreview : class, IProviderPreview
 {
+    /// <summary>The level row's tag of Zero. Zero is no summary, so it has no level (RS-D22).</summary>
+    private const string ZeroTag = "Zero";
+
     private readonly ResumeScreenControls _c;
     private readonly IProviderResumeScreenHooks<TChoice> _hooks;
     private readonly Func<TChoice, KeptSummary?, CancellationToken, Task<TPreview>>? _previewAsync;
+    private readonly Func<int, bool>? _summaryHasLines;
     private readonly string? _folderNotice;
     private readonly bool _blocksStart;
     private readonly Action _close;
@@ -123,7 +131,10 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
     /// <param name="controls">The window's controls, as the screen uses them.</param>
     /// <param name="hooks">What differs for the provider.</param>
     /// <param name="previewAsync">Makes the start text for a choice (off the UI thread), given the kept summary; returns the text and the summary it used.</param>
-    /// <param name="initialMode">The mode the screen opens on. Null keeps the screen's own start, the last turns. Opening on a mode never makes a summary.</param>
+    /// <param name="summaryHasLines">True when the summary of the session, with the given tail turns, has messages to read (RS-D26). False disables Make summary
+    /// with its status line. Null: not known here, so Make summary is on.</param>
+    /// <param name="initialMode">The mode the screen opens on. Null keeps the screen's own start: Summary at Zero with the tail (no model call). A stored
+    /// last-turns mode opens at Zero with the tail (RS-D27). Opening on a mode never makes a summary.</param>
     /// <param name="folderNotice">The folder notice shown in red, or null.</param>
     /// <param name="blocksStart">True when the folder notice blocks Start (a session with no folder on record).</param>
     /// <param name="close">Closes the window (Start and Cancel).</param>
@@ -131,6 +142,7 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
         ResumeScreenControls controls,
         IProviderResumeScreenHooks<TChoice> hooks,
         Func<TChoice, KeptSummary?, CancellationToken, Task<TPreview>>? previewAsync,
+        Func<int, bool>? summaryHasLines,
         ContinueMode? initialMode,
         string? folderNotice,
         bool blocksStart,
@@ -139,35 +151,37 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
         _c = controls;
         _hooks = hooks;
         _previewAsync = previewAsync;
+        _summaryHasLines = summaryHasLines;
         _folderNotice = folderNotice;
         _blocksStart = blocksStart;
         _close = close;
         _target = hooks.Provider;
         _preview = new ResumePreviewPane(controls.PreviewHeader, controls.PreviewBox, controls.PreviewBlock, controls.PreviewNote);
 
-        var wording = hooks.Wording;
-        _c.FullChoice.Content = ProviderResumeRules.ModeLabel(ProviderResumeMode.Full, wording);
-        _c.TailChoice.Content = ProviderResumeRules.ModeLabel(ProviderResumeMode.LastTurns, wording);
-        _c.SummaryChoice.Content = ProviderResumeRules.ModeLabel(ProviderResumeMode.Summary, wording);
-        _c.TurnsBox.Text = ProviderResumeRules.DefaultTurns.ToString(CultureInfo.InvariantCulture);
+        _c.FullChoice.Content = ResumeSummaryState.FullLabel;
+        _c.SummaryChoice.Content = ResumeSummaryState.SummaryLabel;
+        _c.TurnsBox.Text = ProviderResumeRules.StartTurns(null).ToString(CultureInfo.InvariantCulture);
+        _c.TailBox.IsChecked = true;
 
         // The start mode is set before the handlers below are attached, so the screen's first build runs once, for the mode it opens on.
-        // Null selects nothing: the XAML's last-turns radio stays as it is.
-        switch (ProviderResumeRules.StartMode(initialMode))
-        {
-            case ProviderResumeMode.Full: _c.FullChoice.IsChecked = true; break;
-            case ProviderResumeMode.Summary: _c.SummaryChoice.IsChecked = true; break;
-            case ProviderResumeMode.LastTurns: _c.TailChoice.IsChecked = true; break;
-        }
+        // Full opens Full. Summary opens at its own level (Normal); a stored last-turns mode, and no mode at all, open at Zero with the tail (RS-D27).
+        var start = ProviderResumeRules.StartMode(initialMode);
+        var atZero = start is null || ProviderResumeRules.OpensAtZeroWithTail(initialMode);
+        if (start == ProviderResumeMode.Full) _c.FullChoice.IsChecked = true;
+        else _c.SummaryChoice.IsChecked = true;
+        SummaryLevel? openLevel = atZero ? null : SummaryLevel.Normal;
 
-        foreach (var level in new[] { SummaryLevel.Minimal, SummaryLevel.Normal, SummaryLevel.Complete })
+        foreach (SummaryLevel? level in new SummaryLevel?[] { null, SummaryLevel.Minimal, SummaryLevel.Normal, SummaryLevel.Complete })
         {
-            var segment = Segment(ProviderResumeRules.LevelLabel(level), $"{hooks.Provider}Level", level == SummaryLevel.Normal);
-            segment.Tag = level.ToString();
+            var text = level is { } chosen ? ProviderResumeRules.LevelLabel(chosen) : ResumeSummaryState.ZeroLabel;
+            var segment = Segment(text, $"{hooks.Provider}Level", level == openLevel);
+            segment.Tag = level?.ToString() ?? ZeroTag;
             segment.Checked += (_, _) => OnChoiceChanged();
             _c.LevelRow.Children.Add(segment);
         }
-        foreach (var radio in new[] { _c.FullChoice, _c.TailChoice, _c.SummaryChoice }) radio.Checked += (_, _) => OnChoiceChanged();
+        foreach (var radio in new[] { _c.FullChoice, _c.SummaryChoice }) radio.Checked += (_, _) => OnChoiceChanged();
+        _c.TailBox.Checked += (_, _) => OnChoiceChanged();
+        _c.TailBox.Unchecked += (_, _) => OnChoiceChanged();
         _c.TurnsBox.TextChanged += (_, _) => OnChoiceChanged();
 
         OnChoiceChanged();
@@ -177,7 +191,7 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
     public TChoice? Choice { get; private set; }
 
     /// <summary>
-    /// The start text the window sends: exactly the text that was shown, so nothing is built again for the start. Null for In full, which sends no
+    /// The start text the window sends: exactly the text that was shown, so nothing is built again for the start. Null for Full, which sends no
     /// text.
     /// </summary>
     public string? PreviewText { get; private set; }
@@ -194,16 +208,20 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
         Style = _c.SegmentStyle,
     };
 
-    /// <summary>The summary level on screen. Normal when none is chosen.</summary>
-    private SummaryLevel SelectedLevel()
+    /// <summary>The summary level on screen: null for Zero, and Normal when no segment is chosen.</summary>
+    private SummaryLevel? SelectedLevel()
     {
         var tag = _c.LevelRow.Children.OfType<RadioButton>().FirstOrDefault(radio => radio.IsChecked == true)?.Tag as string;
+        if (tag == ZeroTag) return null;
         return Enum.TryParse<SummaryLevel>(tag, out var level) ? level : SummaryLevel.Normal;
     }
 
+    /// <summary>True when the tail is on: the box is ticked (RS-D19).</summary>
+    private bool TailOn => _c.TailBox.IsChecked == true;
+
     /// <summary>
-    /// The choice on screen, or null when no mode is checked. <paramref name="turnsValid"/> is false when the turns box is not a valid number; In full
-    /// needs no turns, so it is always valid.
+    /// The choice on screen, or null when no mode is checked. <paramref name="turnsValid"/> is false when the tail is on and the turns box is not a valid
+    /// number; Full and a tail that is off need no turns, so they are always valid.
     /// </summary>
     private TChoice? Selected(out bool turnsValid)
     {
@@ -213,14 +231,14 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
             turnsValid = true;
             return Targeted(_hooks.MakeChoice(ProviderResumeMode.Full, null, 0));
         }
-        turnsValid = valid;
-        if (_c.TailChoice.IsChecked == true) return Targeted(_hooks.MakeChoice(ProviderResumeMode.LastTurns, null, turns));
-        if (_c.SummaryChoice.IsChecked == true) return Targeted(_hooks.MakeChoice(ProviderResumeMode.Summary, SelectedLevel(), turns));
-        return null;
+        if (_c.SummaryChoice.IsChecked != true)
+        {
+            turnsValid = false;
+            return null;
+        }
+        turnsValid = !TailOn || valid;
+        return Targeted(_hooks.MakeChoice(ProviderResumeMode.Summary, SelectedLevel(), ResumeSummaryState.TurnsOf(TailOn, turns)));
     }
-
-    /// <summary>True when the summary the screen holds is for the choice's level. It is kept only for the level and turns it was made at (R-D3).</summary>
-    private bool KeptMatches(TChoice? choice) => ProviderResumeRules.KeptMatches(choice?.Level, _kept);
 
     /// <summary>The choice with its target (RS-D3, RS-D14): the preview is built for the target on screen, and Start sends the same one.</summary>
     private TChoice Targeted(TChoice choice) => choice.WithTarget(StartTarget(choice.SharedMode));
@@ -287,9 +305,9 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
     }
 
     /// <summary>
-    /// Runs when the mode, the level or the turns change. The preview on screen is for the old choice, so it is taken away. A summary depends on the
-    /// session and the level only (R-D3): a change of mode or of turns keeps the kept summary, and a change of level drops it. The preview is built
-    /// again at once when it needs no model call: the last turns, or a summary kept for the level on screen.
+    /// Runs when the mode, the level, the tail or its turns change. The preview on screen is for the old choice, so it is taken away, and the summary
+    /// kept for another setting is out of date (RS-D21): Start waits for Make summary. The preview is built again at once when it needs no model call:
+    /// Zero with the tail on, or a summary kept for the setting on screen.
     /// </summary>
     private void OnChoiceChanged()
     {
@@ -297,53 +315,74 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
         if (_c.SummaryChoice.IsChecked != true) _target = _hooks.Provider;
         CancelRequest();
         _busy = false;
-        var choice = Selected(out var turnsValid);
-        _kept = ProviderResumeRules.KeptAfterChange(choice?.SharedMode == ProviderResumeMode.Summary, choice?.Level, _kept);
         HidePreview();
         Refresh();
-        if (!turnsValid || choice is null) return;
-        if (ProviderResumeRules.RunsAtOnce(choice.SharedMode, KeptMatches(choice))) _ = RunRequestAsync(choice);
+        var choice = Selected(out var turnsValid);
+        if (choice is null || !turnsValid || choice.SharedMode != ProviderResumeMode.Summary) return;
+        if (ResumeSummaryState.ZeroRefusal(choice.Level, TailOn, choice.Turns) is not null) return;
+        if (ResumeSummaryState.RunsAtOnce(choice.Level, choice.Turns, _kept)) _ = RunRequestAsync(choice);
     }
 
     /// <summary>
-    /// Sets what is on and off for the choice: the cost line, the choices, the level row (summary only), the turns box (not in full), Make summary
-    /// (summary only), Copy, and Start (<see cref="ProviderResumeRules.CanStart"/>). While a summary is made, the choices and the buttons are off.
+    /// Sets what is on and off for the choice: the cost line and its status line, the choices, the level row and the tail (Summary only), the turns box
+    /// (Summary with the tail on), Make summary (<see cref="ResumeSummaryState.MakeSummaryAllowed"/>), Copy, and Start
+    /// (<see cref="ResumeSummaryState.StartAllowed"/>). While a summary is made, the choices and the buttons are off.
     /// </summary>
     public void Refresh()
     {
         var choice = Selected(out var turnsValid);
-        var mode = choice?.SharedMode ?? ProviderResumeMode.LastTurns;
+        var mode = choice?.SharedMode ?? ProviderResumeMode.Full;
+        var inSummary = mode == ProviderResumeMode.Summary;
         var free = !_busy;
-        var turnsApply = mode != ProviderResumeMode.Full;
-        _c.CostText.Text = ProviderResumeRules.CostLine(mode, _hooks.Wording) + (turnsApply && !turnsValid ? " " + ProviderResumeRules.TurnsMessage : string.Empty);
+        var level = choice?.Level;
+        var turns = choice is null ? 0 : choice.Turns;
+        var previewReady = _preview.Text is not null;
+        var zeroRefusal = inSummary ? ResumeSummaryState.ZeroRefusal(level, TailOn, turns) : null;
+        var hasLines = _summaryHasLines?.Invoke(turns) ?? true;
+        var nothingToSummarise = inSummary && level is not null && turnsValid && !hasLines;
+        var outOfDate = inSummary && ResumeSummaryState.IsOutOfDate(level, turns, _kept);
+
+        // The status line (RS-D21, RS-D25, RS-D26) is shown after the cost line, as the other messages of the screen are.
+        var status = zeroRefusal ?? (nothingToSummarise ? ResumeSummaryState.NothingToSummariseLine
+            : outOfDate ? ResumeSummaryState.OutOfDateLine : null);
+        var costLine = !inSummary ? ProviderResumeRules.CostLine(mode, _hooks.Wording)
+            : level is null ? ProviderResumeRules.NoModelCallLine
+            : _hooks.Wording.SummaryCostLine();
+        _c.CostText.Text = costLine + (inSummary && !turnsValid ? " " + ProviderResumeRules.TurnsMessage : string.Empty)
+            + (status is null ? string.Empty : " " + status);
         _c.FolderNotice.Text = _folderNotice ?? string.Empty;
         _c.FolderNotice.Visibility = _folderNotice is null ? Visibility.Collapsed : Visibility.Visible;
 
         Enable(_c.FullChoice, free);
-        Enable(_c.TailChoice, free);
         Enable(_c.SummaryChoice, free);
-        Enable(_c.LevelRow, free && mode == ProviderResumeMode.Summary);
-        Enable(_c.TurnsBox, free && turnsApply);
+        _c.LevelBlock.Visibility = inSummary ? Visibility.Visible : Visibility.Collapsed;
+        _c.TailBlock.Visibility = inSummary ? Visibility.Visible : Visibility.Collapsed;
+        Enable(_c.LevelRow, free && inSummary);
+        Enable(_c.TailBox, free && inSummary);
+        Enable(_c.TurnsBox, free && inSummary && TailOn);
         ShowTarget(choice?.Target ?? _hooks.Provider);
-        var inSummary = mode == ProviderResumeMode.Summary;
         Enable(_c.TargetMenuButton, free && inSummary);
         _c.TargetMenuButton.ToolTip = inSummary ? TargetMenuTip : TargetMenuOffTip;
         ShowTargetMenu(free && inSummary);
-        Enable(_c.MakeSummaryButton, free && mode == ProviderResumeMode.Summary && turnsValid);
+        var makeAllowed = ResumeSummaryState.MakeSummaryAllowed(level, turnsValid, hasLines);
+        Enable(_c.MakeSummaryButton, free && inSummary && makeAllowed);
         Enable(_c.RememberBox, free);
-        var previewReady = _preview.Text is not null;
         Enable(_c.CopyButton, free && previewReady);
         _hooks.RefreshOwnControls(choice, mode, free);
-        Enable(_c.StartButton, free && !_blocksStart && _hooks.StartReady(choice) && ProviderResumeRules.CanStart(mode, previewReady, KeptMatches(choice)));
+        var startAllowed = choice is not null && (!inSummary
+            || ResumeSummaryState.StartAllowed(level, TailOn, turns, turnsValid, previewReady, _kept));
+        Enable(_c.StartButton, free && !_blocksStart && _hooks.StartReady(choice) && startAllowed);
     }
 
     private static void Enable(UIElement element, bool enabled) => ResumeScreenElements.Enable(element, enabled);
 
-    /// <summary>The Make summary button: makes the summary now, once, for the level and turns on screen.</summary>
+    /// <summary>The Make summary button: makes the summary now, once, for the level and tail on screen (RS-D21). Zero makes none.</summary>
     public void MakeSummary()
     {
         var choice = Selected(out var turnsValid);
-        if (choice is { SharedMode: ProviderResumeMode.Summary } && turnsValid && !_busy) _ = RunRequestAsync(choice);
+        if (choice is { SharedMode: ProviderResumeMode.Summary, Level: not null } && turnsValid && !_busy
+            && (_summaryHasLines?.Invoke(choice.Turns) ?? true))
+            _ = RunRequestAsync(choice);
     }
 
     /// <summary>For the screenshots only: chooses the summary mode, at the level on screen, and presses Make summary once. Nothing else calls it.</summary>
@@ -353,13 +392,13 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
         MakeSummary();
     }
 
-    /// <summary>For the screenshots only: chooses In full, which sends no text. Nothing else calls it.</summary>
+    /// <summary>For the screenshots only: chooses Full, which sends no text. Nothing else calls it.</summary>
     public void ChooseFullForScreenshot() => _c.FullChoice.IsChecked = true;
 
     /// <summary>
-    /// Makes the start text for the choice, off the UI thread, and shows it. A summary holds the choices and the buttons until it is made. A request
-    /// replaces the one before it: the older one is cancelled and its result is dropped. A failure is shown in the preview area; a cancel shows
-    /// nothing. Never throws: every failure is shown on screen.
+    /// Makes the start text for the choice, off the UI thread, and shows it. A summary (a level other than Zero) holds the choices and the buttons until it is
+    /// made. A request replaces the one before it: the older one is cancelled and its result is dropped. A failure is shown in the preview area; a cancel
+    /// shows nothing. Never throws: every failure is shown on screen.
     /// </summary>
     private async Task RunRequestAsync(TChoice choice)
     {
@@ -368,8 +407,9 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
         var cts = new CancellationTokenSource();
         _cts = cts;
         var id = _request;
-        _busy = choice.SharedMode == ProviderResumeMode.Summary;
-        ShowWorking(choice);
+        var makesSummary = choice.SharedMode == ProviderResumeMode.Summary && choice.Level is not null;
+        _busy = makesSummary;
+        ShowWorking(makesSummary);
         Refresh();
         try
         {
@@ -406,9 +446,9 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
         _cts = null;
     }
 
-    /// <summary>Shows that the text for the choice is being made. Summary says one call of the provider is made.</summary>
-    private void ShowWorking(TChoice choice) => ShowMessage(
-        choice.SharedMode == ProviderResumeMode.Summary
+    /// <summary>Shows that the text is being made. A summary says one call of the provider is made; Zero reads the session only.</summary>
+    private void ShowWorking(bool makesSummary) => ShowMessage(
+        makesSummary
             ? $"Making the summary: one {_hooks.Wording.CliName} call. Nothing is sent to a session."
             : "Reading the session. Nothing is sent to a session.",
         problem: false);
@@ -434,17 +474,19 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
     private void ShowMessage(string message, bool problem) => _preview.ShowMessage(message, problem);
 
     /// <summary>
-    /// Shows a failed preview: the problem in the danger colour, and no text. A summary that was not made falls back to In full (ResumeDefaults): In full
-    /// is selected, and the problem is shown with the line that says so. Nothing is started.
+    /// Shows a failed summary. A summary of the session's own platform that is not made falls back to Full (ResumeDefaults): Full is selected, and the
+    /// problem is shown with the line that says so. A summary that starts in another platform does not fall back (that would start another session than
+    /// the one chosen): it stays in Summary, the problem shows, and the window's "Make summary with" button is the way on (RS-D28).
     /// </summary>
     private void ShowFailedSummary(TChoice choice, string problem)
     {
-        if (!ResumeDefaults.FallBackToFull(choice.SharedMode == ProviderResumeMode.Summary, cancelled: false))
+        var crossTarget = _target != _hooks.Provider;
+        if (crossTarget || !ResumeDefaults.FallBackToFull(choice.SharedMode == ProviderResumeMode.Summary, cancelled: false))
         {
             ShowMessage(problem, problem: true);
             return;
         }
-        // Selecting In full clears the preview (OnChoiceChanged), so the problem is shown after it.
+        // Selecting Full clears the preview (OnChoiceChanged), so the problem is shown after it.
         _c.FullChoice.IsChecked = true;
         ShowMessage($"{problem} {ResumeDefaults.FullFallbackLine}", problem: true);
     }
@@ -456,19 +498,22 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
     public void Copy() => _preview.Copy();
 
     /// <summary>
-    /// Start: the choice and the text shown, and the dialog closes. Start is off unless the choice is ready (<see cref="ProviderResumeRules.CanStart"/>),
-    /// so a text is never sent that was not shown.
+    /// Start: the choice and the text shown, and the dialog closes. Start is off unless the choice is ready (<see cref="ResumeSummaryState.StartAllowed"/>),
+    /// so a text is never sent that was not shown, and no summary is made by Start.
     /// </summary>
     public void Start()
     {
         if (_blocksStart) return;
-        var choice = Selected(out _);
+        var choice = Selected(out var turnsValid);
         if (choice is null || _busy) return;
-        if (!ProviderResumeRules.CanStart(choice.SharedMode, _preview.Text is not null, KeptMatches(choice))) return;
+        var inSummary = choice.SharedMode == ProviderResumeMode.Summary;
+        var allowed = !inSummary || ResumeSummaryState.StartAllowed(choice.Level, TailOn, choice.Turns, turnsValid, _preview.Text is not null, _kept);
+        if (!allowed) return;
         if (!_hooks.StartReady(choice)) return;
         Choice = choice.WithTarget(StartTarget(choice.SharedMode)).WithRemember(_c.RememberBox.IsChecked == true);
         PreviewText = choice.SharedMode == ProviderResumeMode.Full ? null : _preview.Text;
-        KeptSummary = _kept;
+        // A Zero start made no summary, so none is kept for it (the kept one is for another setting, if any).
+        KeptSummary = choice.Level is null ? null : _kept;
         _close();
     }
 

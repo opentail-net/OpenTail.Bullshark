@@ -9,8 +9,9 @@ using Xunit.Abstractions;
 namespace OpenTail.Bullshark.App.Tests;
 
 /// <summary>
-/// The resume prompt's preview (resume preview, 2026-11-20), headless: a fake preview stands in for the window's method, so the dialog's own rules
-/// are what is tested. The sample texts are made up for the tests; no transcript is read.
+/// The resume prompt's preview and its Summary mode (RS-D3 to RS-D26), headless: a fake preview stands in for the window's method, so the dialog's own rules
+/// are what is tested. The sample texts are made up for the tests; no transcript is read. Zero (no level) is built at once with no call; a summary is made
+/// only by Make summary, and a summary made for another tail or level is out of date (RS-D21).
 /// </summary>
 [Collection(HeadlessCollection.Name)]
 public sealed class ResumePromptTests
@@ -29,8 +30,9 @@ public sealed class ResumePromptTests
 
     public ResumePromptTests(ITestOutputHelper output) => _output = output;
 
-    /// <summary>A prompt for a large context (a summary is the recommendation), with the given preview. Made on the WPF thread.</summary>
-    private static ResumePrompt NewPrompt(Func<ResumeChoice, KeptSummary?, CancellationToken, Task<ResumePromptPreview>> preview)
+    /// <summary>A prompt for a large context (a summary is the recommendation, at the Normal level), with the given preview. Made on the WPF thread.</summary>
+    private static ResumePrompt NewPrompt(
+        Func<ResumeChoice, KeptSummary?, CancellationToken, Task<ResumePromptPreview>> preview, Func<int, bool>? summaryHasLines = null)
     {
         AppResources.Ensure();
         return new ResumePrompt(
@@ -40,7 +42,8 @@ public sealed class ResumePromptTests
             RailPalette.DarkPalette,
             "opus",
             "high",
-            preview);
+            preview,
+            summaryHasLines: summaryHasLines);
     }
 
     private static T Named<T>(ResumePrompt prompt, string name) where T : class =>
@@ -49,41 +52,90 @@ public sealed class ResumePromptTests
     private static RadioButton LevelSegment(ResumePrompt prompt, string tag) =>
         Named<Panel>(prompt, "LevelRow").Children.OfType<RadioButton>().First(radio => (string?)radio.Tag == tag);
 
-    /// <summary>Presses a menu item, the way a click does.</summary>
-    private static void Press(MenuItem item) => item.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+    /// <summary>Chooses Summary at a level (a tag: Zero, Minimal, Normal or Complete).</summary>
+    private static void SummaryAt(ResumePrompt prompt, string tag)
+    {
+        Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
+        LevelSegment(prompt, tag).IsChecked = true;
+    }
+
+    /// <summary>Presses the Make summary button, the way a click does.</summary>
+    private static void MakeSummary(ResumePrompt prompt) =>
+        Named<Button>(prompt, "MakeSummaryButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
     private static Task<ResumePromptPreview> TailPreview(ResumeChoice choice, KeptSummary? kept, CancellationToken token) =>
         Task.FromResult(new ResumePromptPreview(new ResumePreview(TailText, 0, true, null)));
 
+    /// <summary>The summary the fake makes for a choice: the level and the tail the choice holds.</summary>
+    private static ResumePromptPreview SummaryOf(ResumeChoice choice) =>
+        new(new ResumePreview(SummaryText, 0, true, new KeptSummary(choice.Level!.Value, "An example summary.", Saved: true, Turns: choice.Turns)));
+
     [Fact]
-    public void AFullResumeHasNoPreviewAndSaysWhy()
+    public void AFullResumeHasNoPreviewAndNoCopy()
     {
         UiThread.Run(() =>
         {
             var prompt = NewPrompt(TailPreview);
             Named<RadioButton>(prompt, "FullChoice").IsChecked = true;
 
-            var preview = Named<MenuItem>(prompt, "PreviewItem");
-            var copy = Named<MenuItem>(prompt, "CopyItem");
-            Assert.False(preview.IsEnabled);
-            Assert.False(copy.IsEnabled);
-            Assert.Equal("Resuming in full sends no prompt.", (string?)preview.ToolTip);
-            Assert.Equal("Resuming in full sends no prompt.", (string?)copy.ToolTip);
+            Assert.False(Named<MenuItem>(prompt, "CopyItem").IsEnabled);
+            Assert.Equal(Visibility.Collapsed, Named<StackPanel>(prompt, "PreviewBlock").Visibility);
+            Assert.True(Named<Button>(prompt, "ResumeButton").IsEnabled);
         });
     }
 
     [Fact]
-    public void TheTailAndTheSummaryCanBePreviewed()
+    public void TheZeroStartIsBuiltAtOnceAndAMinimalSummaryOnlyByMakeSummary()
     {
         UiThread.Run(() =>
         {
-            var prompt = NewPrompt(TailPreview);
-            Named<RadioButton>(prompt, "TailChoice").IsChecked = true;
-            Assert.True(Named<MenuItem>(prompt, "PreviewItem").IsEnabled);
-            Assert.True(Named<MenuItem>(prompt, "CopyItem").IsEnabled);
+            var calls = new List<ResumeChoice>();
+            var prompt = NewPrompt((choice, kept, token) =>
+            {
+                calls.Add(choice);
+                return choice.Level is null ? TailPreview(choice, kept, token) : Task.FromResult(SummaryOf(choice));
+            });
 
-            Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
-            Assert.True(Named<MenuItem>(prompt, "PreviewItem").IsEnabled);
+            SummaryAt(prompt, "Zero");
+
+            // Zero is built at once: its text is shown, Start is on, and no summary is called.
+            var zero = Assert.Single(calls);
+            Assert.Null(zero.Level);
+            Assert.Equal(TailText, Named<TextBox>(prompt, "PreviewText").Text);
+            Assert.True(Named<Button>(prompt, "ResumeButton").IsEnabled);
+            Assert.True(Named<MenuItem>(prompt, "CopyItem").IsEnabled);
+            Assert.False(Named<Button>(prompt, "MakeSummaryButton").IsEnabled);
+
+            LevelSegment(prompt, "Minimal").IsChecked = true;
+            Assert.Single(calls);
+            Assert.False(Named<Button>(prompt, "ResumeButton").IsEnabled);
+
+            MakeSummary(prompt);
+            Assert.Equal(2, calls.Count);
+            Assert.Equal(SummaryLevel.Minimal, calls[1].Level);
+            Assert.True(Named<Button>(prompt, "ResumeButton").IsEnabled);
+        });
+    }
+
+    [Fact]
+    public void AZeroStartWithTheTailOffIsRefusedWithItsStatusLine()
+    {
+        UiThread.Run(() =>
+        {
+            var calls = new List<ResumeChoice>();
+            var prompt = NewPrompt((choice, kept, token) =>
+            {
+                calls.Add(choice);
+                return TailPreview(choice, kept, token);
+            });
+            SummaryAt(prompt, "Zero");
+
+            Named<CheckBox>(prompt, "TailBox").IsChecked = false;
+
+            Assert.False(Named<Button>(prompt, "ResumeButton").IsEnabled);
+            Assert.Equal(Visibility.Collapsed, Named<StackPanel>(prompt, "PreviewBlock").Visibility);
+            Assert.Contains("Nothing to start from: tick the tail or choose a summary level.", Named<TextBlock>(prompt, "CostText").Text);
+            Assert.Single(calls);
         });
     }
 
@@ -93,23 +145,21 @@ public sealed class ResumePromptTests
         UiThread.Run(() =>
         {
             var prompt = NewPrompt(TailPreview);
-            Named<RadioButton>(prompt, "TailChoice").IsChecked = true;
             Named<TextBox>(prompt, "TurnsBox").Text = "lots";
 
-            Assert.False(Named<MenuItem>(prompt, "PreviewItem").IsEnabled);
-            Assert.Equal("Enter a whole number of turns first.", (string?)Named<MenuItem>(prompt, "PreviewItem").ToolTip);
+            Assert.False(Named<Button>(prompt, "ResumeButton").IsEnabled);
+            Assert.False(Named<MenuItem>(prompt, "CopyItem").IsEnabled);
+            Assert.Contains("Enter a whole number from 0 to 200 for the turns.", Named<TextBlock>(prompt, "CostText").Text);
         });
     }
 
     [Fact]
-    public void ATailPreviewShowsTheTextAndItsSizeLine()
+    public void AZeroPreviewShowsTheTextAndItsSizeLine()
     {
         UiThread.Run(() =>
         {
             var prompt = NewPrompt(TailPreview);
-            Named<RadioButton>(prompt, "TailChoice").IsChecked = true;
-
-            Press(Named<MenuItem>(prompt, "PreviewItem"));
+            SummaryAt(prompt, "Zero");
 
             Assert.Equal(Visibility.Visible, Named<StackPanel>(prompt, "PreviewBlock").Visibility);
             Assert.Equal(TailText, Named<TextBox>(prompt, "PreviewText").Text);
@@ -123,72 +173,93 @@ public sealed class ResumePromptTests
     // Copy is a live-run item (docs/plans/live-run-checklist.md, Resume preview).
 
     [Fact]
-    public void ASummaryPreviewIsKeptAndResumeReusesIt()
+    public void ASummaryIsKeptAndStartReusesItWithoutASecondCall()
     {
         UiThread.Run(() =>
         {
             var seen = new List<KeptSummary?>();
-            var summary = new KeptSummary(SummaryLevel.Normal, "An example summary.", Saved: true);
             var calls = 0;
             var prompt = NewPrompt((choice, kept, token) =>
             {
                 calls++;
                 seen.Add(kept);
-                // The window's method reuses a kept summary of the same level: the fake does the same, and makes one only otherwise.
-                var made = kept is not null && kept.MatchesLevel(choice.Level) ? kept : summary;
-                return Task.FromResult(new ResumePromptPreview(new ResumePreview(SummaryText, 0, true, made)));
+                // The window's method reuses a kept summary of the same level and tail: the fake does the same, and makes one only otherwise.
+                return kept is not null && kept.MatchesChoice(choice.Level, choice.Turns)
+                    ? Task.FromResult(new ResumePromptPreview(new ResumePreview(SummaryText, 0, true, kept)))
+                    : Task.FromResult(SummaryOf(choice));
             });
-            Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
+            SummaryAt(prompt, "Normal");
+            Assert.Equal(0, calls);
 
-            Press(Named<MenuItem>(prompt, "PreviewItem"));
-            Assert.Equal(summary, prompt.KeptSummary);
+            MakeSummary(prompt);
 
-            // A second preview of the same level sends the kept summary back, and the fake makes no new one.
-            Press(Named<MenuItem>(prompt, "PreviewItem"));
-            Assert.Equal(2, calls);
-            Assert.Null(seen[0]);
-            Assert.Equal(summary, seen[1]);
+            Assert.Equal(1, calls);
+            Assert.NotNull(prompt.KeptSummary);
+            Assert.Equal(SummaryLevel.Normal, prompt.KeptSummary!.Level);
+            Assert.Equal(10, prompt.KeptSummary.Turns);
 
             Named<Button>(prompt, "ResumeButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Assert.NotNull(prompt.Choice);
             Assert.Equal(ResumeMode.Summary, prompt.Choice!.Mode);
             Assert.Equal(SummaryLevel.Normal, prompt.Choice.Level);
-            Assert.Equal(summary, prompt.KeptSummary);
+            Assert.Equal(10, prompt.Choice.Turns);
+            Assert.Equal(1, calls);
         });
     }
 
     [Fact]
-    public void AChangedLevelHidesThePreviewAndDropsTheKeptSummary()
+    public void AChangedLevelHidesThePreviewAndMakesTheSummaryOutOfDate()
     {
         UiThread.Run(() =>
         {
-            var summary = new KeptSummary(SummaryLevel.Normal, "An example summary.", Saved: true);
-            var prompt = NewPrompt((choice, kept, token) => Task.FromResult(new ResumePromptPreview(new ResumePreview(SummaryText, 0, true, summary))));
-            Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
-            Press(Named<MenuItem>(prompt, "PreviewItem"));
+            var prompt = NewPrompt((choice, kept, token) => Task.FromResult(SummaryOf(choice)));
+            SummaryAt(prompt, "Normal");
+            MakeSummary(prompt);
             Assert.Equal(Visibility.Visible, Named<StackPanel>(prompt, "PreviewBlock").Visibility);
 
             LevelSegment(prompt, "Minimal").IsChecked = true;
 
             Assert.Equal(Visibility.Collapsed, Named<StackPanel>(prompt, "PreviewBlock").Visibility);
-            Assert.Null(prompt.KeptSummary);
+            Assert.False(Named<Button>(prompt, "ResumeButton").IsEnabled);
+            Assert.Contains(ResumeSummaryState.OutOfDateLine, Named<TextBlock>(prompt, "CostText").Text);
         });
     }
 
     [Fact]
-    public void AChangedNumberOfTurnsHidesThePreviewButKeepsASummaryOfTheSameLevel()
+    public void AChangedNumberOfTurnsHidesThePreviewAndMakesTheSummaryOutOfDate()
     {
         UiThread.Run(() =>
         {
-            var summary = new KeptSummary(SummaryLevel.Normal, "An example summary.", Saved: true);
-            var prompt = NewPrompt((choice, kept, token) => Task.FromResult(new ResumePromptPreview(new ResumePreview(SummaryText, 0, true, summary))));
-            Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
-            Press(Named<MenuItem>(prompt, "PreviewItem"));
+            var calls = 0;
+            var prompt = NewPrompt((choice, kept, token) =>
+            {
+                calls++;
+                return Task.FromResult(SummaryOf(choice));
+            });
+            SummaryAt(prompt, "Normal");
+            MakeSummary(prompt);
 
             Named<TextBox>(prompt, "TurnsBox").Text = "4";
 
+            Assert.Equal(1, calls);
             Assert.Equal(Visibility.Collapsed, Named<StackPanel>(prompt, "PreviewBlock").Visibility);
-            Assert.Equal(summary, prompt.KeptSummary);
+            Assert.False(Named<Button>(prompt, "ResumeButton").IsEnabled);
+            Assert.Contains(ResumeSummaryState.OutOfDateLine, Named<TextBlock>(prompt, "CostText").Text);
+        });
+    }
+
+    [Fact]
+    public void ANothingToSummariseTheTailCoversIsSaidAndMakeSummaryIsOff()
+    {
+        UiThread.Run(() =>
+        {
+            var prompt = NewPrompt(TailPreview, summaryHasLines: turns => turns < 4);
+            SummaryAt(prompt, "Normal");
+            Named<TextBox>(prompt, "TurnsBox").Text = "4";
+
+            Assert.False(Named<Button>(prompt, "MakeSummaryButton").IsEnabled);
+            Assert.False(Named<Button>(prompt, "ResumeButton").IsEnabled);
+            Assert.Contains(ResumeSummaryState.NothingToSummariseLine, Named<TextBlock>(prompt, "CostText").Text);
         });
     }
 
@@ -198,9 +269,9 @@ public sealed class ResumePromptTests
         UiThread.Run(() =>
         {
             var prompt = NewPrompt((choice, kept, token) => Task.FromException<ResumePromptPreview>(new InvalidOperationException("boom")));
-            Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
+            SummaryAt(prompt, "Normal");
 
-            Press(Named<MenuItem>(prompt, "PreviewItem"));
+            MakeSummary(prompt);
 
             Assert.Contains("boom", Named<TextBlock>(prompt, "PreviewHeader").Text);
             Assert.Equal(Visibility.Collapsed, Named<TextBox>(prompt, "PreviewText").Visibility);
@@ -211,15 +282,15 @@ public sealed class ResumePromptTests
     }
 
     [Fact]
-    public void ARefusedSummaryShowsTheRefusalAndFallsBackToInFull()
+    public void ARefusedSummaryShowsTheRefusalAndFallsBackToFull()
     {
         UiThread.Run(() =>
         {
             const string refusal = "Not started: the sample tool is older than the minimum, the version this build needs.";
             var prompt = NewPrompt((choice, kept, token) => Task.FromResult(new ResumePromptPreview(null, refusal)));
-            Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
+            SummaryAt(prompt, "Normal");
 
-            Press(Named<MenuItem>(prompt, "PreviewItem"));
+            MakeSummary(prompt);
 
             Assert.Equal(refusal + " " + ResumeDefaults.FullFallbackLine, Named<TextBlock>(prompt, "PreviewHeader").Text);
             Assert.Equal(Visibility.Collapsed, Named<TextBox>(prompt, "PreviewText").Visibility);
@@ -227,13 +298,7 @@ public sealed class ResumePromptTests
             Assert.True(Named<RadioButton>(prompt, "FullChoice").IsChecked == true);
             Assert.True(Named<Button>(prompt, "ResumeButton").IsEnabled);
             Assert.False(Named<MenuItem>(prompt, "CopyItem").IsEnabled);
-            Assert.False(Named<MenuItem>(prompt, "PreviewItem").IsEnabled);
             Assert.Null(prompt.KeptSummary);
-
-            // A changed level takes the refusal away; In full stays chosen and Resume is on.
-            LevelSegment(prompt, "Minimal").IsChecked = true;
-            Assert.Equal(Visibility.Collapsed, Named<StackPanel>(prompt, "PreviewBlock").Visibility);
-            Assert.True(Named<Button>(prompt, "ResumeButton").IsEnabled);
             Assert.Null(prompt.Choice);
         });
     }
@@ -244,9 +309,9 @@ public sealed class ResumePromptTests
         UiThread.Run(() =>
         {
             var prompt = NewPrompt((choice, kept, token) => Task.FromCanceled<ResumePromptPreview>(new CancellationToken(canceled: true)));
-            Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
+            SummaryAt(prompt, "Normal");
 
-            Press(Named<MenuItem>(prompt, "PreviewItem"));
+            MakeSummary(prompt);
 
             Assert.Equal(Visibility.Collapsed, Named<StackPanel>(prompt, "PreviewBlock").Visibility);
             Assert.Null(prompt.KeptSummary);
@@ -262,10 +327,9 @@ public sealed class ResumePromptTests
 
         UiThread.Run(() =>
         {
-            var summary = new KeptSummary(SummaryLevel.Normal, "An example summary.", Saved: true);
-            var prompt = NewPrompt((choice, kept, token) => Task.FromResult(new ResumePromptPreview(new ResumePreview(SummaryText, 0, true, summary))));
-            Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
-            Press(Named<MenuItem>(prompt, "PreviewItem"));
+            var prompt = NewPrompt((choice, kept, token) => Task.FromResult(SummaryOf(choice)));
+            SummaryAt(prompt, "Normal");
+            MakeSummary(prompt);
 
             // Shown off screen, so the window is laid out and its template applied, then drawn into a bitmap. Nothing is shown to the owner.
             prompt.Left = -30_000;

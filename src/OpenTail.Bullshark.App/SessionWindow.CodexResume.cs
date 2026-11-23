@@ -71,9 +71,12 @@ public partial class SessionWindow
         var title = CodexRowTitle(MarkOf(ProviderId.Codex, session.Key.SessionId)?.Name, session);
         var turns = session.UserMessages is { } count ? $"{count} {(count == 1 ? "turn" : "turns")}" : "turns not counted";
         var facts = $"{turns} · last active {AgeOf(session.LastActivity)} · {FolderFact.For(folder)}";
+        // The messages are read once when the screen opens, for the Make summary check (RS-D26). The screen opens without the check when they cannot be read.
+        var provider = _codex ??= new CodexProvider();
+        var lines = await TryReadLinesAsync(() => CodexTurns.ReadSession(provider.Paths, session.Key.SessionId, CancellationToken.None));
         var dialog = new CodexResumePrompt($"Resume: {title}", facts, Palette,
             (choice, kept, ct) => BuildCodexStartTextAsync(session, folder, choice, kept, ct, choice.Target), CodexModels(), initialMode,
-            folder, FolderExists(folder))
+            folder, FolderExists(folder), summaryHasLines: SummaryHasLinesOf(lines, "codex"))
         {
             Owner = this,
         };
@@ -172,7 +175,7 @@ public partial class SessionWindow
             KeptSummary? summary = null;
             if (choice.Level is { } level)
             {
-                if (kept is not null && kept.MatchesLevel(level))
+                if (kept is not null && kept.MatchesChoice(level, choice.Turns))
                 {
                     summary = kept;
                 }
@@ -185,11 +188,13 @@ public partial class SessionWindow
                         SetStatus(folderRefusal!);
                         return new CodexPreview(string.Empty, null, folderRefusal);
                     }
+                    // The summary reads only the messages before the tail (RS-D20, RS-D23); the tail is the rest.
+                    var part = ResumeText.SummaryPart(lines, choice.Turns, ResumeText.TailTokenCap, turn => ProviderResumeText.TurnTokens(turn, "codex"));
                     var made = await new CodexSummarizer(new ProcessCliRunner("cmd.exe"))
-                        .SummariseSessionAsync(provider.Paths, sessionId, folder, level, ct);
+                        .SummariseLinesAsync(part, level, folder, ct);
                     AppLog.Write($"codex summary made: {made.Length:N0} characters");
                     var saved = await SaveCodexSummaryFileAsync(session, level, made);
-                    summary = new KeptSummary(level, made, Saved: saved);
+                    summary = new KeptSummary(level, made, Saved: saved, Turns: choice.Turns);
                 }
             }
 

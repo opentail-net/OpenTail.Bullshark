@@ -33,7 +33,9 @@ public sealed class OpenCodeResumePromptTests
             (choice, ct) =>
             {
                 asked?.Add(choice);
-                return Task.FromResult(new OpenCodePreview(TailText));
+                // A summary comes back with the summary it made, for the setting it was made at (RS-D21); a Zero start makes none.
+                return Task.FromResult(new OpenCodePreview(TailText, null,
+                    choice.Level is { } level ? new KeptSummary(level, "An example summary.", Saved: false, Turns: choice.Turns) : null));
             },
             folder: folder, folderExists: folderExists);
     }
@@ -68,13 +70,16 @@ public sealed class OpenCodeResumePromptTests
     {
         UiThread.Run(() =>
         {
+            // The screen opens on Summary at Zero (no call): the level row is on, and Make summary is off until a summary level is chosen (RS-D22).
             var prompt = NewPrompt();
-            Assert.True(Named<RadioButton>(prompt, "SummaryChoice").IsEnabled);
+            Assert.True(Named<RadioButton>(prompt, "SummaryChoice").IsChecked == true);
+            Assert.True(Named<WrapPanel>(prompt, "LevelRow").IsEnabled);
+            Assert.False(Named<Button>(prompt, "MakeSummaryButton").IsEnabled);
+            Named<RadioButton>(prompt, "NormalLevel").IsChecked = true;
+            Assert.True(Named<Button>(prompt, "MakeSummaryButton").IsEnabled);
+            Named<RadioButton>(prompt, "FullChoice").IsChecked = true;
             Assert.False(Named<WrapPanel>(prompt, "LevelRow").IsEnabled);
             Assert.False(Named<Button>(prompt, "MakeSummaryButton").IsEnabled);
-            Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
-            Assert.True(Named<WrapPanel>(prompt, "LevelRow").IsEnabled);
-            Assert.True(Named<Button>(prompt, "MakeSummaryButton").IsEnabled);
         });
     }
 
@@ -85,6 +90,7 @@ public sealed class OpenCodeResumePromptTests
         {
             var prompt = NewPrompt();
             Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
+            Named<RadioButton>(prompt, "NormalLevel").IsChecked = true;
             var cost = Named<TextBlock>(prompt, "CostText").Text;
             Assert.Equal(
                 "Making the summary is one model call on your opencode login, and opencode writes a session row into your opencode database.", cost);
@@ -94,15 +100,16 @@ public sealed class OpenCodeResumePromptTests
     }
 
     [Fact]
-    public void TheLevelRowHasTheThreeLevelsWithTheSharedLabelsAndNormalIsChosen()
+    public void TheLevelRowHasZeroAndTheThreeLevelsWithTheSharedLabelsAndZeroIsChosenAtOpening()
     {
         UiThread.Run(() =>
         {
             var prompt = NewPrompt();
+            Assert.Equal(ResumeSummaryState.ZeroLabel, Named<RadioButton>(prompt, "ZeroLevel").Content);
             Assert.Equal(ProviderResumeRules.LevelLabel(SummaryLevel.Minimal), Named<RadioButton>(prompt, "MinimalLevel").Content);
             Assert.Equal(ProviderResumeRules.LevelLabel(SummaryLevel.Normal), Named<RadioButton>(prompt, "NormalLevel").Content);
             Assert.Equal(ProviderResumeRules.LevelLabel(SummaryLevel.Complete), Named<RadioButton>(prompt, "CompleteLevel").Content);
-            Assert.True(Named<RadioButton>(prompt, "NormalLevel").IsChecked == true);
+            Assert.True(Named<RadioButton>(prompt, "ZeroLevel").IsChecked == true);
         });
     }
 
@@ -114,8 +121,10 @@ public sealed class OpenCodeResumePromptTests
             var asked = new List<OpenCodeResumeChoice>();
             var prompt = NewPrompt(asked: asked);
             var countBefore = asked.Count;
+            Named<RadioButton>(prompt, "FullChoice").IsChecked = true;
             Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
-            Assert.DoesNotContain(asked.Skip(countBefore), choice => choice.Mode == OpenCodeResumeMode.Summary);
+            Named<RadioButton>(prompt, "NormalLevel").IsChecked = true;
+            Assert.DoesNotContain(asked.Skip(countBefore), choice => choice.Level is not null);
             Assert.False(Named<Button>(prompt, "StartButton").IsEnabled);
         });
     }
@@ -152,6 +161,7 @@ public sealed class OpenCodeResumePromptTests
             var asked = new List<OpenCodeResumeChoice>();
             var prompt = NewPrompt(asked: asked);
             Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
+            Named<RadioButton>(prompt, "NormalLevel").IsChecked = true;
             Named<Button>(prompt, "MakeSummaryButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Assert.True(Named<Button>(prompt, "StartButton").IsEnabled);
 
@@ -159,7 +169,8 @@ public sealed class OpenCodeResumePromptTests
 
             Assert.False(Named<Button>(prompt, "StartButton").IsEnabled);
             Assert.Equal(Visibility.Collapsed, Named<StackPanel>(prompt, "PreviewBlock").Visibility);
-            Assert.Equal(1, asked.Count(choice => choice.Mode == OpenCodeResumeMode.Summary));
+            Assert.Contains(ResumeSummaryState.OutOfDateLine, Named<TextBlock>(prompt, "CostText").Text);
+            Assert.Equal(1, asked.Count(choice => choice.Level is not null));
         });
     }
 
@@ -221,14 +232,15 @@ public sealed class OpenCodeResumePromptTests
     }
 
     [Fact]
-    public void LastTurnsIsTheDefaultModeAndInFullAndTheSummaryAreNotChecked()
+    public void ZeroWithTheTailIsTheDefaultAndInFullIsNotChecked()
     {
         UiThread.Run(() =>
         {
             var prompt = NewPrompt();
-            Assert.True(Named<RadioButton>(prompt, "TailChoice").IsChecked == true);
+            Assert.True(Named<RadioButton>(prompt, "SummaryChoice").IsChecked == true);
+            Assert.True(Named<RadioButton>(prompt, "ZeroLevel").IsChecked == true);
+            Assert.True(Named<CheckBox>(prompt, "TailBox").IsChecked == true);
             Assert.NotEqual(true, Named<RadioButton>(prompt, "FullChoice").IsChecked);
-            Assert.NotEqual(true, Named<RadioButton>(prompt, "SummaryChoice").IsChecked);
         });
     }
 
@@ -269,20 +281,21 @@ public sealed class OpenCodeResumePromptTests
             Assert.DoesNotContain("no model call", cost.Text, StringComparison.OrdinalIgnoreCase);
             Named<RadioButton>(prompt, "FullChoice").IsChecked = true;
             Assert.DoesNotContain("no model call", cost.Text, StringComparison.OrdinalIgnoreCase);
-            Named<RadioButton>(prompt, "TailChoice").IsChecked = true;
+            Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
             Assert.DoesNotContain("no model call", cost.Text, StringComparison.OrdinalIgnoreCase);
         });
     }
 
     [Fact]
-    public void TheLastTurnsPreviewIsBuiltForTheDefaultChoiceAndShownBeforeStart()
+    public void TheZeroPreviewIsBuiltForTheDefaultChoiceAndShownBeforeStart()
     {
         UiThread.Run(() =>
         {
             var asked = new List<OpenCodeResumeChoice>();
             var prompt = NewPrompt(asked: asked);
             var choice = Assert.Single(asked);
-            Assert.Equal(OpenCodeResumeMode.LastTurns, choice.Mode);
+            Assert.Equal(OpenCodeResumeMode.Summary, choice.Mode);
+            Assert.Null(choice.Level);
             Assert.Equal(OpenCodeResumeRules.DefaultTurns, choice.Turns);
             Assert.Equal(TailText, Named<TextBox>(prompt, "PreviewBox").Text);
             Assert.True(Named<Button>(prompt, "StartButton").IsEnabled);

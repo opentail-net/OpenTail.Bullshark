@@ -72,7 +72,8 @@ public partial class CodexResumePrompt : Window
     /// <param name="folderExists">Whether the folder exists. Null: no folder notice is shown. Start is off only with no folder on record.</param>
     public CodexResumePrompt(string heading, string facts, RailPalette palette,
         Func<CodexResumeChoice, KeptSummary?, CancellationToken, Task<CodexPreview>>? previewAsync = null,
-        Task<CodexModelReading>? models = null, ContinueMode? initialMode = null, string? folder = null, bool? folderExists = null)
+        Task<CodexModelReading>? models = null, ContinueMode? initialMode = null, string? folder = null, bool? folderExists = null,
+        Func<int, bool>? summaryHasLines = null)
     {
         InitializeComponent();
         // The window grows to the screen's work area at most: the body scrolls and the buttons stay in view (owner, 2026-11-22).
@@ -104,10 +105,10 @@ public partial class CodexResumePrompt : Window
         Facts.Text = facts;
         _screen = new ProviderResumeScreen<CodexResumeChoice, CodexPreview>(
             new ResumeScreenControls(
-                FullChoice, TailChoice, SummaryChoice, LevelRow, TurnsBox, TargetLine, StartButton, TargetMenuButton, TargetMenu,
+                FullChoice, SummaryChoice, LevelBlock, LevelRow, TailBox, TurnsBox, TailBlock, TargetLine, StartButton, TargetMenuButton, TargetMenu,
                 TargetClaudeItem, TargetCodexItem, TargetCopilotItem, MakeSummaryButton, RememberBox, CostText, FolderNotice,
                 PreviewHeader, PreviewBox, PreviewBlock, PreviewNote, CopyButton, (Style)Resources["Segment"]),
-            new CodexHooks(this), previewAsync, initialMode, folderNotice, blocksStart, Close);
+            new CodexHooks(this), previewAsync, summaryHasLines, initialMode, folderNotice, blocksStart, Close);
 
         // The screen's first build runs before the model list is read: the list then turns Start on (or the model box) when it is in.
         if (models is null)
@@ -216,7 +217,7 @@ public partial class CodexResumePrompt : Window
 
         public bool StartReady(CodexResumeChoice? choice)
         {
-            var mode = choice?.SharedMode ?? ProviderResumeMode.LastTurns;
+            var mode = choice?.SharedMode ?? ProviderResumeMode.Summary;
             return IsCross(choice) || mode == ProviderResumeMode.Full || _owner._modelsReady;
         }
 

@@ -170,14 +170,17 @@
                     <TextBlock x:Name="TargetLine" Style="{StaticResource Muted}" Margin="0,0,0,6" />
                     <WrapPanel x:Name="LevelRow" Orientation="Horizontal" />
                     <TextBlock Style="{StaticResource Muted}" Margin="0,0,0,4"
-                               Text="Haiku writes it from your messages and Claude's replies. The tool output is left out." />
+                               Text="Haiku writes it from your messages and Claude's replies. The tool output is left out. Zero makes no model call." />
+                    <!-- The summary is made only here (RS-D21). A change of the level or the tail after it marks it out of date. -->
+                    <Button x:Name="MakeSummaryButton" Content="Make summary" Click="MakeSummary_Click" HorizontalAlignment="Left"
+                            Margin="0,2,0,6"
+                            ToolTip="Makes the summary now (one Haiku call) and keeps it for Start. Nothing else makes it." AutomationProperties.Name="Make summary" />
                 </StackPanel>
 
-                <RadioButton x:Name="TailChoice" GroupName="Resume" Content="The last turns only (no model call)" />
-
-                <StackPanel x:Name="TurnsBlock">
-                    <StackPanel Orientation="Horizontal" Margin="22,6,0,0">
-                        <TextBlock Text="Keep the last" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <!-- The tail (RS-D19): "Include last [N] turns", in Summary only. The summary covers the messages before these turns (RS-D20). -->
+                <StackPanel x:Name="TailBlock" Margin="22,0,0,0">
+                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                        <CheckBox x:Name="TailBox" Content="Include last" VerticalAlignment="Center" Margin="0,0,8,0" />
                         <TextBox x:Name="TurnsBox" Width="56" Padding="6,3" VerticalContentAlignment="Center" />
                         <TextBlock Text="turns" VerticalAlignment="Center" Margin="8,0,0,0" />
                     </StackPanel>
@@ -215,11 +218,9 @@
                 <Button x:Name="ResumeButton" Click="Resume_Click" Style="{StaticResource ResumeGo}" />
                 <Border Width="1" Background="{DynamicResource UiGoText}" Opacity="0.35" />
                 <Button x:Name="ResumeMenuButton" Content="▾" Style="{StaticResource ResumeMenuPart}" Click="ResumeMenuButton_Click"
-                        ToolTip="Resume options: preview or copy the prompt, or start in another platform (summary only)" AutomationProperties.Name="Resume options">
+                        ToolTip="Resume options: copy the start text, or start in another platform (summary only)" AutomationProperties.Name="Resume options">
                     <Button.ContextMenu>
                         <ContextMenu x:Name="ResumeMenu" Placement="Bottom" HorizontalOffset="-150" MinWidth="200">
-                            <MenuItem x:Name="PreviewItem" Header="Preview the prompt…" Click="PreviewItem_Click"
-                                      ToolTipService.ShowOnDisabled="True" />
                             <MenuItem x:Name="CopyItem" Header="Copy the prompt" Click="CopyItem_Click"
                                       ToolTipService.ShowOnDisabled="True" />
                             <Separator />

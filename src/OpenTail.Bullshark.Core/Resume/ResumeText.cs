@@ -129,6 +129,27 @@ public static class ResumeText
         return first;
     }
 
+    /// <summary>
+    /// The lines the summary reads (RS-D23, RS-D20): every line of the turns before the first turn <see cref="TurnsLeftOut"/> keeps for the tail. With
+    /// <paramref name="turns"/> zero or less the tail keeps nothing, so the summary covers the whole session; when the tail keeps every turn, the summary
+    /// has no lines. No turn is in both parts. The turns the command-line fit leaves out of the tail (RS-D24) are in neither, and the start text says so.
+    /// </summary>
+    public static List<TranscriptLine> SummaryPart(IReadOnlyList<TranscriptLine> lines, int turns, int maxTokens, Func<IEnumerable<TranscriptLine>, int> tokensOf)
+    {
+        var first = TurnsLeftOut(lines, turns, maxTokens, tokensOf);
+        return SplitTurns(lines).Take(first).SelectMany(turn => turn).ToList();
+    }
+
+    /// <summary>
+    /// True when the summary of <paramref name="lines"/> with <paramref name="turns"/> tail turns has lines to read (RS-D26). A resume screen asks it before
+    /// Make summary is enabled, so the count is the one the summary itself reads (<see cref="SummaryPart"/> with the tail's own cap).
+    /// </summary>
+    public static bool SummaryHasLines(IReadOnlyList<TranscriptLine> lines, int turns, Func<IEnumerable<TranscriptLine>, int> tokensOf) =>
+        SummaryPart(lines, turns, TailTokenCap, tokensOf).Count > 0;
+
+    /// <summary>The tokens of one turn as the Claude tail renders it (<see cref="TailWithTurns"/>). Used by <see cref="TurnsLeftOut"/> and <see cref="SummaryPart"/>.</summary>
+    public static int TurnTokens(IEnumerable<TranscriptLine> turn) => EstimateTokens(Render(turn));
+
     private static string Joined(IEnumerable<string> turns) => string.Join("\n\n", turns);
 
     /// <summary>The marker that stands in for the characters cut from a text.</summary>

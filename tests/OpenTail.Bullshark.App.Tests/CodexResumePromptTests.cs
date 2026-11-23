@@ -6,8 +6,9 @@ using OpenTail.Bullshark.Core.Resume;
 namespace OpenTail.Bullshark.App.Tests;
 
 /// <summary>
-/// The Codex resume screen (step R5), headless: a fake preview callback stands in for the window's method, so the screen's own rules are what is
-/// tested. The sample texts are made up; no transcript or rollout is read. The callbacks return finished tasks, so each step completes at once.
+/// The Codex resume screen (step R5, RS-D3 to RS-D21), headless: a fake preview callback stands in for the window's method, so the screen's own rules are
+/// what is tested. The sample texts are made up; no transcript or rollout is read. The callbacks return finished tasks, so each step completes at once.
+/// A Zero preview (no level) is built at once with no call; a summary is made only by Make summary.
 /// </summary>
 [Collection(HeadlessCollection.Name)]
 public sealed class CodexResumePromptTests
@@ -33,11 +34,23 @@ public sealed class CodexResumePromptTests
     private static RadioButton LevelSegment(CodexResumePrompt prompt, string tag) =>
         Named<Panel>(prompt, "LevelRow").Children.OfType<RadioButton>().First(radio => (string?)radio.Tag == tag);
 
+    /// <summary>Chooses Summary at a level (a tag: Zero, Minimal, Normal or Complete).</summary>
+    private static void SummaryAt(CodexResumePrompt prompt, string tag)
+    {
+        Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
+        LevelSegment(prompt, tag).IsChecked = true;
+    }
+
+    /// <summary>The text of a Zero start or a tail: the callback's answer for the choice that has no summary.</summary>
     private static Task<CodexPreview> TailPreview(CodexResumeChoice choice, KeptSummary? kept, CancellationToken token) =>
         Task.FromResult(new CodexPreview(TailText, null));
 
+    /// <summary>The callback of a summary: the fake makes a summary of the choice's level and tail, and the screen keeps it.</summary>
+    private static CodexPreview SummaryOf(CodexResumeChoice choice) =>
+        new(SummaryText, new KeptSummary(choice.Level!.Value, "An example summary.", Saved: true, Turns: choice.Turns));
+
     [Fact]
-    public void TheLastTurnsIsTheDefaultAndItsTextIsReadyWhenTheScreenOpens()
+    public void TheZeroStartIsTheDefaultAndItsTextIsReadyWhenTheScreenOpens()
     {
         UiThread.Run(() =>
         {
@@ -48,15 +61,18 @@ public sealed class CodexResumePromptTests
                 return TailPreview(choice, kept, token);
             });
 
-            Assert.True(Named<RadioButton>(prompt, "TailChoice").IsChecked == true);
+            Assert.True(Named<RadioButton>(prompt, "SummaryChoice").IsChecked == true);
+            Assert.True(Named<CheckBox>(prompt, "TailBox").IsChecked == true);
+            Assert.True(LevelSegment(prompt, "Zero").IsChecked == true);
             var call = Assert.Single(calls);
-            Assert.Equal(CodexResumeMode.LastTurns, call.Mode);
+            Assert.Equal(CodexResumeMode.Summary, call.Mode);
+            Assert.Null(call.Level);
             Assert.Equal(CodexResumeRules.DefaultTurns, call.Turns);
             Assert.Equal(TailText, Named<TextBox>(prompt, "PreviewBox").Text);
             Assert.True(Named<Button>(prompt, "StartButton").IsEnabled);
             Assert.True(Named<Button>(prompt, "CopyButton").IsEnabled);
             Assert.False(Named<Button>(prompt, "MakeSummaryButton").IsEnabled);
-            Assert.Equal(CodexResumeRules.NoModelCallLine, Named<TextBlock>(prompt, "CostText").Text);
+            Assert.Equal(ProviderResumeRules.NoModelCallLine, Named<TextBlock>(prompt, "CostText").Text);
         });
     }
 
@@ -92,17 +108,17 @@ public sealed class CodexResumePromptTests
     {
         UiThread.Run(() =>
         {
-            // A summary is made (the fake counts it) only when none is kept for the level. A request with a kept summary is a re-render, no model call.
+            // A summary is made (the fake counts it) only by Make summary. A kept summary for the setting is a re-render, no model call.
             var made = new List<SummaryLevel>();
             var prompt = NewPrompt((choice, kept, token) =>
             {
-                if (choice.Mode != CodexResumeMode.Summary) return Task.FromResult(new CodexPreview(TailText, null));
-                if (kept is not null && kept.Level == choice.Level) return Task.FromResult(new CodexPreview(SummaryText, null));
-                made.Add(choice.Level ?? SummaryLevel.Normal);
-                return Task.FromResult(new CodexPreview(SummaryText, new KeptSummary(choice.Level ?? SummaryLevel.Normal, "An example summary.", Saved: true)));
+                if (choice.Level is null || choice.Mode != CodexResumeMode.Summary) return TailPreview(choice, kept, token);
+                if (kept is not null && kept.MatchesChoice(choice.Level, choice.Turns)) return Task.FromResult(new CodexPreview(SummaryText, null));
+                made.Add(choice.Level.Value);
+                return Task.FromResult(SummaryOf(choice));
             });
 
-            Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
+            SummaryAt(prompt, "Normal");
 
             Assert.Empty(made);
             Assert.True(Named<Button>(prompt, "MakeSummaryButton").IsEnabled);
@@ -123,9 +139,10 @@ public sealed class CodexResumePromptTests
     {
         UiThread.Run(() =>
         {
-            var summary = new KeptSummary(SummaryLevel.Normal, "An example summary.", Saved: true);
-            var prompt = NewPrompt((choice, kept, token) => Task.FromResult(new CodexPreview(SummaryText, summary)));
-            Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
+            var prompt = NewPrompt((choice, kept, token) => choice.Level is null
+                ? TailPreview(choice, kept, token)
+                : Task.FromResult(SummaryOf(choice)));
+            SummaryAt(prompt, "Normal");
             Click(Named<Button>(prompt, "MakeSummaryButton"));
 
             Click(Named<Button>(prompt, "StartButton"));
@@ -135,80 +152,108 @@ public sealed class CodexResumePromptTests
             Assert.Equal(SummaryLevel.Normal, prompt.Choice.Level);
             Assert.Equal(CodexResumeRules.DefaultTurns, prompt.Choice.Turns);
             Assert.Equal(SummaryText, prompt.PreviewText);
-            Assert.Equal(summary, prompt.KeptSummary);
+            Assert.Equal(new KeptSummary(SummaryLevel.Normal, "An example summary.", Saved: true, Turns: CodexResumeRules.DefaultTurns), prompt.KeptSummary);
         });
     }
 
     [Fact]
-    public void ChangingTheLevelDropsTheSummaryAndTheText()
+    public void ZeroStartKeepsNoSummaryAndNeedsTheTail()
     {
         UiThread.Run(() =>
         {
-            var calls = 0;
-            var summary = new KeptSummary(SummaryLevel.Normal, "An example summary.", Saved: true);
-            var prompt = NewPrompt((choice, kept, token) =>
-            {
-                calls++;
-                return Task.FromResult(new CodexPreview(SummaryText, summary));
-            });
-            Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
-            Click(Named<Button>(prompt, "MakeSummaryButton"));
-            var made = calls;
+            var prompt = NewPrompt(TailPreview);
 
-            LevelSegment(prompt, "Minimal").IsChecked = true;
+            Named<CheckBox>(prompt, "TailBox").IsChecked = false;
 
-            Assert.Equal(made, calls);
-            Assert.Equal(Visibility.Collapsed, Named<StackPanel>(prompt, "PreviewBlock").Visibility);
             Assert.False(Named<Button>(prompt, "StartButton").IsEnabled);
-            Assert.Null(prompt.KeptSummary);
+            Assert.Equal(Visibility.Collapsed, Named<StackPanel>(prompt, "PreviewBlock").Visibility);
+            Assert.Contains("Nothing to start from: tick the tail or choose a summary level.", Named<TextBlock>(prompt, "CostText").Text);
+
+            Named<CheckBox>(prompt, "TailBox").IsChecked = true;
+
+            Assert.True(Named<Button>(prompt, "StartButton").IsEnabled);
+            Assert.Equal(TailText, Named<TextBox>(prompt, "PreviewBox").Text);
         });
     }
 
     [Fact]
-    public void ChangingTheNumberOfTurnsKeepsTheSummaryAndRebuildsTheText()
+    public void ChangingTheLevelMakesTheSummaryOutOfDateAndStartWaits()
     {
         UiThread.Run(() =>
         {
             var made = 0;
             var prompt = NewPrompt((choice, kept, token) =>
             {
-                if (choice.Mode != CodexResumeMode.Summary) return Task.FromResult(new CodexPreview(TailText, null));
-                if (kept is not null && kept.Level == choice.Level) return Task.FromResult(new CodexPreview(SummaryText + "\n" + choice.Turns, null));
+                if (choice.Level is null) return TailPreview(choice, kept, token);
                 made++;
-                return Task.FromResult(new CodexPreview(SummaryText, new KeptSummary(SummaryLevel.Normal, "An example summary.", Saved: true)));
+                return Task.FromResult(SummaryOf(choice));
             });
-            Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
+            SummaryAt(prompt, "Normal");
+            Click(Named<Button>(prompt, "MakeSummaryButton"));
+
+            LevelSegment(prompt, "Minimal").IsChecked = true;
+
+            Assert.Equal(1, made);
+            Assert.Equal(Visibility.Collapsed, Named<StackPanel>(prompt, "PreviewBlock").Visibility);
+            Assert.False(Named<Button>(prompt, "StartButton").IsEnabled);
+            Assert.Contains("The summary no longer matches the tail you chose. Make summary again.", Named<TextBlock>(prompt, "CostText").Text);
+            Assert.True(Named<Button>(prompt, "MakeSummaryButton").IsEnabled);
+        });
+    }
+
+    [Fact]
+    public void ChangingTheNumberOfTurnsMakesTheSummaryOutOfDateAndGoingBackKeepsIt()
+    {
+        UiThread.Run(() =>
+        {
+            var made = 0;
+            var prompt = NewPrompt((choice, kept, token) =>
+            {
+                if (choice.Level is null) return TailPreview(choice, kept, token);
+                if (kept is not null && kept.MatchesChoice(choice.Level, choice.Turns)) return Task.FromResult(new CodexPreview(SummaryText + "\n" + choice.Turns, null));
+                made++;
+                return Task.FromResult(SummaryOf(choice));
+            });
+            SummaryAt(prompt, "Normal");
             Click(Named<Button>(prompt, "MakeSummaryButton"));
             Assert.Equal(1, made);
 
             Named<TextBox>(prompt, "TurnsBox").Text = "4";
 
-            // The summary is kept (no new one is made); the text is built again with the new turns, and Start stays on.
+            // A summary is tied to its tail (RS-D21): the new number makes it out of date, the text is hidden, and no call is made.
+            Assert.Equal(1, made);
+            Assert.False(Named<Button>(prompt, "StartButton").IsEnabled);
+            Assert.Equal(Visibility.Collapsed, Named<StackPanel>(prompt, "PreviewBlock").Visibility);
+            Assert.Contains("The summary no longer matches the tail you chose.", Named<TextBlock>(prompt, "CostText").Text);
+
+            // The old number again: the summary made for it is the one for the setting, so it is shown again, and Start is on, with no call.
+            Named<TextBox>(prompt, "TurnsBox").Text = "10";
+
             Assert.Equal(1, made);
             Assert.True(Named<Button>(prompt, "StartButton").IsEnabled);
-            Assert.EndsWith("\n4", Named<TextBox>(prompt, "PreviewBox").Text);
+            Assert.EndsWith("\n10", Named<TextBox>(prompt, "PreviewBox").Text);
         });
     }
 
     [Fact]
-    public void ChangingTheModeKeepsASummaryMadeForTheSameLevel()
+    public void ChangingTheModeKeepsASummaryMadeForTheSameSetting()
     {
         UiThread.Run(() =>
         {
             var made = 0;
             var prompt = NewPrompt((choice, kept, token) =>
             {
-                if (choice.Mode != CodexResumeMode.Summary) return Task.FromResult(new CodexPreview(TailText, null));
-                if (kept is not null && kept.Level == choice.Level) return Task.FromResult(new CodexPreview(SummaryText, null));
+                if (choice.Mode != CodexResumeMode.Summary || choice.Level is null) return TailPreview(choice, kept, token);
+                if (kept is not null && kept.MatchesChoice(choice.Level, choice.Turns)) return Task.FromResult(new CodexPreview(SummaryText, null));
                 made++;
-                return Task.FromResult(new CodexPreview(SummaryText, new KeptSummary(SummaryLevel.Normal, "An example summary.", Saved: true)));
+                return Task.FromResult(SummaryOf(choice));
             });
-            Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
+            SummaryAt(prompt, "Normal");
             Click(Named<Button>(prompt, "MakeSummaryButton"));
             Assert.True(Named<Button>(prompt, "StartButton").IsEnabled);
 
-            Named<RadioButton>(prompt, "TailChoice").IsChecked = true;
-            Assert.Equal(TailText, Named<TextBox>(prompt, "PreviewBox").Text);
+            Named<RadioButton>(prompt, "FullChoice").IsChecked = true;
+            Assert.Equal(Visibility.Collapsed, Named<StackPanel>(prompt, "PreviewBlock").Visibility);
             Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
 
             // Back in summary mode the kept summary is used again: nothing is made, and Start is on with the summary's text.
@@ -223,19 +268,47 @@ public sealed class CodexResumePromptTests
     {
         UiThread.Run(() =>
         {
-            var prompt = NewPrompt((choice, kept, token) => choice.Mode == CodexResumeMode.Summary
-                ? Task.FromResult(new CodexPreview(SummaryText, new KeptSummary(choice.Level ?? SummaryLevel.Normal, "An example summary.", Saved: true)))
-                : Task.FromResult(new CodexPreview(TailText, null)));
-            Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
+            var prompt = NewPrompt((choice, kept, token) => choice.Level is null
+                ? TailPreview(choice, kept, token)
+                : Task.FromResult(SummaryOf(choice)));
+            SummaryAt(prompt, "Normal");
             Click(Named<Button>(prompt, "MakeSummaryButton"));
             Assert.True(Named<Button>(prompt, "StartButton").IsEnabled);
 
-            Named<Panel>(prompt, "LevelRow").Children.OfType<RadioButton>().Single(radio => Equals(radio.Tag, "Complete")).IsChecked = true;
+            LevelSegment(prompt, "Complete").IsChecked = true;
 
             Assert.False(Named<Button>(prompt, "StartButton").IsEnabled);
             Assert.Equal(Visibility.Collapsed, Named<StackPanel>(prompt, "PreviewBlock").Visibility);
             Assert.True(Named<Button>(prompt, "MakeSummaryButton").IsEnabled);
         });
+    }
+
+    [Fact]
+    public void ANothingToSummariseTheTailCoversSaysSoAndMakeSummaryIsOff()
+    {
+        UiThread.Run(() =>
+        {
+            // The window's check: with this many turns the tail keeps every turn, so there is nothing to summarise (RS-D26).
+            var prompt = NewPromptWithCoverage(turns => turns < 4);
+
+            SummaryAt(prompt, "Normal");
+            Named<TextBox>(prompt, "TurnsBox").Text = "4";
+
+            Assert.False(Named<Button>(prompt, "MakeSummaryButton").IsEnabled);
+            Assert.False(Named<Button>(prompt, "StartButton").IsEnabled);
+            Assert.Contains("The tail covers the whole session, so there is nothing to summarise.", Named<TextBlock>(prompt, "CostText").Text);
+        });
+    }
+
+    private static CodexResumePrompt NewPromptWithCoverage(Func<int, bool> summaryHasLines)
+    {
+        AppResources.Ensure();
+        return new CodexResumePrompt(
+            "Resume: an example session",
+            "2 turns · last active 1 day ago · in C:\\Work\\example",
+            RailPalette.DarkPalette,
+            TailPreview,
+            summaryHasLines: summaryHasLines);
     }
 
     [Fact]
@@ -258,8 +331,10 @@ public sealed class CodexResumePromptTests
         UiThread.Run(() =>
         {
             var problem = "The summary was not made: the summary failed (exit 1).";
-            var prompt = NewPrompt((choice, kept, token) => Task.FromResult(new CodexPreview(string.Empty, null, problem)));
-            Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
+            var prompt = NewPrompt((choice, kept, token) => choice.Level is null
+                ? TailPreview(choice, kept, token)
+                : Task.FromResult(new CodexPreview(string.Empty, null, problem)));
+            SummaryAt(prompt, "Normal");
 
             Click(Named<Button>(prompt, "MakeSummaryButton"));
 
@@ -276,8 +351,10 @@ public sealed class CodexResumePromptTests
         // shows the type only, and the summary falls back to In full.
         UiThread.Run(() =>
         {
-            var prompt = NewPrompt((choice, kept, token) => Task.FromException<CodexPreview>(new InvalidOperationException("example failure")));
-            Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
+            var prompt = NewPrompt((choice, kept, token) => choice.Level is null
+                ? TailPreview(choice, kept, token)
+                : Task.FromException<CodexPreview>(new InvalidOperationException("example failure")));
+            SummaryAt(prompt, "Normal");
 
             Click(Named<Button>(prompt, "MakeSummaryButton"));
 

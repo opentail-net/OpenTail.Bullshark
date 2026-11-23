@@ -27,7 +27,8 @@ public sealed class ResumeScreenFolderTests
     private static ResumePrompt NewClaudePrompt(string folder, bool folderExists)
     {
         AppResources.Ensure();
-        return new ResumePrompt(Heading, Facts, contextTokens: 500_000, RailPalette.DarkPalette, "opus", "high",
+        // A small context: Full is the recommendation, so Start is on at once (a summary waits for Make summary, RS-D21).
+        return new ResumePrompt(Heading, Facts, contextTokens: 10_000, RailPalette.DarkPalette, "opus", "high",
             previewAsync: (choice, kept, token) => Task.FromResult(new ResumePromptPreview(new ResumePreview(TailText, 0, true, null))),
             folder: folder, folderExists: folderExists);
     }
@@ -63,7 +64,7 @@ public sealed class ResumeScreenFolderTests
             Assert.Equal(ResumeFolderNotice.For(folder, folderExists: false), notice.Text);
             Assert.True(Named<Button>(prompt, "ResumeButton").IsEnabled);
             Assert.True(Named<Button>(prompt, "ResumeMenuButton").IsEnabled);
-            Assert.True(Named<MenuItem>(prompt, "PreviewItem").IsEnabled);
+            Assert.False(Named<MenuItem>(prompt, "CopyItem").IsEnabled);
         });
     }
 
@@ -88,13 +89,13 @@ public sealed class ResumeScreenFolderTests
             var notice = Named<TextBlock>(prompt, "FolderNotice");
             Assert.Equal(Visibility.Visible, notice.Visibility);
             Assert.Equal(ResumeFolderNotice.For(folder, folderExists: false), notice.Text);
-            // The last-turns preview is built at once, with no press: its text is ready and Copy is on. Start stays on: Start makes the folder again.
+            // The Zero text is built at once, with no press: its text is ready and Copy is on. Start stays on: Start makes the folder again.
             Assert.True(Named<Button>(prompt, "CopyButton").IsEnabled);
             Assert.True(Named<Button>(prompt, "StartButton").IsEnabled);
-            // The Start menu is for a summary only (RS-D2): off in the last turns, and on in a summary whatever the folder notice says.
-            Assert.False(Named<Button>(prompt, "TargetMenuButton").IsEnabled);
-            Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
+            // The Start menu is for a summary only (RS-D2): on in Summary (Zero included), whatever the folder notice says, and off in Full.
             Assert.True(Named<Button>(prompt, "TargetMenuButton").IsEnabled);
+            Named<RadioButton>(prompt, "FullChoice").IsChecked = true;
+            Assert.False(Named<Button>(prompt, "TargetMenuButton").IsEnabled);
             Assert.True(Named<RadioButton>(prompt, "SummaryChoice").IsEnabled);
         });
     }
@@ -133,10 +134,10 @@ public sealed class ResumeScreenFolderTests
             Assert.Equal(ResumeFolderNotice.For(folder, folderExists: false), notice.Text);
             Assert.True(Named<Button>(prompt, "CopyButton").IsEnabled);
             Assert.True(Named<Button>(prompt, "StartButton").IsEnabled);
-            // The Start menu is for a summary only (RS-D2): off in the last turns, and on in a summary whatever the folder notice says.
-            Assert.False(Named<Button>(prompt, "TargetMenuButton").IsEnabled);
-            Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
+            // The Start menu is for a summary only (RS-D2): on in Summary (Zero included), whatever the folder notice says, and off in Full.
             Assert.True(Named<Button>(prompt, "TargetMenuButton").IsEnabled);
+            Named<RadioButton>(prompt, "FullChoice").IsChecked = true;
+            Assert.False(Named<Button>(prompt, "TargetMenuButton").IsEnabled);
             Assert.True(Named<RadioButton>(prompt, "SummaryChoice").IsEnabled);
         });
     }

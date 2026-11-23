@@ -30,7 +30,7 @@ public sealed record OpenCodeResumeChoice(OpenCodeResumeMode Mode, int Turns, bo
 /// What the screen's preview callback gives: the start text (empty when the session has no messages, or when there is a problem) and the reason no text
 /// was made (null when there is none).
 /// </summary>
-public sealed record OpenCodePreview(string Text, string? Problem = null);
+public sealed record OpenCodePreview(string Text, string? Problem = null, KeptSummary? KeptSummary = null);
 
 /// <summary>
 /// The rules and words of the opencode resume screen (OC3). The cost lines are opencode's own (OC-D9): neither the "No model call" line of the other

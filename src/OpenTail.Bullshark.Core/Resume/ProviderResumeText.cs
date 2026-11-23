@@ -1,5 +1,6 @@
 using System.Text;
 using OpenTail.Bullshark.Core.Activity;
+using OpenTail.Bullshark.Core.Providers.Summary;
 
 namespace OpenTail.Bullshark.Core.Resume;
 
@@ -149,6 +150,16 @@ public static class ProviderResumeText
     /// <summary>The messages of a turn, one line each. Any kind other than the owner's or the <paramref name="assistant"/>'s is left out.</summary>
     public static string Render(IEnumerable<TranscriptLine> turn, string assistant) =>
         string.Join("\n", turn.Select(line => RenderLine(line, assistant)).OfType<string>());
+
+    /// <summary>The tokens of one turn as the provider's tail renders it (<see cref="Render"/>), for <see cref="ResumeText.SummaryPart"/> and <see cref="ResumeText.SummaryHasLines"/>.</summary>
+    public static int TurnTokens(IEnumerable<TranscriptLine> turn, string assistant) => ResumeText.EstimateTokens(Render(turn, assistant));
+
+    /// <summary>
+    /// The summary's input for a provider's session (RS-D20): the messages of <paramref name="lines"/> (the summary part, see <see cref="ResumeText.SummaryPart"/>),
+    /// one line each under the label the tail uses, within <paramref name="maxChars"/>. The oldest text is left out first, with the summary's notice.
+    /// </summary>
+    public static string SummaryInput(IReadOnlyList<TranscriptLine> lines, string assistant, int maxChars = SummaryInputBuilder.MaxInputChars) =>
+        SummaryInputBuilder.Build(lines.Select(line => Render([line], assistant)).Where(text => text.Length > 0), maxChars);
 
     /// <summary>The label of a message: <c>you: </c> for the owner, and <c>{assistant}: </c> for the CLI. Any other kind is not in the tail.</summary>
     private static string? RenderLine(TranscriptLine line, string assistant)

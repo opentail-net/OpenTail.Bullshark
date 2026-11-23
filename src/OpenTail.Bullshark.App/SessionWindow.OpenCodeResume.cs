@@ -54,8 +54,11 @@ public partial class SessionWindow
         var title = OpenCodeRowTitle(MarkOf(ProviderId.OpenCode, id)?.Name, session);
         var turns = session.UserMessages is { } count ? $"{count} {(count == 1 ? "turn" : "turns")}" : "turns not counted";
         var facts = $"{turns} · last active {AgeOf(session.LastActivity)} · {FolderFact.For(folder)}";
+        // The messages are read once when the screen opens, for the Make summary check (RS-D26). The screen opens without the check when they cannot be read.
+        var lines = await TryReadOpenCodeLinesAsync(session);
         var dialog = new OpenCodeResumePrompt($"Resume: {title}", facts, Palette,
-            (choice, ct) => BuildOpenCodeStartTextAsync(session, choice, ct), initialMode: initialMode, folder, FolderExists(folder))
+            (choice, ct) => BuildOpenCodeStartTextAsync(session, choice, ct), initialMode: initialMode, folder, FolderExists(folder),
+            summaryHasLines: SummaryHasLinesOf(lines, "opencode"))
         {
             Owner = this,
         };
@@ -92,11 +95,9 @@ public partial class SessionWindow
                 case OpenCodeResumeMode.Full:
                     ResumeOpenCodeInFull(id, title, folder);
                     break;
-                case OpenCodeResumeMode.LastTurns:
-                    StartOpenCodeFromText(dialog.PreviewText, folder, title, summary: false);
-                    break;
                 case OpenCodeResumeMode.Summary:
-                    StartOpenCodeFromText(dialog.PreviewText, folder, title, summary: true);
+                    // Zero (no level) is the tail alone: the start is not a summary's (RS-D22).
+                    StartOpenCodeFromText(dialog.PreviewText, folder, title, summary: choice.Level is not null);
                     break;
             }
             if (choice.Remember) RememberResumeMode(ProviderId.OpenCode, id, OpenCodeResumeRules.ContinueModeOf(choice.Mode));
@@ -257,12 +258,19 @@ public partial class SessionWindow
             AppLog.Write($"opencode start text: {lines.Count} messages read");
             if (lines.Count == 0) return new OpenCodePreview(string.Empty);
 
-            SummaryLevel? level = summarised ? choice.Level ?? SummaryLevel.Normal : null;
-            var summary = summarised ? await MakeOpenCodeSummaryAsync(lines, level ?? SummaryLevel.Normal, ct) : null;
+            // Zero (no level) makes no summary. A summary reads only the messages before the tail (RS-D20, RS-D23); the tail is copied from all of them.
+            var level = choice.Level;
+            string? summary = null;
+            if (summarised && level is { } chosen)
+            {
+                var part = ResumeText.SummaryPart(lines, choice.Turns, ResumeText.TailTokenCap, turn => ProviderResumeText.TurnTokens(turn, "opencode"));
+                summary = await MakeOpenCodeSummaryAsync(part, chosen, ct);
+            }
             var tail = ProviderResumeText.Tail(lines, "opencode", choice.Turns);
             var start = ProviderResumeText.Compose("opencode", summary, level, tail, choice.Turns);
             AppLog.Write($"opencode start text built: {start.Length:N0} characters");
-            return new OpenCodePreview(start);
+            var kept = summary is null || level is null ? null : new KeptSummary(level.Value, summary, Saved: false, Turns: choice.Turns);
+            return new OpenCodePreview(start, null, kept);
         }
         catch (OpenCodeSummaryException ex)
         {
@@ -288,5 +296,24 @@ public partial class SessionWindow
         var made = await new OpenCodeSummarizer().SummariseAsync(_options.StatePath, lines, level, ct);
         AppLog.Write($"opencode summary made: {made.Length:N0} characters");
         return made;
+    }
+
+    /// <summary>
+    /// The session's messages, read when the opencode resume screen opens, for its Make summary check (RS-D26). Null when they cannot be read, or when the
+    /// session is longer than the reader's cap (the screen then refuses it at its own read): the check is then not made. Read-only; a failure is logged by type.
+    /// </summary>
+    private async Task<IReadOnlyList<TranscriptLine>?> TryReadOpenCodeLinesAsync(SessionSummary session)
+    {
+        try
+        {
+            var page = await new OpenCodeTranscriptReader(CurrentOpenCodeLocation())
+                .ReadPageAsync(session.Key.SessionId, 0, OpenCodeTranscriptReader.MaxLines, CancellationToken.None);
+            return page.Lines.Count >= OpenCodeTranscriptReader.MaxLines ? null : OpenCodeTranscriptLines(page.Lines);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            AppLog.Write($"opencode messages not read for the screen: {ex.GetType().Name}");
+            return null;
+        }
     }
 }

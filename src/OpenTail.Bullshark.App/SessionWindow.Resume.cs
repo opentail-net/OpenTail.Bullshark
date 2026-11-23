@@ -88,7 +88,7 @@ public partial class SessionWindow
         var prompt = new ResumePrompt($"Resume: {DisplayTitle(digest)}", facts, digest.ContextTokensAtLastTurn, Palette,
             defaults.PlannerModel, defaults.PlannerEffort,
             (choice, kept, cancellationToken) => PreviewAsync(digest, folder, lines, choice, kept, cancellationToken), initialMode,
-            folder, folderExists: check.Status != FolderStatus.Missing)
+            folder, folderExists: check.Status != FolderStatus.Missing, summaryHasLines: turns => ResumeText.SummaryHasLines(lines, turns, ResumeText.TurnTokens))
         {
             Owner = this,
         };
@@ -318,18 +318,20 @@ public partial class SessionWindow
     }
 
     /// <summary>
-    /// The summary of a resume at the chosen level: the kept one when it is for that level (no call), else one model call of the session's own CLI,
-    /// which is saved as a file. Null when the choice has no level. The call is the one the same-platform start has always made (RS-D9).
+    /// The summary of a resume at the chosen level: the kept one when it is for that level and tail (no call), else one model call of the session's own CLI,
+    /// which is saved as a file. Null when the choice has no level (Zero: no summary, no call). The call reads only the summary part, the messages before
+    /// the tail (RS-D20, RS-D23), and is the one the same-platform start has always made (RS-D9).
     /// </summary>
     private async Task<KeptSummary?> SummaryForAsync(
         SessionDigest digest, IReadOnlyList<TranscriptLine> lines, ResumeChoice choice, KeptSummary? kept, CancellationToken cancellationToken)
     {
         if (choice.Level is not { } level) return null;
-        if (kept is not null && kept.MatchesLevel(level)) return kept;
-        var input = await Task.Run(() => ResumeText.SummaryInput(lines, digest.FilesWritten), cancellationToken);
+        if (kept is not null && kept.MatchesChoice(level, choice.Turns)) return kept;
+        var input = await Task.Run(() => ResumeText.SummaryInput(
+            ResumeText.SummaryPart(lines, choice.Turns, ResumeText.TailTokenCap, ResumeText.TurnTokens), digest.FilesWritten), cancellationToken);
         var text = await _cli.SummariseAsync(ResumeText.Instructions(level), input, cancellationToken);
         await SaveSummaryFileAsync(digest, level, text);
-        return new KeptSummary(level, text, Saved: true);
+        return new KeptSummary(level, text, Saved: true, Turns: choice.Turns);
     }
 
     /// <summary>
@@ -405,6 +407,13 @@ public partial class SessionWindow
     private async Task StartFromTextAsync(
         SessionDigest digest, string folder, IReadOnlyList<TranscriptLine> lines, ResumeChoice choice, KeptSummary? kept)
     {
+        // A summary is made by Make summary only (RS-D21): Start never makes one. A summary kept for another level or tail is out of date, and Start is refused.
+        if (choice.Level is not null && !(kept is not null && kept.MatchesChoice(choice.Level, choice.Turns)))
+        {
+            SetStatus(ResumeSummaryState.OutOfDateLine);
+            return;
+        }
+
         // The launch check comes before the summary call (R4d, the Start path too): a refused launch makes no model call. StartRunAsync checks again
         // before it writes the run, as before; a Supported reading is cached, and a refused one is kept, so the second check costs nothing.
         var early = await ClaudeLaunchCheckAsync();
@@ -414,9 +423,6 @@ public partial class SessionWindow
             SetStatus(earlyRefusal);
             return;
         }
-
-        if (choice.Level is { } level && !(kept is not null && kept.MatchesLevel(level)))
-            SetStatus($"Summarising {ShortId(digest.SessionId)} ({level.ToString().ToLowerInvariant()}): one model call…");
 
         StartText start;
         try
@@ -504,6 +510,30 @@ public partial class SessionWindow
             AppLog.Write($"summary not saved as a file: {ex.GetType().Name}");
         }
     }
+
+    /// <summary>
+    /// The session's messages, read off the UI thread when a resume screen opens, for its Make summary check (RS-D26). Null when they cannot be read: the
+    /// screen then leaves Make summary on, and the summary's own read reports the problem. A failure is logged by type only.
+    /// </summary>
+    private static async Task<IReadOnlyList<TranscriptLine>?> TryReadLinesAsync(Func<IReadOnlyList<TranscriptLine>> read)
+    {
+        try
+        {
+            return await Task.Run(read);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            AppLog.Write($"resume messages not read for the screen: {ex.GetType().Name}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// The screen's check that a summary has messages to read (RS-D26), from the messages read when it opened, for the tail's turns and a provider's tail
+    /// label. Null when the messages were not read: the check is then not made (Make summary stays on).
+    /// </summary>
+    private static Func<int, bool>? SummaryHasLinesOf(IReadOnlyList<TranscriptLine>? lines, string assistant) =>
+        lines is null ? null : turns => ResumeText.SummaryHasLines(lines, turns, turn => ProviderResumeText.TurnTokens(turn, assistant));
 
     /// <summary>How long ago a session was last active, in words for the prompt.</summary>
     private static string AgeOf(DateTimeOffset? when)

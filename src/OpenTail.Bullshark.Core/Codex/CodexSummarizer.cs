@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Claude;
 using OpenTail.Bullshark.Core.Providers;
 using OpenTail.Bullshark.Core.Providers.Summary;
@@ -74,6 +75,13 @@ public sealed class CodexSummarizer(ICliRunner runner)
         var input = await Task.Run(() => ReadInput(paths, sessionId, ct), ct);
         return await SummariseAsync(CodexSummaryText.Instructions(level), input, folder, ct);
     }
+
+    /// <summary>
+    /// Summarises the messages of <paramref name="part"/> (RS-D20, RS-D23): the lines before the tail, as the resume screen's Make summary gives them. The
+    /// call reads only those lines, rendered as the tail renders them (<see cref="ProviderResumeText.SummaryInput"/>). Errors as <see cref="SummariseAsync"/>.
+    /// </summary>
+    public Task<string> SummariseLinesAsync(IReadOnlyList<TranscriptLine> part, SummaryLevel level, string folder, CancellationToken ct) =>
+        SummariseAsync(CodexSummaryText.Instructions(level), ProviderResumeText.SummaryInput(part, "codex"), folder, ct);
 
     /// <summary>The session's messages as one text, read from its rollout. Runs off the UI thread (see <see cref="SummariseSessionAsync"/>).</summary>
     private static string ReadInput(ProviderPaths paths, string sessionId, CancellationToken ct)

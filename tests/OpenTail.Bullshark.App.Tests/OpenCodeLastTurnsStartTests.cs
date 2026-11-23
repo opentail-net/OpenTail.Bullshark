@@ -6,8 +6,9 @@ using Xunit;
 namespace OpenTail.Bullshark.App.Tests;
 
 /// <summary>
-/// The opencode resume screen opened on a stored last-turns mode (RS-D27): the mode reads as Summary, so the summary radio is checked, the tail radio is not,
-/// and nothing is previewed or called at open. Headless: the preview callback records each request. The sample text is made up.
+/// The opencode resume screen opened on a stored last-turns mode (RS-D27): the mode reads as Summary at Zero with the tail on, so the summary radio and the
+/// Zero level are checked, and the Zero text is built at once with no summary call. Headless: the preview callback records each request. The sample text
+/// is made up.
 /// </summary>
 [Collection(HeadlessCollection.Name)]
 public sealed class OpenCodeLastTurnsStartTests
@@ -18,7 +19,7 @@ public sealed class OpenCodeLastTurnsStartTests
         window.FindName(name) as T ?? throw new InvalidOperationException($"no element named {name}");
 
     [Fact]
-    public void AStoredLastTurnsOpensOnTheSummaryRadioAndMakesNothing()
+    public void AStoredLastTurnsOpensOnZeroWithTheTailAndMakesNoSummaryCall()
     {
         UiThread.Run(() =>
         {
@@ -36,9 +37,12 @@ public sealed class OpenCodeLastTurnsStartTests
                 initialMode: ContinueMode.LastTurns);
 
             Assert.True(Named<RadioButton>(prompt, "SummaryChoice").IsChecked == true);
-            Assert.False(Named<RadioButton>(prompt, "TailChoice").IsChecked == true);
-            Assert.Empty(asked);
-            Assert.False(Named<Button>(prompt, "StartButton").IsEnabled);
+            Assert.True(Named<RadioButton>(prompt, "ZeroLevel").IsChecked == true);
+            Assert.True(Named<CheckBox>(prompt, "TailBox").IsChecked == true);
+            // The Zero text is built at once (no level, so no summary call), and Start is on with it.
+            var choice = Assert.Single(asked);
+            Assert.Null(choice.Level);
+            Assert.True(Named<Button>(prompt, "StartButton").IsEnabled);
         });
     }
 }

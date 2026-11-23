@@ -4,13 +4,20 @@ namespace OpenTail.Bullshark.Core.Resume;
 
 /// <summary>
 /// A summary made for a resume. The resume prompt keeps it, so that the start reuses it instead of making it again: the preview and the
-/// start then show and send the same summary. Level is the level it was made at. Saved is true once it was saved as a file; the save is
+/// start then show and send the same summary. Level is the level it was made at, and Turns the tail's turns it was made for (zero when the tail is off,
+/// RS-D21). Saved is true once it was saved as a file; the save is
 /// tried once, when the summary is made, and a failed save is logged and not retried.
 /// </summary>
-public sealed record KeptSummary(SummaryLevel Level, string Text, bool Saved)
+public sealed record KeptSummary(SummaryLevel Level, string Text, bool Saved, int Turns = 0)
 {
     /// <summary>True only for the level the summary was made at. No level (a resume with no summary) never matches.</summary>
     public bool MatchesLevel(SummaryLevel? level) => level is { } chosen && chosen == Level;
+
+    /// <summary>
+    /// True only for the level and the tail the summary was made at (RS-D21): a summary covers the messages before the tail, so another tail gives another
+    /// input. <paramref name="turns"/> is the tail's turns, zero when the tail is off, as <see cref="Turns"/> holds it.
+    /// </summary>
+    public bool MatchesChoice(SummaryLevel? level, int turns) => MatchesLevel(level) && Turns == turns;
 }
 
 /// <summary>

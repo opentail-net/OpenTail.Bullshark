@@ -1,6 +1,7 @@
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Continue;
 using OpenTail.Bullshark.Core.Copilot;
 using OpenTail.Bullshark.Core.Providers;
@@ -57,8 +58,12 @@ public partial class SessionWindow
         var title = CopilotRowTitle(MarkOf(ProviderId.Copilot, id)?.Name, session);
         var turns = session.UserMessages is { } count ? $"{count} {(count == 1 ? "turn" : "turns")}" : "turns not counted";
         var facts = $"{turns} · last active {AgeOf(session.LastActivity)} · {FolderFact.For(folder)}";
+        // The messages are read once when the screen opens, for the Make summary check (RS-D26). The screen opens without the check when they cannot be read.
+        var copilotProvider = _copilot ??= new CopilotProvider();
+        var lines = await TryReadLinesAsync(() => CopilotTranscriptReader.ReadSession(copilotProvider.Paths, id, CancellationToken.None, int.MaxValue));
         var dialog = new CopilotResumePrompt($"Resume: {title}", facts, Palette,
-            (choice, kept, ct) => BuildCopilotStartTextAsync(session, choice, kept, ct, choice.Target), initialMode, folder, FolderExists(folder))
+            (choice, kept, ct) => BuildCopilotStartTextAsync(session, choice, kept, ct, choice.Target), initialMode, folder, FolderExists(folder),
+            SummaryHasLinesOf(lines, "copilot"))
         {
             Owner = this,
         };
@@ -171,7 +176,7 @@ public partial class SessionWindow
             KeptSummary? summary = null;
             if (choice.Level is { } level)
             {
-                if (kept is not null && kept.MatchesLevel(level))
+                if (kept is not null && kept.MatchesChoice(level, choice.Turns))
                 {
                     summary = kept;
                 }
@@ -189,7 +194,7 @@ public partial class SessionWindow
                         SetStatus(CopilotResumeRules.SummaryRunning);
                         return new CopilotPreview(string.Empty, null, CopilotResumeRules.SummaryRunning);
                     }
-                    summary = await MakeCopilotSummaryAsync(session, provider, level, ct);
+                    summary = await MakeCopilotSummaryAsync(session, lines, level, choice.Turns, ct);
                 }
             }
 
@@ -223,15 +228,18 @@ public partial class SessionWindow
     /// Makes one summary by one Copilot call (<see cref="CopilotSummarizer"/>, which runs <c>cmd.exe</c> with the <c>copilot</c> shim), keeps it as a
     /// file, and returns it for the level. Only one such call runs at a time (<see cref="_copilotSummaryRunning"/>). The log holds counts only.
     /// </summary>
-    private async Task<KeptSummary> MakeCopilotSummaryAsync(SessionSummary session, CopilotProvider provider, SummaryLevel level, CancellationToken ct)
+    private async Task<KeptSummary> MakeCopilotSummaryAsync(
+        SessionSummary session, IReadOnlyList<TranscriptLine> lines, SummaryLevel level, int turns, CancellationToken ct)
     {
         _copilotSummaryRunning = true;
         try
         {
-            var made = await new CopilotSummarizer().SummariseSessionAsync(provider.Paths, session.Key.SessionId, _options.StatePath, level, ct);
+            // The summary reads only the messages before the tail (RS-D20, RS-D23); the tail is the rest.
+            var part = ResumeText.SummaryPart(lines, turns, ResumeText.TailTokenCap, turn => ProviderResumeText.TurnTokens(turn, "copilot"));
+            var made = await new CopilotSummarizer().SummariseLinesAsync(part, level, _options.StatePath, ct);
             AppLog.Write($"copilot summary made: {made.Length:N0} characters");
             var saved = await SaveCopilotSummaryFileAsync(session, level, made);
-            return new KeptSummary(level, made, Saved: saved);
+            return new KeptSummary(level, made, Saved: saved, Turns: turns);
         }
         finally
         {

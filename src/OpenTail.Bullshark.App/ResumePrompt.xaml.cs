@@ -19,18 +19,18 @@ public enum ResumeMode
     /// <summary>The same session, with its whole conversation as context.</summary>
     Full,
 
-    /// <summary>A new session that starts from a summary, followed by the last turns.</summary>
+    /// <summary>A new session that starts from a summary (its level, or Zero for none), followed by the tail when it is on (RS-D19).</summary>
     Summary,
 
-    /// <summary>A new session that starts from the last turns only. No model call.</summary>
+    /// <summary>A new session that starts from the last turns only. No model call. The screen no longer offers it; a stored last-turns mode reads as Summary at Zero.</summary>
     TailOnly,
 }
 
 /// <summary>
-/// The choice made in the resume prompt. Level is set for a summary; Turns is the number of turns kept verbatim. Model and Effort
-/// are the model and effort of the resumed or new session (the summary itself is always Haiku at low effort). Remember is the
-/// "Remember for this session" tick: the prompt only returns it, and the window writes the mark (Continue, stage C6). Target is the platform
-/// the new session starts in (RS-D14). In a summary it is the chooser's pick; otherwise it is Claude, the screen's own platform.
+/// The choice made in the resume prompt. Level is set for a summary, and null for Zero (no summary, no model call). Turns is the number of turns kept
+/// verbatim, zero when the tail is off (RS-D19, RS-D21). Model and Effort are the model and effort of the resumed or new session (the summary itself is
+/// always Haiku at low effort). Remember is the "Remember for this session" tick: the prompt only returns it, and the window writes the mark (Continue, stage
+/// C6). Target is the platform the new session starts in (RS-D14). In a summary it is the chooser's pick; otherwise it is Claude, the screen's own platform.
 /// </summary>
 public sealed record ResumeChoice(ResumeMode Mode, SummaryLevel? Level, int Turns, string Model, string Effort, bool Remember, ProviderId Target)
 {
@@ -46,22 +46,29 @@ public sealed record ResumeChoice(ResumeMode Mode, SummaryLevel? Level, int Turn
 public sealed record ResumePromptPreview(ResumePreview? Preview, string? Problem = null);
 
 /// <summary>
-/// The resume prompt (D14, D-S11). One list of ways to continue, with the recommended one already selected: a full resume only
-/// when the context is small (ResumeAdvice), otherwise a summary. It shows what each choice would send before anything runs. The Resume
-/// menu previews that text, and copies it, through the window's own method, so the text shown is the text sent. A summary made for the
-/// preview is kept, and Resume uses it without a second model call. The owner picks the model and effort of the session that continues.
-/// Cancel is the default.
+/// The resume prompt (D14, D-S11, RS-D3 to RS-D28). Two ways to continue: Full (the same session, with its whole conversation) and Summary. A summary has
+/// the level row (Zero, Minimal, Normal, Complete) and the tail, "Include last [N] turns". Zero is built at once, with no model call; the other levels are
+/// made only by Make summary, and a summary made for another tail or level is out of date (RS-D21). The owner picks the model and effort of the session
+/// that continues. Cancel is the default.
 /// </summary>
 public partial class ResumePrompt : Window
 {
     private const int MaxTurns = 200;
+
+    /// <summary>The level row's tag of Zero. Zero is no summary, so it has no level (RS-D22).</summary>
+    private const string ZeroTag = "Zero";
+
     private readonly int _contextTokens;
     private readonly Func<ResumeChoice, KeptSummary?, CancellationToken, Task<ResumePromptPreview>>? _previewAsync;
+    private readonly Func<int, bool>? _summaryHasLines;
     private CancellationTokenSource? _previewCts;
 
     /// <summary>The platform the Start menu picks (RS-D3): Claude by default, and back to Claude when the mode leaves a summary.</summary>
     private ProviderId _target = ProviderId.Claude;
     private bool _previewing;
+
+    /// <summary>The start text on screen, or null when none is shown. Copy copies it, and Start is allowed only for the text shown (RS-D21).</summary>
+    private string? _previewText;
 
     /// <summary>True while the preview on screen is a refusal of the launch: Resume and Copy stay off, as the Codex Start does (R4d).</summary>
     private bool _refused;
@@ -77,9 +84,10 @@ public partial class ResumePrompt : Window
 
     /// <param name="folder">The session's folder, for the folder notice. Used only with <paramref name="folderExists"/>.</param>
     /// <param name="folderExists">Whether the folder exists (the screen's folder check, Missing is false). Null: no folder notice is shown.</param>
+    /// <param name="summaryHasLines">True when the summary of the session, with the given tail turns, has messages to read (RS-D26). Null: not known, so Make summary is on.</param>
     public ResumePrompt(string heading, string facts, long contextTokens, RailPalette palette, string defaultModel, string defaultEffort,
         Func<ResumeChoice, KeptSummary?, CancellationToken, Task<ResumePromptPreview>>? previewAsync = null, ContinueMode? initialMode = null,
-        string? folder = null, bool? folderExists = null)
+        string? folder = null, bool? folderExists = null, Func<int, bool>? summaryHasLines = null)
     {
         InitializeComponent();
         // The window grows to the screen's work area at most: the body scrolls and the buttons stay in view (owner, 2026-11-22).
@@ -90,6 +98,7 @@ public partial class ResumePrompt : Window
         ResumeButton.Content = startLabel;
         AutomationProperties.SetName(ResumeButton, startLabel);
         _previewAsync = previewAsync;
+        _summaryHasLines = summaryHasLines;
         _folderNotice = folderExists is { } exists ? ResumeFolderNotice.For(folder, exists) : null;
         _blocksStart = ResumeFolderNotice.BlocksStart(folder, folderExists);
         UiTheme.Apply(palette);
@@ -107,38 +116,35 @@ public partial class ResumePrompt : Window
         Heading.Text = heading;
         Facts.Text = facts;
         _contextTokens = (int)Math.Min(contextTokens, int.MaxValue);
-        TurnsBox.Text = ResumeText.DefaultTurns.ToString(CultureInfo.InvariantCulture);
+        TurnsBox.Text = ProviderResumeRules.StartTurns(null).ToString(CultureInfo.InvariantCulture);
+        TailBox.IsChecked = true;
 
         var fullRecommended = ResumeAdvice.FullIsRecommended(contextTokens);
         Recommendation.Text = fullRecommended
             ? $"Recommended: in full. The context is about {_contextTokens:N0} tokens, small enough to re-read before the first reply."
             : $"Recommended: from a summary. The context is about {_contextTokens:N0} tokens; a full resume would re-read all of it " +
               "before the first reply.";
-        FullChoice.Content = "In full: the whole conversation as context" + (fullRecommended ? " 👍 (recommended)" : string.Empty);
-        SummaryChoice.Content = "From a summary, then a new session" + (fullRecommended ? string.Empty : " 👍 (recommended)");
-        // The start: the mode given (CN-D9, stage C4), or with none the recommendation, as before. The recommendation text above does not change.
-        (ProviderResumeRules.StartMode(initialMode) switch
-        {
-            ProviderResumeMode.Full => FullChoice,
-            ProviderResumeMode.LastTurns => TailChoice,
-            ProviderResumeMode.Summary => SummaryChoice,
-            _ => fullRecommended ? FullChoice : SummaryChoice,
-        }).IsChecked = true;
+        FullChoice.Content = ResumeSummaryState.FullLabel + (fullRecommended ? " 👍 (recommended)" : string.Empty);
+        SummaryChoice.Content = ResumeSummaryState.SummaryLabel + (fullRecommended ? string.Empty : " 👍 (recommended)");
+        // The start: the mode given (CN-D9, stage C4), or with none the recommendation, as before. A stored last-turns mode opens at Zero with the tail
+        // (RS-D27); a summary with no stored level opens at Normal, and a recommendation of a summary opens at Normal too.
+        var mode = ProviderResumeRules.StartMode(initialMode) ?? (fullRecommended ? ProviderResumeMode.Full : ProviderResumeMode.Summary);
+        if (mode == ProviderResumeMode.Full) FullChoice.IsChecked = true;
+        else SummaryChoice.IsChecked = true;
+        SummaryLevel? openLevel = ProviderResumeRules.OpensAtZeroWithTail(initialMode) ? null : SummaryLevel.Normal;
 
-        foreach (var (level, label) in new[]
-                 {
-                     (SummaryLevel.Minimal, "Minimal · about 120 words"),
-                     (SummaryLevel.Normal, "Normal · about 400 words"),
-                     (SummaryLevel.Complete, "Complete · about 1,200 words"),
-                 })
+        foreach (SummaryLevel? level in new SummaryLevel?[] { null, SummaryLevel.Minimal, SummaryLevel.Normal, SummaryLevel.Complete })
         {
-            var segment = Segment(label, "Level", level == SummaryLevel.Normal);
-            segment.Tag = level.ToString();
+            var text = level is { } chosen ? ProviderResumeRules.LevelLabel(chosen) : ResumeSummaryState.ZeroLabel;
+            var segment = Segment(text, "Level", level == openLevel);
+            segment.Tag = level?.ToString() ?? ZeroTag;
             segment.Checked += (_, _) => UpdateCost();
             LevelRow.Children.Add(segment);
         }
 
-        foreach (var radio in new[] { FullChoice, SummaryChoice, TailChoice }) radio.Checked += (_, _) => UpdateCost();
+        foreach (var radio in new[] { FullChoice, SummaryChoice }) radio.Checked += (_, _) => UpdateCost();
+        TailBox.Checked += (_, _) => UpdateCost();
+        TailBox.Unchecked += (_, _) => UpdateCost();
         TurnsBox.TextChanged += (_, _) => UpdateCost();
 
         foreach (var model in Choices.Models) ModelRow.Children.Add(Segment(model, "Model", model == defaultModel));
@@ -151,8 +157,8 @@ public partial class ResumePrompt : Window
     public ResumeChoice? Choice { get; private set; }
 
     /// <summary>
-    /// The summary the preview made (or reused). Resume passes it on, so the summary is not made twice. Null when none was made, or when the
-    /// level changed after the preview.
+    /// The summary the preview made (or reused). Resume passes it on, so the summary is not made twice. Null when none was made. It is kept for the tail
+    /// and the level it was made at; Start is off for any other setting (RS-D21).
     /// </summary>
     public KeptSummary? KeptSummary { get; private set; }
 
@@ -169,25 +175,37 @@ public partial class ResumePrompt : Window
     private static string? SelectedTag(Panel row) =>
         row.Children.OfType<RadioButton>().FirstOrDefault(radio => radio.IsChecked == true)?.Tag as string;
 
-    /// <summary>The summary level on screen, or null when none is chosen.</summary>
-    private SummaryLevel? SelectedLevelOrNull() =>
-        Enum.TryParse<SummaryLevel>(SelectedTag(LevelRow), out var level) ? level : (SummaryLevel?)null;
+    /// <summary>The summary level on screen: null for Zero, and Normal when none is chosen.</summary>
+    private SummaryLevel? SelectedLevel()
+    {
+        var tag = SelectedTag(LevelRow);
+        if (tag == ZeroTag) return null;
+        return Enum.TryParse<SummaryLevel>(tag, out var level) ? level : SummaryLevel.Normal;
+    }
 
-    /// <summary>The summary level on screen. Normal when none is chosen.</summary>
-    private SummaryLevel SelectedLevel() => SelectedLevelOrNull() ?? SummaryLevel.Normal;
+    /// <summary>True when the tail is on: the box is ticked (RS-D19).</summary>
+    private bool TailOn => TailBox.IsChecked == true;
 
-    /// <summary>The choice on screen, or null when none is selected. turnsValid is false when the turns are not a whole number in range.</summary>
+    /// <summary>
+    /// The choice on screen, or null when none is selected. turnsValid is false when the tail is on and the turns are not a whole number in range. Full and a
+    /// tail that is off need no turns, so they are valid.
+    /// </summary>
     private ResumeChoice? Selected(out bool turnsValid)
     {
         var parsed = int.TryParse(TurnsBox.Text.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var turns);
-        turnsValid = parsed && turns is >= 0 and <= MaxTurns;
-        var kept = turnsValid ? turns : ResumeText.DefaultTurns;
+        var valid = parsed && turns is >= 0 and <= MaxTurns;
+        var kept = valid ? turns : ResumeText.DefaultTurns;
         var model = SelectedTag(ModelRow) ?? Choices.Models[0];
         var effort = SelectedTag(EffortRow) ?? Choices.Efforts[0];
 
-        if (FullChoice.IsChecked == true) return Targeted(new ResumeChoice(ResumeMode.Full, null, 0, model, effort));
-        if (SummaryChoice.IsChecked == true) return Targeted(new ResumeChoice(ResumeMode.Summary, SelectedLevel(), kept, model, effort));
-        if (TailChoice.IsChecked == true) return Targeted(new ResumeChoice(ResumeMode.TailOnly, null, kept, model, effort));
+        if (FullChoice.IsChecked == true)
+        {
+            turnsValid = true;
+            return Targeted(new ResumeChoice(ResumeMode.Full, null, 0, model, effort));
+        }
+        turnsValid = !TailOn || valid;
+        if (SummaryChoice.IsChecked == true)
+            return Targeted(new ResumeChoice(ResumeMode.Summary, SelectedLevel(), ResumeSummaryState.TurnsOf(TailOn, kept), model, effort));
         return null;
     }
 
@@ -195,7 +213,7 @@ public partial class ResumePrompt : Window
     private ResumeChoice Targeted(ResumeChoice choice) => choice with { Target = StartTarget(choice.Mode) };
 
     /// <summary>
-    /// The platform the new session starts in, for the mode (<see cref="ResumeTarget.ChosenTarget"/>): the Resume menu's pick in a summary, else Claude.
+    /// The platform the new session starts in, for the mode (<see cref="ResumeTarget.ChosenTarget"/>): the Start menu's pick in a summary, else Claude.
     /// </summary>
     private ProviderId StartTarget(ResumeMode mode) =>
         ResumeTarget.ChosenTarget(ProviderId.Claude, RememberChoice.ModeOf(mode), _target);
@@ -220,7 +238,7 @@ public partial class ResumePrompt : Window
 
     /// <summary>
     /// Runs when the owner picks a platform in the Resume menu (RS-D3, RS-D18). No model is called. A pick that changes the target takes the preview on
-    /// screen away: nothing is rebuilt and no model is called, as Preview builds the text again with the kept summary, and Start builds its text the same way.
+    /// screen away: nothing is rebuilt and no model is called, and Make summary builds the text again for the target on screen.
     /// </summary>
     private void TargetItem_Click(object sender, RoutedEventArgs e)
     {
@@ -232,7 +250,7 @@ public partial class ResumePrompt : Window
 
     /// <summary>
     /// Sets the platform items of the Resume menu (RS-D2, RS-D3, RS-D8): the pick is checked, and each item is on only in a summary, where the rule allows
-    /// it. <paramref name="menuOn"/> is false outside a summary, and while a preview is being made.
+    /// it. <paramref name="menuOn"/> is false outside a summary, and while a summary is made.
     /// </summary>
     private void ShowTargetMenu(bool menuOn)
     {
@@ -242,99 +260,95 @@ public partial class ResumePrompt : Window
     }
 
     /// <summary>
-    /// Runs when the choice, its level or its turns change. A preview on screen is then stale, so it is taken away. A kept summary stays only
-    /// while its level is the one chosen. The model and the effort do not change the text, so they do not come here.
+    /// Runs when the mode, the level, the tail or its turns change. A preview on screen is then stale, so it is taken away. A summary kept for another
+    /// setting is out of date (RS-D21) and Start waits for Make summary. Zero, and a summary kept for the setting on screen, are shown at once.
     /// </summary>
     private void UpdateCost()
     {
         // RS-D3: the target goes back to the source when the mode leaves a summary; the Resume menu's platform items are off then.
         if (SummaryChoice.IsChecked != true) _target = ProviderId.Claude;
+        _previewCts?.Cancel();
         HidePreview();
-        if (KeptSummary is { } kept && !kept.MatchesLevel(SelectedLevelOrNull())) KeptSummary = null;
         Refresh();
+        var choice = Selected(out var turnsValid);
+        if (choice is null || !turnsValid || choice.Mode != ResumeMode.Summary) return;
+        if (ResumeSummaryState.ZeroRefusal(choice.Level, TailOn, choice.Turns) is not null) return;
+        if (ResumeSummaryState.RunsAtOnce(choice.Level, choice.Turns, KeptSummary)) _ = BuildAsync(choice);
     }
 
     /// <summary>
-    /// Says what the selected choice costs and sends, before the owner presses Resume. It also shows only the options that apply to
-    /// the choice: the summary levels for a summary, and the turns for anything but a full resume. And it sets what can be pressed: while a
-    /// preview is being made, the choice, the Resume split button and its menu are off.
+    /// Says what the selected choice costs and sends, before the owner presses Resume. It also shows only the options that apply to the choice: the level row
+    /// and the tail for a summary, and the model and effort rows unless the start goes to another platform. It sets what can be pressed: while a preview is
+    /// being made, the choices and the buttons are off, and Start waits for a summary of the setting on screen (<see cref="ResumeSummaryState.StartAllowed"/>).
     /// </summary>
     private void Refresh()
     {
         var choice = Selected(out var turnsValid);
+        var summary = choice?.Mode == ResumeMode.Summary;
+        var level = choice?.Level;
+        var turns = choice is null ? 0 : choice.Turns;
+        var previewReady = _previewText is not null;
         FolderNotice.Text = _folderNotice ?? string.Empty;
         FolderNotice.Visibility = _folderNotice is null ? Visibility.Collapsed : Visibility.Visible;
-        LevelBlock.Visibility = SummaryChoice.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
-        TurnsBlock.Visibility = FullChoice.IsChecked == true ? Visibility.Collapsed : Visibility.Visible;
+        LevelBlock.Visibility = summary ? Visibility.Visible : Visibility.Collapsed;
+        TailBlock.Visibility = summary ? Visibility.Visible : Visibility.Collapsed;
         ShowTarget(choice?.Target ?? ProviderId.Claude);
         // RS-D12: a cross start runs at the target's own default model and effort, so the model and effort rows do not apply and are hidden.
         var cross = IsCross(choice);
         ModelHeader.Visibility = ModelLine.Visibility = EffortLine.Visibility = cross ? Visibility.Collapsed : Visibility.Visible;
 
+        // RS-D21, RS-D25, RS-D26: the status line after the cost line. The turns message comes after the cost, as before.
+        var zeroRefusal = summary ? ResumeSummaryState.ZeroRefusal(level, TailOn, turns) : null;
+        var hasLines = _summaryHasLines?.Invoke(turns) ?? true;
+        var nothingToSummarise = summary && level is not null && turnsValid && !hasLines;
+        var outOfDate = summary && ResumeSummaryState.IsOutOfDate(level, turns, KeptSummary);
+        var status = zeroRefusal ?? (nothingToSummarise ? ResumeSummaryState.NothingToSummariseLine
+            : outOfDate ? ResumeSummaryState.OutOfDateLine : null);
+
         var sizes = turnsValid ? string.Empty : $" Enter a whole number from 0 to {MaxTurns} for the turns.";
         var runs = choice is null ? string.Empty
             : cross ? " " + CrossModelRow.CostLineForCross(choice.Target)
             : $" The new session runs at {choice.Model} {choice.Effort}.";
-        CostText.Text = _previewing
+        var costLine = choice?.Mode switch
+        {
+            ResumeMode.Full =>
+                $"Resuming in full re-reads all of the context, about {_contextTokens:N0} tokens, before the first reply. " +
+                "A warm cache makes that cheap; a cold one charges it at full price. Nothing runs until you press Resume.",
+            ResumeMode.Summary when level is null =>
+                "No model call. The last turns are copied word for word into a new session.",
+            ResumeMode.Summary =>
+                $"One Haiku call (low effort) reads your messages and Claude's replies, not the tool output, up to about " +
+                $"{ResumeText.SummaryInputChars / 4:N0} tokens, and writes the {level.Value.ToString().ToLowerInvariant()} " +
+                "summary. Then a new session starts from it and from the last turns.",
+            _ => "Choose one of the ways to continue.",
+        };
+        CostText.Text = (_previewing
             ? (NeedsSummaryCall(choice) ? "Summarising: one model call…" : "Building the prompt…")
-            : (choice?.Mode switch
-            {
-                ResumeMode.Full =>
-                    $"Resuming in full re-reads all of the context, about {_contextTokens:N0} tokens, before the first reply. " +
-                    "A warm cache makes that cheap; a cold one charges it at full price. Nothing runs until you press Resume.",
-                ResumeMode.Summary =>
-                    $"One Haiku call (low effort) reads your messages and Claude's replies, not the tool output, up to about " +
-                    $"{ResumeText.SummaryInputChars / 4:N0} tokens, and writes the {(choice.Level ?? SummaryLevel.Normal).ToString().ToLowerInvariant()} " +
-                    "summary. Then a new session starts from it and from the last turns.",
-                ResumeMode.TailOnly =>
-                    "No model call. The last turns are copied word for word into a new session.",
-                _ => "Choose one of the ways to continue.",
-            }) + runs + sizes;
+            : costLine) + runs + sizes + (status is null ? string.Empty : " " + status);
 
         var free = !_previewing;
         Enable(FullChoice, free);
         Enable(SummaryChoice, free);
-        Enable(TailChoice, free);
-        Enable(TurnsBox, free);
-        ShowTargetMenu(free && choice?.Mode == ResumeMode.Summary);
-        foreach (var segment in LevelRow.Children.OfType<RadioButton>()) Enable(segment, free);
-        ResumeButton.IsEnabled = free && !_refused && !_blocksStart;
+        Enable(TailBox, free && summary);
+        Enable(TurnsBox, free && summary && TailOn);
+        ShowTargetMenu(free && summary);
+        foreach (var segment in LevelRow.Children.OfType<RadioButton>()) Enable(segment, free && summary);
+        var makeAllowed = ResumeSummaryState.MakeSummaryAllowed(level, turnsValid, hasLines);
+        Enable(MakeSummaryButton, free && summary && makeAllowed);
+        var startAllowed = choice is not null && (!summary
+            || ResumeSummaryState.StartAllowed(level, TailOn, turns, turnsValid, previewReady, KeptSummary));
+        ResumeButton.IsEnabled = free && !_refused && !_blocksStart && startAllowed;
         ResumeMenuButton.IsEnabled = free;
         Enable(RememberBox, free);
-
-        var canBuild = free && choice is not null && choice.Mode != ResumeMode.Full && turnsValid && _previewAsync is not null;
-        PreviewItem.IsEnabled = canBuild;
-        CopyItem.IsEnabled = canBuild && !_refused;
-        PreviewItem.ToolTip = MenuTip(choice, turnsValid, copy: false);
-        CopyItem.ToolTip = MenuTip(choice, turnsValid, copy: true);
+        CopyItem.IsEnabled = free && !_refused && previewReady;
+        CopyItem.ToolTip = previewReady
+            ? "Copies the start text shown above to the clipboard. Nothing is sent to a session."
+            : "Makes a start text first: Zero, or Make summary.";
     }
 
-    /// <summary>True when the choice needs a model call that has not been made yet: a summary, and no kept summary of its level.</summary>
+    /// <summary>True when the choice needs a model call that has not been made yet: a summary (a level), and no kept summary for its setting.</summary>
     private bool NeedsSummaryCall(ResumeChoice? choice) =>
-        choice?.Mode == ResumeMode.Summary && !(KeptSummary?.MatchesLevel(choice.Level) ?? false);
-
-    /// <summary>The tooltip of the Preview and the Copy items: why an item is off, or what it does, and whether it makes the model call.</summary>
-    private string MenuTip(ResumeChoice? choice, bool turnsValid, bool copy)
-    {
-        if (choice?.Mode == ResumeMode.Full) return "Resuming in full sends no prompt.";
-        if (!turnsValid) return "Enter a whole number of turns first.";
-        if (choice is null || _previewAsync is null) return "There is no prompt to preview here.";
-        if (choice.Mode == ResumeMode.TailOnly)
-        {
-            return copy
-                ? "Copies the last turns, word for word, to the clipboard. No model call, and nothing is sent to a session."
-                : "Shows the last turns, word for word, as the new session would get them. No model call.";
-        }
-        if (!NeedsSummaryCall(choice))
-        {
-            return copy
-                ? "Copies the start text, with the summary already made. No model call."
-                : "Shows the start text, with the summary already made. No model call.";
-        }
-        return copy
-            ? "Makes the summary now (one Haiku call), keeps it for Resume, and copies the start text to the clipboard. Nothing is sent to a session."
-            : "Makes the summary now (one Haiku call) and keeps it: Resume then uses it without a second call. Cancelling after this still spends the call.";
-    }
+        choice?.Mode == ResumeMode.Summary && choice.Level is not null && !ResumeSummaryState.KeptMatches(choice.Level, choice.Turns, KeptSummary);
 
     private static void Enable(UIElement element, bool enabled)
     {
@@ -342,11 +356,13 @@ public partial class ResumePrompt : Window
         element.Opacity = enabled ? 1 : 0.5;
     }
 
-    /// <summary>The Preview item: builds the prompt and shows it. Nothing is started.</summary>
-    private async void PreviewItem_Click(object sender, RoutedEventArgs e) => await BuildAsync(copy: false);
-
-    /// <summary>The Copy item: builds the prompt, shows it, and puts it on the clipboard. Nothing is sent to a session.</summary>
-    private async void CopyItem_Click(object sender, RoutedEventArgs e) => await BuildAsync(copy: true);
+    /// <summary>The Make summary button: makes the summary now, once, for the level and tail on screen (RS-D21).</summary>
+    private async void MakeSummary_Click(object sender, RoutedEventArgs e)
+    {
+        var choice = Selected(out var turnsValid);
+        if (choice is not { Mode: ResumeMode.Summary, Level: not null } || !turnsValid || _previewing) return;
+        await BuildAsync(choice);
+    }
 
     /// <summary>The narrow part of the split button: opens the menu under it.</summary>
     private void ResumeMenuButton_Click(object sender, RoutedEventArgs e)
@@ -356,13 +372,13 @@ public partial class ResumePrompt : Window
     }
 
     /// <summary>
-    /// Builds the prompt for the chosen way, through the window's method that the start uses, shows it, and copies it when asked. A failure is
-    /// shown in the pane and the dialog stays open. A build cancelled because the dialog closed shows nothing.
+    /// Builds the start text for the choice, through the window's method that the start uses, and shows it. A failure is shown in the preview area and the
+    /// dialog stays open. A failed summary of the session's own platform falls back to Full (ResumeDefaults); one that starts in another platform keeps the
+    /// summary, and the refusal stays, so Start is off. A build cancelled because the dialog closed shows nothing.
     /// </summary>
-    private async Task BuildAsync(bool copy)
+    private async Task BuildAsync(ResumeChoice choice)
     {
-        var choice = Selected(out var turnsValid);
-        if (_previewAsync is null || _previewing || choice is null || choice.Mode == ResumeMode.Full || !turnsValid) return;
+        if (_previewAsync is null || _previewing) return;
 
         _previewing = true;
         _refused = false;
@@ -374,9 +390,9 @@ public partial class ResumePrompt : Window
             var built = await _previewAsync(choice, KeptSummary, cts.Token);
             if (built.Preview is not { } preview)
             {
-                // A summary that was refused falls back to In full (ResumeDefaults). Resume is then on: In full has no prompt to refuse.
                 var problem = built.Problem ?? "The prompt could not be built.";
-                if (ResumeDefaults.FallBackToFull(choice.Mode == ResumeMode.Summary, cancelled: false)) FallBackToFull(problem);
+                if (choice.Target == ProviderId.Claude && ResumeDefaults.FallBackToFull(choice.Mode == ResumeMode.Summary && choice.Level is not null, cancelled: false))
+                    FallBackToFull(problem);
                 else
                 {
                     _refused = true;
@@ -386,15 +402,15 @@ public partial class ResumePrompt : Window
             }
             if (preview.Summary is { } summary) KeptSummary = summary;
             ShowPreview(preview);
-            if (copy) CopyText(preview.Text);
         }
         catch (OperationCanceledException)
         {
-            // The dialog closed while the summary was being made. The window is gone, so nothing is shown.
+            // The dialog closed, or the choice changed, while the summary was being made: nothing is shown.
         }
         catch (Exception ex)
         {
-            if (ResumeDefaults.FallBackToFull(choice.Mode == ResumeMode.Summary, cancelled: false)) FallBackToFull($"The prompt could not be built: {ex.Message}");
+            if (choice.Target == ProviderId.Claude && ResumeDefaults.FallBackToFull(choice.Mode == ResumeMode.Summary && choice.Level is not null, cancelled: false))
+                FallBackToFull($"The prompt could not be built: {ex.Message}");
             else ShowError(ex.Message);
         }
         finally
@@ -419,6 +435,7 @@ public partial class ResumePrompt : Window
     /// <summary>Shows a built prompt: its size line (in the danger colour when it does not fit), and the text, read-only.</summary>
     private void ShowPreview(ResumePreview preview)
     {
+        _previewText = preview.Text;
         PreviewHeader.Text = ResumePreviewText.Header(preview.Text.Length, preview.CutCharacters, preview.Fits);
         PreviewHeader.SetResourceReference(TextBlock.ForegroundProperty, preview.Fits ? "PromptMuted" : "UiDanger");
         PreviewText.Text = preview.Text;
@@ -430,11 +447,12 @@ public partial class ResumePrompt : Window
     }
 
     /// <summary>
-    /// Shows why the launch is refused: the refusal in the danger colour, and no prompt text. It is the Codex preview's refusal, shown the same
-    /// way (R4d). Resume and Copy stay off while it shows; the dialog stays open, so the owner can change the choice, update the tool or cancel.
+    /// Shows why the launch is refused: the refusal in the danger colour, and no prompt text. Resume and Copy stay off while it shows; the dialog stays open, so
+    /// the owner can change the choice, update the tool or cancel.
     /// </summary>
     private void ShowRefusal(string problem)
     {
+        _previewText = null;
         PreviewHeader.Text = problem;
         PreviewHeader.SetResourceReference(TextBlock.ForegroundProperty, "UiDanger");
         PreviewText.Text = string.Empty;
@@ -446,12 +464,19 @@ public partial class ResumePrompt : Window
     /// <summary>Shows why the prompt could not be built. The dialog stays open, so the owner can change the choice or cancel.</summary>
     private void ShowError(string message)
     {
+        _previewText = null;
         PreviewHeader.Text = $"The prompt could not be built: {message}";
         PreviewHeader.SetResourceReference(TextBlock.ForegroundProperty, "UiDanger");
         PreviewText.Text = string.Empty;
         PreviewText.Visibility = Visibility.Collapsed;
         PreviewNote.Visibility = Visibility.Collapsed;
         PreviewBlock.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>The Copy item: puts the start text on screen on the clipboard, and says so under the text. Nothing is sent to a session.</summary>
+    private void CopyItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (_previewText is { } text) CopyText(text);
     }
 
     /// <summary>Puts the prompt on the clipboard and says so under the text. The clipboard is the only place it goes.</summary>
@@ -476,6 +501,7 @@ public partial class ResumePrompt : Window
     private void HidePreview()
     {
         _refused = false;
+        _previewText = null;
         PreviewBlock.Visibility = Visibility.Collapsed;
         PreviewText.Text = string.Empty;
         PreviewNote.Visibility = Visibility.Collapsed;
@@ -493,7 +519,8 @@ public partial class ResumePrompt : Window
         if (_blocksStart) return;
         var choice = Selected(out var turnsValid);
         if (choice is null) return;
-        if (!turnsValid && choice.Mode != ResumeMode.Full)
+        if (choice.Mode == ResumeMode.Summary
+            && !ResumeSummaryState.StartAllowed(choice.Level, TailOn, choice.Turns, turnsValid, _previewText is not null, KeptSummary))
         {
             UpdateCost();
             return;

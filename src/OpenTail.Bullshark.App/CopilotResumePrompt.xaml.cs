@@ -66,7 +66,7 @@ public partial class CopilotResumePrompt : Window
     /// <param name="folderExists">Whether the folder exists. Null: no folder notice is shown. Start is off only with no folder on record.</param>
     public CopilotResumePrompt(string heading, string facts, RailPalette palette,
         Func<CopilotResumeChoice, KeptSummary?, CancellationToken, Task<CopilotPreview>>? previewAsync = null, ContinueMode? initialMode = null,
-        string? folder = null, bool? folderExists = null)
+        string? folder = null, bool? folderExists = null, Func<int, bool>? summaryHasLines = null)
     {
         InitializeComponent();
         // The window grows to the screen's work area at most: the body scrolls and the buttons stay in view (owner, 2026-11-22).
@@ -98,10 +98,10 @@ public partial class CopilotResumePrompt : Window
         Facts.Text = facts;
         _screen = new ProviderResumeScreen<CopilotResumeChoice, CopilotPreview>(
             new ResumeScreenControls(
-                FullChoice, TailChoice, SummaryChoice, LevelRow, TurnsBox, TargetLine, StartButton, TargetMenuButton, TargetMenu,
+                FullChoice, SummaryChoice, LevelBlock, LevelRow, TailBox, TurnsBox, TailBlock, TargetLine, StartButton, TargetMenuButton, TargetMenu,
                 TargetClaudeItem, TargetCodexItem, TargetCopilotItem, MakeSummaryButton, RememberBox, CostText, FolderNotice,
                 PreviewHeader, PreviewBox, PreviewBlock, PreviewNote, CopyButton, (Style)Resources["Segment"]),
-            new CopilotHooks(), previewAsync, initialMode, folderNotice, blocksStart, Close);
+            new CopilotHooks(), previewAsync, summaryHasLines, initialMode, folderNotice, blocksStart, Close);
     }
 
     /// <summary>The choice, or null when the owner cancelled.</summary>
