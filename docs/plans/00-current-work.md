@@ -1,6 +1,6 @@
 # Current work: the path through the plans
 
-Status (2026-11-21): the plans were restructured. Finished plans are in [Done/](Done/). What is still open is in the files below. Counts from the files as they stand: 136 owner checks, 11 CLI gates, 34 open build items, 40 parked ideas.
+Status (2026-11-21): the plans were restructured. Finished plans are in [Done/](Done/). What is still open is in the files below. Counts from the files as they stand: 136 owner checks, 11 CLI gates, 34 open build items, 40 parked ideas. The opencode track was added on 2026-11-22 and updated on 2026-11-23 (phase 5 and owner item 23); the counts above were not recounted.
 
 ## Where the open work lives
 
@@ -50,6 +50,8 @@ G1 (trust a throwaway folder) comes first; the owner's word is needed. Then G2 (
 ### Phase 5: the provider track ([provider-codex-2026-11-21.md](provider-codex-2026-11-21.md))
 
 Start after the phase 1 sitting passes, because the seam changes the rail that the sitting checks. Follow that plan's own stage order, and its own decisions of 2026-11-21. Its design notes are in [provider-seam-design-2026-11-19.md](provider-seam-design-2026-11-19.md).
+
+**opencode** ([provider-opencode-2026-11-22.md](provider-opencode-2026-11-22.md)) is built, and the owner asked for it to go ahead: its read-only history, terminal resume, last-turns start, Continue, and the summary (one model call on the owner's login, nothing saved by the app). Its independent review (OC4) and its licence notices (OC5) are done. Its checks at the PC are owner-only: the read while opencode is writing, the summary, and the resume screen. Its open owner items are in its sections 3 and 11, and are listed as owner item 23 below.
 
 ### Phase 6: research backlog (clean-room ideas from [docs/research/](../research/), 2026-11-22)
 
@@ -114,6 +116,7 @@ R1 is built and needs no setting. Each row gets a plan only when it is built, an
 20. **Whether the README needs a line for the Limits page** (usage report, step 5). The record leaves it to the orchestrator.
 21. **Ideas that need the owner:** the PR/CI card (needs `gh` and the owner's OK), restore points (writes to the repo; not a real undo), the second-opinion review and side questions (use usage), keep-awake for due runs, and the hook event feed (the owner adds the hook entries). (Source: [docs/later/ideas.md](../later/ideas.md).)
 22. **Provider scope**: the product name and the pitch, if it supervises other terminals. (Source: [provider-seam-design-2026-11-19.md](provider-seam-design-2026-11-19.md), risks, question 1.)
+23. **opencode** ([provider-opencode-2026-11-22.md](provider-opencode-2026-11-22.md), sections 3 and 11): the rail rows that each summary adds (keep them, or hide the rows whose folder is the summary's scratch folder); whether a double-click on a session with a missing folder should refuse, as it does now, or open the resume screen as Start does; and whether an archived opencode session can be unarchived from the app (it cannot now). The checks at the PC are listed in phase 5.
 
 Decided, not open (for the record): toasts are built (the Windows package question is answered; backlog B1); the app never deletes old transcripts (the owner, 2026-11-19); coders run in `auto` (the owner, 2026-11-19); all three summary levels stay (2026-11-16); the log-on supervisor is not wanted (2026-11-15); where `.claude.json` lives under `CLAUDE_CONFIG_DIR` is answered (2026-11-19, [record](Done/live-run-checklist-done.md)); one supervisor host (2026-11-16).
 
