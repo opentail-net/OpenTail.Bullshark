@@ -11,13 +11,12 @@ Status (2026-11-21): the plans were restructured. Finished plans are in [Done/](
 | [supervisor.md](supervisor.md) | supervisor work: review leftovers, per-coder worktrees, performance, known issues |
 | [window.md](window.md) | tabs, panes and zoom: open points |
 | [session-library.md](session-library.md) | the session library: open steps and the owner's questions |
-| [resume-preview.md](resume-preview.md) | the resume prompt's split button (not started) and summaries step 2 |
+| [resume-preview.md](resume-preview.md) | summaries step 2, and the live checks R1 to R7 (the built steps are in [Done/](Done/resume-preview-done.md)) |
 | [limit-wake-2026-11-20.md](limit-wake-2026-11-20.md) | sessions stopped at the usage limit (not started; in progress elsewhere, so not moved) |
 | [limits-usage.md](limits-usage.md) | the paused-on-limit reason, the pre-limit warning, and the usage report's open points |
 | [provider-codex-2026-11-21.md](provider-codex-2026-11-21.md) | the provider seam and the Codex rail (plan; not edited in this pass) |
 | [provider-seam-design-2026-11-19.md](provider-seam-design-2026-11-19.md) | design notes behind it (not edited in this pass) |
-| [dedup-process-runners-2026-11-23.md](dedup-process-runners-2026-11-23.md) | the three process runners share one start and kill helper (plan, not started) |
-| [dedup-resume-dialogs-2026-11-23.md](dedup-resume-dialogs-2026-11-23.md) | the Codex and Copilot resume dialogs share one presenter (plan, not started) |
+| [dedup-resume-dialogs-2026-11-23.md](dedup-resume-dialogs-2026-11-23.md) | the owner's live check D-S10 (the built steps are in [Done/](Done/dedup-resume-dialogs-2026-11-23-done.md)) |
 | [../later/ideas.md](../later/ideas.md) | parked ideas |
 | [../research/](../research/) | research reports behind the ideas and the provider track |
 | [Done/](Done/) | finished plans, and the records of plans that were split |

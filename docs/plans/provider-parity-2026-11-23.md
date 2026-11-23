@@ -1,5 +1,7 @@
 # Provider parity (2026-11-23)
 
+Status: PP-D1 to PP-D5 and the README and status-doc docs are done, and the suites were run on net10.0 and net11.0 (the record is in [Done/provider-parity-2026-11-23-done.md](Done/provider-parity-2026-11-23-done.md)). Open: the doc edits in the other plan files, and the owner's live checks at the PC.
+
 Goal: Claude Code, Codex, Copilot and opencode offer the same features in the app, except the features that need Claude's supervisor (live status, restarts, needs-you from Claude's hooks). The owner asked for parity and asked the orchestrator to settle open choices and build, not to stop for answers. AFK mode: each choice below is recorded with its reason.
 
 ## Owner direction (2026-11-23)
@@ -22,29 +24,10 @@ Goal: Claude Code, Codex, Copilot and opencode offer the same features in the ap
 - **PP-D7 Model list (Copilot `--acp`, Codex model dropdown): not built.** Needs the ACP protocol work, which is a separate plan.
 - **PP-D8 Insights, Settings and tab close.** Defaults stand: Insights and Settings unchanged for the new providers; tab close as Codex (`CodexExit`), which Copilot and opencode follow.
 
-## Checklist
+## Checklist (open items)
 
-- [x] PP-D1: verified in code and by the suites on net10.0 and net11.0. Status doc and README corrected.
-- [x] PP-D2: `CopilotBundles` and the setup-check acceptance, with tests (`CopilotBundlesTests`); `CopilotTargetEnabled = true`; the chooser and cross-start tests updated to the enabled rules.
-- [x] PP-D3: Codex refusal in `ResumeCodexAsync`. Not unit-tested (the window is not under test); checked by reading and by the build.
-- [x] PP-D4: `IMessageTextSource` on Codex, Copilot and opencode; `MessageTextCache`; the matcher overload; the three windows. Tests: `MessageTextSearchTests` (matcher and cache), `CopilotMessageTextsTests` (provider text, Copilot only). Codex and opencode `MessageTextsAsync` are not unit-tested; they reuse the transcript readers' code paths.
-- [x] PP-D5: `CopilotUsageReader` with `CopilotUsageReaderTests` (5 tests); `LimitsView.ShowCopilot`; the window reads it in `RefreshLimitsAsync`.
-- [x] Docs: README provider rows and bullets; `00-current-work.md` R8 note.
 - [ ] Docs in other plan files (`provider-codex-2026-11-21.md` C-D2 and O1; `provider-copilot-2026-11-22.md` G-O5, G-D12, parity rows 1, 19, 23; `provider-opencode-2026-11-22.md` section 11). Not edited here: those files have uncommitted changes from another session in this working tree. Update them when that work is committed.
 - [ ] Live checks at the PC (owner): a Codex session on net10.0; a Copilot session through the WinGet launcher with the flags; the Copilot usage table with real days; the message search on a large history (time it).
-
-## Verification log (2026-11-23, this checkout)
-
-Build: `dotnet build` of the App for net10.0-windows10.0.19041.0: 0 errors.
-
-| Suite | Target | Result |
-|---|---|---|
-| OpenTail.Bullshark.Core.Tests | net10.0 | 3367 passed, 0 failed, exit 0 |
-| OpenTail.Bullshark.Core.Tests | net11.0 | 3367 passed, 0 failed, exit 0 |
-| OpenTail.Bullshark.App.Tests | net10.0-windows10.0.19041.0 | 681 passed, 0 failed, exit 0 |
-| OpenTail.Bullshark.App.Tests | net11.0-windows10.0.19041.0 | 681 passed, 0 failed, exit 0 |
-
-Counts before this work: Core 3355 on each target and App 675 on each (from the earlier round). New tests: Core +12 (6 Copilot setup and bundle, 1 message text, 5 usage), App +6 (message search).
 
 ## Not checked
 
