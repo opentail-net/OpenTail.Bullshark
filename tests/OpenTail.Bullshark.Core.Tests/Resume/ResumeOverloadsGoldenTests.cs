@@ -146,9 +146,9 @@ public sealed class ResumeOverloadsGoldenTests
                 Summary,
                 "",
                 "## The last 2 turns, word for word (tool calls and results on one line each)",
-                "(1 earlier turns are left out of this text to fit the command line.)\nyou: 012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678 … [cut 814 characters] … 345678901234567890123456789012345678901234567890123456789012345678901234567890123456789\nclaude: reply 1",
+                "(1 earlier turn is left out of this text to fit the command line.)\nyou: 0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789 … [cut 812 characters] … 2345678901234567890123456789012345678901234567890123456789012345678901234567890123456789\nclaude: reply 1",
                 "") + Closing,
-            825,
+            823,
             true), fitted);
     }
 

@@ -227,7 +227,7 @@ public static class ResumeText
     private static string WithLeftOutNote(string tail, int leftOut)
     {
         if (leftOut <= 0) return tail;
-        var note = $"({leftOut} earlier turns are left out of this text to fit the command line.)";
+        var note = $"({leftOut} earlier {(leftOut == 1 ? "turn is" : "turns are")} left out of this text to fit the command line.)";
         return tail.Length == 0 ? note : note + "\n" + tail;
     }
 

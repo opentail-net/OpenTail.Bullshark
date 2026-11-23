@@ -177,6 +177,6 @@ public sealed class ResumeZeroTests
             (summary, level, tail, turns, _) => ProviderResumeText.ComposeFrom("Claude Code", "Codex CLI", summary, level, tail, turns));
 
         Assert.False(fitted.Fits);
-        Assert.Contains("(1 earlier turns are left out of this text to fit the command line.)", fitted.Text);
+        Assert.Contains("(1 earlier turn is left out of this text to fit the command line.)", fitted.Text);
     }
 }
