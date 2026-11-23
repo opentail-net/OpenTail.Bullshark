@@ -101,7 +101,7 @@ From the ready-for-review batch:
 
 From the batch B (review prompt, digest, capture):
 
-- [ ] **Open:** `Process.Start` with `UseShellExecute`. A file with no program associated (`Win32Exception`) is said in the status line.
+- [x] **Closed 2026-11-23:** `Process.Start` with `UseShellExecute`. Both calls (the ideas file in `SessionWindow.Ideas.cs`, the reports folder in `SessionWindow.Night.cs`) catch `Win32Exception` and say it in the status line. Checked by reading the code.
 
 From the fixes batch:
 
@@ -122,7 +122,7 @@ Status: items 1-8 built on branch `round9-2026-11-17`, one commit per item (b319
 
 From review round 6 notes:
 
-- [ ] Item 14: TextToSave returns the file text when only line breaks differ; lone CR no longer converted (WPF TextBox handling of a lone CR was not checked).
+- [x] Item 14, closed 2026-11-23: TextToSave returns the file text when only line breaks differ, and a lone CR is kept (`WithLineEnding` rewrites only CRLF). The WPF side is now checked: a TextBox keeps a lone CR as it was set, and a typed or inserted CR stays a CR (`TextBoxLineBreaksTests`, three tests, net10.0 and net11.0).
 
 From the desktop and Codex ideas (findings to check, not ideas):
 
