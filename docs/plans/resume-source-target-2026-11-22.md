@@ -1,6 +1,6 @@
 # Resume: the source session and the target platform
 
-Date: 2026-11-22. Version 2 (after the plan review in `resume-source-target-2026-11-22-review-notes.md`). Status: **S0 to S4 built and committed; the owner's screen check (S5) is open.** Owner's rule, 2026-11-22 (the rule is the spec; defaults below are mine and are marked as such):
+Date: 2026-11-22. Version 3 (2026-11-23: the design is revised, see RS-D2, RS-D6, RS-D9, RS-D17 and RS-D19 to RS-D22; the text it replaces is in `resume-source-target-2026-11-22-history.md`). Version 2 followed the plan review in `resume-source-target-2026-11-22-review-notes.md`. Status: **S0 to S4 built and committed; the owner's screen check (S5) is open. The version 3 design is not built (S6).** Owner's rule, 2026-11-22 (the rule is the spec; defaults below are mine and are marked as such):
 
 > The default should be to resume into the session's own platform. Resuming into something else can only happen from a summary, not in full.
 
@@ -15,37 +15,44 @@ Each resume screen shows two things: the **source** (the session being resumed) 
 ## 2. Decisions
 
 - **RS-D1 Full resume targets the source platform only.** A native session id belongs to one CLI. Owner rule, 2026-11-22.
-- **RS-D2 Cross-platform start only in Summary mode.** Last-turns is not a summary, so it resumes into its own platform. *Default, mine; owner item RS-O1.* A Summary-mode start still carries the verbatim last turns, as now.
+- **RS-D2 Cross-platform start only in Summary mode.** Full is never cross-platform (RS-D1). Owner decision, 2026-11-23: the separate last-turns mode is removed. Its text is a Summary at the Zero level with the tail (RS-D19), so it is a Summary start and may go to another platform. Answers RS-O1.
 - **RS-D3 The target defaults to the source platform.** A target choice is shown only in Summary mode. Owner rule, 2026-11-22.
 - **RS-D4 Screen wording.** The title names the source: "Resume a <Source> session" on all three screens (Claude's today is "Resume a session"). When the target differs, a line reads "Summary of <Source> session → new <Target> session". The button reads "Start in <Target>" everywhere (today "Resume" on Claude, "Start" on Codex and Copilot). *Default, mine; owner item RS-O2.*
 - **RS-D5 A cross-platform start is a new session.** It opens in the target CLI, in the source session's folder. It does not reuse or claim the source session's id and is not recorded as a continuation of it. Refusals, each with a status line and before any model call: a missing folder; for Claude as target, the folder's trust status (`FolderCheck`, `FolderStatus.NotTrusted` refuses); for Codex and Copilot as targets, the launch check (`pwsh` and the shim present).
-- **RS-D6 The new session's first text names the source.** It is the summary, headed with the source platform's phrase and the summary level, then the target's usual start. Same-platform text is unchanged byte for byte. *Default, mine.*
+- **RS-D6 The new session's first text names the source.** It is a header (the source platform's phrase and the session title), then the summary at its level if there is one, then the tail if it is ticked (RS-D19). There is no session line. With the tail unticked, a Summary's text is unchanged byte for byte. *Default, mine; revised 2026-11-23.*
 - **RS-D7 The remembered mode is for the source session.** Remember (C6) saves the mode under the source's key and never saves a target. Remember saves when Start is pressed, as now (C6 decision 1), so it is kept even if a cross-platform start is refused. *Default, mine.*
 - **RS-D8 Copilot as a target is disabled by a constant.** `ResumeTarget.CopilotTargetEnabled = false`, with the reason "G-O5: the copy that runs is not confirmed to have the flags the app passes" (see `provider-copilot-2026-11-22.md`, G-O5, measured 2026-11-23). The owner flips it when the install question is settled. The setup check does not read flags today, so a version-based gate cannot be built from what the code knows. *Default, mine; owner item RS-O3.*
-- **RS-D9 No extra model call.** A cross-platform summary is one call, made by the source platform's CLI, as now, with its cost line shown before the call. The target's start is a normal start with that text.
+- **RS-D9 No extra model call.** A Summary start makes at most one summary call (the Zero level makes none), with its cost line shown before the call. The call is made by the source platform's CLI, as now. When the source is out of quota, the target's CLI writes the summary instead (owner, 2026-11-23). How the app knows the source is out of quota is RS-O5. The target's start is a normal start with that text.
 - **RS-D10 Summaries are saved as now**, beside the state file. A cross-platform start saves nothing new.
 - **RS-D11 Privacy, corrected.** Logs carry provider names and counts only; no summary text goes to a log. The summary text reaches the target CLI as its start argument, as the existing starts already do: Claude's on its command line, fitted to `ClaudeCli.MaxLaunchCharacters`; Codex's and Copilot's through the start file, then as the CLI's prompt argument. So the text appears on the target process's command line. This is existing practice, accepted, and it is **not** avoided by the file route (the file route only keeps long text out of the `cmd.exe` line).
 - **RS-D12 Model and effort.** A cross-platform start uses the target's own default model and effort, as its screen starts them by default. The source's choice is not carried over (the choice records differ: `ResumeChoice` has Model and Effort, `CodexResumeChoice` an optional Model, `CopilotResumeChoice` neither). *Default, mine.*
 - **RS-D13 Checks before the summary call.** The target's launch check and folder check run before the source's one summary call, so a refusal costs no model call.
 - **RS-D14 The target lives in the choice record.** A `Target` field is added to each choice record, defaulting to the source. The preview rebuilds when the target changes, because the text depends on it.
 - **RS-D15 The kind of run differs by target.** Claude's Summary start is a supervised, kept-alive run (`SessionWindow.xaml.cs:995`, reviewer's citation, to verify at S3); Codex and Copilot starts open a plain tab. A cross-platform start into Claude is therefore supervised, and its tab rules follow Claude's, not the target's usual tab. Stated, not changed.
-- **RS-D17 When both refusals apply, the mode reason comes first.** A cross-platform full or last-turns start into a disabled Copilot target gets "Only a summary can start in another platform…", not the Copilot text. The spec did not say; pinned by `WhenBothRulesFailTheModeReasonComesFirst`. *Default, the coder's choice, confirmed by the orchestrator.*
+- **RS-D17 When both refusals apply, the mode reason comes first.** Written for the old last-turns mode. Moot after the revision (RS-D2, RS-D3): the target chooser shows only in Summary, so a Full start cannot pick a target. The test `WhenBothRulesFailTheModeReasonComesFirst` is to be reviewed at S6. *Default, the coder's choice, confirmed by the orchestrator.*
 - **RS-D16 The Copilot source guard stays.** Copilot as a source keeps its supervisor-guard refusal (`CopilotResume.cs:160`).
 
 - **RS-D18 A target change hides the preview; it does not rebuild it.** Changing the target hides the preview, as changing the mode does, and calls nothing. The user presses "Make summary" again to see the new text. The kept summary reaches the Start build, so a summary start makes at most one model call (verified at `SessionWindow.Resume.cs:102`, `:321`, `:412`). *Decision, mine, made to keep the model cost to one call.*
 
+- **RS-D19 The tail is a checkbox under Summary.** It reads "[v] Include last [N] turns" and is shown only in Summary mode. The tail is the last N messages, word for word, oldest first, under the existing cap of about 4,000 tokens. Unticked, the summary covers the whole session. The value of N starts as the dialog has it today (10). *Owner, 2026-11-23.*
+- **RS-D20 No message appears twice.** The summary covers only the messages before the tail, and the tail is never summarised. *Owner, 2026-11-23.*
+- **RS-D21 A summary is tied to its tail.** A summary is made for one setting of the tail (N, or unticked). Changing N, or ticking or unticking the box, after Make summary marks the summary out of date, and Start waits until it is made again. Reason: a lower N would leave messages in neither part, and a higher N would put them in both. *Decision, mine.*
+- **RS-D22 The Zero level.** Zero makes no model call. Its text is the header, with the session title, and the tail if ticked. It exists so the whole path can be tested without spending tokens. *Owner, 2026-11-23.*
+
 ## 3. Owner items (defaults are safe to run on)
 
-- [ ] **RS-O1** Last-turns into another platform. *Default: no* (RS-D2). The owner's words could also allow it; only "not in full" is banned.
+- [x] **RS-O1** Last-turns into another platform. *Answered by the owner, 2026-11-23: yes, as a Summary at the Zero level with the tail* (RS-D2, RS-D19 to RS-D22).
 - [ ] **RS-O2** Button wording "Start in <Target>". *Default: as RS-D4.*
 - [ ] **RS-O3** Copilot as a target before G-O5 is settled. *Default: disabled* (RS-D8).
 - [ ] **RS-O4** Claude's title changes from "Resume a session" to "Resume a Claude session". *Default: change* (a visible change to Claude's screen, asked for by the owner).
+- [ ] **RS-O5** How the app knows the source is out of quota (RS-D9). *Default, mine: use the app's limit state for that platform if it has one, and check that at S6; otherwise the source's summary call failing with a limit.* Also open: whether the dialog offers the level row as a dropdown or a row (the row takes one line, so the choice is about width only).
 
 ## 4. Stages and checks
 
-Stages S0 to S4 are built and committed, and reviewed. Their text (the parity table, the contracts, the stages and the review dispositions) is in [Done/resume-source-target-2026-11-22-done.md](Done/resume-source-target-2026-11-22-done.md). The open stage is S5.
+Stages S0 to S4 are built and committed, and reviewed. Their text (the parity table, the contracts, the stages and the review dispositions) is in [Done/resume-source-target-2026-11-22-done.md](Done/resume-source-target-2026-11-22-done.md). The open stages are S5 and S6.
 
-- [ ] **S5 Screen check (owner, at the PC, devenv closed).** Each source platform, Full, Last turns and Summary, each enabled target. Includes the Copilot symptoms in section 7. Not run in AFK mode.
+- [ ] **S5 Screen check (owner, at the PC, devenv closed).** Each source platform, Full, and Summary at each level (Zero, Minimal, Normal, Complete), with the tail ticked and unticked, and each enabled target. Includes the Copilot symptoms in section 7. Not run in AFK mode. Checks the built version 2 screens; re-run after S6.
+- [ ] **S6 Build version 3 (RS-D2, RS-D6, RS-D9, RS-D17, RS-D19 to RS-D22; RS-O5 open).** Removes the last-turns mode, adds the tail checkbox under Summary and the Zero level, keeps a summary tied to its tail, and lets the target write the summary when the source is out of quota. Tests: no message appears twice; a changed tail marks the summary out of date; Zero makes no call; a cross start may use Zero. Not started.
 
 ## 7. Copilot symptoms: diagnosis deferred
 
