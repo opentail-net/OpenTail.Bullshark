@@ -281,8 +281,10 @@ public sealed class CodexResumePromptTests
     }
 
     [Fact]
-    public void AFailureOfTheCallbackIsShownInTheDialog()
+    public void AFailureOfTheCallbackIsShownByItsTypeAndStartStaysOff()
     {
+        // Dedup plan 2026-11-23, D1: the same as the Copilot screen. The message of an unexpected failure can name a file or a folder, so the screen
+        // shows the type only, and the summary falls back to In full.
         UiThread.Run(() =>
         {
             var prompt = NewPrompt((choice, kept, token) => Task.FromException<CodexPreview>(new InvalidOperationException("example failure")));
@@ -290,7 +292,8 @@ public sealed class CodexResumePromptTests
 
             Click(Named<Button>(prompt, "MakeSummaryButton"));
 
-            Assert.Contains("example failure", Named<TextBlock>(prompt, "PreviewHeader").Text);
+            Assert.Equal("The start text could not be made (InvalidOperationException). " + ResumeDefaults.FullFallbackLine, Named<TextBlock>(prompt, "PreviewHeader").Text);
+            Assert.DoesNotContain("example failure", Named<TextBlock>(prompt, "PreviewHeader").Text);
             Assert.True(Named<Button>(prompt, "StartButton").IsEnabled);
         });
     }

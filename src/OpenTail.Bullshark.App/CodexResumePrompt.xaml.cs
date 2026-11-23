@@ -1,6 +1,3 @@
-using System.Globalization;
-using System.Linq;
-using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -33,44 +30,37 @@ public enum CodexResumeMode
 /// Codex, the screen's own platform.
 /// </summary>
 public sealed record CodexResumeChoice(CodexResumeMode Mode, SummaryLevel? Level, int Turns, string? Model, bool Remember, ProviderId Target)
+    : IProviderResumeChoice<CodexResumeChoice>
 {
     /// <summary>A choice whose target is Codex, the screen's own platform. The target is a static field, not a constant, so it cannot be a default value.</summary>
     public CodexResumeChoice(CodexResumeMode Mode, SummaryLevel? Level, int Turns, string? Model = null, bool Remember = false)
         : this(Mode, Level, Turns, Model, Remember, ProviderId.Codex) { }
+
+    /// <summary>The mode as the shared rules see it.</summary>
+    public ProviderResumeMode SharedMode => CodexResumeRules.ToShared(Mode) ?? throw new ArgumentOutOfRangeException(nameof(Mode));
+
+    public CodexResumeChoice WithTarget(ProviderId target) => this with { Target = target };
+
+    public CodexResumeChoice WithRemember(bool remember) => this with { Remember = remember };
 }
 
 /// <summary>
 /// What the screen's preview callback gives: the start text (empty when the session has no messages), the summary it made or reused (null for
 /// none), and the reason no text was made (null when there is text, or when the session has no messages).
 /// </summary>
-public sealed record CodexPreview(string Text, KeptSummary? KeptSummary, string? Problem = null);
+public sealed record CodexPreview(string Text, KeptSummary? KeptSummary, string? Problem = null) : IProviderPreview;
 
 /// <summary>
 /// The Codex resume screen (step R5): a copy of Claude's resume prompt for a Codex session, with three ways to continue. Nothing runs until Start.
-/// The last-turns text is built when the mode, the turns or the window changes (no model call). A summary is made only by the Make summary button, and it
-/// is kept for the level and turns it was made at. The start text in the preview is the text Start sends (<see cref="PreviewText"/>). Cancel is the
-/// default. The callback runs off the UI thread and can be cancelled: a change or the close cancels the one in progress.
+/// The logic is in <see cref="ProviderResumeScreen{TChoice, TPreview}"/> (dedup plan 2026-11-23). What is specific to Codex is here: its model list, which
+/// Start waits for (except In full, and a cross start), and its model row. This window keeps its XAML and forwards its handlers.
 /// </summary>
 public partial class CodexResumePrompt : Window
 {
-    private readonly Func<CodexResumeChoice, KeptSummary?, CancellationToken, Task<CodexPreview>>? _previewAsync;
-    private CancellationTokenSource? _cts;
-    private int _request;
-    private bool _busy;
-    private string? _previewText;
-    private KeptSummary? _kept;
-
-    /// <summary>The platform the Start menu picks (RS-D3): Codex by default, and back to Codex when the mode leaves a summary.</summary>
-    private ProviderId _target = ProviderId.Codex;
+    private readonly ProviderResumeScreen<CodexResumeChoice, CodexPreview> _screen;
 
     /// <summary>True once the model list is in (or none was asked for). Start of a new session waits for it; In full does not need it.</summary>
     private bool _modelsReady;
-
-    /// <summary>The folder notice shown in red (<see cref="ResumeFolderNotice"/>), or null. Start is off only with no folder on record; the choices and Copy stay on.</summary>
-    private readonly string? _folderNotice;
-
-    /// <summary>True while the folder notice blocks Start: only a session with no folder on record. A missing folder does not block it: Start makes it again.</summary>
-    private readonly bool _blocksStart;
 
     /// <param name="heading">The heading: the session's name.</param>
     /// <param name="facts">The line under the heading: turns, last activity and folder.</param>
@@ -92,9 +82,8 @@ public partial class CodexResumePrompt : Window
         var startLabel = ResumeTarget.ButtonOf(ProviderId.Codex);
         StartButton.Content = startLabel;
         AutomationProperties.SetName(StartButton, startLabel);
-        _previewAsync = previewAsync;
-        _folderNotice = folderExists is { } exists ? ResumeFolderNotice.For(folder, exists) : null;
-        _blocksStart = ResumeFolderNotice.BlocksStart(folder, folderExists);
+        var folderNotice = folderExists is { } exists ? ResumeFolderNotice.For(folder, exists) : null;
+        var blocksStart = ResumeFolderNotice.BlocksStart(folder, folderExists);
         UiTheme.Apply(palette);
         Resources["PromptBg"] = RailPalette.Brush(palette.Background);
         Resources["PromptPanel"] = RailPalette.Brush(palette.Panel);
@@ -113,37 +102,19 @@ public partial class CodexResumePrompt : Window
 
         Heading.Text = heading;
         Facts.Text = facts;
-        FullChoice.Content = CodexResumeRules.ModeLabel(CodexResumeMode.Full);
-        TailChoice.Content = CodexResumeRules.ModeLabel(CodexResumeMode.LastTurns);
-        SummaryChoice.Content = CodexResumeRules.ModeLabel(CodexResumeMode.Summary);
-        TurnsBox.Text = CodexResumeRules.DefaultTurns.ToString(CultureInfo.InvariantCulture);
+        _screen = new ProviderResumeScreen<CodexResumeChoice, CodexPreview>(
+            new ResumeScreenControls(
+                FullChoice, TailChoice, SummaryChoice, LevelRow, TurnsBox, TargetLine, StartButton, TargetMenuButton, TargetMenu,
+                TargetClaudeItem, TargetCodexItem, TargetCopilotItem, MakeSummaryButton, RememberBox, CostText, FolderNotice,
+                PreviewHeader, PreviewBox, PreviewBlock, PreviewNote, CopyButton, (Style)Resources["Segment"]),
+            new CodexHooks(this), previewAsync, initialMode, folderNotice, blocksStart, Close);
 
-        // The start mode is set before the handlers below are attached, so the screen's first build runs once, for the mode it opens on.
-        // Null selects nothing: the XAML's last-turns radio stays as it is.
-        switch (ProviderResumeRules.StartMode(initialMode))
-        {
-            case ProviderResumeMode.Full: FullChoice.IsChecked = true; break;
-            case ProviderResumeMode.Summary: SummaryChoice.IsChecked = true; break;
-            case ProviderResumeMode.LastTurns: TailChoice.IsChecked = true; break;
-        }
-
-        foreach (var level in new[] { SummaryLevel.Minimal, SummaryLevel.Normal, SummaryLevel.Complete })
-        {
-            var segment = Segment(CodexResumeRules.LevelLabel(level), "CodexLevel", level == SummaryLevel.Normal);
-            segment.Tag = level.ToString();
-            segment.Checked += (_, _) => OnChoiceChanged();
-            LevelRow.Children.Add(segment);
-        }
-        foreach (var radio in new[] { FullChoice, TailChoice, SummaryChoice }) radio.Checked += (_, _) => OnChoiceChanged();
-        TurnsBox.TextChanged += (_, _) => OnChoiceChanged();
-
-        OnChoiceChanged();
-
+        // The screen's first build runs before the model list is read: the list then turns Start on (or the model box) when it is in.
         if (models is null)
         {
             _modelsReady = true;
             ModelNote.Text = CodexModelChoices.Fill(ModelBox, null);
-            Refresh();
+            _screen.Refresh();
         }
         else
         {
@@ -172,373 +143,90 @@ public partial class CodexResumePrompt : Window
         }
         ModelNote.Text = CodexModelChoices.Fill(ModelBox, reading);
         _modelsReady = true;
-        Refresh();
+        _screen.Refresh();
     }
 
     /// <summary>The model id on screen for a new session, or null for Codex's default (the one entry of a list that could not be read).</summary>
     private string? SelectedModel() => CodexModelChoices.SelectedModel(ModelBox);
 
-    /// <summary>
-    /// Start is allowed when the model is known: In full sends no model, and a cross start (another platform, RS-D12) does not use it, so neither waits
-    /// for the list.
-    /// </summary>
-    private bool ModelReady(CodexResumeMode mode, bool cross) => cross || mode == CodexResumeMode.Full || _modelsReady;
-
     /// <summary>True when the start on screen goes to another platform than Codex: the model is not used, so its row is hidden (RS-D12).</summary>
     private static bool IsCross(CodexResumeChoice? choice) => choice is not null && !CrossModelRow.ShowsModel(ProviderId.Codex, choice.Target);
 
     /// <summary>The choice, or null when the owner cancelled.</summary>
-    public CodexResumeChoice? Choice { get; private set; }
+    public CodexResumeChoice? Choice => _screen.Choice;
 
     /// <summary>
     /// The start text the window sends: exactly the text that was shown, so nothing is built again for the start. Null for In full, which sends no
     /// text.
     /// </summary>
-    public string? PreviewText { get; private set; }
+    public string? PreviewText => _screen.PreviewText;
 
     /// <summary>The summary the dialog holds for the choice that was started, or null when none was made for it. The window does not save it again.</summary>
-    public KeptSummary? KeptSummary { get; private set; }
+    public KeptSummary? KeptSummary => _screen.KeptSummary;
 
-    /// <summary>One option of the level row: a segment that shows as pressed when it is the chosen one.</summary>
-    private RadioButton Segment(string text, string group, bool isChecked) => new()
-    {
-        Content = text,
-        GroupName = group,
-        IsChecked = isChecked,
-        Style = (Style)Resources["Segment"],
-    };
+    private void TargetItem_Click(object sender, RoutedEventArgs e) => _screen.TargetItemClick(sender);
 
-    /// <summary>The summary level on screen. Normal when none is chosen.</summary>
-    private SummaryLevel SelectedLevel()
-    {
-        var tag = LevelRow.Children.OfType<RadioButton>().FirstOrDefault(radio => radio.IsChecked == true)?.Tag as string;
-        return Enum.TryParse<SummaryLevel>(tag, out var level) ? level : SummaryLevel.Normal;
-    }
+    private void TargetMenuButton_Click(object sender, RoutedEventArgs e) => _screen.OpenTargetMenu();
 
-    /// <summary>
-    /// The choice on screen, or null when no mode is checked. <paramref name="turnsValid"/> is false when the turns box is not a valid number; In full
-    /// needs no turns, so it is always valid.
-    /// </summary>
-    private CodexResumeChoice? Selected(out bool turnsValid)
-    {
-        var valid = CodexResumeRules.TryTurns(TurnsBox.Text, out var turns);
-        if (FullChoice.IsChecked == true)
-        {
-            turnsValid = true;
-            return Targeted(new CodexResumeChoice(CodexResumeMode.Full, null, 0));
-        }
-        turnsValid = valid;
-        if (TailChoice.IsChecked == true) return Targeted(new CodexResumeChoice(CodexResumeMode.LastTurns, null, turns, SelectedModel()));
-        if (SummaryChoice.IsChecked == true) return Targeted(new CodexResumeChoice(CodexResumeMode.Summary, SelectedLevel(), turns, SelectedModel()));
-        return null;
-    }
+    private void MakeSummary_Click(object sender, RoutedEventArgs e) => _screen.MakeSummary();
 
-    /// <summary>True when the summary the dialog holds is for the choice's level. It is kept only for the level and turns it was made at (R-D3).</summary>
-    private bool KeptMatches(CodexResumeChoice? choice) => ProviderResumeRules.KeptMatches(choice?.Level, _kept);
+    private void Copy_Click(object sender, RoutedEventArgs e) => _screen.Copy();
 
-    /// <summary>The choice with its target (RS-D3, RS-D14): the preview is built for the target on screen, and Start sends the same one.</summary>
-    private CodexResumeChoice Targeted(CodexResumeChoice choice) => choice with { Target = StartTarget(choice.Mode) };
+    private void Start_Click(object sender, RoutedEventArgs e) => _screen.Start();
 
-    /// <summary>
-    /// The platform the new session starts in, for the mode (<see cref="ResumeTarget.ChosenTarget"/>): the Start menu's pick in a summary, else Codex.
-    /// </summary>
-    private ProviderId StartTarget(CodexResumeMode mode) =>
-        ResumeTarget.ChosenTarget(ProviderId.Codex, RememberChoice.ModeOf(mode), _target);
-
-    /// <summary>
-    /// Shows the target on screen (RS-D3, RS-D4, RS-O2): the line "Summary of ... session, new ... session" when a summary starts in another platform, and
-    /// the Start button, which names the target.
-    /// </summary>
-    private void ShowTarget(ProviderId target)
-    {
-        var summary = SummaryChoice.IsChecked == true;
-        var line = ResumeTarget.SummaryLine(ProviderId.Codex, target);
-        TargetLine.Text = line ?? string.Empty;
-        TargetLine.Visibility = summary && line is not null ? Visibility.Visible : Visibility.Collapsed;
-        var startLabel = ResumeTarget.ButtonOf(target);
-        StartButton.Content = startLabel;
-        AutomationProperties.SetName(StartButton, startLabel);
-    }
-
-    /// <summary>The tooltip of the narrow part of the Start split button: in a summary, and outside one (RS-D2).</summary>
-    private const string TargetMenuTip = "Start in another platform: only from a summary";
-
-    /// <summary>The tooltip of the narrow part of the Start split button while it is off: the mode is not a summary (RS-D2).</summary>
-    private const string TargetMenuOffTip = "Switching platform is only for a summary.";
-
-    /// <summary>
-    /// Runs when the owner picks a platform in the Start menu (RS-D3, RS-D18). No model call. A pick that changes the target cancels a request in progress,
-    /// which is for the old target, and takes the preview on screen away. Make summary builds the text again for the target on screen, with the kept summary.
-    /// </summary>
-    private void TargetItem_Click(object sender, RoutedEventArgs e)
-    {
-        if (ResumeTargetMenu.PlatformOf(sender) is not { } platform) return;
-        if (platform != _target)
-        {
-            CancelRequest();
-            _busy = false;
-            HidePreview();
-        }
-        _target = platform;
-        Refresh();
-    }
-
-    /// <summary>The narrow part of the Start split button: opens the Start menu above it. Nothing is started.</summary>
-    private void TargetMenuButton_Click(object sender, RoutedEventArgs e)
-    {
-        TargetMenu.PlacementTarget = TargetMenuButton;
-        TargetMenu.IsOpen = true;
-    }
-
-    /// <summary>
-    /// Sets the Start menu (RS-D3, RS-D8): the pick is checked, and each platform item is on only where the rule allows it for a summary.
-    /// <paramref name="menuOn"/> is false outside a summary, and while a summary is made.
-    /// </summary>
-    private void ShowTargetMenu(bool menuOn)
-    {
-        ResumeTargetMenu.Apply(TargetClaudeItem, ProviderId.Claude, ProviderId.Codex, _target, menuOn);
-        ResumeTargetMenu.Apply(TargetCodexItem, ProviderId.Codex, ProviderId.Codex, _target, menuOn);
-        ResumeTargetMenu.Apply(TargetCopilotItem, ProviderId.Copilot, ProviderId.Codex, _target, menuOn);
-    }
-
-    /// <summary>
-    /// Runs when the mode, the level or the turns change. The preview on screen is for the old choice, so it is taken away. A summary depends on the
-    /// session and the level only (R-D3): a change of mode or of turns keeps the kept summary, and a change of level drops it. The preview is built
-    /// again at once when it needs no model call: the last turns, or a summary kept for the level on screen.
-    /// </summary>
-    private void OnChoiceChanged()
-    {
-        // RS-D3: the target goes back to the source when the mode leaves a summary; the Start menu is off then.
-        if (SummaryChoice.IsChecked != true) _target = ProviderId.Codex;
-        CancelRequest();
-        _busy = false;
-        var choice = Selected(out var turnsValid);
-        _kept = ProviderResumeRules.KeptAfterChange(choice?.Mode == CodexResumeMode.Summary, choice?.Level, _kept);
-        HidePreview();
-        Refresh();
-        if (!turnsValid || choice is null) return;
-        if (CodexResumeRules.RunsAtOnce(choice.Mode, KeptMatches(choice))) _ = RunRequestAsync(choice);
-    }
-
-    /// <summary>
-    /// Sets what is on and off for the choice: the cost line, the choices, the level row (summary only), the turns box (not in full), Make summary
-    /// (summary only), Copy, and Start (<see cref="CodexResumeRules.CanStart"/>). While a summary is made, the choices and the buttons are off.
-    /// </summary>
-    private void Refresh()
-    {
-        var choice = Selected(out var turnsValid);
-        var mode = choice?.Mode ?? CodexResumeMode.LastTurns;
-        var free = !_busy;
-        var turnsApply = mode != CodexResumeMode.Full;
-        CostText.Text = CodexResumeRules.CostLine(mode) + (turnsApply && !turnsValid ? " " + CodexResumeRules.TurnsMessage : string.Empty);
-        FolderNotice.Text = _folderNotice ?? string.Empty;
-        FolderNotice.Visibility = _folderNotice is null ? Visibility.Collapsed : Visibility.Visible;
-
-        Enable(FullChoice, free);
-        Enable(TailChoice, free);
-        Enable(SummaryChoice, free);
-        Enable(LevelRow, free && mode == CodexResumeMode.Summary);
-        Enable(TurnsBox, free && turnsApply);
-        ShowTarget(choice?.Target ?? ProviderId.Codex);
-        var inSummary = mode == CodexResumeMode.Summary;
-        Enable(TargetMenuButton, free && inSummary);
-        TargetMenuButton.ToolTip = inSummary ? TargetMenuTip : TargetMenuOffTip;
-        ShowTargetMenu(free && inSummary);
-        Enable(MakeSummaryButton, free && mode == CodexResumeMode.Summary && turnsValid);
-        Enable(RememberBox, free);
-        var previewReady = _previewText is not null;
-        Enable(CopyButton, free && previewReady);
-        var modelRow = mode != CodexResumeMode.Full;
-        ModelBlock.Visibility = modelRow && !IsCross(choice) ? Visibility.Visible : Visibility.Collapsed;
-        Enable(ModelBox, free && modelRow && _modelsReady);
-        Enable(StartButton, free && !_blocksStart && ModelReady(mode, IsCross(choice))
-            && CodexResumeRules.CanStart(mode, previewReady, KeptMatches(choice)));
-    }
-
-    private static void Enable(UIElement element, bool enabled)
-    {
-        element.IsEnabled = enabled;
-        element.Opacity = enabled ? 1 : 0.5;
-    }
-
-    /// <summary>The Make summary button: makes the summary now, once, for the level and turns on screen.</summary>
-    private void MakeSummary_Click(object sender, RoutedEventArgs e)
-    {
-        var choice = Selected(out var turnsValid);
-        if (choice is { Mode: CodexResumeMode.Summary } && turnsValid && !_busy) _ = RunRequestAsync(choice);
-    }
+    private void Cancel_Click(object sender, RoutedEventArgs e) => _screen.Cancel();
 
     /// <summary>
     /// For the screenshots only (the App's <c>--codex-resume summary</c>): chooses the summary mode, at the level on screen, and presses Make summary
     /// once. Nothing else calls it.
     /// </summary>
-    public void MakeSummaryForScreenshot()
-    {
-        SummaryChoice.IsChecked = true;
-        MakeSummary_Click(this, new RoutedEventArgs());
-    }
+    public void MakeSummaryForScreenshot() => _screen.MakeSummaryForScreenshot();
 
-    /// <summary>
-    /// Makes the start text for the choice, off the UI thread, and shows it. A summary holds the choices and the buttons until it is made. A request
-    /// replaces the one before it: the older one is cancelled and its result is dropped. A failure is shown in the preview area; a cancel shows
-    /// nothing. Never throws: every failure is shown on screen.
-    /// </summary>
-    private async Task RunRequestAsync(CodexResumeChoice choice)
-    {
-        if (_previewAsync is null) return;
-        CancelRequest();
-        var cts = new CancellationTokenSource();
-        _cts = cts;
-        var id = _request;
-        _busy = choice.Mode == CodexResumeMode.Summary;
-        ShowWorking(choice);
-        Refresh();
-        try
-        {
-            var preview = await _previewAsync(choice, _kept, cts.Token);
-            if (id != _request) return;
-            if (preview.KeptSummary is { } made) _kept = made;
-            if (preview.Problem is { } problem && preview.Text.Length == 0) ShowFailedSummary(choice, problem);
-            else ShowPreview(preview);
-        }
-        catch (OperationCanceledException)
-        {
-            // Cancelled by a change of the choice, or by the dialog closing: nothing is shown, and the selection stays.
-        }
-        catch (Exception ex)
-        {
-            if (id == _request) ShowFailedSummary(choice, $"The start text could not be made: {ex.Message}");
-        }
-        finally
-        {
-            if (id == _request)
-            {
-                _busy = false;
-                _cts = null;
-                Refresh();
-            }
-        }
-    }
+    /// <summary>For the screenshots only: chooses In full, which sends no text. Nothing calls it for Codex yet; kept with the Copilot screen's.</summary>
+    public void ChooseFullForScreenshot() => _screen.ChooseFullForScreenshot();
 
-    /// <summary>Cancels the request in progress, if any, and makes its result stale, so it is dropped when it arrives.</summary>
-    private void CancelRequest()
-    {
-        _request++;
-        _cts?.Cancel();
-        _cts = null;
-    }
-
-    /// <summary>Shows that the text for the choice is being made. Summary says a Codex call is made.</summary>
-    private void ShowWorking(CodexResumeChoice choice) => ShowMessage(
-        choice.Mode == CodexResumeMode.Summary
-            ? "Making the summary: one Codex call. Nothing is sent to a session."
-            : "Reading the session. Nothing is sent to a session.",
-        problem: false);
-
-    /// <summary>
-    /// Shows a built text: its size line, and the text read-only. A preview with no text says why there is none: the window's problem, or that the
-    /// session has no messages to start from (Start stays off).
-    /// </summary>
-    private void ShowPreview(CodexPreview preview)
-    {
-        if (preview.Text.Length == 0)
-        {
-            ShowMessage(preview.Problem ?? "This session has no messages to continue from, so Start is off.", problem: preview.Problem is not null);
-            return;
-        }
-        _previewText = preview.Text;
-        PreviewHeader.Text = CodexResumeRules.SizeLine(preview.Text.Length);
-        PreviewHeader.ClearValue(TextBlock.ForegroundProperty);
-        PreviewBox.Text = preview.Text;
-        PreviewBox.CaretIndex = 0;
-        PreviewBox.ScrollToHome();
-        PreviewNote.Visibility = Visibility.Collapsed;
-        PreviewBlock.Visibility = Visibility.Visible;
-    }
-
-    /// <summary>Shows one line in the preview area and no text. A problem is shown in the danger colour. There is then no text for Start.</summary>
-    private void ShowMessage(string message, bool problem)
-    {
-        _previewText = null;
-        PreviewHeader.Text = message;
-        if (problem) PreviewHeader.SetResourceReference(TextBlock.ForegroundProperty, "UiDanger");
-        else PreviewHeader.ClearValue(TextBlock.ForegroundProperty);
-        PreviewBox.Text = string.Empty;
-        PreviewNote.Visibility = Visibility.Collapsed;
-        PreviewBlock.Visibility = Visibility.Visible;
-    }
-
-    /// <summary>
-    /// Shows a failed preview: the problem in the danger colour, and no text. A summary that was not made falls back to In full (ResumeDefaults): In full
-    /// is selected, and the problem is shown with the line that says so. Nothing is started.
-    /// </summary>
-    private void ShowFailedSummary(CodexResumeChoice choice, string problem)
-    {
-        if (!ResumeDefaults.FallBackToFull(choice.Mode == CodexResumeMode.Summary, cancelled: false))
-        {
-            ShowMessage(problem, problem: true);
-            return;
-        }
-        // Selecting In full clears the preview (OnChoiceChanged), so the problem is shown after it.
-        FullChoice.IsChecked = true;
-        ShowMessage($"{problem} {ResumeDefaults.FullFallbackLine}", problem: true);
-    }
-
-    /// <summary>Takes the preview away. The text is cleared too, so no stale text stays in the dialog.</summary>
-    private void HidePreview()
-    {
-        _previewText = null;
-        PreviewBlock.Visibility = Visibility.Collapsed;
-        PreviewBox.Text = string.Empty;
-        PreviewNote.Visibility = Visibility.Collapsed;
-    }
-
-    /// <summary>The Copy button: puts the shown text on the clipboard. Nothing is sent to a session.</summary>
-    private void Copy_Click(object sender, RoutedEventArgs e)
-    {
-        if (_previewText is not { } text) return;
-        try
-        {
-            Clipboard.SetText(text);
-            PreviewNote.Text = "Copied to the clipboard. Nothing was sent to a session.";
-            PreviewNote.ClearValue(TextBlock.ForegroundProperty);
-        }
-        catch (ExternalException)
-        {
-            // Another program holds the clipboard: the owner can press Copy again.
-            PreviewNote.Text = "The clipboard is busy. Press Copy again.";
-            PreviewNote.SetResourceReference(TextBlock.ForegroundProperty, "UiDanger");
-        }
-        PreviewNote.Visibility = Visibility.Visible;
-    }
-
-    /// <summary>
-    /// Start: the choice and the text shown, and the dialog closes. Start is off unless the choice is ready (<see cref="CodexResumeRules.CanStart"/>),
-    /// so a text is never sent that was not shown.
-    /// </summary>
-    private void Start_Click(object sender, RoutedEventArgs e)
-    {
-        if (_blocksStart) return;
-        var choice = Selected(out _);
-        if (choice is null || _busy) return;
-        if (!ModelReady(choice.Mode, IsCross(choice))) return;
-        if (!CodexResumeRules.CanStart(choice.Mode, _previewText is not null, KeptMatches(choice))) return;
-        Choice = choice with { Remember = RememberBox.IsChecked == true, Target = StartTarget(choice.Mode) };
-        PreviewText = choice.Mode == CodexResumeMode.Full ? null : _previewText;
-        KeptSummary = _kept;
-        Close();
-    }
-
-    private void Cancel_Click(object sender, RoutedEventArgs e)
-    {
-        Choice = null;
-        Close();
-    }
+    /// <summary>Puts a built preview on screen. The tests call it by reflection (TargetChooserTests); the screen itself never does.</summary>
+    private void ShowPreview(CodexPreview preview) => _screen.ShowBuiltPreview(preview);
 
     /// <summary>A request still being made is cancelled with the dialog: nothing waits for it.</summary>
     protected override void OnClosed(EventArgs e)
     {
-        CancelRequest();
+        _screen.OnClosed();
         base.OnClosed(e);
+    }
+
+    /// <summary>
+    /// What is specific to Codex: its platform, its words, its choice (with the model), its model list (Start waits for it, unless the choice needs
+    /// none), and its model row. The model state is the window's; the hooks read it.
+    /// </summary>
+    private sealed class CodexHooks : IProviderResumeScreenHooks<CodexResumeChoice>
+    {
+        private readonly CodexResumePrompt _owner;
+
+        public CodexHooks(CodexResumePrompt owner) => _owner = owner;
+
+        public ProviderId Provider => ProviderId.Codex;
+
+        public ProviderResumeWording Wording => CodexResumeRules.Wording;
+
+        public CodexResumeChoice MakeChoice(ProviderResumeMode mode, SummaryLevel? level, int turns) =>
+            mode == ProviderResumeMode.Full
+                ? new CodexResumeChoice(CodexResumeMode.Full, null, 0)
+                : new CodexResumeChoice(CodexResumeRules.FromShared(mode), level, turns, _owner.SelectedModel());
+
+        public bool StartReady(CodexResumeChoice? choice)
+        {
+            var mode = choice?.SharedMode ?? ProviderResumeMode.LastTurns;
+            return IsCross(choice) || mode == ProviderResumeMode.Full || _owner._modelsReady;
+        }
+
+        public void RefreshOwnControls(CodexResumeChoice? choice, ProviderResumeMode mode, bool free)
+        {
+            var modelRow = mode != ProviderResumeMode.Full;
+            _owner.ModelBlock.Visibility = modelRow && !IsCross(choice) ? Visibility.Visible : Visibility.Collapsed;
+            var enabled = free && modelRow && _owner._modelsReady;
+            _owner.ModelBox.IsEnabled = enabled;
+            _owner.ModelBox.Opacity = enabled ? 1 : 0.5;
+        }
     }
 }
