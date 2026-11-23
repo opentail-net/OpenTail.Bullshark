@@ -16,7 +16,10 @@ namespace OpenTail.Bullshark.App;
 /// </summary>
 public partial class SessionWindow
 {
-    /// <summary>What "Resume…" says until the opencode resume screen (OC3) is built. It starts nothing.</summary>
+    /// <summary>
+    /// The Continue refusal of an opencode session (<see cref="ContinueScreenRefusalOf"/>). Continue does not open the opencode resume screen yet; "Resume…"
+    /// does (<see cref="ResumeOpenCodeScreen"/>).
+    /// </summary>
     private const string OpenCodeResumeScreenNotBuilt = "The opencode resume screen is not built yet.";
 
     /// <summary>The opencode sessions as the last read gave them: root sessions, newest first (OC-D3).</summary>
@@ -386,10 +389,10 @@ public partial class SessionWindow
     }
 
     /// <summary>
-    /// "Resume…" on an opencode row. The resume screen (OC3, full and last turns) is not built in this stage: the status line says so, and nothing is
-    /// started.
+    /// "Resume…" on an opencode row: the opencode resume screen (OC3, in full and from the last turns). Nothing starts until its Start
+    /// (<see cref="ShowOpenCodeResume"/>).
     /// </summary>
-    private void ResumeOpenCodeScreen(SessionSummary session) => SetStatus(OpenCodeResumeScreenNotBuilt);
+    private void ResumeOpenCodeScreen(SessionSummary session) => ShowOpenCodeResume(session);
 
     /// <summary>
     /// Resumes an opencode session in a terminal tab (OC-D8): <c>cmd.exe /d /c opencode -s &lt;id&gt;</c>, started in the session's folder. A session whose tab
