@@ -16,6 +16,8 @@ Status (2026-11-21): the plans were restructured. Finished plans are in [Done/](
 | [limits-usage.md](limits-usage.md) | the paused-on-limit reason, the pre-limit warning, and the usage report's open points |
 | [provider-codex-2026-11-21.md](provider-codex-2026-11-21.md) | the provider seam and the Codex rail (plan; not edited in this pass) |
 | [provider-seam-design-2026-11-19.md](provider-seam-design-2026-11-19.md) | design notes behind it (not edited in this pass) |
+| [dedup-process-runners-2026-11-23.md](dedup-process-runners-2026-11-23.md) | the three process runners share one start and kill helper (plan, not started) |
+| [dedup-resume-dialogs-2026-11-23.md](dedup-resume-dialogs-2026-11-23.md) | the Codex and Copilot resume dialogs share one presenter (plan, not started) |
 | [../later/ideas.md](../later/ideas.md) | parked ideas |
 | [../research/](../research/) | research reports behind the ideas and the provider track |
 | [Done/](Done/) | finished plans, and the records of plans that were split |
