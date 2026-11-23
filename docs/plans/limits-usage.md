@@ -9,6 +9,7 @@ Limit wake itself is in [limit-wake-2026-11-20.md](limit-wake-2026-11-20.md). Th
 ## Pre-limit warning (backlog B3)
 
 - [ ] B3. Pre-limit warning ("you are at N% of a typical 5-hour budget"): needs a budget figure; none is exposed to us and `rate_limit_info` only appears when rejected. Do not invent a number. Revisit if a `status: allowed_warning` style entry shows up in transcripts (search the owner's transcripts for other `status` values first).
+- Search done 2026-11-23 over the owner's transcripts (`~/.claude/projects`, `grep` on `"status":"…"`): the values seen are `async_launched`, `idle`, `rejected`, `proactive`, `running`, `completed`, `busy`, `shell`. `rate_limit_info` appears only with `"status":"rejected"` (44 lines). No `allowed_warning` status entry exists. The matches for that word that were looked at are quotes of this plan in other sessions' notes. B3 stays open: it needs a budget figure from the owner (item 19 of the status doc). Nothing built.
 
 ## Usage report: tokens by day and project
 
