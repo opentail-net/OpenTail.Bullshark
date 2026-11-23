@@ -47,7 +47,7 @@ Start: unchanged. 1 check per Start press (`StartRunAsync`, line 983).
 
 ## Open (not in this task)
 
-- [ ] **Resume without a preview still makes the summary before the refusal.** `StartFromTextAsync` builds the summary (line 296) before `StartRunAsync` checks (line 331). With no preview first, the owner still pays for the summary call on a refused launch. A check at the top of `StartFromTextAsync` would fix it, and make two checks per Start press (cheap: cached when Supported). Left open because the spec keeps the Start path unchanged. Owner or orchestrator decision.
+- [x] **Resume without a preview still makes the summary before the refusal.** Closed 2026-11-23: the early check at the top of `StartFromTextAsync` (`SessionWindow.Resume.cs`, line 410) was added in `7c9439f`, the commit that made the check come before the summary on the Start path too. Two checks per Start press: the second is cached when Supported and kept when refused. The check is now before the summary call (line 424).
 - [ ] **Backlog row R4d** in `docs/plans/00-current-work.md` is not updated here; the orchestrator updates it with the commit.
 
 ## Tests
