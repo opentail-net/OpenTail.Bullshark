@@ -29,6 +29,7 @@ Limit wake itself is in [limit-wake-2026-11-20.md](limit-wake-2026-11-20.md). Th
 - Timing (scratch console app, read only, scratch cache, deleted afterwards; the OS file cache was probably warm, so no true cold read):
   `ReadReportWithCache` cold 2.72 s; warm 0.16 s; the old `ReadWithCache` warm 0.12 to 0.13 s. Owner's data: 10 hits, 30 days, 11 rows in the
   project table (10 projects and Other, which holds 26 projects).
+- Totals checked 2026-11-23 with `scripts/Check-Usage-Against-ccusage.ps1` (ccusage 15.1.0, read-only, the owner's 350 transcripts): input 79,517, output 49,409,100, cache write 121,883,672 and cache read 14,177,418,377 are identical in both tools. Its result: "consistent with ccusage". The numbers are right; the layout is the open point below.
 - [ ] Not checked in a running window: the new tables' layout (long encoded folder names are not wrapped; the page scrolls vertically only).
 - [ ] Dollars (needs a dated rate table from the owner; not built).
 - [ ] A 14-day toggle (30 only).
