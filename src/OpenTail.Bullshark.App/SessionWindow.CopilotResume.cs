@@ -287,7 +287,7 @@ public partial class SessionWindow
         }
         if (CopilotStartLauncher.FindPwsh() is null)
         {
-            SetStatus("Not started: PowerShell 7 (pwsh.exe) is not on PATH. The start text is in the preview: use Copy and start Copilot yourself.");
+            SetStatus("Not started: PowerShell 7 (pwsh.exe) is not on PATH.");
             return;
         }
         // The start runs copilot.ps1 (the launcher's script). The terminal's own copilot may be copilot.exe, so the file is not written when the shim is missing.

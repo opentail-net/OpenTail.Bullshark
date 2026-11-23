@@ -37,7 +37,7 @@ public static class CodexResumeRules
     /// preview, so the owner can copy it and start Codex by hand.
     /// </summary>
     public const string NoShimOnPath =
-        "Not started: codex.ps1 is not on PATH, so a start from text cannot run. The start text is in the preview: use Copy and start Codex yourself.";
+        "Not started: codex.ps1 is not on PATH, so a start from text cannot run.";
 
     /// <summary>The shared mode of one of Codex's modes, or null for a value Codex does not have.</summary>
     private static ProviderResumeMode? ToShared(CodexResumeMode mode) => mode switch

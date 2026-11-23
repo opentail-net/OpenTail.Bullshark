@@ -236,7 +236,7 @@ public partial class SessionWindow
     private static string? CodexStartToolRefusal()
     {
         if (CodexStartLauncher.FindPwsh() is null)
-            return "Not started: PowerShell 7 (pwsh.exe) is not on PATH. The start text is in the preview: use Copy and start Codex yourself.";
+            return "Not started: PowerShell 7 (pwsh.exe) is not on PATH.";
         return CodexStartLauncher.FindShim() is null ? CodexResumeRules.NoShimOnPath : null;
     }
 
