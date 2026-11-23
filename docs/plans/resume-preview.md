@@ -2,6 +2,8 @@
 
 Owner ask: from the Resume dialog, preview only the prompt (what the new session would be given), without resuming. Owner's idea: a split button, "Resume ▾", whose menu reveals the preview. Agreed in chat; the owner said "Go on then".
 
+**Status (2026-11-23): built.** The code and tests in the steps below are in the repo (commits from 6f5ae09 on). Checked on 2026-11-23: Core 3367 passed on net10.0 and net11.0; App 681 passed on both. Only the live checks R1 to R7 (section C8 of the sitting) remain, and they need the owner at the screen.
+
 ## Goal
 The Resume button becomes a split button. The main part resumes exactly as now. The ▾ part opens a menu:
 - **Preview the prompt…** shows the exact start text in the dialog (read-only, scrollable), with a size line.
@@ -33,15 +35,15 @@ The Resume button becomes a split button. The main part resumes exactly as now. 
 - Privacy: the previewed text is the owner's own transcript text shown to the owner. It must not be written to `app.log` (log only "preview built, N chars", never the text).
 
 ## Steps (checkboxes, with why)
-- [ ] Read first: `src/OpenTail.Bullshark.App/ResumePrompt.xaml`, `ResumePrompt.xaml.cs`, `SessionWindow.Resume.cs`, `Styles/Controls.xaml` (GoButton at about line 82, ContextMenu/MenuItem at about line 633-660), `Core/Resume/ResumeText.cs`, and how `_cli.SummariseAsync` is declared (does it take a CancellationToken?).
-- [ ] Core: add `KeptSummary` record and a small pure helper `ResumePreviewText` in `Core/Resume` with `Header(int characters, int cutCharacters, bool fits)` (the size line) and `KeptSummary.MatchesLevel(SummaryLevel?)`. Why: testable without WPF.
-- [ ] Core tests (`tests/OpenTail.Bullshark.Core.Tests/Resume/`): header for no cut, cut, not fitting; tokens = characters/4 rounded; a kept summary matches only its own level and never matches null.
-- [ ] App: extract the shared "build the start text" method from `StartFromTextAsync` (inputs: digest, folder, lines, choice, optional kept summary; output: fitted text, the summary made or reused). Real start uses it; preview uses it. Why: one source of truth.
-- [ ] App: `ResumePrompt` gets the preview pane, the split button, the menu, the stale-collapse rule, the busy state, cancel on close, the `KeptSummary` property.
-- [ ] App: `ResumeOnceAsync` passes the delegate and the kept summary through; `StartFromTextAsync` skips the Haiku call and the file save when the kept summary matches.
-- [ ] App.Tests (headless, existing `UiThread` helper): construct `ResumePrompt` with a fake delegate; assert Preview is disabled for Full, enabled for Tail/Summary; a tail preview shows the text and header; changing the level collapses the pane and drops the kept summary; Resume after a preview returns the kept summary; a delegate that throws shows a message and does not crash.
-- [ ] App.Tests: one test that renders the dialog (with a preview showing) to a PNG with `RenderTargetBitmap` into a **unique scratch folder you create** (`%TEMP%\bullshark-resume-preview-<guid>`), and prints the path so the orchestrator can look at it. Do not delete it.
-- [ ] Build App with 0 errors; run Core.Tests and App.Tests in full; report counts and exit codes.
+- [x] Read first: `src/OpenTail.Bullshark.App/ResumePrompt.xaml`, `ResumePrompt.xaml.cs`, `SessionWindow.Resume.cs`, `Styles/Controls.xaml` (GoButton at about line 82, ContextMenu/MenuItem at about line 633-660), `Core/Resume/ResumeText.cs`, and how `_cli.SummariseAsync` is declared (does it take a CancellationToken?).
+- [x] Core: add `KeptSummary` record and a small pure helper `ResumePreviewText` in `Core/Resume` with `Header(int characters, int cutCharacters, bool fits)` (the size line) and `KeptSummary.MatchesLevel(SummaryLevel?)`. Why: testable without WPF.
+- [x] Core tests (`tests/OpenTail.Bullshark.Core.Tests/Resume/`): header for no cut, cut, not fitting; tokens = characters/4 rounded; a kept summary matches only its own level and never matches null.
+- [x] App: extract the shared "build the start text" method from `StartFromTextAsync` (inputs: digest, folder, lines, choice, optional kept summary; output: fitted text, the summary made or reused). Real start uses it; preview uses it. Why: one source of truth.
+- [x] App: `ResumePrompt` gets the preview pane, the split button, the menu, the stale-collapse rule, the busy state, cancel on close, the `KeptSummary` property.
+- [x] App: `ResumeOnceAsync` passes the delegate and the kept summary through; `StartFromTextAsync` skips the Haiku call and the file save when the kept summary matches.
+- [x] App.Tests (headless, existing `UiThread` helper): construct `ResumePrompt` with a fake delegate; assert Preview is disabled for Full, enabled for Tail/Summary; a tail preview shows the text and header; changing the level collapses the pane and drops the kept summary; Resume after a preview returns the kept summary; a delegate that throws shows a message and does not crash.
+- [x] App.Tests: one test that renders the dialog (with a preview showing) to a PNG with `RenderTargetBitmap` into a **unique scratch folder you create** (`%TEMP%\bullshark-resume-preview-<guid>`), and prints the path so the orchestrator can look at it. Do not delete it.
+- [x] Build App with 0 errors; run Core.Tests and App.Tests in full; report counts and exit codes.
 - [ ] Live checks R1 to R7: in [live-run-checklist.md](live-run-checklist.md), section C8, run in the owner's sitting after this build.
 
 ## Rules for the coder (carry these)

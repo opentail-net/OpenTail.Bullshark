@@ -41,7 +41,7 @@ G1 (trust a throwaway folder) comes first; the owner's word is needed. Then G2 (
 
 ### Phase 4: not started, in this order
 
-1. **Resume preview** ([resume-preview.md](resume-preview.md)). Self-contained, no gate. Then summaries step 2, but only after the sitting's "resume from a summary" check passes.
+1. **Resume preview** ([resume-preview.md](resume-preview.md)). Built 2026-11-23 (code and tests; Core 3367 and App 681 pass on net10.0 and net11.0); only its live checks R1 to R7 remain, in the sitting. Self-contained, no gate. Then summaries step 2, but only after the sitting's "resume from a summary" check passes.
 2. **Limit wake** ([limit-wake-2026-11-20.md](limit-wake-2026-11-20.md)). Its phase 1 is in progress elsewhere. Phase 2 waits for G7.
 3. **Per-coder worktrees** ([supervisor.md](supervisor.md) section 3). Only if G2 passes.
 4. **Live cost over OpenTelemetry** (G9). Only if its gate passes.

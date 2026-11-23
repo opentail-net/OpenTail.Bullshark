@@ -17,6 +17,8 @@ public sealed class SummariseTests
         var args = runner.Calls.Single().Args;
         Assert.Equal("-p", args[0]);
         Assert.Equal("haiku", args[Array.IndexOf(args.ToArray(), "--model") + 1]);
+        // The summary call must not save a session: it would show in History and in the usage totals.
+        Assert.Contains("--no-session-persistence", args);
     }
 
     [Fact]

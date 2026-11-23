@@ -317,7 +317,7 @@ public sealed class ClaudeCli
     public async Task<string> SummariseAsync(string instructions, string transcript, CancellationToken cancellationToken = default)
     {
         var result = await _runner.RunAsync(
-            ["-p", instructions, "--model", "haiku", "--effort", "low"],
+            ["-p", instructions, "--model", "haiku", "--effort", "low", "--no-session-persistence"],
             null,
             TimeSpan.FromMinutes(5),
             cancellationToken,

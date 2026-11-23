@@ -76,7 +76,7 @@ Each line is copied from the record it came from, so its context is there. Check
 
 From the magic-rename batch:
 
-- [ ] **Existing code noticed, not changed:** `ClaudeCli.SummariseAsync` runs `claude -p` without `--no-session-persistence` (its working folder is the App's current folder). Whether that writes a transcript into History was not checked here.
+- [x] **Fixed 2026-11-23:** `ClaudeCli.SummariseAsync` now passes `--no-session-persistence`, as `MagicNamer` already does. `SummariseTests` asserts the flag. Not checked live: whether the unflagged call really wrote a transcript into History.
 
 From the perf and testability batch:
 
