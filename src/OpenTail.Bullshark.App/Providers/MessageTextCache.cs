@@ -53,7 +53,8 @@ internal sealed class MessageTextCache
         }
         catch (Exception e)
         {
-            AppLog.Write($"message search: a session could not be read ({e.GetType().Name})");
+            // The provider is named so the next occurrence says which history it came from (2026-11-23: the owner's log showed this line, not the cause).
+            AppLog.Write($"message search: a {session.Key.Provider} session could not be read ({e.GetType().Name})");
             texts = [];
         }
         _entries[session.Key.ToString()] = (session.LastActivity, texts);
