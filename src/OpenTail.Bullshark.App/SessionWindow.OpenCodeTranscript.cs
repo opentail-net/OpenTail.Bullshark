@@ -56,8 +56,9 @@ public partial class SessionWindow
         try
         {
             // The database is checked now, not from the list: an empty page from a database that cannot be read is not a session with no messages.
+            // It is opened off the UI thread, as the resume screen does: the open can wait for a lock.
             var location = CurrentOpenCodeLocation();
-            var (status, probe) = OpenCodeDatabase.Open(location);
+            var (status, probe) = await Task.Run(() => OpenCodeDatabase.Open(location), CancellationToken.None);
             probe?.Dispose();
             if (status != OpenCodeHistoryStatus.Ok)
             {

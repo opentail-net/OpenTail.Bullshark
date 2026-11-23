@@ -1,6 +1,7 @@
 using System.Text.Json;
 using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Claude;
+using OpenTail.Bullshark.Core.Copilot;
 using OpenTail.Bullshark.Core.OpenCode;
 using OpenTail.Bullshark.Core.Providers.Summary;
 using OpenTail.Bullshark.Core.Resume;
@@ -150,6 +151,15 @@ public sealed class OpenCodeSummarizerTests : IDisposable
     }
 
     [Fact]
+    public void TheEnvironmentCarriesTheSameDenyTextInOpencodeConfigContent()
+    {
+        var environment = OpenCodeSummaryCommand.EnvironmentFor(@"C:\scratch\config\opencode.json");
+
+        Assert.Equal("OPENCODE_CONFIG_CONTENT", OpenCodeSummaryCommand.ConfigContentEnvName);
+        Assert.Equal(OpenCodeSummaryCommand.ConfigText, environment["OPENCODE_CONFIG_CONTENT"]);
+    }
+
+    [Fact]
     public async Task TheCallRunsWithTheConfigurationWrittenBeforeAndTheEmptyWorkingFolderAsDir()
     {
         var runner = new FakeEnvRunner();
@@ -165,6 +175,7 @@ public sealed class OpenCodeSummarizerTests : IDisposable
         var scratch = Path.GetDirectoryName(call.WorkingDirectory)!;
         Assert.Equal(Path.Combine(scratch, OpenCodeSummarizer.ConfigFolderName, OpenCodeSummaryCommand.ConfigFileName), call.Environment["OPENCODE_CONFIG"]);
         Assert.Equal("1", call.Environment["OPENCODE_DISABLE_PROJECT_CONFIG"]);
+        Assert.Equal(OpenCodeSummaryCommand.ConfigText, call.Environment["OPENCODE_CONFIG_CONTENT"]);
         Assert.Equal(TimeSpan.FromMinutes(5), call.Timeout);
     }
 
@@ -295,5 +306,107 @@ public sealed class OpenCodeSummarizerTests : IDisposable
 
         Assert.Empty(runner.Calls);
         Assert.False(Directory.Exists(Path.Combine(_home, "a%b", OpenCodeSummarizer.ParentName)));
+    }
+
+    [Theory]
+    [InlineData("a&b")]
+    [InlineData("a^b")]
+    [InlineData("a(b)")]
+    public async Task AStateFolderWithACmdCharacterIsRefusedBeforeAnyProcessStartsOrAnyFolderIsMade(string name)
+    {
+        var unsafeState = Path.Combine(_home, name, "state.json");
+        var runner = new FakeEnvRunner();
+
+        var error = await Assert.ThrowsAsync<OpenCodeSummaryException>(() =>
+            new OpenCodeSummarizer(runner).SummariseAsync(unsafeState, Session("question", "answer"), SummaryLevel.Normal, CancellationToken.None));
+
+        Assert.Empty(runner.Calls);
+        Assert.False(Directory.Exists(Path.Combine(_home, name, OpenCodeSummarizer.ParentName)));
+        Assert.DoesNotContain(name, error.Message);
+    }
+
+    [Fact]
+    public async Task AStateFolderWithoutThoseCharactersIsAcceptedAndTheCallRuns()
+    {
+        var runner = new FakeEnvRunner();
+
+        var text = await new OpenCodeSummarizer(runner).SummariseAsync(
+            Path.Combine(_home, "plain-state", "state.json"), Session("question", "answer"), SummaryLevel.Normal, CancellationToken.None);
+
+        Assert.Equal("A short summary.", text);
+        Assert.Single(runner.Calls);
+    }
+
+    [Fact]
+    public void TheScratchParentIsOpenCodeScratchBesideTheStateFile()
+    {
+        Assert.Equal(ScratchParent, OpenCodeSummarizer.ParentBeside(_state));
+    }
+
+    /// <summary>A scratch folder with a file in its work folder and a marker written at <paramref name="markerWritten"/>.</summary>
+    private static string MarkedScratch(string parent, DateTimeOffset markerWritten)
+    {
+        var folder = Path.Combine(parent, Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(folder, OpenCodeSummarizer.WorkFolderName));
+        File.WriteAllText(Path.Combine(folder, OpenCodeSummarizer.WorkFolderName, "left.txt"), "text");
+        var marker = Path.Combine(folder, OpenCodeSummarizer.MarkerName);
+        File.WriteAllText(marker, "marker");
+        File.SetLastWriteTimeUtc(marker, markerWritten.UtcDateTime);
+        return folder;
+    }
+
+    [Fact]
+    public void StartupRemovesOnlyMarkedScratchFoldersOlderThanOneDay()
+    {
+        var now = new DateTimeOffset(2026, 11, 22, 12, 0, 0, TimeSpan.Zero);
+        var oldMarked = MarkedScratch(ScratchParent, now.AddDays(-3));
+        var newMarked = MarkedScratch(ScratchParent, now.AddHours(-1));
+        var oldUnmarked = Path.Combine(ScratchParent, "unmarked");
+        Directory.CreateDirectory(oldUnmarked);
+        Directory.SetLastWriteTimeUtc(oldUnmarked, now.AddDays(-3).UtcDateTime);
+        var loose = Path.Combine(ScratchParent, "loose.txt");
+        File.WriteAllText(loose, "text");
+        File.SetLastWriteTimeUtc(loose, now.AddDays(-3).UtcDateTime);
+
+        var removed = OpenCodeSummarizer.RemoveOld(ScratchParent, TimeSpan.FromDays(1), now);
+
+        Assert.Equal(1, removed);
+        Assert.False(Directory.Exists(oldMarked));
+        Assert.True(Directory.Exists(newMarked));
+        Assert.True(Directory.Exists(oldUnmarked));
+        Assert.True(File.Exists(loose));
+    }
+
+    [Fact]
+    public void StartupAtZeroAgeRemovesAMarkedFolderLeftByAFailedDelete()
+    {
+        // The Copilot startup age is zero: OpenTail is single-instance, so a marked folder written minutes ago is not in use at startup.
+        var now = new DateTimeOffset(2026, 11, 22, 12, 0, 0, TimeSpan.Zero);
+        var left = MarkedScratch(ScratchParent, now.AddMinutes(-5));
+
+        var removed = OpenCodeSummarizer.RemoveOld(ScratchParent, CopilotScratchFolder.StartupAge, now);
+
+        Assert.Equal(1, removed);
+        Assert.False(Directory.Exists(left));
+    }
+
+    [Fact]
+    public void StartupDoesNotTouchTheCopilotScratchFoldersBesideTheStateFile()
+    {
+        var now = new DateTimeOffset(2026, 11, 22, 12, 0, 0, TimeSpan.Zero);
+        var copilotParent = Path.Combine(Path.GetDirectoryName(_state)!, CopilotScratchFolder.ParentName);
+        var copilotFolder = CopilotScratchFolder.Create(copilotParent);
+        File.SetLastWriteTimeUtc(Path.Combine(copilotFolder, CopilotScratchFolder.MarkerName), now.AddDays(-3).UtcDateTime);
+
+        var removed = OpenCodeSummarizer.RemoveOld(ScratchParent, TimeSpan.Zero, now);
+
+        Assert.Equal(0, removed);
+        Assert.True(Directory.Exists(copilotFolder));
+    }
+
+    [Fact]
+    public void StartupOfAMissingScratchParentIsZero()
+    {
+        Assert.Equal(0, OpenCodeSummarizer.RemoveOld(Path.Combine(_home, "missing"), TimeSpan.Zero, DateTimeOffset.UtcNow));
     }
 }

@@ -44,6 +44,12 @@ public static class OpenCodeSummaryCommand
     public const string ConfigEnvName = "OPENCODE_CONFIG";
 
     /// <summary>
+    /// The environment variable that holds the configuration text itself. The call sets it to <see cref="ConfigText"/> as well as the file, so an inherited
+    /// value of it cannot allow a tool, whichever of the two opencode applies last. The precedence of the two is not verified (no program was run).
+    /// </summary>
+    public const string ConfigContentEnvName = "OPENCODE_CONFIG_CONTENT";
+
+    /// <summary>
     /// The environment variable that skips the project's own configuration, so no project file can allow a tool again. Read at 117106521
     /// (<c>if(!he.OPENCODE_DISABLE_PROJECT_CONFIG)</c>), after the custom file. The flag is on for "1" or "true" (the helper <c>fc</c>, 116312588).
     /// </summary>
@@ -60,10 +66,14 @@ public static class OpenCodeSummaryCommand
         return ["/d", "/c", "opencode", "run", "--dir", folder, SummaryPrompt];
     }
 
-    /// <summary>The variables of the call: the configuration file, and the project configuration switched off.</summary>
+    /// <summary>
+    /// The variables of the call: the configuration file, the same text in <see cref="ConfigContentEnvName"/>, and the project configuration switched off.
+    /// Each is set for the call, so an inherited value of either is replaced.
+    /// </summary>
     public static IReadOnlyDictionary<string, string> EnvironmentFor(string configPath) => new Dictionary<string, string>
     {
         [ConfigEnvName] = configPath,
+        [ConfigContentEnvName] = ConfigText,
         [DisableProjectConfigEnvName] = "1",
     };
 }
@@ -102,6 +112,20 @@ public sealed class OpenCodeSummarizer(ICliEnvRunner runner)
     /// <summary>The marker file of a scratch folder. Only a marked folder is deleted.</summary>
     public const string MarkerName = "opentail-opencode-scratch.marker";
 
+    /// <summary>
+    /// The characters the scratch folder path must not hold, because the call's line goes through <c>cmd.exe</c> and they are not quoted safely there
+    /// (<see cref="SummariseAsync"/> refuses them). <see cref="CommandLineRules.RequireFolder"/> already refuses the double quote, the exclamation mark
+    /// and the percent sign; it is not changed, since other callers use it.
+    /// </summary>
+    private const string UnsafeCmdChars = "&^()%!\"";
+
+    /// <summary>The message of the refusal for <see cref="UnsafeCmdChars"/>. It names no path, and the caller shows it as it is.</summary>
+    private const string UnsafeFolderMessage =
+        "the state folder has a character that cmd.exe cannot pass safely (& ^ ( ) % ! or a double quote)";
+
+    /// <summary>The attempts of the start-up sweep on a file lock (the same count as the Copilot sweep); the pause is <see cref="RetryPause"/>.</summary>
+    private const int StartupDeleteAttempts = 5;
+
     /// <summary>The call's working folder, which is also its <c>--dir</c>. It is empty.</summary>
     public const string WorkFolderName = "work";
 
@@ -121,12 +145,16 @@ public sealed class OpenCodeSummarizer(ICliEnvRunner runner)
     /// <summary>
     /// Summarises the session's messages (<paramref name="lines"/>, oldest first) at <paramref name="level"/>, in one call. <paramref name="statePath"/> is
     /// the app's state file: the scratch folders go beside it. Throws <see cref="OpenCodeSummaryException"/> for a timeout, a non-zero exit or an
-    /// empty reply, and <see cref="ArgumentException"/> for a state folder that cannot sit in a command line. A cancellation reaches the caller.
+    /// empty reply, and for a state folder with an ampersand, a caret or a parenthesis (refused before any process starts, with the fixed text of
+    /// <c>UnsafeFolderMessage</c>). <see cref="ArgumentException"/> is for a state folder that cannot sit in a command line. A cancellation reaches the caller.
     /// </summary>
     public async Task<string> SummariseAsync(string statePath, IReadOnlyList<TranscriptLine> lines, SummaryLevel level, CancellationToken ct)
     {
-        var parent = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(statePath))!, ParentName);
+        var parent = ParentBeside(statePath);
         CommandLineRules.RequireFolder(parent);
+        // Refused before any folder is made or any process starts. Every scratch folder lies under this parent, so the check covers their paths too.
+        if (parent.IndexOfAny(UnsafeCmdChars.ToCharArray()) >= 0)
+            throw new OpenCodeSummaryException(UnsafeFolderMessage);
         var input = OpenCodeSummaryInput.StdinText(lines, level);
         var folder = CreateScratch(parent);
         try
@@ -141,6 +169,52 @@ public sealed class OpenCodeSummarizer(ICliEnvRunner runner)
         finally
         {
             await DeleteScratchAsync(folder);
+        }
+    }
+
+    /// <summary>The scratch parent for a state file: <c>OpenCodeScratch</c> in the state file's folder.</summary>
+    public static string ParentBeside(string statePath) =>
+        Path.Combine(Path.GetDirectoryName(Path.GetFullPath(statePath))!, ParentName);
+
+    /// <summary>
+    /// The start-up sweep of the scratch folders: deletes the marked folders directly under <paramref name="parent"/> whose marker was written before
+    /// <paramref name="now"/> minus <paramref name="olderThan"/>. A folder without the marker, and any file, is never touched. A folder that a file lock
+    /// keeps (after the retries) is left for the next start. Returns the number removed; a missing parent gives zero. Nothing is logged here.
+    /// </summary>
+    public static int RemoveOld(string parent, TimeSpan olderThan, DateTimeOffset now)
+    {
+        if (!Directory.Exists(parent)) return 0;
+        var cutoff = now - olderThan;
+        var removed = 0;
+        foreach (var folder in new DirectoryInfo(parent).EnumerateDirectories())
+        {
+            var marker = Path.Combine(folder.FullName, MarkerName);
+            if (!File.Exists(marker)) continue;
+            if (new DateTimeOffset(File.GetLastWriteTimeUtc(marker), TimeSpan.Zero) >= cutoff) continue;
+            if (DeleteMarkedNow(folder.FullName)) removed++;
+        }
+        return removed;
+    }
+
+    /// <summary>
+    /// The synchronous delete of <see cref="RemoveOld"/>: the same marker rule as <see cref="DeleteScratchAsync"/>, with the pause on a file lock blocking
+    /// the thread (the start-up sweep runs on the UI thread, as the Copilot sweep does). Returns false when the folder stays.
+    /// </summary>
+    private static bool DeleteMarkedNow(string folder)
+    {
+        if (!File.Exists(Path.Combine(folder, MarkerName))) return false;
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                Directory.Delete(folder, recursive: true);
+                return true;
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                if (attempt >= StartupDeleteAttempts) return false;
+                Thread.Sleep(RetryPause);
+            }
         }
     }
 

@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Continue;
+using OpenTail.Bullshark.Core.Copilot;
 using OpenTail.Bullshark.Core.OpenCode;
 using OpenTail.Bullshark.Core.Providers;
 using OpenTail.Bullshark.Core.Resume;
@@ -118,12 +119,43 @@ public partial class SessionWindow
         try
         {
             var removed = OpenCodeStartLauncher.RemoveOldStarts(
-                OpenCodeStartLauncher.StartsFolderBeside(_options.StatePath), TimeSpan.FromDays(1), DateTimeOffset.Now);
+                OpenCodeStartLauncher.StartsFolderBeside(_options.StatePath), OpenCodeStartLauncher.StartFileAge, DateTimeOffset.Now);
             if (removed > 0) AppLog.Write($"old opencode start files removed: {removed}");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             AppLog.Write($"old opencode start files not removed: {ex.GetType().Name}");
+        }
+    }
+
+    /// <summary>
+    /// The start-up sweep of the opencode scratch folders and of the old start files (OC-D16, plan section 4). It runs from the same point as
+    /// <c>SweepCopilotScratch</c>, so only in the window that holds the state's single-instance guard. The scratch folders are swept with the Copilot
+    /// startup age (zero: no other instance can be using one); the start files with <see cref="OpenCodeStartLauncher.StartFileAge"/>. Only marked folders
+    /// and start-shaped file names are removed (see <c>OpenCodeSummarizer.RemoveOld</c> and <c>CliStartLauncher.RemoveOldStarts</c>). Each sweep logs its
+    /// count, or the exception type when it fails, and the window starts anyway.
+    /// </summary>
+    private static void SweepOpenCodeAtStartup(string statePath)
+    {
+        try
+        {
+            var removed = OpenCodeSummarizer.RemoveOld(OpenCodeSummarizer.ParentBeside(statePath), CopilotScratchFolder.StartupAge, DateTimeOffset.UtcNow);
+            AppLog.Write($"opencode scratch folders removed at startup: {removed}");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            AppLog.Write($"opencode scratch folders not removed at startup: {ex.GetType().Name}");
+        }
+
+        try
+        {
+            var removed = OpenCodeStartLauncher.RemoveOldStarts(
+                OpenCodeStartLauncher.StartsFolderBeside(statePath), OpenCodeStartLauncher.StartFileAge, DateTimeOffset.UtcNow);
+            AppLog.Write($"opencode start files removed at startup: {removed}");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            AppLog.Write($"opencode start files not removed at startup: {ex.GetType().Name}");
         }
     }
 

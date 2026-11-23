@@ -52,6 +52,12 @@ public static class OpenCodeStartLauncher
     /// </summary>
     public static string? FindShim(string? searchPath = null) => CliStartLauncher.FindShim(ShimName, searchPath);
 
+    /// <summary>
+    /// How old a start file must be before a sweep removes it: one day, the age the opencode resume screen has always used (the Copilot rule). The
+    /// start-up sweep and the resume screen both use it.
+    /// </summary>
+    public static readonly TimeSpan StartFileAge = TimeSpan.FromDays(1);
+
     /// <summary>Deletes the old start files of <paramref name="startsFolder"/> and returns how many were removed (see <see cref="CliStartLauncher.RemoveOldStarts"/>).</summary>
     public static int RemoveOldStarts(string startsFolder, TimeSpan olderThan, DateTimeOffset now) =>
         CliStartLauncher.RemoveOldStarts(startsFolder, olderThan, now);

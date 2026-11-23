@@ -256,6 +256,8 @@ public partial class SessionWindow : Window
         // G-D15: the Copilot scratch folders of earlier runs go here, once this instance holds the guard for the state file (their parent is beside it).
         // Before any Copilot summary call could start in this process; a window that only watches (or runs no pass) removes nothing.
         if (_supervisor is not null) SweepCopilotScratch(options.StatePath);
+        // OC-D16: the opencode scratch folders and old start files go here too, from the same point and under the same guard.
+        if (_supervisor is not null) SweepOpenCodeAtStartup(options.StatePath);
         InitLibrary(options.StatePath);
         LoadMagicAuto();
         var runner = new SupervisorRunner(_cli, _store, TimeProvider.System, log: AppLog.Write)
