@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -29,7 +28,7 @@ public partial class OpenCodeResumePrompt : Window
     private readonly Func<OpenCodeResumeChoice, CancellationToken, Task<OpenCodePreview>>? _previewAsync;
     private CancellationTokenSource? _cts;
     private int _request;
-    private string? _previewText;
+    private readonly ResumePreviewPane _preview;
 
     /// <summary>The folder notice shown in red, or null. Start is off only with no folder on record; the choices and Copy stay on.</summary>
     private readonly string? _folderNotice;
@@ -52,6 +51,7 @@ public partial class OpenCodeResumePrompt : Window
         string? folder = null, bool? folderExists = null)
     {
         InitializeComponent();
+        _preview = new ResumePreviewPane(PreviewHeader, PreviewBox, PreviewBlock, PreviewNote);
         // The window grows to the screen's work area at most: the body scrolls and the buttons stay in view.
         MaxHeight = SystemParameters.WorkArea.Height - 40;
         Title = OpenCodeTitle;
@@ -158,7 +158,7 @@ public partial class OpenCodeResumePrompt : Window
     {
         var choice = Selected(out var turnsValid);
         var mode = choice?.Mode ?? (SummaryChoice.IsChecked == true ? OpenCodeResumeMode.Summary : OpenCodeResumeMode.LastTurns);
-        var previewReady = _previewText is not null;
+        var previewReady = _preview.Text is not null;
         CostText.Text = OpenCodeResumeRules.CostLine(mode)
                         + (mode == OpenCodeResumeMode.Summary && previewReady ? " " + OpenCodeResumeRules.LastTurnsCostLine : string.Empty)
                         + (mode != OpenCodeResumeMode.Full && !turnsValid ? " " + OpenCodeResumeRules.TurnsMessage : string.Empty);
@@ -173,11 +173,7 @@ public partial class OpenCodeResumePrompt : Window
         Enable(StartButton, choice is not null && !_blocksStart && OpenCodeResumeRules.CanStart(choice.Mode, previewReady));
     }
 
-    private static void Enable(UIElement element, bool enabled)
-    {
-        element.IsEnabled = enabled;
-        element.Opacity = enabled ? 1 : 0.5;
-    }
+    private static void Enable(UIElement element, bool enabled) => ResumeScreenElements.Enable(element, enabled);
 
     /// <summary>
     /// Makes the last-turns start text, off the UI thread, and shows it. A request replaces the one before it: the older one is cancelled and its result is
@@ -235,55 +231,17 @@ public partial class OpenCodeResumePrompt : Window
             ShowMessage(preview.Problem ?? "This session has no messages to continue from, so Start is off.", problem: preview.Problem is not null);
             return;
         }
-        _previewText = preview.Text;
-        PreviewHeader.Text = OpenCodeResumeRules.SizeLine(preview.Text.Length);
-        PreviewHeader.ClearValue(TextBlock.ForegroundProperty);
-        PreviewBox.Text = preview.Text;
-        PreviewBox.CaretIndex = 0;
-        PreviewBox.ScrollToHome();
-        PreviewNote.Visibility = Visibility.Collapsed;
-        PreviewBlock.Visibility = Visibility.Visible;
+        _preview.Show(preview.Text, OpenCodeResumeRules.SizeLine(preview.Text.Length));
     }
 
     /// <summary>Shows one line in the preview area and no text. A problem is shown in the danger colour. There is then no text for Start.</summary>
-    private void ShowMessage(string message, bool problem)
-    {
-        _previewText = null;
-        PreviewHeader.Text = message;
-        if (problem) PreviewHeader.SetResourceReference(TextBlock.ForegroundProperty, "UiDanger");
-        else PreviewHeader.ClearValue(TextBlock.ForegroundProperty);
-        PreviewBox.Text = string.Empty;
-        PreviewNote.Visibility = Visibility.Collapsed;
-        PreviewBlock.Visibility = Visibility.Visible;
-    }
+    private void ShowMessage(string message, bool problem) => _preview.ShowMessage(message, problem);
 
     /// <summary>Takes the preview away. The text is cleared too, so no stale text stays in the dialog.</summary>
-    private void HidePreview()
-    {
-        _previewText = null;
-        PreviewBlock.Visibility = Visibility.Collapsed;
-        PreviewBox.Text = string.Empty;
-        PreviewNote.Visibility = Visibility.Collapsed;
-    }
+    private void HidePreview() => _preview.Hide();
 
     /// <summary>The Copy button: puts the shown text on the clipboard. Nothing is sent to a session.</summary>
-    private void Copy_Click(object sender, RoutedEventArgs e)
-    {
-        if (_previewText is not { } text) return;
-        try
-        {
-            Clipboard.SetText(text);
-            PreviewNote.Text = "Copied to the clipboard. Nothing was sent to a session.";
-            PreviewNote.ClearValue(TextBlock.ForegroundProperty);
-        }
-        catch (ExternalException)
-        {
-            // Another program holds the clipboard: the owner can press Copy again.
-            PreviewNote.Text = "The clipboard is busy. Press Copy again.";
-            PreviewNote.SetResourceReference(TextBlock.ForegroundProperty, "UiDanger");
-        }
-        PreviewNote.Visibility = Visibility.Visible;
-    }
+    private void Copy_Click(object sender, RoutedEventArgs e) => _preview.Copy();
 
     /// <summary>
     /// Make summary: makes the summary now, once, for the level and the turns on screen. It is the only way a summary is made. The shown text is the
@@ -305,9 +263,9 @@ public partial class OpenCodeResumePrompt : Window
         if (_blocksStart) return;
         var choice = Selected(out _);
         if (choice is null) return;
-        if (!OpenCodeResumeRules.CanStart(choice.Mode, _previewText is not null)) return;
+        if (!OpenCodeResumeRules.CanStart(choice.Mode, _preview.Text is not null)) return;
         Choice = choice with { Remember = RememberBox.IsChecked == true };
-        PreviewText = choice.Mode == OpenCodeResumeMode.Full ? null : _previewText;
+        PreviewText = choice.Mode == OpenCodeResumeMode.Full ? null : _preview.Text;
         Close();
     }
 
