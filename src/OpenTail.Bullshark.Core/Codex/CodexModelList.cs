@@ -4,6 +4,7 @@ using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using OpenTail.Bullshark.Core.Processes;
 
 namespace OpenTail.Bullshark.Core.Codex;
 
@@ -187,19 +188,12 @@ public sealed class CodexModelList(string program = "cmd.exe", IReadOnlyList<str
 
     private Process Start()
     {
-        var info = new ProcessStartInfo(_program)
-        {
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            StandardInputEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
-            StandardOutputEncoding = Encoding.UTF8,
-            StandardErrorEncoding = Encoding.UTF8,
-        };
-        foreach (var argument in _arguments)
-            info.ArgumentList.Add(argument);
+        var info = ProcessLaunch.Create(
+            _program,
+            _arguments,
+            redirectStandardInput: true,
+            outputEncoding: Encoding.UTF8,
+            inputEncoding: new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
         return Process.Start(info) ?? throw new InvalidOperationException("The process did not start.");
     }
 
@@ -267,21 +261,7 @@ public sealed class CodexModelList(string program = "cmd.exe", IReadOnlyList<str
     }
 
     /// <summary>Stops the process and whatever it started (the <c>cmd.exe</c> and the Codex it runs). A process that has already exited is left as it is.</summary>
-    private static void StopTree(Process process)
-    {
-        try
-        {
-            if (!process.HasExited) process.Kill(entireProcessTree: true);
-        }
-        catch (InvalidOperationException)
-        {
-            // Already exited.
-        }
-        catch (Win32Exception)
-        {
-            // The process could not be stopped; it is left to end on its own.
-        }
-    }
+    private static void StopTree(Process process) => ProcessLaunch.Kill(process);
 
     private static string InitializeLine() =>
         "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"clientInfo\":{\"name\":\"opentail-bullshark\",\"version\":\"" +
