@@ -52,7 +52,10 @@ public sealed class ClaudeProvider(ProviderPaths? paths = null)
         return index.Sessions.Select(SummaryOf).ToList();
     }
 
-    private static SessionSummary SummaryOf(SessionDigest digest) => new(
+    /// <summary>
+    /// The neutral summary of one Claude digest. Public so the App's Continue picks from the same mapping as this list (it is not copied).
+    /// </summary>
+    public static SessionSummary SummaryOf(SessionDigest digest) => new(
         new SessionKey(ProviderId.Claude, digest.SessionId),
         digest.Title,
         digest.Cwd,

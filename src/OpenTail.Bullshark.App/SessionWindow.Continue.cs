@@ -1,5 +1,6 @@
 using System.Windows;
 using OpenTail.Bullshark.Core.Activity;
+using OpenTail.Bullshark.Core.Claude;
 using OpenTail.Bullshark.Core.Codex;
 using OpenTail.Bullshark.Core.Continue;
 using OpenTail.Bullshark.Core.Library;
@@ -69,7 +70,7 @@ public partial class SessionWindow
         {
             if (scopeProvider == ProviderId.Claude)
             {
-                sessions.AddRange(history!.Select(ContinueSummaryOf));
+                sessions.AddRange(history!.Select(ClaudeProvider.SummaryOf));
                 continue;
             }
             var listed = await ContinueListAsync(scopeProvider);
@@ -172,22 +173,6 @@ public partial class SessionWindow
         }
         return keyed;
     }
-
-    /// <summary>
-    /// The neutral summary of a Claude digest, with the fields that <c>ClaudeProvider</c> gives for its list. Its own mapping is private to Core, so it is
-    /// written out here, and the two must match. Continue picks from the rail's digests, because the Claude resume needs the digest itself.
-    /// </summary>
-    private static SessionSummary ContinueSummaryOf(SessionDigest digest) => new(
-        new SessionKey(ProviderId.Claude, digest.SessionId),
-        digest.Title,
-        digest.Cwd,
-        digest.FirstActivity,
-        digest.LastActivity,
-        digest.IsSubagent,
-        digest.UserMessages,
-        digest.AssistantMessages,
-        digest.Compactions,
-        digest.LastModel);
 
     /// <summary>
     /// The refusal that Continue gives before the session's resume screen opens, or null when the screen may open (<see cref="ContinueDecision.ScreenRefusal"/>).
