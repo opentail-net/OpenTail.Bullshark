@@ -11,4 +11,9 @@
     <PackageReference Include="ZstdSharp.Port" Version="0.8.8" />
   </ItemGroup>
 
+  <!-- opencode's history is one SQLite database, read only (OC-D15). Microsoft.Data.Sqlite is MIT; its native engine is SQLitePCLRaw (Apache-2.0). -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.13" />
+  </ItemGroup>
+
 </Project>
