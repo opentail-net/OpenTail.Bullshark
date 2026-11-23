@@ -28,7 +28,7 @@ public partial class SessionWindow
     {
         var id = session.Key.SessionId;
         var title = OpenCodeRowTitle(MarkOf(ProviderId.OpenCode, id)?.Name, session);
-        var open = _tabs.FirstOrDefault(t => t.Kind == TabKind.CopilotTranscript && t.Provider == ProviderId.OpenCode && SameId(t.Key, id));
+        var open = _tabs.FirstOrDefault(t => t.Kind == TabKind.OpenCodeTranscript && t.Provider == ProviderId.OpenCode && SameId(t.Key, id));
         if (open is not null)
         {
             SetActive(open);
@@ -39,7 +39,7 @@ public partial class SessionWindow
         var view = new ProviderTranscriptView { Visibility = Visibility.Hidden };
         view.ApplyTheme(Palette);
         view.ShowReading(title);
-        var tab = AddTab(TabKind.CopilotTranscript, id, title, ProviderId.OpenCode);
+        var tab = AddTab(TabKind.OpenCodeTranscript, id, title, ProviderId.OpenCode);
         _openCodeTranscripts[KeyOf(tab)] = view;
         Pane.Children.Add(view);
         SetActive(tab);

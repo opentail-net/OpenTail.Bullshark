@@ -49,6 +49,7 @@ public partial class SessionWindow
             // Under Codex a cleared box closes the Codex results tab only; Claude's results tab is left as it is (parity P6).
             if (IsCodexActive) CloseCodexSearchTab();
             else if (IsCopilotActive) CloseCopilotSearchTab();
+            else if (IsOpenCodeActive) CloseOpenCodeSearchTab();
             else CloseSearchTab();
             return;
         }
@@ -83,6 +84,12 @@ public partial class SessionWindow
         if (IsCopilotActive)
         {
             StartCopilotSearch(text);
+            return;
+        }
+        // Under opencode the box searches the opencode history the same way (OC2).
+        if (IsOpenCodeActive)
+        {
+            StartOpenCodeSearch(text);
             return;
         }
         var query = text.Trim();

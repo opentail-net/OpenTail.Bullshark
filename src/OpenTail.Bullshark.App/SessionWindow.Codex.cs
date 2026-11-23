@@ -6,6 +6,7 @@ using OpenTail.Bullshark.Core.Behaviour;
 using OpenTail.Bullshark.Core.Codex;
 using OpenTail.Bullshark.Core.Copilot;
 using OpenTail.Bullshark.Core.Library;
+using OpenTail.Bullshark.Core.OpenCode;
 using OpenTail.Bullshark.Core.Providers;
 using OpenTail.Bullshark.Core.Supervisor;
 
@@ -75,6 +76,8 @@ public partial class SessionWindow
         ProviderBox.Items.Add(new ComboBoxItem { Content = "Claude", Tag = ProviderId.Claude });
         if (CodexProvider.Available) ProviderBox.Items.Add(new ComboBoxItem { Content = "Codex", Tag = ProviderId.Codex });
         ProviderBox.Items.Add(new ComboBoxItem { Content = "Copilot", Tag = ProviderId.Copilot });
+        // opencode's name is lower case, as the CLI names itself (OC-D12).
+        ProviderBox.Items.Add(new ComboBoxItem { Content = "opencode", Tag = ProviderId.OpenCode });
         ProviderBox.SelectedItem = ProviderBox.Items.Cast<ComboBoxItem>().First(item => item.Tag is ProviderId id && id == _activeProvider.Id);
         _claudeSearchHint = SearchHint.Text;
         _providerReady = true;
@@ -96,6 +99,7 @@ public partial class SessionWindow
         if (id == _activeProvider.Id) return;
         IProvider next = id == ProviderId.Codex ? (_codex ??= new CodexProvider())
             : id == ProviderId.Copilot ? (_copilot ??= new CopilotProvider())
+            : id == ProviderId.OpenCode ? (_openCode ??= new OpenCodeProvider())
             : _claude;
         _activeProvider = next;
         ProviderStore.Save(_options.StatePath, id);
@@ -103,6 +107,7 @@ public partial class SessionWindow
         _railSignature = null;
         if (IsCodexActive && !_codexRead) _ = LoadCodexHistoryAsync();
         if (IsCopilotActive && !_copilotRead) _ = LoadCopilotHistoryAsync();
+        if (IsOpenCodeActive && !_openCodeRead) _ = LoadOpenCodeHistoryAsync();
         RefreshRail();
     }
 
@@ -115,8 +120,9 @@ public partial class SessionWindow
     {
         var claude = ClaudeSupervision;
         UpdateFilterMark();
-        SearchBox.IsEnabled = claude || IsCodexActive || IsCopilotActive;
-        SearchHint.Text = claude ? _claudeSearchHint : IsCodexActive ? CodexSearchHintText : IsCopilotActive ? CopilotSearchHintText : string.Empty;
+        SearchBox.IsEnabled = claude || IsCodexActive || IsCopilotActive || IsOpenCodeActive;
+        SearchHint.Text = claude ? _claudeSearchHint : IsCodexActive ? CodexSearchHintText : IsCopilotActive ? CopilotSearchHintText
+            : IsOpenCodeActive ? OpenCodeSearchHintText : string.Empty;
         SearchHint.Visibility = SearchBox.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
         if (claude) return;
         TrustButton.Visibility = Visibility.Collapsed;

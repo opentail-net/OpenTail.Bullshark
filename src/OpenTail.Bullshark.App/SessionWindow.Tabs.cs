@@ -62,7 +62,40 @@ public partial class SessionWindow
         /// <see cref="_copilotSearch"/>.
         /// </summary>
         CopilotSearchResults,
+
+        /// <summary>
+        /// A past opencode session's messages, read-only (OC2). Key: the session id, with the opencode provider. Its view is in
+        /// <see cref="_openCodeTranscripts"/>. Copilot's <see cref="CopilotTranscript"/> tab is a different kind and is not used for opencode.
+        /// </summary>
+        OpenCodeTranscript,
+
+        /// <summary>
+        /// The results of a search of past opencode sessions (OC2). One tab, with the key "opencode-search" and the opencode provider. Its view is
+        /// <see cref="_openCodeSearch"/>. Copilot's <see cref="CopilotSearchResults"/> tab is a different kind and is not used for opencode.
+        /// </summary>
+        OpenCodeSearchResults,
     }
+
+    /// <summary>
+    /// Which close a tab gets (<see cref="CloseOrAsk"/>): a plain close, the Copilot or opencode terminal close, the Codex terminal close, or Claude's
+    /// ask-first close of a session tab. Pure: the route is read from the tab's kind and provider.
+    /// </summary>
+    internal enum TabCloseRoute
+    {
+        Plain,
+        Copilot,
+        OpenCode,
+        Codex,
+        ClaudeAsk,
+    }
+
+    /// <summary>The close route of a tab (<see cref="CloseOrAsk"/>). Only a session tab has a terminal close; every other kind closes plainly. Pure.</summary>
+    internal static TabCloseRoute CloseRouteOf(TabKind kind, ProviderId provider) =>
+        kind != TabKind.Session ? TabCloseRoute.Plain
+        : provider == ProviderId.Copilot ? TabCloseRoute.Copilot
+        : provider == ProviderId.OpenCode ? TabCloseRoute.OpenCode
+        : provider != ProviderId.Claude ? TabCloseRoute.Codex
+        : TabCloseRoute.ClaudeAsk;
 
     internal sealed class OpenTab(TabKind kind, string key, string title, ProviderId? provider = null)
     {
@@ -135,6 +168,8 @@ public partial class SessionWindow
         // Under Codex the "+" starts a Codex session (the rail's own action); the Claude run setup is for Claude.
         if (IsCodexActive) NewCodexSession();
         else if (IsCopilotActive) NewCopilotSession();
+        // Under opencode the "+" starts an opencode session in a folder, as Copilot's does (OC2d).
+        else if (IsOpenCodeActive) NewOpenCodeSession();
         else OpenSetupTab(null);
     }
 
@@ -233,6 +268,14 @@ public partial class SessionWindow
             case TabKind.CopilotSearchResults:
                 ShowOnly(_copilotSearch);
                 break;
+
+            case TabKind.OpenCodeTranscript:
+                if (_openCodeTranscripts.TryGetValue(KeyOf(tab), out var openCodeView)) ShowOnly(openCodeView);
+                break;
+
+            case TabKind.OpenCodeSearchResults:
+                ShowOnly(_openCodeSearch);
+                break;
         }
     }
 
@@ -252,6 +295,7 @@ public partial class SessionWindow
         if (tab.Kind == TabKind.Session && tab.Provider == ProviderId.Claude) _hiddenSessions.Add(KeyOf(tab));
         if (tab.Kind == TabKind.CodexTranscript) RemoveCodexTranscript(KeyOf(tab));
         if (tab.Kind == TabKind.CopilotTranscript) RemoveCopilotTranscript(KeyOf(tab));
+        if (tab.Kind == TabKind.OpenCodeTranscript) RemoveOpenCodeTranscript(KeyOf(tab));
         if (tab.Kind == TabKind.Search) ClearSearchFilter();
         if (!ReferenceEquals(_activeTab, tab))
         {
@@ -273,22 +317,23 @@ public partial class SessionWindow
     /// </summary>
     private void CloseOrAsk(OpenTab tab)
     {
-        if (tab.Kind != TabKind.Session)
+        switch (CloseRouteOf(tab.Kind, tab.Provider))
         {
-            CloseTab(tab);
-            return;
-        }
-        // A Copilot tab is the window's own terminal too, with its own wording (G2.7).
-        if (tab.Provider == ProviderId.Copilot)
-        {
-            CloseCopilotTab(tab);
-            return;
-        }
-        // A Codex tab is the window's own terminal: there is no Claude session to stop, so its close only closes the terminal (C3).
-        if (tab.Provider != ProviderId.Claude)
-        {
-            CloseCodexTab(tab);
-            return;
+            case TabCloseRoute.Plain:
+                CloseTab(tab);
+                return;
+            // A Copilot tab is the window's own terminal too, with its own wording (G2.7).
+            case TabCloseRoute.Copilot:
+                CloseCopilotTab(tab);
+                return;
+            // An opencode tab is the window's own terminal, as a Copilot tab is (OC2): its close says opencode keeps the conversation.
+            case TabCloseRoute.OpenCode:
+                CloseOpenCodeTab(tab);
+                return;
+            // A Codex tab is the window's own terminal: there is no Claude session to stop, so its close only closes the terminal (C3).
+            case TabCloseRoute.Codex:
+                CloseCodexTab(tab);
+                return;
         }
 
         var name = TitleOfSession(tab.Key);

@@ -16,7 +16,7 @@ public partial class SessionWindow
     /// <summary>The key of the opencode results tab. One such tab is open at a time.</summary>
     private const string OpenCodeSearchKey = "opencode-search";
 
-    /// <summary>The results of an opencode search, shown in the opencode results tab (<see cref="TabKind.CopilotSearchResults"/>, see the note there).</summary>
+    /// <summary>The results of an opencode search, shown in the opencode results tab (<see cref="TabKind.OpenCodeSearchResults"/>).</summary>
     private readonly ProviderSearchView _openCodeSearch = new ProviderSearchView("opencode") { Visibility = Visibility.Hidden };
 
     /// <summary>Puts the opencode results view in the pane and connects it: a result opens its opencode transcript.</summary>
@@ -41,9 +41,9 @@ public partial class SessionWindow
         }
 
         var rows = OpenCodeSearchRows(query);
-        // The tab is found by its provider as well as its kind: a Copilot results tab is not reused for opencode.
-        var tab = _tabs.FirstOrDefault(t => t.Kind == TabKind.CopilotSearchResults && t.Provider == ProviderId.OpenCode)
-            ?? AddTab(TabKind.CopilotSearchResults, OpenCodeSearchKey, string.Empty, ProviderId.OpenCode);
+        // The tab is found by its kind and its provider: a Copilot results tab is not reused for opencode.
+        var tab = _tabs.FirstOrDefault(t => t.Kind == TabKind.OpenCodeSearchResults && t.Provider == ProviderId.OpenCode)
+            ?? AddTab(TabKind.OpenCodeSearchResults, OpenCodeSearchKey, string.Empty, ProviderId.OpenCode);
         tab.Title = "opencode search: " + ShortenForTab(query, 28);
         SetActive(tab);
         ShowOnly(_openCodeSearch);
@@ -75,6 +75,6 @@ public partial class SessionWindow
     /// <summary>Closes the opencode results tab, when the box is cleared under opencode. The other providers' results tabs are left as they are.</summary>
     private void CloseOpenCodeSearchTab()
     {
-        if (_tabs.FirstOrDefault(t => t.Kind == TabKind.CopilotSearchResults && t.Provider == ProviderId.OpenCode) is { } tab) CloseTab(tab);
+        if (_tabs.FirstOrDefault(t => t.Kind == TabKind.OpenCodeSearchResults && t.Provider == ProviderId.OpenCode) is { } tab) CloseTab(tab);
     }
 }

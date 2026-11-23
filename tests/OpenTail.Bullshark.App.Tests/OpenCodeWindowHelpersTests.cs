@@ -1,6 +1,7 @@
 using OpenTail.Bullshark.App;
 using OpenTail.Bullshark.Core.Library;
 using OpenTail.Bullshark.Core.Providers;
+using OpenTail.Bullshark.Core.Ui;
 using Xunit;
 
 namespace OpenTail.Bullshark.App.Tests;
@@ -100,5 +101,94 @@ public sealed class OpenCodeWindowHelpersTests
 
         Assert.Equal("opencode", lines[0].Kind);
         Assert.Equal("first\nsecond", lines[0].Text);
+    }
+
+    private static SessionWindow.OpenTab Tab(SessionWindow.TabKind kind, ProviderId? provider = null) => new(kind, "tab", "Tab", provider);
+
+    [Fact]
+    public void TheOpenCodeTranscriptTabKeepsTheTranscriptPaneAndTheOpenCodeResultsTabTheSearchPane()
+    {
+        Assert.Equal(PaneKind.Transcript, SessionWindow.PaneOf(Tab(SessionWindow.TabKind.OpenCodeTranscript, ProviderId.OpenCode)));
+        Assert.Equal(PaneKind.Search, SessionWindow.PaneOf(Tab(SessionWindow.TabKind.OpenCodeSearchResults, ProviderId.OpenCode)));
+    }
+
+    [Fact]
+    public void TheCopilotPanesAreUnchanged()
+    {
+        Assert.Equal(PaneKind.Transcript, SessionWindow.PaneOf(Tab(SessionWindow.TabKind.CopilotTranscript, ProviderId.Copilot)));
+        Assert.Equal(PaneKind.Search, SessionWindow.PaneOf(Tab(SessionWindow.TabKind.CopilotSearchResults, ProviderId.Copilot)));
+    }
+
+    [Fact]
+    public void AnOpenCodeSessionTabClosesWithOpenCodesOwnClose()
+    {
+        Assert.Equal(SessionWindow.TabCloseRoute.OpenCode, SessionWindow.CloseRouteOf(SessionWindow.TabKind.Session, ProviderId.OpenCode));
+    }
+
+    [Fact]
+    public void TheOpenCodeTranscriptAndResultsTabsCloseAsPlainTabs()
+    {
+        Assert.Equal(SessionWindow.TabCloseRoute.Plain, SessionWindow.CloseRouteOf(SessionWindow.TabKind.OpenCodeTranscript, ProviderId.OpenCode));
+        Assert.Equal(SessionWindow.TabCloseRoute.Plain, SessionWindow.CloseRouteOf(SessionWindow.TabKind.OpenCodeSearchResults, ProviderId.OpenCode));
+    }
+
+    [Fact]
+    public void TheCloseRoutesOfTheOtherProvidersAreUnchanged()
+    {
+        Assert.Equal(SessionWindow.TabCloseRoute.Copilot, SessionWindow.CloseRouteOf(SessionWindow.TabKind.Session, ProviderId.Copilot));
+        Assert.Equal(SessionWindow.TabCloseRoute.Codex, SessionWindow.CloseRouteOf(SessionWindow.TabKind.Session, ProviderId.Codex));
+        Assert.Equal(SessionWindow.TabCloseRoute.ClaudeAsk, SessionWindow.CloseRouteOf(SessionWindow.TabKind.Session, ProviderId.Claude));
+        Assert.Equal(SessionWindow.TabCloseRoute.Plain, SessionWindow.CloseRouteOf(SessionWindow.TabKind.CopilotTranscript, ProviderId.Copilot));
+        Assert.Equal(SessionWindow.TabCloseRoute.Plain, SessionWindow.CloseRouteOf(SessionWindow.TabKind.CodexSearchResults, ProviderId.Codex));
+        Assert.Equal(SessionWindow.TabCloseRoute.Plain, SessionWindow.CloseRouteOf(SessionWindow.TabKind.Transcript, ProviderId.Claude));
+    }
+
+    [Fact]
+    public void ASavedOpenCodeStartsOnOpenCodeWhetherOrNotCodexIsOffered()
+    {
+        var saved = ProviderChoice.Parse("opencode");
+
+        Assert.Equal(ProviderId.OpenCode, SessionWindow.StartingProviderOf(saved, codexAvailable: true));
+        Assert.Equal(ProviderId.OpenCode, SessionWindow.StartingProviderOf(saved, codexAvailable: false));
+    }
+
+    [Fact]
+    public void TheSavedChoicesOfTheOtherProvidersStartAsBefore()
+    {
+        Assert.Equal(ProviderId.Codex, SessionWindow.StartingProviderOf(ProviderId.Codex, codexAvailable: true));
+        Assert.Equal(ProviderId.Claude, SessionWindow.StartingProviderOf(ProviderId.Codex, codexAvailable: false));
+        Assert.Equal(ProviderId.Copilot, SessionWindow.StartingProviderOf(ProviderId.Copilot, codexAvailable: true));
+        Assert.Equal(ProviderId.Copilot, SessionWindow.StartingProviderOf(ProviderId.Copilot, codexAvailable: false));
+        Assert.Equal(ProviderId.Claude, SessionWindow.StartingProviderOf(ProviderId.Claude, codexAvailable: true));
+        Assert.Equal(ProviderId.Claude, SessionWindow.StartingProviderOf(ProviderChoice.Parse(null), codexAvailable: true));
+    }
+
+    [Fact]
+    public void AnOpenCodeSessionOpenCodeArchivedHasNoArchiveItem()
+    {
+        Assert.Null(SessionWindow.OpenCodeArchiveItemText(archived: true, archivedInOpenCode: true));
+        Assert.Null(SessionWindow.OpenCodeArchiveItemText(archived: false, archivedInOpenCode: true));
+    }
+
+    [Fact]
+    public void AnOpenCodeSessionTheAppMarksShowsArchiveOrUnarchiveAsBefore()
+    {
+        Assert.Equal("Archive", SessionWindow.OpenCodeArchiveItemText(archived: false, archivedInOpenCode: false));
+        Assert.Equal("Unarchive", SessionWindow.OpenCodeArchiveItemText(archived: true, archivedInOpenCode: false));
+    }
+
+    [Fact]
+    public void AContinuePickOfAnOpenCodeSessionIsRefusedWithTheResumeScreenText()
+    {
+        Assert.Equal("The opencode resume screen is not built yet.", SessionWindow.ContinueScreenRefusalOf(ProviderId.OpenCode, copilotListed: true, copilotNotListed: "x"));
+    }
+
+    [Fact]
+    public void TheContinueRefusalsOfTheOtherProvidersAreUnchanged()
+    {
+        Assert.Null(SessionWindow.ContinueScreenRefusalOf(ProviderId.Claude, copilotListed: false, copilotNotListed: "x"));
+        Assert.Null(SessionWindow.ContinueScreenRefusalOf(ProviderId.Codex, copilotListed: false, copilotNotListed: "x"));
+        Assert.Null(SessionWindow.ContinueScreenRefusalOf(ProviderId.Copilot, copilotListed: true, copilotNotListed: "x"));
+        Assert.Equal("x", SessionWindow.ContinueScreenRefusalOf(ProviderId.Copilot, copilotListed: false, copilotNotListed: "x"));
     }
 }

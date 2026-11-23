@@ -34,10 +34,10 @@ public partial class SessionWindow
     /// <summary>The database location of the last read, or null before the first read. Its file path is shown in the empty state.</summary>
     private DatabasePath? _openCodeLocation;
 
-    /// <summary>The tag the opencode rail shows rows for, or null. Only the shared tag menu sets it (a later stage).</summary>
+    /// <summary>The tag the opencode rail shows rows for, or null. The shared tag menu sets it (<see cref="ChooseTag"/>, OC2d).</summary>
     private string? _openCodeTagFilter = null;
 
-    /// <summary>The view the opencode rail shows (All, History or Archived, as Copilot's). Only the shared view menu sets it (a later stage).</summary>
+    /// <summary>The view the opencode rail shows (All, History or Archived, as Copilot's). The shared view menu sets it (<see cref="ChooseOpenCodeView"/>, OC2d).</summary>
     private RailFilter _openCodeView = RailFilter.All;
 
     /// <summary>True once the opencode history has been read in this window.</summary>
@@ -267,9 +267,9 @@ public partial class SessionWindow
         var title = OpenCodeRowTitle(mark?.Name, session);
         var detail = RelativeTime(session.LastActivity, _behaviour.State.ClampClockBackwards) + TagsSuffix(mark);
         var line = TwoLine(title, session.Model ?? string.Empty, detail);
-        // The row's kind is the Copilot session kind: the shared rail has no opencode kind (a later stage). Its selection does nothing (ShowRailItemAsync).
+        // The row's kind is the opencode session kind (OC2). Its selection does nothing (ShowRailItemAsync).
         var item = NewItem(ColourEdge(line, mark?.Colour),
-            new RailTag(RailKind.CopilotSession, id, Detail: session.Folder),
+            new RailTag(RailKind.OpenCodeSession, id, Detail: session.Folder),
             NoteTip(mark) + "Double click, or the menu, to resume it in a terminal tab.");
         if (mark?.Archived == true) item.Opacity = 0.55;
         item.ContextMenu = OpenCodeRowMenu(session, title);
@@ -301,14 +301,26 @@ public partial class SessionWindow
     {
         var id = session.Key.SessionId;
         var mark = OpenCodeMarkOf(session) ?? new LibraryEntry();
-        return ProviderRowMenu(
+        var items = new List<(string Header, Action Action)>
+        {
             ("Resume…", () => ResumeOpenCodeScreen(session)),
             ("Resume in a terminal tab", () => ResumeOpenCode(session)),
             ("View transcript", () => OpenCodeTranscriptTab(session)),
             (mark.Pinned ? "Unpin" : "Pin", () => SetOpenCodePinned(id, !mark.Pinned)),
-            (mark.Archived ? "Unarchive" : "Archive", () => SetOpenCodeArchived(id, !mark.Archived)),
-            ("Edit…", () => EditMarkOf(ProviderId.OpenCode, id, title)));
+        };
+        // The archive item is left out for a session opencode archived (OC-D21): the app cannot clear opencode's flag.
+        if (OpenCodeArchiveItemText(mark.Archived, archivedInOpenCode: _openCodeArchived.Contains(session.Key)) is { } archiveText)
+            items.Add((archiveText, () => SetOpenCodeArchived(id, !mark.Archived)));
+        items.Add(("Edit…", () => EditMarkOf(ProviderId.OpenCode, id, title)));
+        return ProviderRowMenu(items.ToArray());
     }
+
+    /// <summary>
+    /// The archive item of an opencode row: "Unarchive" or "Archive" for the app's own mark, or null when opencode archived the session (OC-D21). The
+    /// app can clear only its own mark, so an Unarchive that does nothing is not offered. Pure.
+    /// </summary>
+    internal static string? OpenCodeArchiveItemText(bool archived, bool archivedInOpenCode) =>
+        archivedInOpenCode ? null : archived ? "Unarchive" : "Archive";
 
     /// <summary>Pins or unpins an opencode session. The change is written under its opencode: key (D1).</summary>
     private bool SetOpenCodePinned(string sessionId, bool pinned) =>
@@ -447,5 +459,91 @@ public partial class SessionWindow
         CloseTab(tab);
         DetachTerminal(key);
         SetStatus($"{tab.Title} is closed. opencode keeps the conversation: resume it from the opencode rows.");
+    }
+
+    /// <summary>
+    /// The command a "+" new opencode session runs in a folder (OC2d): the opencode terminal's new command (OC-D8), as Copilot's "+" uses its own. Pure:
+    /// it builds the text and starts nothing. A folder the command builder refuses throws <see cref="ArgumentException"/>.
+    /// </summary>
+    internal static string OpenCodeNewCommandLine(string folder) => OpenCodeOpener.NewCommandLine(folder);
+
+    /// <summary>
+    /// "New opencode session…" (OC2d, the "+" under opencode, as "New Copilot session…" is under Copilot): asks for a folder, then opens opencode there in a
+    /// terminal tab. Cancel starts nothing. A folder the command builder refuses is refused with a status line.
+    /// </summary>
+    private void NewOpenCodeSession()
+    {
+        var dialog = new Microsoft.Win32.OpenFolderDialog { Title = "Choose the folder for the opencode session" };
+        if (dialog.ShowDialog(this) != true) return;
+        var folder = dialog.FolderName;
+        string command;
+        try
+        {
+            command = OpenCodeNewCommandLine(folder);
+        }
+        catch (ArgumentException ex)
+        {
+            SetStatus($"Not started: {ex.Message}");
+            return;
+        }
+        OpenCodeTab("new-" + Guid.NewGuid().ToString("N"), $"opencode: {LeafOf(folder)}", command, folder);
+    }
+
+    /// <summary>The views the opencode rail has (parity P11): All, History and Archived, as the Copilot rail has them.</summary>
+    internal static bool IsOpenCodeView(RailFilter view) => view is RailFilter.All or RailFilter.History or RailFilter.Archived;
+
+    /// <summary>Sets the view the opencode rail shows (parity P11). Claude's views that opencode does not have fall back to All.</summary>
+    private void ChooseOpenCodeView(RailFilter view)
+    {
+        _openCodeView = IsOpenCodeView(view) ? view : RailFilter.All;
+        UpdateFilterMark();
+        RefreshRail();
+    }
+
+    /// <summary>The opencode marks of the sessions in the history: what the opencode tag menu counts (tags P5).</summary>
+    private IEnumerable<LibraryEntry> OpenCodeHistoryMarks() =>
+        _openCodeSessions.Select(session => OpenCodeMarkOf(session)).OfType<LibraryEntry>();
+
+    /// <summary>Adds the opencode tag entries to the filter dropdown (tags P5): one per tag the opencode sessions hold, and "Clear tag filter" while one is set.</summary>
+    private void AddOpenCodeTagItems(ContextMenu menu)
+    {
+        var tags = TagIndex.Counts(OpenCodeHistoryMarks());
+        var active = ActiveOpenCodeTagFilter;
+        if (tags.Count == 0 && active is null)
+        {
+            var reason = _libraryError is null ? "No tags on opencode sessions yet" : "No tags: library.json cannot be read";
+            menu.Items.Add(new MenuItem { Header = reason, IsEnabled = false, Padding = new Thickness(10, 4, 16, 4) });
+            return;
+        }
+        foreach (var tag in tags)
+        {
+            var name = tag.Tag;
+            var item = new MenuItem
+            {
+                Header = $"Filter by tag #{name} ({tag.Count})",
+                IsCheckable = true,
+                IsChecked = SameTag(name, active),
+                Padding = new Thickness(10, 4, 16, 4),
+            };
+            // A click on the tag in use clears it; a click on another tag makes it the one in use.
+            item.Click += (_, _) => ChooseTag(SameTag(name, ActiveOpenCodeTagFilter) ? null : name);
+            menu.Items.Add(item);
+        }
+        if (active is not null)
+        {
+            var clear = new MenuItem { Header = "Clear tag filter", Padding = new Thickness(10, 4, 16, 4) };
+            clear.Click += (_, _) => ChooseTag(null);
+            menu.Items.Add(clear);
+        }
+    }
+
+    /// <summary>An opencode tag that no opencode mark holds any more clears the opencode tag filter, with a status line (tags P5).</summary>
+    private void DropMissingOpenCodeTagFilter()
+    {
+        if (_openCodeTagFilter is null || _libraryError is not null) return;
+        if (TagIndex.Counts(MarksOf(ProviderId.OpenCode).Values).Any(tag => SameTag(tag.Tag, _openCodeTagFilter))) return;
+        _openCodeTagFilter = null;
+        UpdateFilterMark();
+        SetStatus("The tag filter is cleared: no opencode session has that tag any more.");
     }
 }

@@ -109,6 +109,7 @@ public partial class SessionWindow
         }
         var title = digest is not null ? DisplayTitle(digest)
             : provider == ProviderId.Codex ? CodexRowTitle(MarkOf(ProviderId.Codex, id)?.Name, picked)
+            : provider == ProviderId.OpenCode ? OpenCodeRowTitle(MarkOf(ProviderId.OpenCode, id)?.Name, picked)
             : CopilotRowTitle(MarkOf(ProviderId.Copilot, id)?.Name, picked);
 
         // A session whose tab is open is shown, never started a second time (the rule of a resume).
@@ -132,7 +133,8 @@ public partial class SessionWindow
         SetStatus(ContinueDecision.PickedText(title, provider, decision.Mode));
         if (digest is not null) _ = ResumeAsync(digest, decision.Mode);
         else if (provider == ProviderId.Codex) ShowCodexResume(picked, forScreenshot: false, screenshotSummary: false, initialMode: decision.Mode);
-        else ShowCopilotResume(picked, forScreenshot: false, shotMode: string.Empty, initialMode: decision.Mode);
+        // An opencode pick never gets here: its refusal is above (ContinueScreenRefusalOf). It is not handed to Copilot's screen.
+        else if (provider == ProviderId.Copilot) ShowCopilotResume(picked, forScreenshot: false, shotMode: string.Empty, initialMode: decision.Mode);
     }
 
     /// <summary>The providers whose sessions the scope holds: the active provider, or every provider (CN-D1). Codex is listed only where this build offers it.</summary>
@@ -151,10 +153,13 @@ public partial class SessionWindow
     /// </summary>
     private async Task<(bool TimedOut, IReadOnlyList<SessionSummary>? Sessions)> ContinueListAsync(ProviderId provider)
     {
-        var load = provider == ProviderId.Codex ? LoadCodexHistoryAsync() : LoadCopilotHistoryAsync();
+        var load = provider == ProviderId.Codex ? LoadCodexHistoryAsync()
+            : provider == ProviderId.OpenCode ? LoadOpenCodeHistoryAsync()
+            : LoadCopilotHistoryAsync();
         if (await Task.WhenAny(load, Task.Delay(ContinueListWait)) != load) return (true, null);
         await load;
         if (provider == ProviderId.Codex) return (false, _codexRead && !_codexFailed ? _codexSessions : null);
+        if (provider == ProviderId.OpenCode) return (false, _openCodeRead && !_openCodeFailed ? _openCodeSessions : null);
         return (false, _copilotRead && !_copilotFailed ? _copilotSessions : null);
     }
 
@@ -165,7 +170,7 @@ public partial class SessionWindow
     private Dictionary<string, LibraryEntry> ContinueMarks()
     {
         var keyed = new Dictionary<string, LibraryEntry>(StringComparer.Ordinal);
-        foreach (var provider in new[] { ProviderId.Claude, ProviderId.Codex, ProviderId.Copilot })
+        foreach (var provider in new[] { ProviderId.Claude, ProviderId.Codex, ProviderId.Copilot, ProviderId.OpenCode })
         {
             foreach (var pair in MarksOf(provider)) keyed[new SessionKey(provider, pair.Key).ToString()] = pair.Value;
         }
@@ -194,12 +199,21 @@ public partial class SessionWindow
     /// refused here: the screen opens and shows the folder notice, which blocks Start. Each screen's Start checks its folder again.
     /// </summary>
     private string? ContinueScreenRefusal(SessionSummary session) =>
-        ContinueDecision.ScreenRefusal(session.Key.Provider, IsCopilotListed(session.Key.SessionId), CopilotRailText.NotListed);
+        ContinueScreenRefusalOf(session.Key.Provider, IsCopilotListed(session.Key.SessionId), CopilotRailText.NotListed);
+
+    /// <summary>
+    /// The refusal of a Continue pick, by its provider (OC2). An opencode session is refused with the opencode resume screen's own wording, since that
+    /// screen is not built yet (OC2b): nothing opens and nothing starts. Every other provider keeps <see cref="ContinueDecision.ScreenRefusal"/>. Pure.
+    /// </summary>
+    internal static string? ContinueScreenRefusalOf(ProviderId provider, bool copilotListed, string copilotNotListed) =>
+        provider == ProviderId.OpenCode ? OpenCodeResumeScreenNotBuilt
+        : ContinueDecision.ScreenRefusal(provider, copilotListed, copilotNotListed);
 
     /// <summary>Shows the open tab of a session of the given provider. True when there was one to show.</summary>
     private bool ShowOpenContinueTab(ProviderId provider, string id) =>
         provider == ProviderId.Claude ? ShowOpenClaudeTab(id)
         : provider == ProviderId.Codex ? ShowOpenCodexTab(id)
+        : provider == ProviderId.OpenCode ? ShowOpenCodeTab(id)
         : ShowOpenCopilotTab(id);
 
     /// <summary>Shows the terminal tab of a Claude session that is open in this window, as a rail click does. True when there was one to show.</summary>

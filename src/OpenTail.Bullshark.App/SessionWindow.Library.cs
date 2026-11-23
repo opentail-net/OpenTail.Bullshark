@@ -32,6 +32,9 @@ public partial class SessionWindow
     /// <summary>Copilot's marks as they were last read, by session id: the copilot: entries of the same file (G2.3). The Copilot rows read these.</summary>
     private Dictionary<string, LibraryEntry> _copilotMarks = new(StringComparer.Ordinal);
 
+    /// <summary>opencode's marks as they were last read, by session id: the opencode: entries of the same file (OC2d). The opencode rows read these.</summary>
+    private Dictionary<string, LibraryEntry> _openCodeMarks = new(StringComparer.Ordinal);
+
     /// <summary>Why library.json cannot be read, or null when it can (D-L3). While it is set, no mark is shown and nothing is written.</summary>
     private string? _libraryError;
 
@@ -56,6 +59,7 @@ public partial class SessionWindow
             _marks = SessionLibrary.ProviderView(all, ProviderId.Claude);
             _codexMarks = SessionLibrary.ProviderView(all, ProviderId.Codex);
             _copilotMarks = SessionLibrary.ProviderView(all, ProviderId.Copilot);
+            _openCodeMarks = SessionLibrary.ProviderView(all, ProviderId.OpenCode);
             _libraryError = null;
             ReadBusy.Note(false);
         }
@@ -68,6 +72,7 @@ public partial class SessionWindow
             _marks = new Dictionary<string, LibraryEntry>(StringComparer.Ordinal);
             _codexMarks = new Dictionary<string, LibraryEntry>(StringComparer.Ordinal);
             _copilotMarks = new Dictionary<string, LibraryEntry>(StringComparer.Ordinal);
+            _openCodeMarks = new Dictionary<string, LibraryEntry>(StringComparer.Ordinal);
             if (_libraryError is null)
             {
                 AppLog.Write($"library not read: {ex.GetType().Name}");
@@ -79,9 +84,19 @@ public partial class SessionWindow
 
     private LibraryEntry? MarkOf(string sessionId) => _marks.TryGetValue(sessionId, out var entry) ? entry : null;
 
-    /// <summary>The marks of one provider as last read (D1): Codex's for a Codex row, Claude's for everything else.</summary>
-    private Dictionary<string, LibraryEntry> MarksOf(ProviderId provider) =>
-        provider == ProviderId.Codex ? _codexMarks : provider == ProviderId.Copilot ? _copilotMarks : _marks;
+    /// <summary>
+    /// The mark view a provider's rows read (OC2d): the view under the provider's own key in library.json (the name of the view is that key), and
+    /// Claude's for a provider with no view of its own. Pure.
+    /// </summary>
+    internal static ProviderId MarkViewOf(ProviderId provider) =>
+        provider == ProviderId.Codex || provider == ProviderId.Copilot || provider == ProviderId.OpenCode ? provider : ProviderId.Claude;
+
+    /// <summary>The marks of one provider as last read (D1): the view <see cref="MarkViewOf"/> names. Claude's for everything else.</summary>
+    private Dictionary<string, LibraryEntry> MarksOf(ProviderId provider)
+    {
+        var view = MarkViewOf(provider);
+        return view == ProviderId.Codex ? _codexMarks : view == ProviderId.Copilot ? _copilotMarks : view == ProviderId.OpenCode ? _openCodeMarks : _marks;
+    }
 
     /// <summary>A session's mark under one provider's key, or null (D1).</summary>
     private LibraryEntry? MarkOf(ProviderId provider, string sessionId) => MarksOf(provider).TryGetValue(sessionId, out var entry) ? entry : null;

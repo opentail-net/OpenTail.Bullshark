@@ -10,6 +10,7 @@ using OpenTail.Bullshark.Core.Codex;
 using OpenTail.Bullshark.Core.Copilot;
 using OpenTail.Bullshark.Core.Folders;
 using OpenTail.Bullshark.Core.Health;
+using OpenTail.Bullshark.Core.OpenCode;
 using OpenTail.Bullshark.Core.Providers;
 using OpenTail.Bullshark.Core.Setup;
 using OpenTail.Bullshark.Core.Supervisor;
@@ -45,6 +46,9 @@ public partial class SessionWindow : Window
 
     /// <summary>Copilot, made when it is first chosen or saved (G2.1). Null until then.</summary>
     private CopilotProvider? _copilot;
+
+    /// <summary>opencode, made when it is first chosen or saved (OC2). Null until then.</summary>
+    private OpenCodeProvider? _openCode;
 
     /// <summary>The window's Claude provider: the history and digests the rail and the transcript tabs read (R-2).</summary>
     private ClaudeProvider ActiveClaude => _claude;
@@ -204,6 +208,16 @@ public partial class SessionWindow : Window
     /// <summary>The element the left pane showed last (R10). Showing a different element clears the lookup misses.</summary>
     private UIElement? _paneElement;
 
+    /// <summary>
+    /// The provider a window starts on, from the saved choice (C4, G2.1, OC2). Codex starts only where this build offers it (C-D2); a saved Copilot or
+    /// opencode starts its own rail; anything else is Claude, as before. Pure.
+    /// </summary>
+    internal static ProviderId StartingProviderOf(ProviderId saved, bool codexAvailable) =>
+        saved == ProviderId.Codex && codexAvailable ? ProviderId.Codex
+        : saved == ProviderId.Copilot ? ProviderId.Copilot
+        : saved == ProviderId.OpenCode ? ProviderId.OpenCode
+        : ProviderId.Claude;
+
     public SessionWindow(LaunchOptions options)
     {
         // A test process must never supervise: a window built by a test with the owner's default state once resumed the owner's real planner session
@@ -213,12 +227,15 @@ public partial class SessionWindow : Window
         _claude = new ClaudeProvider(new ProviderPaths(options.ClaudeHome ?? ClaudePaths.ConfigDir(), options.ProjectsRoot, options.ArchiveRoot));
         // The provider the saved choice names (C4). Codex is started only where this build offers it (C-D2): otherwise Claude, as before.
         _activeProvider = _claude;
-        var savedProvider = ProviderStore.Load(options.StatePath);
-        if (savedProvider == ProviderId.Codex && CodexProvider.Available)
+        var startingProvider = StartingProviderOf(ProviderStore.Load(options.StatePath), CodexProvider.Available);
+        if (startingProvider == ProviderId.Codex)
             _activeProvider = _codex = new CodexProvider();
         // Copilot is offered on both targets (G2.1): the saved choice starts its rail.
-        else if (savedProvider == ProviderId.Copilot)
+        else if (startingProvider == ProviderId.Copilot)
             _activeProvider = _copilot = new CopilotProvider();
+        // A saved opencode starts its rail (OC2), so it never starts on Claude.
+        else if (startingProvider == ProviderId.OpenCode)
+            _activeProvider = _openCode = new OpenCodeProvider();
         // The version probes (R4). Their recheck window is read from the behaviour settings at each check, so they are made here (see _claudeVersion).
         _claudeVersion = ToolVersionProbe.ForClaude(new ProcessCliRunner(), () => _behaviour.Versions.RecheckWindow);
         _codexVersion = ToolVersionProbe.ForCodex(new ProcessCliRunner("cmd.exe"), () => _behaviour.Versions.RecheckWindow);
@@ -267,6 +284,7 @@ public partial class SessionWindow : Window
         InitSearch();
         InitCodexSearch();
         InitCopilotSearch();
+        InitOpenCodeSearch();
         InitChanges();
         InitReview();
         InitStorage();
@@ -291,6 +309,8 @@ public partial class SessionWindow : Window
             if (IsCodexActive) _ = LoadCodexHistoryAsync();
             // The Copilot history is read at start too when Copilot is the window's provider (G2.1).
             if (IsCopilotActive) _ = LoadCopilotHistoryAsync();
+            // The opencode history is read at start too when opencode is the window's provider (OC2).
+            if (IsOpenCodeActive) _ = LoadOpenCodeHistoryAsync();
             await PassAndRefreshAsync();
             if (_options.OpenSessionId is { } openId) await OpenHistorySessionAsync(openId);
             // --find (test only): the shown transcript opens with its find bar on the query, as a search result does (find and jump batch, T4).

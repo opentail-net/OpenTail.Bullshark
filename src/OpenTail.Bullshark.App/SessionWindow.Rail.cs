@@ -50,6 +50,9 @@ public enum RailKind
 
     /// <summary>"New Copilot session…" under Copilot. Selecting it asks for a folder and opens Copilot there in a terminal tab.</summary>
     CopilotNew,
+
+    /// <summary>An opencode session from its history (OC2). Key: its session id. Its action is a resume in a terminal tab, from its menu or a double click.</summary>
+    OpenCodeSession,
 }
 
 /// <summary>The meaning of one rail item. Detail carries the folder path for folder items.</summary>
@@ -135,8 +138,9 @@ public partial class SessionWindow
         // Under Codex the label shows Codex's own view and tag (parity P11, tags P5): the Claude view does not apply to the Codex rail. The grouping does (G-D4).
         var codex = IsCodexActive;
         var copilot = IsCopilotActive;
-        var tag = codex ? ActiveCodexTagFilter : copilot ? ActiveCopilotTagFilter : ActiveTagFilter;
-        var view = (codex ? _codexView : copilot ? _copilotView : _filter).ToString().ToLowerInvariant();
+        var opencode = IsOpenCodeActive;
+        var tag = codex ? ActiveCodexTagFilter : copilot ? ActiveCopilotTagFilter : opencode ? ActiveOpenCodeTagFilter : ActiveTagFilter;
+        var view = (codex ? _codexView : copilot ? _copilotView : opencode ? _openCodeView : _filter).ToString().ToLowerInvariant();
         var grouping = _groupByTag ? " · by tag" : string.Empty;
         FilterMark.Text = $"show: {view}{(tag is null ? string.Empty : " · #" + tag)}{grouping} ▾";
         // The label may be cut with an ellipsis when the tag is long, so the tooltip names the tag in full.
@@ -183,6 +187,15 @@ public partial class SessionWindow
             foreach (var view in _viewItems.Where(item => item.Tag is RailFilter copilotView && IsCopilotView(copilotView))) _filterMenu.Items.Add(view);
             _filterMenu.Items.Add(new Separator());
             AddCopilotTagItems(_filterMenu);
+            AddGroupingItems(_filterMenu);
+            return;
+        }
+        // Under opencode the dropdown is opencode's own views and tags, as Copilot's are (OC2d).
+        if (IsOpenCodeActive)
+        {
+            foreach (var view in _viewItems.Where(item => item.Tag is RailFilter openCodeView && IsOpenCodeView(openCodeView))) _filterMenu.Items.Add(view);
+            _filterMenu.Items.Add(new Separator());
+            AddOpenCodeTagItems(_filterMenu);
             AddGroupingItems(_filterMenu);
             return;
         }
@@ -258,11 +271,13 @@ public partial class SessionWindow
         // Under Codex the tag is Codex's own filter (tags P5). Claude's filter is not changed by it.
         if (IsCodexActive) _codexTagFilter = wanted;
         else if (IsCopilotActive) _copilotTagFilter = wanted;
+        else if (IsOpenCodeActive) _openCodeTagFilter = wanted;
         else _tagFilter = wanted;
         UpdateFilterMark();
         SetStatus(wanted is null ? "Tag filter cleared."
             : IsCodexActive ? $"Showing the Codex sessions tagged #{wanted}."
             : IsCopilotActive ? $"Showing the Copilot sessions tagged #{wanted}."
+            : IsOpenCodeActive ? $"Showing the opencode sessions tagged #{wanted}."
             : $"Showing the rows tagged #{wanted}. Needs you is never filtered.");
         RefreshRail();
     }
@@ -305,6 +320,11 @@ public partial class SessionWindow
             ChooseCopilotView(filter);
             return;
         }
+        if (IsOpenCodeActive)
+        {
+            ChooseOpenCodeView(filter);
+            return;
+        }
         _filter = filter;
         UpdateFilterMark();
         RefreshRail();
@@ -315,7 +335,7 @@ public partial class SessionWindow
     {
         if (_filterMenu is null) return;
         RebuildTagMenu();
-        var current = IsCodexActive ? _codexView : IsCopilotActive ? _copilotView : _filter;
+        var current = IsCodexActive ? _codexView : IsCopilotActive ? _copilotView : IsOpenCodeActive ? _openCodeView : _filter;
         foreach (var item in _filterMenu.Items.OfType<MenuItem>())
             if (item.Tag is RailFilter view) item.IsChecked = view == current;
         _filterMenu.IsOpen = true;
@@ -457,6 +477,7 @@ public partial class SessionWindow
         DropMissingTagFilter();
         DropMissingCodexTagFilter();
         DropMissingCopilotTagFilter();
+        DropMissingOpenCodeTagFilter();
         // The context window and the silent threshold come from the pass's settings, or from the file as it is now (a change in Settings shows at once,
         // ctx meter, Part 1). A pass passes what it read on the pool thread (perf and testability batch, Q2).
         var settings = passSettings ?? SettingsNow();
@@ -487,6 +508,12 @@ public partial class SessionWindow
         if (IsCopilotActive)
         {
             RefreshCopilotRail(stored);
+            return;
+        }
+        // Under opencode the rail lists opencode's history only (OC2). The Claude records above are still read, so the Claude tabs stay in step.
+        if (IsOpenCodeActive)
+        {
+            RefreshOpenCodeRail(stored);
             return;
         }
 
@@ -820,9 +847,9 @@ public partial class SessionWindow
             return;
         }
 
-        // A Codex terminal tab keeps its pane when no row is selected (found reading the code, 2026-11-21, not yet seen on screen). Codex's rows are not
-        // Claude's session rows, so the policy below would show the setup page over the terminal, or select a folder. Claude's policy is unchanged.
-        if (_activeTab is { Kind: TabKind.Session } activeTab && (activeTab.Provider == ProviderId.Codex || activeTab.Provider == ProviderId.Copilot))
+        // A Codex, Copilot or opencode terminal tab keeps its pane when no row is selected (found reading the code, 2026-11-21, not yet seen on screen).
+        // Their rows are not Claude's session rows, so the policy below would show the setup page over the terminal, or select a folder. Claude's policy is unchanged.
+        if (_activeTab is { Kind: TabKind.Session } activeTab && KeepsPaneWithoutRow(activeTab.Provider))
         {
             _selected = null;
             return;
@@ -859,8 +886,14 @@ public partial class SessionWindow
         }
     }
 
+    /// <summary>
+    /// True when a terminal session tab of this provider keeps its pane with no row selected: Codex, Copilot and opencode. Claude's session tab does not.
+    /// </summary>
+    internal static bool KeepsPaneWithoutRow(ProviderId provider) =>
+        provider == ProviderId.Codex || provider == ProviderId.Copilot || provider == ProviderId.OpenCode;
+
     /// <summary>The pane kind of a tab, for the selection policy (Core). Null for no tab.</summary>
-    private static PaneKind? PaneOf(OpenTab? tab) => tab?.Kind switch
+    internal static PaneKind? PaneOf(OpenTab? tab) => tab?.Kind switch
     {
         TabKind.Session => PaneKind.Session,
         TabKind.Setup => PaneKind.Setup,
@@ -876,6 +909,9 @@ public partial class SessionWindow
         // The Copilot transcript and results tabs keep their panes the same way (G2.4, G2.3).
         TabKind.CopilotTranscript => PaneKind.Transcript,
         TabKind.CopilotSearchResults => PaneKind.Search,
+        // The opencode transcript and results tabs keep their panes the same way (OC2).
+        TabKind.OpenCodeTranscript => PaneKind.Transcript,
+        TabKind.OpenCodeSearchResults => PaneKind.Search,
         _ => null,
     };
 
@@ -948,6 +984,11 @@ public partial class SessionWindow
                 ShowOnly(_setup);
                 // Selecting a folder sets the folder field only. The other fields keep what the owner typed.
                 if (tag.Detail is { } folder && Directory.Exists(folder)) _setup.ShowFolder(folder);
+                break;
+
+            // An opencode row shows nothing when it is selected: its action is the resume, from its menu or a double click (OC2). The Copilot row has no
+            // case here either, so it does the same.
+            case RailKind.OpenCodeSession:
                 break;
         }
     }
