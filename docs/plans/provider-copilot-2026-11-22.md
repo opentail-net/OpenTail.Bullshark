@@ -1,6 +1,6 @@
 # GitHub Copilot CLI as a third provider (plan, 2026-11-22; revision 2 after review)
 
-Status: **plan, nothing built.** Research: `docs/research/copilot-cli-research-2026-11-22.md`. Review: `docs/plans/provider-copilot-2026-11-22-review-notes.md` (Sonnet, findings C1 to C22; each one's disposition is in the table at the end). Design rules come from `provider-codex-2026-11-21.md`; where this plan copies a Codex decision, it names it.
+Status (corrected 2026-11-23): **built and shipped.** The build's checkboxes below were not ticked while the work was done, so an unticked box here does not mean open work. The current state is in `docs/plans/00-current-work.md`: the open items are the owner decisions G-O1 to G-O5, the optional stage G5, and the owner's live checks. Original status line: plan, nothing built. Research: `docs/research/copilot-cli-research-2026-11-22.md`. Review: `docs/plans/provider-copilot-2026-11-22-review-notes.md` (Sonnet, findings C1 to C22; each one's disposition is in the table at the end). Design rules come from `provider-codex-2026-11-21.md`; where this plan copies a Codex decision, it names it.
 
 ## Goal
 
