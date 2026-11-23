@@ -12,9 +12,7 @@ Need multiple sessions? Sure, you can add each in a new tab.
 
 ## What it is
 
-OpenTail.Bullshark is a session manager for AI coding CLIs: Claude Code, OpenAI Codex CLI and GitHub Copilot CLI. A window shows each session as a tab. For Claude Code, it keeps a **planner** session and a **coder** session running, gives each one its first direction, and restarts them if they stop. The window is the supervisor: it starts when the owner opens it, and watches the Claude sessions while it is open. There is no log-on startup (P4, owner decision of 2026-11-15).
-
-**Supervision is for Claude sessions only.** The supervisor runs Claude sessions; Codex and Copilot sessions are listed, read, resumed and summarised, not supervised (see [Providers](#providers)).
+Your AI coding sessions get a home. Each one is a tab, whether it's Claude Code, OpenAI Codex CLI or GitHub Copilot CLI. Claude Code sessions get more: the window keeps a **planner** and a **coder** running together, gives each its first direction, and restarts them if they stop. It does that while it is open, and nothing starts at log-on (P4, owner decision of 2026-11-15). Codex and Copilot sessions are listed, read, resumed and summarised, but not supervised (see [Providers](#providers)).
 
 Sessions are long-lived. A session is not closed after a task, so its context carries on from one day to the next.
 
