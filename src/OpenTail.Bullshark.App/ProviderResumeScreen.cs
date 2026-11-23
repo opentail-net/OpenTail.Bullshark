@@ -114,7 +114,7 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
     private CancellationTokenSource? _cts;
     private int _request;
     private bool _busy;
-    private string? _previewText;
+    private readonly ResumePreviewPane _preview;
     private KeptSummary? _kept;
 
     /// <summary>The platform the Start menu picks (RS-D3): the provider's own by default, and back to it when the mode leaves a summary.</summary>
@@ -143,6 +143,7 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
         _blocksStart = blocksStart;
         _close = close;
         _target = hooks.Provider;
+        _preview = new ResumePreviewPane(controls.PreviewHeader, controls.PreviewBox, controls.PreviewBlock, controls.PreviewNote);
 
         var wording = hooks.Wording;
         _c.FullChoice.Content = ProviderResumeRules.ModeLabel(ProviderResumeMode.Full, wording);
@@ -330,17 +331,13 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
         ShowTargetMenu(free && inSummary);
         Enable(_c.MakeSummaryButton, free && mode == ProviderResumeMode.Summary && turnsValid);
         Enable(_c.RememberBox, free);
-        var previewReady = _previewText is not null;
+        var previewReady = _preview.Text is not null;
         Enable(_c.CopyButton, free && previewReady);
         _hooks.RefreshOwnControls(choice, mode, free);
         Enable(_c.StartButton, free && !_blocksStart && _hooks.StartReady(choice) && ProviderResumeRules.CanStart(mode, previewReady, KeptMatches(choice)));
     }
 
-    private static void Enable(UIElement element, bool enabled)
-    {
-        element.IsEnabled = enabled;
-        element.Opacity = enabled ? 1 : 0.5;
-    }
+    private static void Enable(UIElement element, bool enabled) => ResumeScreenElements.Enable(element, enabled);
 
     /// <summary>The Make summary button: makes the summary now, once, for the level and turns on screen.</summary>
     public void MakeSummary()
@@ -427,30 +424,14 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
             ShowMessage(preview.Problem ?? "This session has no messages to continue from, so Start is off.", problem: preview.Problem is not null);
             return;
         }
-        _previewText = preview.Text;
-        _c.PreviewHeader.Text = ProviderResumeRules.SizeLine(preview.Text.Length);
-        _c.PreviewHeader.ClearValue(TextBlock.ForegroundProperty);
-        _c.PreviewBox.Text = preview.Text;
-        _c.PreviewBox.CaretIndex = 0;
-        _c.PreviewBox.ScrollToHome();
-        _c.PreviewNote.Visibility = Visibility.Collapsed;
-        _c.PreviewBlock.Visibility = Visibility.Visible;
+        _preview.Show(preview.Text, ProviderResumeRules.SizeLine(preview.Text.Length));
     }
 
     /// <summary>Puts a built preview on screen without a request (the window's test seam: TargetChooserTests). Nothing is built or sent.</summary>
     public void ShowBuiltPreview(TPreview preview) => ShowPreview(preview);
 
     /// <summary>Shows one line in the preview area and no text. A problem is shown in the danger colour. There is then no text for Start.</summary>
-    private void ShowMessage(string message, bool problem)
-    {
-        _previewText = null;
-        _c.PreviewHeader.Text = message;
-        if (problem) _c.PreviewHeader.SetResourceReference(TextBlock.ForegroundProperty, "UiDanger");
-        else _c.PreviewHeader.ClearValue(TextBlock.ForegroundProperty);
-        _c.PreviewBox.Text = string.Empty;
-        _c.PreviewNote.Visibility = Visibility.Collapsed;
-        _c.PreviewBlock.Visibility = Visibility.Visible;
-    }
+    private void ShowMessage(string message, bool problem) => _preview.ShowMessage(message, problem);
 
     /// <summary>
     /// Shows a failed preview: the problem in the danger colour, and no text. A summary that was not made falls back to In full (ResumeDefaults): In full
@@ -469,32 +450,10 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
     }
 
     /// <summary>Takes the preview away. The text is cleared too, so no stale text stays in the dialog.</summary>
-    private void HidePreview()
-    {
-        _previewText = null;
-        _c.PreviewBlock.Visibility = Visibility.Collapsed;
-        _c.PreviewBox.Text = string.Empty;
-        _c.PreviewNote.Visibility = Visibility.Collapsed;
-    }
+    private void HidePreview() => _preview.Hide();
 
     /// <summary>The Copy button: puts the shown text on the clipboard. Nothing is sent to a session.</summary>
-    public void Copy()
-    {
-        if (_previewText is not { } text) return;
-        try
-        {
-            Clipboard.SetText(text);
-            _c.PreviewNote.Text = "Copied to the clipboard. Nothing was sent to a session.";
-            _c.PreviewNote.ClearValue(TextBlock.ForegroundProperty);
-        }
-        catch (ExternalException)
-        {
-            // Another program holds the clipboard: the owner can press Copy again.
-            _c.PreviewNote.Text = "The clipboard is busy. Press Copy again.";
-            _c.PreviewNote.SetResourceReference(TextBlock.ForegroundProperty, "UiDanger");
-        }
-        _c.PreviewNote.Visibility = Visibility.Visible;
-    }
+    public void Copy() => _preview.Copy();
 
     /// <summary>
     /// Start: the choice and the text shown, and the dialog closes. Start is off unless the choice is ready (<see cref="ProviderResumeRules.CanStart"/>),
@@ -505,10 +464,10 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
         if (_blocksStart) return;
         var choice = Selected(out _);
         if (choice is null || _busy) return;
-        if (!ProviderResumeRules.CanStart(choice.SharedMode, _previewText is not null, KeptMatches(choice))) return;
+        if (!ProviderResumeRules.CanStart(choice.SharedMode, _preview.Text is not null, KeptMatches(choice))) return;
         if (!_hooks.StartReady(choice)) return;
         Choice = choice.WithTarget(StartTarget(choice.SharedMode)).WithRemember(_c.RememberBox.IsChecked == true);
-        PreviewText = choice.SharedMode == ProviderResumeMode.Full ? null : _previewText;
+        PreviewText = choice.SharedMode == ProviderResumeMode.Full ? null : _preview.Text;
         KeptSummary = _kept;
         _close();
     }
