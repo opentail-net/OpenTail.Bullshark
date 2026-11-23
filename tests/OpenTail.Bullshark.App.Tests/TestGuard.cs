@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Management;
 using System.Runtime.CompilerServices;
 
 namespace OpenTail.Bullshark.App.Tests;
@@ -13,7 +14,7 @@ internal static class TestGuard
     /// <summary>The name of the environment flag the app checks (the same name as in the app's RunningUnderTest).</summary>
     public const string Flag = "OPENTAIL_BULLSHARK_UNDER_TEST";
 
-    /// <summary>The number of claude.exe processes when the test assembly loaded: the count the run is compared with.</summary>
+    /// <summary>The number of claude.exe processes this run started when the test assembly loaded: the count the run is compared with.</summary>
     public static int ClaudeBefore { get; private set; } = -1;
 
     [ModuleInitializer]
@@ -23,17 +24,45 @@ internal static class TestGuard
         ClaudeBefore = ClaudeCount();
     }
 
-    /// <summary>The number of running claude.exe processes now. Read-only: the processes are listed and disposed, never stopped.</summary>
+    /// <summary>
+    /// The number of claude.exe processes now that this test host started, directly or through another of its processes. A Claude session the owner
+    /// starts on the same machine during the run is not counted, so it cannot fail the run (the continue plan, 2026-11-23). Read-only: the process list
+    /// is read and nothing is stopped.
+    /// </summary>
     public static int ClaudeCount()
     {
-        var processes = Process.GetProcessesByName("claude");
-        try
+        var children = new Dictionary<int, List<int>>();
+        var claude = new HashSet<int>();
+        using (var searcher = new ManagementObjectSearcher("SELECT ProcessId, ParentProcessId, Name FROM Win32_Process"))
+        using (var all = searcher.Get())
         {
-            return processes.Length;
+            foreach (var item in all)
+            {
+                var process = (ManagementObject)item;
+                var id = Convert.ToInt32(process["ProcessId"]);
+                var parent = Convert.ToInt32(process["ParentProcessId"]);
+                if (string.Equals(process["Name"] as string, "claude.exe", StringComparison.OrdinalIgnoreCase)) claude.Add(id);
+                if (!children.TryGetValue(parent, out var list)) children[parent] = list = new List<int>();
+                list.Add(id);
+                process.Dispose();
+            }
         }
-        finally
+
+        var count = 0;
+        var seen = new HashSet<int>();
+        var queue = new Queue<int>();
+        queue.Enqueue(Environment.ProcessId);
+        while (queue.Count > 0)
         {
-            foreach (var process in processes) process.Dispose();
+            var parent = queue.Dequeue();
+            if (!children.TryGetValue(parent, out var kids)) continue;
+            foreach (var kid in kids)
+            {
+                if (!seen.Add(kid)) continue;
+                if (claude.Contains(kid)) count++;
+                queue.Enqueue(kid);
+            }
         }
+        return count;
     }
 }
