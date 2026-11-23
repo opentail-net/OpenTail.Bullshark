@@ -69,6 +69,7 @@ The supervisor is the pass that starts, resumes and watches the `claude` session
 - [ ] `ProcessCliRunner` kills the whole process tree on a 60 s timeout. For a `--bg` launch this may also kill the background session it started.
   And if the background process inherits the redirected pipes, the output read waits until it exits. The live tests pass today, so neither seems
   to happen, but nobody has checked on purpose.
+  Checked 2026-11-23, by reading the code and the owner's logs (no live launch was made). The launch is `ClaudeCli.StartBackgroundAsync`: it runs `claude --bg` through `ProcessCliRunner` with the 60 s `ShortTimeout`, so a timeout does kill the tree. The owner's `app.log` has no launch timeout. Its one `claude --bg` failure (2026-11-14) is a trust exit, not a timeout. The pipe half is already bounded by the output drain limit (round 12, A4), so only the tree-kill question is open. Whether a launched session is a child of the launcher is not known: one real launch with a timeout would show it (gate G3). Options for the owner: (a) on a launch timeout, stop only the launcher and leave its children; (b) a longer launch timeout; (c) keep it as it is. Not changed.
 
 ## 6. Known open issues from finished plans (engineering, not visual)
 
