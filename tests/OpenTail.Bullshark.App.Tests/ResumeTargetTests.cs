@@ -98,7 +98,7 @@ public sealed class ResumeTargetTests
     [Fact]
     public void WithTheFlagOnTheConstantCopilotIsATargetFromASummaryOnly()
     {
-        // PP-D2 (2026-11-23): Copilot is an enabled target. From a summary it is allowed; a full or last-turns start stays in the source platform.
+        // PP-D2 (2026-11-23): Copilot is an enabled target. From a summary it is allowed; a full start stays in the source platform.
         Assert.True(ResumeTarget.Allowed(ProviderId.Claude, ContinueMode.Summary, ProviderId.Copilot));
         Assert.Null(ResumeTarget.RefusalReason(ProviderId.Claude, ContinueMode.Summary, ProviderId.Copilot));
         Assert.False(ResumeTarget.Allowed(ProviderId.Claude, ContinueMode.Full, ProviderId.Copilot));
@@ -109,10 +109,10 @@ public sealed class ResumeTargetTests
     public void ACrossPlatformFullOrLastTurnsStartIsRefusedWithItsExactReason()
     {
         Assert.Equal(
-            "Only a summary can start in another platform. A full or last-turns resume stays in Claude.",
+            "Only a summary can start in another platform. A full resume stays in Claude.",
             ResumeTarget.RefusalReason(ProviderId.Claude, ContinueMode.Full, ProviderId.Codex));
         Assert.Equal(
-            "Only a summary can start in another platform. A full or last-turns resume stays in Copilot.",
+            "Only a summary can start in another platform. A full resume stays in Copilot.",
             ResumeTarget.RefusalReason(ProviderId.Copilot, ContinueMode.LastTurns, ProviderId.Claude));
     }
 
@@ -128,7 +128,7 @@ public sealed class ResumeTargetTests
     public void WhenBothRulesFailTheModeReasonComesFirst()
     {
         Assert.Equal(
-            "Only a summary can start in another platform. A full or last-turns resume stays in Claude.",
+            "Only a summary can start in another platform. A full resume stays in Claude.",
             ResumeTarget.RefusalReason(ProviderId.Claude, ContinueMode.Full, ProviderId.Copilot, copilotEnabled: false));
     }
 

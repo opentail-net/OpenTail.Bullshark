@@ -34,7 +34,7 @@ public sealed class ContinueStartModeTests
     public void EachContinueModeOpensTheSharedModeAndNoModeGivesNone()
     {
         Assert.Equal(ProviderResumeMode.Full, ProviderResumeRules.StartMode(ContinueMode.Full));
-        Assert.Equal(ProviderResumeMode.LastTurns, ProviderResumeRules.StartMode(ContinueMode.LastTurns));
+        Assert.Equal(ProviderResumeMode.Summary, ProviderResumeRules.StartMode(ContinueMode.LastTurns));
         Assert.Equal(ProviderResumeMode.Summary, ProviderResumeRules.StartMode(ContinueMode.Summary));
         Assert.Null(ProviderResumeRules.StartMode(null));
     }
@@ -126,20 +126,17 @@ public sealed class ContinueStartModeTests
     }
 
     [Fact]
-    public void ClaudeOpenedOnTheLastTurnsChecksTheTailRadioAndMakesNoCall()
+    public void ClaudeOpenedOnTheLastTurnsOpensOnTheSummaryRadioAndMakesNoCall()
     {
         UiThread.Run(() =>
         {
             var calls = new List<ResumeMode>();
             var prompt = NewClaudePrompt(500_000, calls, ContinueMode.LastTurns);
 
+            // A stored last-turns mode reads as Summary (RS-D27): the summary radio is checked and nothing is called at open.
             Assert.False(Checked(Named<RadioButton>(prompt, "FullChoice")));
-            Assert.False(Checked(Named<RadioButton>(prompt, "SummaryChoice")));
-            Assert.True(Checked(Named<RadioButton>(prompt, "TailChoice")));
-            Assert.Equal(Visibility.Visible, Named<UIElement>(prompt, "TurnsBlock").Visibility);
-            Assert.Equal(
-                "No model call. The last turns are copied word for word into a new session. The new session runs at opus high.",
-                Named<TextBlock>(prompt, "CostText").Text);
+            Assert.True(Checked(Named<RadioButton>(prompt, "SummaryChoice")));
+            Assert.False(Checked(Named<RadioButton>(prompt, "TailChoice")));
             Assert.Empty(calls);
         });
     }
@@ -223,16 +220,17 @@ public sealed class ContinueStartModeTests
     }
 
     [Fact]
-    public void CodexOpenedOnTheLastTurnsChecksTheLastTurnsRadioAndBuildsItsTextOnce()
+    public void CodexOpenedOnTheLastTurnsOpensOnTheSummaryRadioAndMakesNoCall()
     {
         UiThread.Run(() =>
         {
             var calls = new List<CodexResumeMode>();
             var prompt = NewCodexPrompt(calls, ContinueMode.LastTurns);
 
-            Assert.True(Checked(Named<RadioButton>(prompt, "TailChoice")));
-            Assert.Equal(new[] { CodexResumeMode.LastTurns }, calls);
-            Assert.Equal(SampleText, Named<TextBox>(prompt, "PreviewBox").Text);
+            // A stored last-turns mode reads as Summary (RS-D27): nothing is called at open.
+            Assert.True(Checked(Named<RadioButton>(prompt, "SummaryChoice")));
+            Assert.False(Checked(Named<RadioButton>(prompt, "TailChoice")));
+            Assert.Empty(calls);
         });
     }
 
@@ -341,16 +339,17 @@ public sealed class ContinueStartModeTests
     }
 
     [Fact]
-    public void CopilotOpenedOnTheLastTurnsChecksTheLastTurnsRadioAndBuildsItsTextOnce()
+    public void CopilotOpenedOnTheLastTurnsOpensOnTheSummaryRadioAndMakesNoCall()
     {
         UiThread.Run(() =>
         {
             var calls = new List<CopilotResumeMode>();
             var prompt = NewCopilotPrompt(calls, ContinueMode.LastTurns);
 
-            Assert.True(Checked(Named<RadioButton>(prompt, "TailChoice")));
-            Assert.Equal(new[] { CopilotResumeMode.LastTurns }, calls);
-            Assert.Equal(SampleText, Named<TextBox>(prompt, "PreviewBox").Text);
+            // A stored last-turns mode reads as Summary (RS-D27): nothing is called at open.
+            Assert.True(Checked(Named<RadioButton>(prompt, "SummaryChoice")));
+            Assert.False(Checked(Named<RadioButton>(prompt, "TailChoice")));
+            Assert.Empty(calls);
         });
     }
 

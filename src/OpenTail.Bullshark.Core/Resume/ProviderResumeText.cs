@@ -36,16 +36,28 @@ public static class ProviderResumeText
         string assistant,
         int turns = ResumeText.DefaultTurns,
         int maxTokens = ResumeText.TailTokenCap,
+        int maxChars = int.MaxValue) =>
+        TailWithTurns(lines, assistant, turns, maxTokens, maxChars).Text;
+
+    /// <summary>
+    /// <see cref="Tail"/> with the number of turns it keeps (<see cref="ResumeText.TailWithTurns"/> for the provider's messages). The turns kept are the ones
+    /// <see cref="ResumeText.TurnsLeftOut"/> leaves, the same split the summary uses (RS-D23), cut by <paramref name="maxChars"/>.
+    /// </summary>
+    public static (string Text, int Turns) TailWithTurns(
+        IReadOnlyList<TranscriptLine> lines,
+        string assistant,
+        int turns = ResumeText.DefaultTurns,
+        int maxTokens = ResumeText.TailTokenCap,
         int maxChars = int.MaxValue)
     {
-        if (turns <= 0 || maxChars <= 0) return string.Empty;
-        var chosen = SplitTurns(lines).TakeLast(turns).ToList();
-        while (chosen.Count > 1 && chosen.Sum(turn => ResumeText.EstimateTokens(Render(turn, assistant))) > maxTokens) chosen.RemoveAt(0);
-
-        var rendered = chosen.Select(turn => Render(turn, assistant)).ToList();
+        if (turns <= 0 || maxChars <= 0) return (string.Empty, 0);
+        var first = ResumeText.TurnsLeftOut(lines, turns, maxTokens, turn => ResumeText.EstimateTokens(Render(turn, assistant)));
+        var rendered = SplitTurns(lines).Skip(first).Select(turn => Render(turn, assistant)).ToList();
         while (rendered.Count > 1 && Joined(rendered).Length > maxChars) rendered.RemoveAt(0);
         if (rendered.Count == 1) rendered[0] = ResumeText.CutMiddle(rendered[0], maxChars);
-        return Joined(rendered);
+        var text = Joined(rendered);
+        // A latest turn cut to nothing (too few characters for its marker) keeps no text, so it counts as no turn kept.
+        return (text, text.Length == 0 ? 0 : rendered.Count);
     }
 
     /// <summary>
@@ -80,8 +92,10 @@ public static class ProviderResumeText
     /// It is <see cref="Compose"/> with a different header: the first line names the source platform (<paramref name="sourcePhrase"/>), the level
     /// heading is as <see cref="Compose"/> writes it, and a line says that the new <paramref name="targetPhrase"/> session starts from the summary and
     /// that the source session is not continued. The tail and the closing line are written as <see cref="Compose"/> writes them. There is no session
-    /// line: a cross-platform start is not a continuation of the source session (RS-D5). A summary and its level are required (RS-D2): without them
-    /// the method throws, rather than write a header that names a summary it does not have.
+    /// line: a cross-platform start is not a continuation of the source session (RS-D5).
+    /// With no summary and no level, the start is Zero (RS-D25): two header lines that say the new session starts from the last <paramref name="turns"/>
+    /// turns of the source, then the tail and the closing line. Zero makes no model call, so it needs a tail. A summary and its level go together (RS-D2):
+    /// one without the other throws, and so does a summary that is blank.
     /// </summary>
     public static string ComposeFrom(
         string targetPhrase,
@@ -91,14 +105,28 @@ public static class ProviderResumeText
         string tail,
         int turns)
     {
-        if (string.IsNullOrWhiteSpace(summary) || level is not { } shown)
-            throw new ArgumentException("A cross-platform start needs a summary and its level (RS-D2).");
+        if ((summary is null) != (level is null))
+            throw new ArgumentException("A summary and its level go together (RS-D2).");
+        if (summary is not null && string.IsNullOrWhiteSpace(summary))
+            throw new ArgumentException("A cross-platform start needs a summary with text (RS-D2).");
+        var hasTail = turns > 0 && tail.Length > 0;
+        if (summary is null && !hasTail)
+            throw new ArgumentException("A Zero start needs a tail (RS-D25): there is nothing to start from.");
+
         var text = new StringBuilder();
-        text.AppendLine($"Summary of a {sourcePhrase} session");
-        text.AppendLine($"This new {targetPhrase} session starts from that summary. The {sourcePhrase} session itself is not continued.");
-        text.AppendLine($"## Summary ({shown.ToString().ToLowerInvariant()})");
-        text.AppendLine(Cap(summary.Trim()));
-        if (turns > 0 && tail.Length > 0)
+        if (summary is { } given && level is { } shown)
+        {
+            text.AppendLine($"Summary of a {sourcePhrase} session");
+            text.AppendLine($"This new {targetPhrase} session starts from that summary. The {sourcePhrase} session itself is not continued.");
+            text.AppendLine($"## Summary ({shown.ToString().ToLowerInvariant()})");
+            text.AppendLine(Cap(given.Trim()));
+        }
+        else
+        {
+            text.AppendLine($"Turns from a {sourcePhrase} session");
+            text.AppendLine($"This new {targetPhrase} session starts from the last {turns} turns of that session. The {sourcePhrase} session itself is not continued.");
+        }
+        if (hasTail)
         {
             text.AppendLine();
             text.AppendLine($"## The last {turns} turns, word for word (messages only)");

@@ -39,7 +39,7 @@ public static class CrossPlatformStartText
     /// source's kind, so a Claude reply reads "claude:" in a Codex start). A Claude target is fitted to the Claude command line
     /// (<see cref="ResumeText.FitWith"/>, with <paramref name="commandLineOf"/> measuring the command line the start would make, and
     /// <see cref="ClaudeCli.MaxLaunchCharacters"/> as the limit). A Codex or a Copilot target takes no fit: its start goes through a start file (RS-D11).
-    /// <see cref="ProviderResumeText.ComposeFrom"/> throws when there is no summary or no level (RS-D2).
+    /// <see cref="ProviderResumeText.ComposeFrom"/> throws on a summary without its level, and on a Zero start (no summary) with no tail (RS-D2, RS-D25).
     /// </summary>
     public static ResumeText.FittedStart Build(
         ProviderId source, ProviderId target, string? summary, SummaryLevel? level,
@@ -53,7 +53,7 @@ public static class CrossPlatformStartText
             ArgumentNullException.ThrowIfNull(commandLineOf);
             return ResumeText.FitWith(
                 summary, level, lines, turns, string.Empty, commandLineOf, ClaudeCli.MaxLaunchCharacters,
-                (turnLines, keep, maxChars) => ProviderResumeText.Tail(turnLines, MessageKindOf(source), keep, maxChars: maxChars),
+                (turnLines, keep, maxChars) => ProviderResumeText.TailWithTurns(turnLines, MessageKindOf(source), keep, maxChars: maxChars),
                 (text, shown, tail, keep, _) => ProviderResumeText.ComposeFrom(targetPhrase, sourcePhrase, text, shown, tail, keep));
         }
 

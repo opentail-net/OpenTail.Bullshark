@@ -95,16 +95,38 @@ public static class ResumeText
     /// Returns an empty string when there are no turns to keep. With <paramref name="maxChars"/>, the text is also kept within that
     /// many characters: the oldest turns go first, and then the latest turn is cut in its middle (<see cref="CutMiddle"/>).
     /// </summary>
-    public static string Tail(IReadOnlyList<TranscriptLine> lines, int turns = DefaultTurns, int maxTokens = TailTokenCap, int maxChars = int.MaxValue)
-    {
-        if (turns <= 0 || maxChars <= 0) return string.Empty;
-        var chosen = SplitTurns(lines).TakeLast(turns).ToList();
-        while (chosen.Count > 1 && chosen.Sum(turn => EstimateTokens(Render(turn))) > maxTokens) chosen.RemoveAt(0);
+    public static string Tail(IReadOnlyList<TranscriptLine> lines, int turns = DefaultTurns, int maxTokens = TailTokenCap, int maxChars = int.MaxValue) =>
+        TailWithTurns(lines, turns, maxTokens, maxChars).Text;
 
-        var rendered = chosen.Select(turn => Render(turn)).ToList();
+    /// <summary>
+    /// <see cref="Tail"/> with the number of turns it keeps. <see cref="FitWith"/> needs that count to say how many turns a fit left out (RS-D24).
+    /// The turns kept are the ones <see cref="TurnsLeftOut"/> leaves, cut by <paramref name="maxChars"/> as <see cref="Tail"/> describes.
+    /// </summary>
+    public static (string Text, int Turns) TailWithTurns(IReadOnlyList<TranscriptLine> lines, int turns = DefaultTurns, int maxTokens = TailTokenCap, int maxChars = int.MaxValue)
+    {
+        if (turns <= 0 || maxChars <= 0) return (string.Empty, 0);
+        var first = TurnsLeftOut(lines, turns, maxTokens, turn => EstimateTokens(Render(turn)));
+        var rendered = SplitTurns(lines).Skip(first).Select(turn => Render(turn)).ToList();
         while (rendered.Count > 1 && Joined(rendered).Length > maxChars) rendered.RemoveAt(0);
         if (rendered.Count == 1) rendered[0] = CutMiddle(rendered[0], maxChars);
-        return Joined(rendered);
+        var text = Joined(rendered);
+        // A latest turn cut to nothing (too few characters for its marker) keeps no text, so it counts as no turn kept.
+        return (text, text.Length == 0 ? 0 : rendered.Count);
+    }
+
+    /// <summary>
+    /// How many leading turns the tail does not keep (RS-D23): the tail is the last <paramref name="turns"/> turns, and while it is over
+    /// <paramref name="maxTokens"/> the oldest turn goes first, but the latest turn is never removed. The summary covers the turns before the
+    /// first kept one, so a turn the cap drops is in the summary, and no turn is in both parts or in neither. <paramref name="tokensOf"/> counts
+    /// the tokens of one turn as the tail renders it. With no turns kept (<paramref name="turns"/> is zero or less), every turn is left out.
+    /// </summary>
+    public static int TurnsLeftOut(IReadOnlyList<TranscriptLine> lines, int turns, int maxTokens, Func<IEnumerable<TranscriptLine>, int> tokensOf)
+    {
+        var all = SplitTurns(lines);
+        if (turns <= 0) return all.Count;
+        var first = Math.Max(0, all.Count - turns);
+        while (first < all.Count - 1 && all.Skip(first).Sum(t => tokensOf(t)) > maxTokens) first++;
+        return first;
     }
 
     private static string Joined(IEnumerable<string> turns) => string.Join("\n\n", turns);
@@ -154,13 +176,15 @@ public static class ResumeText
         Func<string, int> commandLineOf,
         int limit = ClaudeCli.MaxLaunchCharacters) =>
         FitWith(summary, level, lines, turns, sourceSessionId, commandLineOf, limit,
-            (turnLines, keep, maxChars) => Tail(turnLines, keep, maxChars: maxChars), Compose);
+            (turnLines, keep, maxChars) => TailWithTurns(turnLines, keep, maxChars: maxChars), Compose);
 
     /// <summary>
     /// <see cref="Fit"/> with the tail and the compose step as parameters, so that the start text of another platform's session (S3) is fitted
     /// the same way. <paramref name="tail"/> is called as <c>tail(lines, turns, maxChars)</c>, with <c>int.MaxValue</c> for the whole tail, and
-    /// <paramref name="compose"/> as <c>compose(summary, level, tail, turns, sourceSessionId)</c>. With <see cref="Tail"/> and <see cref="Compose"/>
-    /// it gives what <see cref="Fit"/> gives.
+    /// returns the tail with the number of turns it keeps (<see cref="TailWithTurns"/>). <paramref name="compose"/> is called as
+    /// <c>compose(summary, level, tail, turns, sourceSessionId)</c>. When the fit leaves out whole turns, the first line of the tail says how many
+    /// (RS-D24, <see cref="WithLeftOutNote"/>); otherwise the text is as it was. With <see cref="TailWithTurns"/> and <see cref="Compose"/> it gives what
+    /// <see cref="Fit"/> gives.
     /// </summary>
     public static FittedStart FitWith(
         string? summary,
@@ -170,28 +194,41 @@ public static class ResumeText
         string sourceSessionId,
         Func<string, int> commandLineOf,
         int limit,
-        Func<IReadOnlyList<TranscriptLine>, int, int, string> tail,
+        Func<IReadOnlyList<TranscriptLine>, int, int, (string Text, int Turns)> tail,
         Func<string?, SummaryLevel?, string, int, string?, string> compose)
     {
         var fullTail = tail(lines, turns, int.MaxValue);
-        var text = compose(summary, level, fullTail, turns, sourceSessionId);
+        var text = compose(summary, level, fullTail.Text, turns, sourceSessionId);
         var excess = commandLineOf(text) - limit;
         if (excess <= 0) return new FittedStart(text, 0, Fits: true);
 
         // Even with the tail gone, the text is over: nothing more can be cut to fit it, so the whole tail is left out.
-        if (commandLineOf(compose(summary, level, string.Empty, turns, sourceSessionId)) > limit)
-            return new FittedStart(compose(summary, level, string.Empty, turns, sourceSessionId), fullTail.Length, Fits: false);
+        var bare = WithLeftOutNote(string.Empty, fullTail.Turns);
+        if (commandLineOf(compose(summary, level, bare, turns, sourceSessionId)) > limit)
+            return new FittedStart(compose(summary, level, bare, turns, sourceSessionId), fullTail.Text.Length, Fits: false);
 
         var cut = excess;
         while (true)
         {
-            var cutTail = tail(lines, turns, Math.Max(0, fullTail.Length - cut));
-            text = compose(summary, level, cutTail, turns, sourceSessionId);
+            var cutTail = tail(lines, turns, Math.Max(0, fullTail.Text.Length - cut));
+            text = compose(summary, level, WithLeftOutNote(cutTail.Text, fullTail.Turns - cutTail.Turns), turns, sourceSessionId);
             var stillOver = commandLineOf(text) - limit;
-            if (stillOver <= 0 || cut >= fullTail.Length)
-                return new FittedStart(text, fullTail.Length - cutTail.Length, Fits: stillOver <= 0);
+            if (stillOver <= 0 || cut >= fullTail.Text.Length)
+                return new FittedStart(text, fullTail.Text.Length - cutTail.Text.Length, Fits: stillOver <= 0);
             cut += stillOver;
         }
+    }
+
+    /// <summary>
+    /// The tail with its first line saying how many of the session's turns the fit left out (RS-D24): "(n earlier turns are left out of this text to fit
+    /// the command line.)". Nothing is added when no turn was left out, so a fit that drops no turn gives the tail as it was. When the tail is empty, the line
+    /// alone is the tail, so a Zero start (which needs a tail) still has one.
+    /// </summary>
+    private static string WithLeftOutNote(string tail, int leftOut)
+    {
+        if (leftOut <= 0) return tail;
+        var note = $"({leftOut} earlier turns are left out of this text to fit the command line.)";
+        return tail.Length == 0 ? note : note + "\n" + tail;
     }
 
     /// <summary>The turns of a session, oldest first. Lines before the first "you" line form a turn of their own.</summary>

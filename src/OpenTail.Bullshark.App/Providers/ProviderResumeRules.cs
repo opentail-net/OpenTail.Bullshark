@@ -115,15 +115,29 @@ public static class ProviderResumeRules
     /// <summary>
     /// The mode a resume screen opens on, for the Continue mode it is given (stage C4). Null when no mode is given: the screen keeps its own start (CN-D2).
     /// Opening on a mode never makes a summary (CN-D3): the Summary mode only checks the summary radio, and the call stays with "Make summary".
-    /// Each screen maps the result to its own radio (In full, the last turns, the summary); Claude's last-turns radio is its TailOnly choice.
+    /// A stored last-turns mode reads as Summary (RS-D27): it opens on the summary at the Zero level with the tail on (<see cref="OpensAtZeroWithTail"/>),
+    /// and makes no call.
     /// </summary>
     public static ProviderResumeMode? StartMode(ContinueMode? mode) => mode switch
     {
         ContinueMode.Full => ProviderResumeMode.Full,
-        ContinueMode.LastTurns => ProviderResumeMode.LastTurns,
+        ContinueMode.LastTurns => ProviderResumeMode.Summary,
         ContinueMode.Summary => ProviderResumeMode.Summary,
         _ => null,
     };
+
+    /// <summary>
+    /// True when a stored mode opens at the Zero level with the tail on (RS-D27): only the old last-turns mode does. Zero is no summary, so it makes no
+    /// model call; its turns are <see cref="StartTurns"/>.
+    /// </summary>
+    public static bool OpensAtZeroWithTail(ContinueMode? mode) => mode == ContinueMode.LastTurns;
+
+    /// <summary>
+    /// The turns a stored last-turns mode opens with (RS-D27): the remembered value when one is given and is a valid count, else <see cref="DefaultTurns"/>.
+    /// No stored mark holds a turns value today, so a stored mode gets the default.
+    /// </summary>
+    public static int StartTurns(int? remembered) =>
+        remembered is { } turns && turns is >= 0 and <= MaxTurns ? turns : DefaultTurns;
 
     /// <summary>
     /// The size line above a preview: "About N tokens (C characters). Start sends exactly this text." The tokens are the characters over four, rounded

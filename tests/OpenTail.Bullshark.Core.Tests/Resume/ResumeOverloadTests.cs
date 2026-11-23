@@ -42,7 +42,7 @@ public sealed class ResumeOverloadTests
 
     private static ResumeText.FittedStart FitWithTheExistingDelegates(string? summary, SummaryLevel? level, IReadOnlyList<TranscriptLine> lines, int limit) =>
         ResumeText.FitWith(summary, level, lines, 2, SourceId, CommandLineOf, limit,
-            (turnLines, keep, maxChars) => ResumeText.Tail(turnLines, keep, maxChars: maxChars), ResumeText.Compose);
+            (turnLines, keep, maxChars) => ResumeText.TailWithTurns(turnLines, keep, maxChars: maxChars), ResumeText.Compose);
 
     [Fact]
     public void FitWithTheExistingDelegatesFitsWhatFitFits()
@@ -81,7 +81,7 @@ public sealed class ResumeOverloadTests
     public void FitWithUsesTheTailAndTheComposeItIsGiven()
     {
         var fitted = ResumeText.FitWith(null, null, Conversation("first"), 1, SourceId, CommandLineOf, 1000,
-            (_, _, _) => "fake tail",
+            (_, _, _) => ("fake tail", 1),
             (_, _, tail, _, _) => "composed: " + tail);
 
         Assert.Equal(new ResumeText.FittedStart("composed: fake tail", 0, true), fitted);
@@ -99,7 +99,7 @@ public sealed class ResumeOverloadTests
         Assert.True(CommandLineOf(uncut) > limit, "the test needs a text over the limit before the cut");
 
         var fitted = ResumeText.FitWith(null, null, lines, 2, SourceId, CommandLineOf, limit,
-            (turnLines, keep, maxChars) => ResumeText.Tail(turnLines, keep, maxChars: maxChars), Padded);
+            (turnLines, keep, maxChars) => ResumeText.TailWithTurns(turnLines, keep, maxChars: maxChars), Padded);
 
         Assert.True(fitted.Fits);
         Assert.True(fitted.CutCharacters > 0);

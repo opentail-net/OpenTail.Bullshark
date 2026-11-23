@@ -45,7 +45,7 @@ public static class ResumeTarget
     {
         if (Allowed(source, mode, target, copilotEnabled)) return null;
         if (mode != ContinueMode.Summary)
-            return "Only a summary can start in another platform. A full or last-turns resume stays in " + ContinueDecision.NameOf(source) + ".";
+            return "Only a summary can start in another platform. A full resume stays in " + ContinueDecision.NameOf(source) + ".";
         return "Copilot cannot be the target yet: the Copilot install that runs is not confirmed (G-O5).";
     }
 
