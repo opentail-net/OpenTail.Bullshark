@@ -38,6 +38,9 @@ public partial class SessionWindow : Window
     /// </summary>
     private IProvider _activeProvider;
 
+    /// <summary>The platforms this build offers that the user has (<see cref="PlatformPresence"/>), in the dropdown's order. Read once, when the window is made.</summary>
+    private readonly IReadOnlyList<ProviderId> _installedPlatforms;
+
     /// <summary>Claude, built on the window's own folders. Always present: Claude's tabs and records are read from it whatever the dropdown shows.</summary>
     private readonly ClaudeProvider _claude;
 
@@ -209,14 +212,29 @@ public partial class SessionWindow : Window
     private UIElement? _paneElement;
 
     /// <summary>
-    /// The provider a window starts on, from the saved choice (C4, G2.1, OC2). Codex starts only where this build offers it (C-D2); a saved Copilot or
-    /// opencode starts its own rail; anything else is Claude, as before. Pure.
+    /// The platforms this build offers, in the dropdown's order. Codex is offered only where this build offers it (C-D2). Whether the user has one is
+    /// checked separately (<see cref="PlatformPresence"/>).
     /// </summary>
-    internal static ProviderId StartingProviderOf(ProviderId saved, bool codexAvailable) =>
-        saved == ProviderId.Codex && codexAvailable ? ProviderId.Codex
-        : saved == ProviderId.Copilot ? ProviderId.Copilot
-        : saved == ProviderId.OpenCode ? ProviderId.OpenCode
-        : ProviderId.Claude;
+    internal static IReadOnlyList<ProviderId> OfferedPlatforms()
+    {
+        var offered = new List<ProviderId> { ProviderId.Claude };
+        if (CodexProvider.Available) offered.Add(ProviderId.Codex);
+        offered.Add(ProviderId.Copilot);
+        offered.Add(ProviderId.OpenCode);
+        return offered;
+    }
+
+    /// <summary>
+    /// The provider a window starts on (C4, G2.1, OC2): the saved choice when the user has that platform; else Claude when the user has it; else the
+    /// first platform the user has; Claude when none is found. The saved choice is not changed here, so a platform the user installs again comes back
+    /// as the choice. Pure.
+    /// </summary>
+    internal static ProviderId StartingProviderOf(ProviderId saved, IReadOnlyCollection<ProviderId> installed)
+    {
+        if (installed.Contains(saved)) return saved;
+        if (installed.Count == 0 || installed.Contains(ProviderId.Claude)) return ProviderId.Claude;
+        return installed.First();
+    }
 
     public SessionWindow(LaunchOptions options)
     {
@@ -227,7 +245,8 @@ public partial class SessionWindow : Window
         _claude = new ClaudeProvider(new ProviderPaths(options.ClaudeHome ?? ClaudePaths.ConfigDir(), options.ProjectsRoot, options.ArchiveRoot));
         // The provider the saved choice names (C4). Codex is started only where this build offers it (C-D2): otherwise Claude, as before.
         _activeProvider = _claude;
-        var startingProvider = StartingProviderOf(ProviderStore.Load(options.StatePath), CodexProvider.Available);
+        _installedPlatforms = PlatformPresence.Installed(OfferedPlatforms());
+        var startingProvider = StartingProviderOf(ProviderStore.Load(options.StatePath), _installedPlatforms);
         if (startingProvider == ProviderId.Codex)
             _activeProvider = _codex = new CodexProvider();
         // Copilot is offered on both targets (G2.1): the saved choice starts its rail.

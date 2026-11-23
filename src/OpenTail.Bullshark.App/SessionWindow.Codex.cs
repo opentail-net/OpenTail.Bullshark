@@ -70,19 +70,27 @@ public partial class SessionWindow
     /// </summary>
     private bool ClaudeSupervision => ProviderFeatures.Has<ISupervisedLauncher>(_activeProvider);
 
-    /// <summary>The dropdown's items: Claude, and Codex where this build offers it (C-D2). Then the chrome follows the saved provider.</summary>
+    /// <summary>
+    /// The dropdown's items: the platforms the user has (<see cref="PlatformPresence"/>), so a platform with no program on PATH is not offered. Then the
+    /// chrome follows the provider the rail shows.
+    /// </summary>
     private void InitProvider()
     {
-        ProviderBox.Items.Add(new ComboBoxItem { Content = "Claude", Tag = ProviderId.Claude });
-        if (CodexProvider.Available) ProviderBox.Items.Add(new ComboBoxItem { Content = "Codex", Tag = ProviderId.Codex });
-        ProviderBox.Items.Add(new ComboBoxItem { Content = "Copilot", Tag = ProviderId.Copilot });
-        // opencode's name is lower case, as the CLI names itself (OC-D12).
-        ProviderBox.Items.Add(new ComboBoxItem { Content = "opencode", Tag = ProviderId.OpenCode });
-        ProviderBox.SelectedItem = ProviderBox.Items.Cast<ComboBoxItem>().First(item => item.Tag is ProviderId id && id == _activeProvider.Id);
+        foreach (var platform in _installedPlatforms)
+            ProviderBox.Items.Add(new ComboBoxItem { Content = PlatformLabel(platform), Tag = platform });
+        ProviderBox.SelectedItem = ProviderBox.Items.Cast<ComboBoxItem>().FirstOrDefault(item => item.Tag is ProviderId id && id == _activeProvider.Id);
         _claudeSearchHint = SearchHint.Text;
         _providerReady = true;
         ApplyProviderChrome();
     }
+
+    /// <summary>The dropdown's text for a platform. opencode's name is lower case, as the CLI names itself (OC-D12).</summary>
+    private static string PlatformLabel(ProviderId platform) =>
+        platform == ProviderId.Claude ? "Claude"
+        : platform == ProviderId.Codex ? "Codex"
+        : platform == ProviderId.Copilot ? "Copilot"
+        : platform == ProviderId.OpenCode ? "opencode"
+        : platform.Value;
 
     private void ProviderBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {

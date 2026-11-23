@@ -144,23 +144,40 @@ public sealed class OpenCodeWindowHelpersTests
     }
 
     [Fact]
-    public void ASavedOpenCodeStartsOnOpenCodeWhetherOrNotCodexIsOffered()
+    public void ASavedOpenCodeStartsOnOpenCodeWhenTheUserHasIt()
     {
         var saved = ProviderChoice.Parse("opencode");
 
-        Assert.Equal(ProviderId.OpenCode, SessionWindow.StartingProviderOf(saved, codexAvailable: true));
-        Assert.Equal(ProviderId.OpenCode, SessionWindow.StartingProviderOf(saved, codexAvailable: false));
+        Assert.Equal(ProviderId.OpenCode, SessionWindow.StartingProviderOf(saved, [ProviderId.OpenCode, ProviderId.Claude]));
+        Assert.Equal(ProviderId.OpenCode, SessionWindow.StartingProviderOf(saved, [ProviderId.Codex, ProviderId.OpenCode]));
     }
 
     [Fact]
-    public void TheSavedChoicesOfTheOtherProvidersStartAsBefore()
+    public void TheSavedChoicesOfTheOtherProvidersStartWhenTheUserHasThem()
     {
-        Assert.Equal(ProviderId.Codex, SessionWindow.StartingProviderOf(ProviderId.Codex, codexAvailable: true));
-        Assert.Equal(ProviderId.Claude, SessionWindow.StartingProviderOf(ProviderId.Codex, codexAvailable: false));
-        Assert.Equal(ProviderId.Copilot, SessionWindow.StartingProviderOf(ProviderId.Copilot, codexAvailable: true));
-        Assert.Equal(ProviderId.Copilot, SessionWindow.StartingProviderOf(ProviderId.Copilot, codexAvailable: false));
-        Assert.Equal(ProviderId.Claude, SessionWindow.StartingProviderOf(ProviderId.Claude, codexAvailable: true));
-        Assert.Equal(ProviderId.Claude, SessionWindow.StartingProviderOf(ProviderChoice.Parse(null), codexAvailable: true));
+        Assert.Equal(ProviderId.Codex, SessionWindow.StartingProviderOf(ProviderId.Codex, [ProviderId.Codex, ProviderId.Claude]));
+        Assert.Equal(ProviderId.Copilot, SessionWindow.StartingProviderOf(ProviderId.Copilot, [ProviderId.Copilot, ProviderId.Claude]));
+        Assert.Equal(ProviderId.Claude, SessionWindow.StartingProviderOf(ProviderId.Claude, [ProviderId.Claude]));
+        Assert.Equal(ProviderId.Claude, SessionWindow.StartingProviderOf(ProviderChoice.Parse(null), [ProviderId.Claude]));
+    }
+
+    [Fact]
+    public void ASavedPlatformTheUserDoesNotHaveFallsBackToClaudeThenTheFirstOneHeHas()
+    {
+        // The saved choice is not changed by the fallback (the window does not save it), so the platform comes back when it is installed again.
+        Assert.Equal(ProviderId.Claude, SessionWindow.StartingProviderOf(ProviderId.Copilot, [ProviderId.Claude]));
+        Assert.Equal(ProviderId.Copilot, SessionWindow.StartingProviderOf(ProviderId.Codex, [ProviderId.Copilot, ProviderId.OpenCode]));
+        Assert.Equal(ProviderId.Claude, SessionWindow.StartingProviderOf(ProviderId.Codex, []));
+    }
+
+    [Fact]
+    public void OfferedPlatformsKeepTheDropdownOrder()
+    {
+        var offered = SessionWindow.OfferedPlatforms();
+
+        Assert.Equal(ProviderId.Claude, offered[0]);
+        Assert.Equal(ProviderId.OpenCode, offered[^1]);
+        Assert.Contains(ProviderId.Copilot, offered);
     }
 
     [Fact]
