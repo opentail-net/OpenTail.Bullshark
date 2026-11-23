@@ -11,20 +11,9 @@ namespace OpenTail.Bullshark.App.Tests;
 [Collection(HeadlessCollection.Name)]
 public sealed class CodexModelPromptTests
 {
-    /// <summary>The app's shared styles, as App.xaml gives them. The window's XAML needs them when it is made.</summary>
-    private static void EnsureAppResources()
-    {
-        if (Application.Current is not null) return;
-        var app = new Application();
-        app.Resources.MergedDictionaries.Add(new ResourceDictionary
-        {
-            Source = new Uri("pack://application:,,,/OpenTail.Bullshark.App;component/Styles/Controls.xaml", UriKind.Absolute),
-        });
-    }
-
     private static CodexModelPrompt NewPrompt(Task<CodexModelReading> models)
     {
-        EnsureAppResources();
+        AppResources.Ensure();
         return new CodexModelPrompt("New Codex session in an example folder", RailPalette.DarkPalette, models);
     }
 

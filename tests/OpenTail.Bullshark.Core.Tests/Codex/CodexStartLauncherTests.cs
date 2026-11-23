@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using OpenTail.Bullshark.Core.Codex;
 using Xunit;
+using OpenTail.Bullshark.Core.Tests.Support;
 
 namespace OpenTail.Bullshark.Core.Tests.Codex;
 
@@ -252,11 +253,11 @@ public sealed class CodexStartLauncherTests
     public void RemoveOldStartsRemovesOnlyOldStartFilesAndReturnsTheCount()
     {
         using var temp = new TempFolder();
-        var oldStart = WriteFile(temp.Folder, "20261118-100000-0a1b2c3d.txt", Now.AddDays(-3));
-        var newStart = WriteFile(temp.Folder, "20261121-110000-1f2e3d4c.txt", Now.AddHours(-1));
-        var oldJson = WriteFile(temp.Folder, "20261118-100000-0a1b2c3d.json", Now.AddDays(-3));
-        var oldNotes = WriteFile(temp.Folder, "notes.txt", Now.AddDays(-3));
-        var oldUpperHex = WriteFile(temp.Folder, "20261118-100000-9F8E7D6C.txt", Now.AddDays(-3));
+        var oldStart = StampedFiles.Write(temp.Folder, "20261118-100000-0a1b2c3d.txt", Now.AddDays(-3));
+        var newStart = StampedFiles.Write(temp.Folder, "20261121-110000-1f2e3d4c.txt", Now.AddHours(-1));
+        var oldJson = StampedFiles.Write(temp.Folder, "20261118-100000-0a1b2c3d.json", Now.AddDays(-3));
+        var oldNotes = StampedFiles.Write(temp.Folder, "notes.txt", Now.AddDays(-3));
+        var oldUpperHex = StampedFiles.Write(temp.Folder, "20261118-100000-9F8E7D6C.txt", Now.AddDays(-3));
 
         var removed = CodexStartLauncher.RemoveOldStarts(temp.Folder, TimeSpan.FromDays(1), Now);
 
@@ -324,15 +325,6 @@ public sealed class CodexStartLauncherTests
     public void ABadModelIsRefusedBeforeAnyScriptIsBuilt(string model)
     {
         Assert.Throws<ArgumentException>(() => CodexStartLauncher.CommandLine("C:\\Work", "C:\\Work\\Starts\\prompt.txt", model));
-    }
-
-    private static string WriteFile(string folder, string name, DateTimeOffset written)
-    {
-        Directory.CreateDirectory(folder);
-        var path = Path.Combine(folder, name);
-        File.WriteAllText(path, "synthetic");
-        File.SetLastWriteTimeUtc(path, written.UtcDateTime);
-        return path;
     }
 
     /// <summary>A temp folder for one test. It is deleted when the test ends.</summary>

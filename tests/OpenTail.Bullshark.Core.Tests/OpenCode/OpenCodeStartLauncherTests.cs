@@ -1,5 +1,6 @@
 using OpenTail.Bullshark.Core.OpenCode;
 using Xunit;
+using OpenTail.Bullshark.Core.Tests.Support;
 
 namespace OpenTail.Bullshark.Core.Tests.OpenCode;
 
@@ -17,15 +18,6 @@ public sealed class OpenCodeStartLauncherTests : IDisposable
     {
         if (!Directory.Exists(_root)) return;
         try { Directory.Delete(_root, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
-    }
-
-    private static string WriteFile(string folder, string name, DateTimeOffset written)
-    {
-        Directory.CreateDirectory(folder);
-        var path = Path.Combine(folder, name);
-        File.WriteAllText(path, "text");
-        File.SetLastWriteTimeUtc(path, written.UtcDateTime);
-        return path;
     }
 
     [Fact]
@@ -49,10 +41,10 @@ public sealed class OpenCodeStartLauncherTests : IDisposable
         // A start file the app writes itself, made old by its write time.
         var written = OpenCodeStartLauncher.WriteStart(folder, "start text", Now.AddDays(-3));
         File.SetLastWriteTimeUtc(written, Now.AddDays(-3).UtcDateTime);
-        var newStart = WriteFile(folder, "20261122-110000-1f2e3d4c.txt", Now.AddHours(-1));
-        var oldJson = WriteFile(folder, "20261119-100000-0a1b2c3d.json", Now.AddDays(-3));
-        var oldNotes = WriteFile(folder, "notes.txt", Now.AddDays(-3));
-        var oldUpperHex = WriteFile(folder, "20261119-100000-9F8E7D6C.txt", Now.AddDays(-3));
+        var newStart = StampedFiles.Write(folder, "20261122-110000-1f2e3d4c.txt", Now.AddHours(-1), "text");
+        var oldJson = StampedFiles.Write(folder, "20261119-100000-0a1b2c3d.json", Now.AddDays(-3), "text");
+        var oldNotes = StampedFiles.Write(folder, "notes.txt", Now.AddDays(-3), "text");
+        var oldUpperHex = StampedFiles.Write(folder, "20261119-100000-9F8E7D6C.txt", Now.AddDays(-3), "text");
 
         var removed = OpenCodeStartLauncher.RemoveOldStarts(folder, OpenCodeStartLauncher.StartFileAge, Now);
 

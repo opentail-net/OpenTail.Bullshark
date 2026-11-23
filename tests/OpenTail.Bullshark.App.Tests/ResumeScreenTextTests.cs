@@ -18,21 +18,9 @@ public sealed class ResumeScreenTextTests
 {
     private const string TailText = "you: an example message\nreply: an example reply";
 
-    /// <summary>The app's shared styles and the window's resources, as App.xaml gives them. The window's XAML needs them when it is made.</summary>
-    private static void EnsureAppResources()
-    {
-        if (Application.Current is not null) return;
-        // Closing the last open window would otherwise shut the application down, and the next test could not make another one.
-        var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-        app.Resources.MergedDictionaries.Add(new ResourceDictionary
-        {
-            Source = new Uri("pack://application:,,,/OpenTail.Bullshark.App;component/Styles/Controls.xaml", UriKind.Absolute),
-        });
-    }
-
     private static ResumePrompt NewClaudePrompt(ContinueMode? initialMode = null)
     {
-        EnsureAppResources();
+        AppResources.Ensure();
         return new ResumePrompt(
             "Resume: an example session",
             "2 turns · last active 1 day ago · in C:\\Work\\example",
@@ -45,7 +33,7 @@ public sealed class ResumeScreenTextTests
 
     private static CodexResumePrompt NewCodexPrompt()
     {
-        EnsureAppResources();
+        AppResources.Ensure();
         return new CodexResumePrompt(
             "Resume: an example session",
             "2 turns · last active 1 day ago · in C:\\Work\\example",
@@ -55,7 +43,7 @@ public sealed class ResumeScreenTextTests
 
     private static CopilotResumePrompt NewCopilotPrompt()
     {
-        EnsureAppResources();
+        AppResources.Ensure();
         return new CopilotResumePrompt(
             "Resume: an example session",
             "2 turns · last active 1 day ago · in C:\\Work\\example",

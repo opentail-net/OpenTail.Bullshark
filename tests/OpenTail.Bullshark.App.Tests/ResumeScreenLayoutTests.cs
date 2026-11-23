@@ -18,18 +18,6 @@ public sealed class ResumeScreenLayoutTests
     private const string Heading = "Resume: an example session";
     private const string Facts = "2 turns · last active 1 day ago · in C:\\Work\\example";
 
-    /// <summary>The app's shared styles and the window's resources, as App.xaml gives them. The window's XAML needs them when it is made.</summary>
-    private static void EnsureAppResources()
-    {
-        if (Application.Current is not null) return;
-        // Closing the last open window would otherwise shut the application down, and the next test could not make another one.
-        var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-        app.Resources.MergedDictionaries.Add(new ResourceDictionary
-        {
-            Source = new Uri("pack://application:,,,/OpenTail.Bullshark.App;component/Styles/Controls.xaml", UriKind.Absolute),
-        });
-    }
-
     private static T Named<T>(Window window, string name) where T : class =>
         window.FindName(name) as T ?? throw new InvalidOperationException($"no element named {name}");
 
@@ -48,7 +36,7 @@ public sealed class ResumeScreenLayoutTests
     {
         UiThread.Run(() =>
         {
-            EnsureAppResources();
+            AppResources.Ensure();
             var prompt = new ResumePrompt(Heading, Facts, 500_000, RailPalette.DarkPalette, "opus", "high");
 
             Assert.Equal(ResizeMode.CanResize, prompt.ResizeMode);
@@ -63,7 +51,7 @@ public sealed class ResumeScreenLayoutTests
     {
         UiThread.Run(() =>
         {
-            EnsureAppResources();
+            AppResources.Ensure();
             var prompt = new CodexResumePrompt(Heading, Facts, RailPalette.DarkPalette);
 
             Assert.Equal(ResizeMode.CanResize, prompt.ResizeMode);
@@ -78,7 +66,7 @@ public sealed class ResumeScreenLayoutTests
     {
         UiThread.Run(() =>
         {
-            EnsureAppResources();
+            AppResources.Ensure();
             var prompt = new CopilotResumePrompt(Heading, Facts, RailPalette.DarkPalette);
 
             Assert.Equal(ResizeMode.CanResize, prompt.ResizeMode);
@@ -93,7 +81,7 @@ public sealed class ResumeScreenLayoutTests
     {
         UiThread.Run(() =>
         {
-            EnsureAppResources();
+            AppResources.Ensure();
             // In full is opened on, so no preview is built at all: the callback is null and nothing runs.
             var folder = Path.Combine(Path.GetTempPath(), "opentail-missing-" + Guid.NewGuid().ToString("N"));
             var prompt = new CodexResumePrompt(Heading, Facts, RailPalette.DarkPalette, previewAsync: null,
@@ -110,7 +98,7 @@ public sealed class ResumeScreenLayoutTests
     {
         UiThread.Run(() =>
         {
-            EnsureAppResources();
+            AppResources.Ensure();
             var prompt = new CodexResumePrompt(Heading, Facts, RailPalette.DarkPalette, previewAsync: null,
                 initialMode: ContinueMode.Full, folder: null, folderExists: false);
 
@@ -124,7 +112,7 @@ public sealed class ResumeScreenLayoutTests
     {
         UiThread.Run(() =>
         {
-            EnsureAppResources();
+            AppResources.Ensure();
             var claude = new ResumePrompt(Heading, Facts, 500_000, RailPalette.DarkPalette, "opus", "high");
             var codex = new CodexResumePrompt(Heading, Facts, RailPalette.DarkPalette);
             var copilot = new CopilotResumePrompt(Heading, Facts, RailPalette.DarkPalette);

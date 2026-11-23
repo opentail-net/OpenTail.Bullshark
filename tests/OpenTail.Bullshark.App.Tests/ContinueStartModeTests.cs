@@ -21,17 +21,6 @@ public sealed class ContinueStartModeTests
         $"{ResumeText.SummaryInputChars / 4:N0} tokens, and writes the normal summary. Then a new session starts from it and from the last turns. " +
         "The new session runs at opus high.";
 
-    /// <summary>The app's shared styles and the window's resources, as App.xaml gives them. The window's XAML needs them when it is made.</summary>
-    private static void EnsureAppResources()
-    {
-        if (Application.Current is not null) return;
-        var app = new Application();
-        app.Resources.MergedDictionaries.Add(new ResourceDictionary
-        {
-            Source = new Uri("pack://application:,,,/OpenTail.Bullshark.App;component/Styles/Controls.xaml", UriKind.Absolute),
-        });
-    }
-
     private static T Named<T>(FrameworkElement window, string name) where T : class =>
         window.FindName(name) as T ?? throw new InvalidOperationException($"no element named {name}");
 
@@ -55,7 +44,7 @@ public sealed class ContinueStartModeTests
     /// <summary>Claude's screen, with the given context size. Each call of the preview is recorded by its mode.</summary>
     private static ResumePrompt NewClaudePrompt(long contextTokens, List<ResumeMode> calls, ContinueMode? initialMode = null)
     {
-        EnsureAppResources();
+        AppResources.Ensure();
         return new ResumePrompt(
             "Resume: an example session",
             "2 turns · last active 1 day ago · in C:\\Work\\example",
@@ -188,7 +177,7 @@ public sealed class ContinueStartModeTests
 
     private static CodexResumePrompt NewCodexPrompt(List<CodexResumeMode> calls, ContinueMode? initialMode = null)
     {
-        EnsureAppResources();
+        AppResources.Ensure();
         return new CodexResumePrompt(
             "Resume: an example session",
             "2 turns · last active 1 day ago · in C:\\Work\\example",
@@ -307,7 +296,7 @@ public sealed class ContinueStartModeTests
 
     private static CopilotResumePrompt NewCopilotPrompt(List<CopilotResumeMode> calls, ContinueMode? initialMode = null)
     {
-        EnsureAppResources();
+        AppResources.Ensure();
         return new CopilotResumePrompt(
             "Resume: an example session",
             "2 turns · last active 1 day ago · in C:\\Work\\example",

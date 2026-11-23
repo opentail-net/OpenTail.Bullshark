@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using OpenTail.Bullshark.Core.Copilot;
 using Xunit;
+using OpenTail.Bullshark.Core.Tests.Support;
 
 namespace OpenTail.Bullshark.Core.Tests.Copilot;
 
@@ -197,11 +198,11 @@ public sealed class CopilotStartLauncherTests
     public void RemoveOldStartsRemovesOnlyOldStartFilesAndReturnsTheCount()
     {
         using var temp = new TempFolder();
-        var oldStart = WriteFile(temp.Folder, "20261119-100000-0a1b2c3d.txt", Now.AddDays(-3));
-        var newStart = WriteFile(temp.Folder, "20261122-110000-1f2e3d4c.txt", Now.AddHours(-1));
-        var oldJson = WriteFile(temp.Folder, "20261119-100000-0a1b2c3d.json", Now.AddDays(-3));
-        var oldNotes = WriteFile(temp.Folder, "notes.txt", Now.AddDays(-3));
-        var oldUpperHex = WriteFile(temp.Folder, "20261119-100000-9F8E7D6C.txt", Now.AddDays(-3));
+        var oldStart = StampedFiles.Write(temp.Folder, "20261119-100000-0a1b2c3d.txt", Now.AddDays(-3));
+        var newStart = StampedFiles.Write(temp.Folder, "20261122-110000-1f2e3d4c.txt", Now.AddHours(-1));
+        var oldJson = StampedFiles.Write(temp.Folder, "20261119-100000-0a1b2c3d.json", Now.AddDays(-3));
+        var oldNotes = StampedFiles.Write(temp.Folder, "notes.txt", Now.AddDays(-3));
+        var oldUpperHex = StampedFiles.Write(temp.Folder, "20261119-100000-9F8E7D6C.txt", Now.AddDays(-3));
 
         var removed = CopilotStartLauncher.RemoveOldStarts(temp.Folder, TimeSpan.FromDays(1), Now);
 
@@ -442,15 +443,6 @@ public sealed class CopilotStartLauncherTests
             .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(dir => Path.Combine(dir, fileName))
             .FirstOrDefault(File.Exists);
-
-    private static string WriteFile(string folder, string name, DateTimeOffset written)
-    {
-        Directory.CreateDirectory(folder);
-        var path = Path.Combine(folder, name);
-        File.WriteAllText(path, "synthetic");
-        File.SetLastWriteTimeUtc(path, written.UtcDateTime);
-        return path;
-    }
 
     private static void DeleteFolder(string folder)
     {

@@ -187,7 +187,7 @@ public sealed class RememberChoiceTests : IDisposable
     /// <summary>Claude's screen on a small context, so the summary is the recommendation. Nothing is previewed or started.</summary>
     private static ResumePrompt NewClaudePrompt()
     {
-        EnsureAppResources();
+        AppResources.Ensure();
         return new ResumePrompt(
             "Resume: an example session",
             "2 turns · last active 1 day ago · in C:\\Work\\example",
@@ -195,17 +195,6 @@ public sealed class RememberChoiceTests : IDisposable
             RailPalette.DarkPalette,
             "opus",
             "high");
-    }
-
-    /// <summary>The app's shared styles and the window's resources, as App.xaml gives them. The window's XAML needs them when it is made.</summary>
-    private static void EnsureAppResources()
-    {
-        if (Application.Current is not null) return;
-        var app = new Application();
-        app.Resources.MergedDictionaries.Add(new ResourceDictionary
-        {
-            Source = new Uri("pack://application:,,,/OpenTail.Bullshark.App;component/Styles/Controls.xaml", UriKind.Absolute),
-        });
     }
 
     private static T Named<T>(FrameworkElement window, string name) where T : class =>

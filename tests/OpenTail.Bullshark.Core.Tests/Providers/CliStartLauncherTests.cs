@@ -1,6 +1,7 @@
 using System.Text;
 using OpenTail.Bullshark.Core.Providers;
 using Xunit;
+using OpenTail.Bullshark.Core.Tests.Support;
 
 namespace OpenTail.Bullshark.Core.Tests.Providers;
 
@@ -270,13 +271,13 @@ public sealed class CliStartLauncherTests
     public void RemoveOldStartsRemovesOnlyOldFilesWithTheStartFileShape()
     {
         using var temp = new TempFolder();
-        var oldStart = WriteFile(temp.Folder, "20261119-100000-0a1b2c3d.txt", Now.AddDays(-3));
-        var newStart = WriteFile(temp.Folder, "20261122-110000-1f2e3d4c.txt", Now.AddHours(-1));
-        var oldJson = WriteFile(temp.Folder, "20261119-100000-0a1b2c3d.json", Now.AddDays(-3));
-        var oldNotes = WriteFile(temp.Folder, "notes.txt", Now.AddDays(-3));
-        var oldUpperHex = WriteFile(temp.Folder, "20261119-100000-9F8E7D6C.txt", Now.AddDays(-3));
-        var oldPrefixed = WriteFile(temp.Folder, "x20261119-100000-0a1b2c3d.txt", Now.AddDays(-3));
-        var oldShortHex = WriteFile(temp.Folder, "20261119-100000-0a1b2c3.txt", Now.AddDays(-3));
+        var oldStart = StampedFiles.Write(temp.Folder, "20261119-100000-0a1b2c3d.txt", Now.AddDays(-3));
+        var newStart = StampedFiles.Write(temp.Folder, "20261122-110000-1f2e3d4c.txt", Now.AddHours(-1));
+        var oldJson = StampedFiles.Write(temp.Folder, "20261119-100000-0a1b2c3d.json", Now.AddDays(-3));
+        var oldNotes = StampedFiles.Write(temp.Folder, "notes.txt", Now.AddDays(-3));
+        var oldUpperHex = StampedFiles.Write(temp.Folder, "20261119-100000-9F8E7D6C.txt", Now.AddDays(-3));
+        var oldPrefixed = StampedFiles.Write(temp.Folder, "x20261119-100000-0a1b2c3d.txt", Now.AddDays(-3));
+        var oldShortHex = StampedFiles.Write(temp.Folder, "20261119-100000-0a1b2c3.txt", Now.AddDays(-3));
         var oldFolder = Path.Combine(temp.Folder, "20261119-100000-5e6f7a8b.txt");
         Directory.CreateDirectory(oldFolder);
 
@@ -297,8 +298,8 @@ public sealed class CliStartLauncherTests
     public void RemoveOldStartsKeepsAFileWrittenExactlyAtTheCutoffAndRemovesOneJustBeforeIt()
     {
         using var temp = new TempFolder();
-        var atCutoff = WriteFile(temp.Folder, "20261121-093015-0a1b2c3d.txt", Now.AddDays(-1));
-        var justBefore = WriteFile(temp.Folder, "20261121-093015-1f2e3d4c.txt", Now.AddDays(-1).AddSeconds(-1));
+        var atCutoff = StampedFiles.Write(temp.Folder, "20261121-093015-0a1b2c3d.txt", Now.AddDays(-1));
+        var justBefore = StampedFiles.Write(temp.Folder, "20261121-093015-1f2e3d4c.txt", Now.AddDays(-1).AddSeconds(-1));
 
         var removed = CliStartLauncher.RemoveOldStarts(temp.Folder, TimeSpan.FromDays(1), Now);
 
@@ -324,15 +325,6 @@ public sealed class CliStartLauncherTests
 
         Assert.Equal("Starts", Path.GetFileName(folder));
         Assert.Equal(Path.GetDirectoryName(Path.GetFullPath(state)), Path.GetDirectoryName(folder));
-    }
-
-    private static string WriteFile(string folder, string name, DateTimeOffset written)
-    {
-        Directory.CreateDirectory(folder);
-        var path = Path.Combine(folder, name);
-        File.WriteAllText(path, "synthetic");
-        File.SetLastWriteTimeUtc(path, written.UtcDateTime);
-        return path;
     }
 
     /// <summary>A temp folder for one test. It is deleted when the test ends.</summary>

@@ -16,20 +16,9 @@ public sealed class CopilotResumePromptTests
     private const string TailText = "you: an example message\ncopilot: an example reply";
     private const string SummaryText = "## Summary (normal)\nAn example summary of an example session.";
 
-    /// <summary>The app's shared styles and the window's resources, as App.xaml gives them. The window's XAML needs them when it is made.</summary>
-    private static void EnsureAppResources()
-    {
-        if (Application.Current is not null) return;
-        var app = new Application();
-        app.Resources.MergedDictionaries.Add(new ResourceDictionary
-        {
-            Source = new Uri("pack://application:,,,/OpenTail.Bullshark.App;component/Styles/Controls.xaml", UriKind.Absolute),
-        });
-    }
-
     private static CopilotResumePrompt NewPrompt(Func<CopilotResumeChoice, KeptSummary?, CancellationToken, Task<CopilotPreview>> preview)
     {
-        EnsureAppResources();
+        AppResources.Ensure();
         return new CopilotResumePrompt(
             "Resume: an example session",
             "2 turns · last active 1 day ago · in C:\\Work\\example",

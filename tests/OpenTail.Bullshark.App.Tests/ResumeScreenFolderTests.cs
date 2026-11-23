@@ -24,21 +24,9 @@ public sealed class ResumeScreenFolderTests
     /// <summary>A folder under the temp folder that does not exist.</summary>
     private static string MissingFolder() => Path.Combine(Path.GetTempPath(), "opentail-missing-" + Guid.NewGuid().ToString("N"));
 
-    /// <summary>The app's shared styles and the window's resources, as App.xaml gives them. The window's XAML needs them when it is made.</summary>
-    private static void EnsureAppResources()
-    {
-        if (Application.Current is not null) return;
-        // Closing the last open window would otherwise shut the application down, and the next test could not make another one.
-        var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-        app.Resources.MergedDictionaries.Add(new ResourceDictionary
-        {
-            Source = new Uri("pack://application:,,,/OpenTail.Bullshark.App;component/Styles/Controls.xaml", UriKind.Absolute),
-        });
-    }
-
     private static ResumePrompt NewClaudePrompt(string folder, bool folderExists)
     {
-        EnsureAppResources();
+        AppResources.Ensure();
         return new ResumePrompt(Heading, Facts, contextTokens: 500_000, RailPalette.DarkPalette, "opus", "high",
             previewAsync: (choice, kept, token) => Task.FromResult(new ResumePromptPreview(new ResumePreview(TailText, 0, true, null))),
             folder: folder, folderExists: folderExists);
@@ -46,7 +34,7 @@ public sealed class ResumeScreenFolderTests
 
     private static CodexResumePrompt NewCodexPrompt(string? folder, bool folderExists)
     {
-        EnsureAppResources();
+        AppResources.Ensure();
         return new CodexResumePrompt(Heading, Facts, RailPalette.DarkPalette,
             previewAsync: (choice, kept, token) => Task.FromResult(new CodexPreview(TailText, null)),
             folder: folder, folderExists: folderExists);
@@ -54,7 +42,7 @@ public sealed class ResumeScreenFolderTests
 
     private static CopilotResumePrompt NewCopilotPrompt(string? folder, bool folderExists)
     {
-        EnsureAppResources();
+        AppResources.Ensure();
         return new CopilotResumePrompt(Heading, Facts, RailPalette.DarkPalette,
             previewAsync: (choice, kept, token) => Task.FromResult(new CopilotPreview(TailText, null)),
             folder: folder, folderExists: folderExists);

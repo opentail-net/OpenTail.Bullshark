@@ -22,25 +22,13 @@ public sealed class OpenCodeResumePromptTests
     private const string Heading = "Resume: an example session";
     private const string Facts = "2 turns · last active 1 day ago · in C:\\Work\\example";
 
-    /// <summary>The app's shared styles and the window's resources, as App.xaml gives them. The window's XAML needs them when it is made.</summary>
-    private static void EnsureAppResources()
-    {
-        if (Application.Current is not null) return;
-        // Closing the last open window would otherwise shut the application down, and the next test could not make another one.
-        var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-        app.Resources.MergedDictionaries.Add(new ResourceDictionary
-        {
-            Source = new Uri("pack://application:,,,/OpenTail.Bullshark.App;component/Styles/Controls.xaml", UriKind.Absolute),
-        });
-    }
-
     /// <summary>A folder under the temp folder that does not exist.</summary>
     private static string MissingFolder() => Path.Combine(Path.GetTempPath(), "opentail-missing-" + Guid.NewGuid().ToString("N"));
 
     /// <summary>The screen. Every preview request is recorded in <paramref name="asked"/>, when one is given.</summary>
     private static OpenCodeResumePrompt NewPrompt(string? folder = null, bool? folderExists = null, List<OpenCodeResumeChoice>? asked = null)
     {
-        EnsureAppResources();
+        AppResources.Ensure();
         return new OpenCodeResumePrompt(Heading, Facts, RailPalette.DarkPalette,
             (choice, ct) =>
             {
@@ -193,7 +181,7 @@ public sealed class OpenCodeResumePromptTests
     {
         UiThread.Run(() =>
         {
-            EnsureAppResources();
+            AppResources.Ensure();
             var asked = new List<OpenCodeResumeChoice>();
             var prompt = new OpenCodeResumePrompt(Heading, Facts, RailPalette.DarkPalette,
                 (choice, ct) =>

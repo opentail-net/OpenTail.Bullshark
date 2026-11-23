@@ -31,21 +31,9 @@ public sealed class TargetChooserTests
 
     private static readonly ProviderId[] Platforms = { ProviderId.Claude, ProviderId.Codex, ProviderId.Copilot };
 
-    /// <summary>The app's shared styles and the window's resources, as App.xaml gives them. The windows' XAML needs them when they are made.</summary>
-    private static void EnsureAppResources()
-    {
-        if (Application.Current is not null) return;
-        // Closing the last open window would otherwise shut the application down, and the next test could not make another one.
-        var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-        app.Resources.MergedDictionaries.Add(new ResourceDictionary
-        {
-            Source = new Uri("pack://application:,,,/OpenTail.Bullshark.App;component/Styles/Controls.xaml", UriKind.Absolute),
-        });
-    }
-
     private static ResumePrompt NewClaudePrompt(ContinueMode? initialMode = null)
     {
-        EnsureAppResources();
+        AppResources.Ensure();
         return new ResumePrompt(
             "Resume: an example session",
             "2 turns · last active 1 day ago · in C:\\Work\\example",
@@ -58,7 +46,7 @@ public sealed class TargetChooserTests
 
     private static CodexResumePrompt NewCodexPrompt(ContinueMode? initialMode = null)
     {
-        EnsureAppResources();
+        AppResources.Ensure();
         return new CodexResumePrompt(
             "Resume: an example session",
             "2 turns · last active 1 day ago · in C:\\Work\\example",
@@ -69,7 +57,7 @@ public sealed class TargetChooserTests
 
     private static CopilotResumePrompt NewCopilotPrompt(ContinueMode? initialMode = null)
     {
-        EnsureAppResources();
+        AppResources.Ensure();
         return new CopilotResumePrompt(
             "Resume: an example session",
             "2 turns · last active 1 day ago · in C:\\Work\\example",

@@ -29,21 +29,10 @@ public sealed class ResumePromptTests
 
     public ResumePromptTests(ITestOutputHelper output) => _output = output;
 
-    /// <summary>The app's shared styles and the window's resources, as App.xaml gives them. The window's XAML needs them when it is made.</summary>
-    private static void EnsureAppResources()
-    {
-        if (Application.Current is not null) return;
-        var app = new Application();
-        app.Resources.MergedDictionaries.Add(new ResourceDictionary
-        {
-            Source = new Uri("pack://application:,,,/OpenTail.Bullshark.App;component/Styles/Controls.xaml", UriKind.Absolute),
-        });
-    }
-
     /// <summary>A prompt for a large context (a summary is the recommendation), with the given preview. Made on the WPF thread.</summary>
     private static ResumePrompt NewPrompt(Func<ResumeChoice, KeptSummary?, CancellationToken, Task<ResumePromptPreview>> preview)
     {
-        EnsureAppResources();
+        AppResources.Ensure();
         return new ResumePrompt(
             "Resume: a test session",
             "2 turns · last active 1 day ago · in C:\\Work\\example",
