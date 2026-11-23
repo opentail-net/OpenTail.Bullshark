@@ -1,6 +1,6 @@
 # Dedup: the Codex and Copilot resume dialogs (2026-11-23)
 
-Status: plan, not started. Found by the project-wide duplication review of 2026-11-23. Scope is the two dialogs that are close copies. OpenCode, Claude and the window-side resume code are out of scope (see "Not in this plan").
+Status: D-S3 to D-S9 and D-S11 done on 2026-11-23 (commits 2811483, 3812b5c, and the push). D-S1 and D-S2 dropped (see Results). The owner's live check (D-S10) is open. Found by the project-wide duplication review of 2026-11-23. Scope is the two dialogs that are close copies. OpenCode, Claude and the window-side resume code are out of scope (see "Not in this plan").
 
 Goal: one shared implementation of the resume dialog's logic, used by the Codex and Copilot dialogs, with the per-provider parts kept in each provider's own file. The screens look and act the same as now, except the one decided text change (D1).
 
@@ -53,17 +53,17 @@ Measures are from diffs of the two files after the provider names are replaced b
 
 ## Steps (checkboxes, with why)
 
-- [ ] D-S1. Add `ProviderResumeMode` (same three members and the common doc comment). Keep the three old enums for now. Why: a step that changes nothing yet.
-- [ ] D-S2. Replace the Codex and Copilot enums with `ProviderResumeMode`. Mechanical rename in the 10 + 10 files; tests updated the same way. Why: one enum for both dialogs before the presenter needs it.
-- [ ] D-S3. Add the two interfaces and make the records implement them. No logic change. Why: the presenter is generic over them.
-- [ ] D-S4. Add `ResumeControls` (a record of the controls the logic uses) and `ProviderResumeScreen<TChoice, TPreview>`, with the logic copied from `CopilotResumePrompt` first. Why: Copilot is the smaller file and the one with no model list, so it is the first to move.
-- [ ] D-S5. `CopilotResumePrompt` uses the presenter. Its tests (`CopilotResumePromptTests`) pass unchanged. Why: proves the presenter on the simple case before Codex.
-- [ ] D-S6. `CodexResumePrompt` uses the presenter. Model list, `ModelReady`, the model row and `LoadModelsAsync` stay in the Codex file as hooks. Why: the model list is the only Codex-only logic.
-- [ ] D-S7. Apply D1 (the failed-summary text). Add a test that the message names the exception type and not its text, for both dialogs. Why: a visible text change, so it gets its own test.
-- [ ] D-S8. Screenshot entry points stay as they are (`MakeSummaryForScreenshot`, `ChooseFullForScreenshot`); each window's `Loaded` wiring is unchanged. Why: the App's `--resume` screenshot modes call them.
-- [ ] D-S9. Build App with 0 errors. Run App tests (baseline 681) on net10.0 and net11.0. Record the counts. Why: this is the check that the dialogs still behave.
+- [-] D-S1 (dropped, see Results). Add `ProviderResumeMode` (same three members and the common doc comment). Keep the three old enums for now. Why: a step that changes nothing yet.
+- [-] D-S2 (dropped, see Results). Replace the Codex and Copilot enums with `ProviderResumeMode`. Mechanical rename in the 10 + 10 files; tests updated the same way. Why: one enum for both dialogs before the presenter needs it.
+- [x] D-S3. Add the two interfaces and make the records implement them. No logic change. Why: the presenter is generic over them.
+- [x] D-S4. Add `ResumeControls` (a record of the controls the logic uses) and `ProviderResumeScreen<TChoice, TPreview>`, with the logic copied from `CopilotResumePrompt` first. Why: Copilot is the smaller file and the one with no model list, so it is the first to move.
+- [x] D-S5. `CopilotResumePrompt` uses the presenter. Its tests (`CopilotResumePromptTests`) pass unchanged. Why: proves the presenter on the simple case before Codex.
+- [x] D-S6. `CodexResumePrompt` uses the presenter. Model list, `ModelReady`, the model row and `LoadModelsAsync` stay in the Codex file as hooks. Why: the model list is the only Codex-only logic.
+- [x] D-S7. Apply D1 (the failed-summary text). Add a test that the message names the exception type and not its text, for both dialogs. Why: a visible text change, so it gets its own test.
+- [x] D-S8. Screenshot entry points stay as they are (`MakeSummaryForScreenshot`, `ChooseFullForScreenshot`); each window's `Loaded` wiring is unchanged. Why: the App's `--resume` screenshot modes call them.
+- [x] D-S9. Build App with 0 errors. Run App tests (baseline 681) on net10.0 and net11.0. Record the counts. Why: this is the check that the dialogs still behave.
 - [ ] D-S10. Live check, owner only (not run here): both dialogs open, the preview, the Start gate, the screenshot modes. Listed in the sitting; nothing here claims it was done.
-- [ ] D-S11. Commit per step. Push when D-S9 passes.
+- [x] D-S11. Commit per step. Push when D-S9 passes.
 
 ## Decisions for the owner (defaults in place)
 
@@ -83,3 +83,15 @@ Measures are from diffs of the two files after the provider names are replaced b
 - [ ] The contracts table: each row has a test or a named reading. Constructor and `Choice` are covered by the existing dialog tests; the `FindName` names by the same tests.
 - [ ] "To verify" (the base-class conflict) is not a step, so the plan does not depend on it. Composition is chosen for the reason in Design.
 - [ ] The 94-line figure is a measure of the diff, not of behaviour. Each changed line listed above was read in the diff output; none is claimed to be identical in behaviour beyond what the diff shows.
+
+## Results (2026-11-23)
+
+- **D-S1 and D-S2 dropped.** The plan assumed no shared mode enum existed. It did: `ProviderResumeMode` is in `Providers/ProviderResumeRules.cs`, and its doc comment says each provider keeps its own public enum on purpose (the R-series decision). Removing `CodexResumeMode` and `CopilotResumeMode` would change public types that the tests use (about 150 lines). Instead each choice record maps its own enum to the shared one through `SharedMode` (`ToShared`, now internal), and the presenter works on the shared one. `FromShared` maps back.
+- **The presenter** is `ProviderResumeScreen<TChoice, TPreview>` in `App/ProviderResumeScreen.cs`, with `ResumeScreenControls` (the controls it uses, built by each window from its own `x:Name`s), `IProviderResumeScreenHooks<TChoice>` (provider, wording, `MakeChoice`, `StartReady`, `RefreshOwnControls`), and the interfaces `IProviderResumeChoice<TSelf>` and `IProviderPreview` (D-S3).
+- **Codex's hooks:** the model in `MakeChoice`, the model-list gate in `StartReady`, and the model row in `RefreshOwnControls`. The model state stays in the Codex window, which the hooks read.
+- **D1 applied** to both screens. The Codex test that asserted the message text was updated to the Copilot pattern (type name shown, message absent).
+- **Test seam kept:** `TargetChooserTests` reaches `ShowPreview` by reflection. Each window keeps a one-line `ShowPreview` forwarder to `ShowBuiltPreview`.
+- **Sizes:** Codex dialog 544 to 232 lines; Copilot dialog 490 to 163; presenter 525 (new). Net about 114 fewer lines. The duplicated logic now exists once; most of the remaining size is documentation and the hook definitions.
+- **Checks:** App 681 passed on net10.0 and net11.0 after the Copilot step, and again after the Codex step (with the one test update above). Core not run: no Core code changed in this plan.
+- **Not done (out of this plan):** the OpenCode dialog (390 changed lines against Codex, not a close copy), the Claude dialog (structurally older), and the window-side builders (`SessionWindow.CodexResume.cs` and `SessionWindow.CopilotResume.cs`, 251 changed lines of 354). Each would need its own plan.
+- **D-S10 (owner, open):** both screens at the PC: the modes, the preview, the Start gate (Codex waits for its model list), Copy, the Start menu in a summary, and the `--codex-resume` and `--copilot-resume` screenshot modes. Nothing here was shown on screen.
