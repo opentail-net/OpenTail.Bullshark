@@ -1,2 +1,2 @@
-# Text files are stored with LF in git; Windows checkouts use CRLF.
-* text=auto
+# Text files are stored with LF in git and kept as LF in the working tree. Some editors save CRLF; git normalises both.
+* text=auto eol=lf
