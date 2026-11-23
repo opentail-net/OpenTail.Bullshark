@@ -6,14 +6,15 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using OpenTail.Bullshark.Core.Continue;
+using OpenTail.Bullshark.Core.Resume;
 
 namespace OpenTail.Bullshark.App;
 
 /// <summary>
 /// The opencode resume screen (OC3, a copy of the Copilot resume screen with opencode's words, OC-D16). Three ways to continue: In full (the session in
-/// opencode's terminal, no text), From the last turns (one model turn on the owner's login, OC-D9), and a summary, which is off (OC-D19) and is shown
-/// disabled. There is no target chooser (OC-D18). Nothing runs until Start. The last-turns text is built when the choice changes, with no model call;
-/// the preview box shows exactly the text Start sends (<see cref="PreviewText"/>).
+/// opencode's terminal, no text), From the last turns (one model turn on the owner's login, OC-D9), and a summary (one model call on the owner's login,
+/// made only by Make summary; OC-O4 decided 2026-11-23, allowed). There is no target chooser (OC-D18). Nothing runs until Start or Make summary. The
+/// last-turns text is built when the choice changes, with no model call; the preview box shows exactly the text Start sends (<see cref="PreviewText"/>).
 /// </summary>
 public partial class OpenCodeResumePrompt : Window
 {
@@ -39,8 +40,11 @@ public partial class OpenCodeResumePrompt : Window
     /// <param name="heading">The heading: the session's name.</param>
     /// <param name="facts">The line under the heading: turns, last activity and folder.</param>
     /// <param name="palette">The theme, as the rest of the window's dialogs use it.</param>
-    /// <param name="previewAsync">Makes the start text for the last turns. It is called for that choice only; never for the summary.</param>
-    /// <param name="initialMode">The mode the screen opens on. Null, or the summary (off), keeps the last turns.</param>
+    /// <param name="previewAsync">
+    /// Makes the start text of the choice: the last turns when the choice is made, a summary when Make summary is pressed. It is called for the choice on
+    /// screen only.
+    /// </param>
+    /// <param name="initialMode">The mode the screen opens on. Null keeps the last turns. A summary opens its radio; nothing is made until Make summary.</param>
     /// <param name="folder">The session's folder, for the folder notice. Used only with <paramref name="folderExists"/>.</param>
     /// <param name="folderExists">Whether the folder exists. Null: no folder notice is shown.</param>
     public OpenCodeResumePrompt(string heading, string facts, RailPalette palette,
@@ -77,21 +81,22 @@ public partial class OpenCodeResumePrompt : Window
         FullChoice.Content = OpenCodeResumeRules.ModeLabel(OpenCodeResumeMode.Full);
         TailChoice.Content = OpenCodeResumeRules.ModeLabel(OpenCodeResumeMode.LastTurns);
         SummaryChoice.Content = OpenCodeResumeRules.ModeLabel(OpenCodeResumeMode.Summary);
-        SummaryOffNote.Text = OpenCodeResumeRules.SummaryOffText;
+        MinimalLevel.Content = ProviderResumeRules.LevelLabel(SummaryLevel.Minimal);
+        NormalLevel.Content = ProviderResumeRules.LevelLabel(SummaryLevel.Normal);
+        CompleteLevel.Content = ProviderResumeRules.LevelLabel(SummaryLevel.Complete);
         TurnsBox.Text = OpenCodeResumeRules.DefaultTurns.ToString(CultureInfo.InvariantCulture);
 
-        // The start mode is set before the handlers below are attached, so the first build runs once, for the mode it opens on. The summary is off
-        // (OC-D19), so opening on it opens on the last turns. Null keeps the XAML's last-turns radio.
+        // The start mode is set before the handlers below are attached, so the first build runs once, for the mode it opens on. Null keeps the XAML's
+        // last-turns radio. Opening on the summary checks its radio only: its call is made by Make summary, never by opening.
         switch (ProviderResumeRules.StartMode(initialMode))
         {
             case ProviderResumeMode.Full: FullChoice.IsChecked = true; break;
-            case ProviderResumeMode.LastTurns:
-            case ProviderResumeMode.Summary:
-                TailChoice.IsChecked = true;
-                break;
+            case ProviderResumeMode.Summary: SummaryChoice.IsChecked = true; break;
+            case ProviderResumeMode.LastTurns: TailChoice.IsChecked = true; break;
         }
 
         foreach (var radio in new[] { FullChoice, TailChoice, SummaryChoice }) radio.Checked += (_, _) => OnChoiceChanged();
+        foreach (var level in new[] { MinimalLevel, NormalLevel, CompleteLevel }) level.Checked += (_, _) => OnChoiceChanged();
         TurnsBox.TextChanged += (_, _) => OnChoiceChanged();
 
         OnChoiceChanged();
@@ -107,7 +112,7 @@ public partial class OpenCodeResumePrompt : Window
 
     /// <summary>
     /// The choice on screen, or null when none is usable. <paramref name="turnsValid"/> is false when the turns box is not a valid number; In full needs no
-    /// turns, so it is always valid. The summary is off (OC-D19): a checked summary radio gives no choice, so nothing is previewed or started.
+    /// turns, so it is always valid.
     /// </summary>
     private OpenCodeResumeChoice? Selected(out bool turnsValid)
     {
@@ -119,12 +124,20 @@ public partial class OpenCodeResumePrompt : Window
         }
         turnsValid = valid;
         if (TailChoice.IsChecked == true) return new OpenCodeResumeChoice(OpenCodeResumeMode.LastTurns, turns, Remember: false);
+        if (SummaryChoice.IsChecked == true)
+            return new OpenCodeResumeChoice(OpenCodeResumeMode.Summary, turns, false, SelectedLevel());
         return null;
     }
 
+    /// <summary>The summary level on screen. Normal when none is chosen.</summary>
+    private SummaryLevel SelectedLevel() =>
+        MinimalLevel.IsChecked == true ? SummaryLevel.Minimal
+        : CompleteLevel.IsChecked == true ? SummaryLevel.Complete
+        : SummaryLevel.Normal;
+
     /// <summary>
-    /// Runs when the mode or the turns change. The preview on screen is for the old choice, so it is taken away. The last-turns preview is built again at
-    /// once; In full builds nothing.
+    /// Runs when the mode, the level or the turns change. The preview on screen is for the old choice, so it is taken away. The last-turns preview is built
+    /// again at once; In full and a summary build nothing (a summary is made only by Make summary).
     /// </summary>
     private void OnChoiceChanged()
     {
@@ -137,20 +150,25 @@ public partial class OpenCodeResumePrompt : Window
     }
 
     /// <summary>
-    /// Sets what is on and off for the choice: the cost line, the turns box (not in full), Copy, and Start
-    /// (<see cref="OpenCodeResumeRules.CanStart"/>). The folder notice is shown when there is one.
+    /// Sets what is on and off for the choice: the cost line (for a summary, its call line, and once a summary is shown, the start line), the level row
+    /// and Make summary (the summary only), the turns box (not in full), Copy, and Start (<see cref="OpenCodeResumeRules.CanStart"/>). The folder notice
+    /// is shown when there is one.
     /// </summary>
     private void Refresh()
     {
         var choice = Selected(out var turnsValid);
         var mode = choice?.Mode ?? (SummaryChoice.IsChecked == true ? OpenCodeResumeMode.Summary : OpenCodeResumeMode.LastTurns);
+        var previewReady = _previewText is not null;
         CostText.Text = OpenCodeResumeRules.CostLine(mode)
+                        + (mode == OpenCodeResumeMode.Summary && previewReady ? " " + OpenCodeResumeRules.LastTurnsCostLine : string.Empty)
                         + (mode != OpenCodeResumeMode.Full && !turnsValid ? " " + OpenCodeResumeRules.TurnsMessage : string.Empty);
         FolderNotice.Text = _folderNotice ?? string.Empty;
         FolderNotice.Visibility = _folderNotice is null ? Visibility.Collapsed : Visibility.Visible;
 
+        Enable(LevelRow, mode == OpenCodeResumeMode.Summary);
         Enable(TurnsBox, mode != OpenCodeResumeMode.Full);
-        var previewReady = _previewText is not null;
+        // Make summary is off while a request runs, so one summary call is made at a time in this screen.
+        Enable(MakeSummaryButton, mode == OpenCodeResumeMode.Summary && turnsValid && _cts is null);
         Enable(CopyButton, previewReady);
         Enable(StartButton, choice is not null && !_blocksStart && OpenCodeResumeRules.CanStart(choice.Mode, previewReady));
     }
@@ -172,7 +190,9 @@ public partial class OpenCodeResumePrompt : Window
         var cts = new CancellationTokenSource();
         _cts = cts;
         var id = _request;
-        ShowMessage("Reading the session. Nothing is sent to a session.", problem: false);
+        ShowMessage(
+            choice.Mode == OpenCodeResumeMode.Summary ? OpenCodeResumeRules.SummaryRunningLine : "Reading the session. Nothing is sent to a session.",
+            problem: false);
         Refresh();
         try
         {
@@ -263,6 +283,17 @@ public partial class OpenCodeResumePrompt : Window
             PreviewNote.SetResourceReference(TextBlock.ForegroundProperty, "UiDanger");
         }
         PreviewNote.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>
+    /// Make summary: makes the summary now, once, for the level and the turns on screen. It is the only way a summary is made. The shown text is the
+    /// summary and then the last turns; nothing is saved.
+    /// </summary>
+    private void MakeSummary_Click(object sender, RoutedEventArgs e)
+    {
+        var choice = Selected(out var turnsValid);
+        if (choice is not { Mode: OpenCodeResumeMode.Summary } || !turnsValid) return;
+        _ = RunRequestAsync(choice);
     }
 
     /// <summary>

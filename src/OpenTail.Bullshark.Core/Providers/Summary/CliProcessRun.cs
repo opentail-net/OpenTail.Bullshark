@@ -32,6 +32,15 @@ public static class CliProcessRun
         Func<string, Exception> failure)
     {
         var result = await runner.RunAsync(arguments, workingDirectory, timeout, cancellationToken, standardInput);
+        return Output(result, failure);
+    }
+
+    /// <summary>
+    /// The trimmed output of a finished call. A timed-out run, a non-zero exit or an empty output throws the exception <paramref name="failure"/> makes
+    /// from the message. The messages name the exit code only, never the output.
+    /// </summary>
+    public static string Output(CliResult result, Func<string, Exception> failure)
+    {
         if (result.TimedOut) throw failure(TimedOutMessage);
         if (result.ExitCode != 0) throw failure(FailedMessage(result.ExitCode));
         var text = result.StdOut.Trim();

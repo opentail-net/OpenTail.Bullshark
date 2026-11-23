@@ -10,7 +10,7 @@
             <Setter Property="Margin" Value="0,0,8,0" />
         </Style>
 
-        <!-- Make summary: off in this stage (OC-D19). Its shape and its disabled look are the attention yellow of the other screens. -->
+        <!-- Make summary: its shape and its disabled look are the attention yellow of the other screens. -->
         <Style x:Key="YellowGo" TargetType="Button" BasedOn="{StaticResource GoButton}">
             <Setter Property="Background" Value="{DynamicResource PromptAttention}" />
             <Setter Property="Foreground" Value="{DynamicResource PromptAttentionText}" />
@@ -103,13 +103,21 @@
                 <TextBlock Style="{StaticResource Section}" Text="How to continue" />
                 <RadioButton x:Name="FullChoice" GroupName="OpenCodeResume" />
                 <RadioButton x:Name="TailChoice" GroupName="OpenCodeResume" IsChecked="True" />
-                <!-- The summary is off (OC-D19, OC-O4): the radio and its button stay disabled, and nothing in this window enables them. -->
-                <RadioButton x:Name="SummaryChoice" GroupName="OpenCodeResume" IsEnabled="False" />
-                <WrapPanel Orientation="Horizontal" Margin="22,0,0,6">
-                    <Button x:Name="MakeSummaryButton" Content="Make summary" IsEnabled="False" Style="{StaticResource YellowGo}"
-                            ToolTip="The summary is off until the owner decides where it is written (OC-O4)." AutomationProperties.Name="Make summary" />
-                    <TextBlock x:Name="SummaryOffNote" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,4,0,0" />
-                </WrapPanel>
+                <RadioButton x:Name="SummaryChoice" GroupName="OpenCodeResume" />
+
+                <!-- The level row and Make summary: the summary is made only by its button (one model call, OC-O4). Enabled for the summary only. -->
+                <StackPanel x:Name="LevelBlock" Margin="22,0,0,4">
+                    <WrapPanel x:Name="LevelRow" Orientation="Horizontal">
+                        <RadioButton x:Name="MinimalLevel" GroupName="OpenCodeLevel" Margin="0,0,16,6" />
+                        <RadioButton x:Name="NormalLevel" GroupName="OpenCodeLevel" Margin="0,0,16,6" IsChecked="True" />
+                        <RadioButton x:Name="CompleteLevel" GroupName="OpenCodeLevel" Margin="0,0,16,6" />
+                    </WrapPanel>
+                    <Button x:Name="MakeSummaryButton" Content="Make summary" Click="MakeSummary_Click" IsEnabled="False"
+                            HorizontalAlignment="Left" Margin="0,2,0,6" Style="{StaticResource YellowGo}"
+                            ToolTip="Makes the summary now: one model call on your opencode login. Nothing is sent until you press it." AutomationProperties.Name="Make summary" />
+                    <TextBlock Style="{StaticResource Muted}" Margin="0,0,0,4"
+                               Text="opencode writes the summary from this session's messages. Tool calls and their output are left out." />
+                </StackPanel>
 
                 <StackPanel x:Name="TurnsBlock" Margin="22,0,0,0">
                     <StackPanel Orientation="Horizontal" Margin="0,6,0,0">

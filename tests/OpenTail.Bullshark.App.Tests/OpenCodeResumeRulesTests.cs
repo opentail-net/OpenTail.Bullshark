@@ -8,8 +8,9 @@ using Xunit;
 namespace OpenTail.Bullshark.App.Tests;
 
 /// <summary>
-/// The rules of the opencode resume screen (OC3): the cost lines (OC-D9), the summary-off text (OC-D19), the labels, the Start rule, the Remember mapping,
-/// the status lines, and the start command (<see cref="OpenCodeStartLauncher"/>). Pure: no window, no process, no file is read or written.
+/// The rules of the opencode resume screen (OC3): the cost lines (OC-D9), the summary's cost and start lines (OC-O4, decided 2026-11-23), the labels, the Start
+/// rule, the Remember mapping, the status lines, and the start command (<see cref="OpenCodeStartLauncher"/>). Pure: no window, no process, no file is read
+/// or written.
 /// </summary>
 public sealed class OpenCodeResumeRulesTests
 {
@@ -43,10 +44,20 @@ public sealed class OpenCodeResumeRulesTests
     }
 
     [Fact]
-    public void TheSummaryOffTextIsTheOwnersWording()
+    public void TheSummaryCostLineIsTheOwnersWordingAndNamesOneModelCallAndTheSessionRow()
     {
-        Assert.Equal("The summary is off until the owner decides where it is written (OC-O4).", OpenCodeResumeRules.SummaryOffText);
-        Assert.Equal(OpenCodeResumeRules.SummaryOffText, OpenCodeResumeRules.CostLine(OpenCodeResumeMode.Summary));
+        Assert.Equal(
+            "Making the summary is one model call on your opencode login, and opencode writes a session row into your opencode database.",
+            OpenCodeResumeRules.SummaryCostLine);
+        Assert.Equal(OpenCodeResumeRules.SummaryCostLine, OpenCodeResumeRules.CostLine(OpenCodeResumeMode.Summary));
+    }
+
+    [Fact]
+    public void TheSummaryStartLineSaysOneModelTurnAndNamesTheSummaryAndTheLastTurns()
+    {
+        Assert.Equal(
+            "Started opencode with the summary and the last turns of Example title (one model turn).",
+            OpenCodeResumeRules.StartedSummaryLine("Example title"));
     }
 
     [Fact]
@@ -74,12 +85,13 @@ public sealed class OpenCodeResumeRulesTests
     }
 
     [Fact]
-    public void OnlyTheLastTurnsStartNeedsAPreviewAndOnlyTheLastTurnsBuildsOneAtOnce()
+    public void TheLastTurnsAndTheSummaryStartNeedAPreviewAndOnlyTheLastTurnsBuildsOneAtOnce()
     {
         Assert.True(OpenCodeResumeRules.CanStart(OpenCodeResumeMode.Full, previewReady: false));
         Assert.False(OpenCodeResumeRules.CanStart(OpenCodeResumeMode.LastTurns, previewReady: false));
         Assert.True(OpenCodeResumeRules.CanStart(OpenCodeResumeMode.LastTurns, previewReady: true));
-        Assert.False(OpenCodeResumeRules.CanStart(OpenCodeResumeMode.Summary, previewReady: true));
+        Assert.False(OpenCodeResumeRules.CanStart(OpenCodeResumeMode.Summary, previewReady: false));
+        Assert.True(OpenCodeResumeRules.CanStart(OpenCodeResumeMode.Summary, previewReady: true));
 
         Assert.True(OpenCodeResumeRules.RunsAtOnce(OpenCodeResumeMode.LastTurns));
         Assert.False(OpenCodeResumeRules.RunsAtOnce(OpenCodeResumeMode.Full));
@@ -119,6 +131,14 @@ public sealed class OpenCodeResumeRulesTests
     {
         Assert.Contains("5,000", OpenCodeResumeRules.LongSessionRefusal);
         Assert.Contains("In full", OpenCodeResumeRules.LongSessionRefusal);
+    }
+
+    [Fact]
+    public void TheLongSessionSummaryRefusalNamesTheReaderCapAndSaysTheSummaryCannotReadAllOfIt()
+    {
+        Assert.Contains("5,000", OpenCodeResumeRules.LongSessionSummaryRefusal);
+        Assert.Contains("summary", OpenCodeResumeRules.LongSessionSummaryRefusal);
+        Assert.Contains("In full", OpenCodeResumeRules.LongSessionSummaryRefusal);
     }
 
     [Fact]

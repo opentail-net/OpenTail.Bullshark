@@ -2,16 +2,18 @@ using System.IO;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using OpenTail.Bullshark.Core.Continue;
 using OpenTail.Bullshark.Core.Providers;
+using OpenTail.Bullshark.Core.Resume;
 using Xunit;
 
 namespace OpenTail.Bullshark.App.Tests;
 
 /// <summary>
-/// The opencode resume screen, headless (OC3): its title and Start text, the summary that is off (OC-D19), no target chooser (OC-D18), the Remember tick, the
-/// default mode, the cost lines (OC-D9), the preview, and the folder notice. Controls are found by name. Nothing is clicked (no Start, Make summary, Copy or
-/// Preview press): the choices are set in code, and the preview callback returns finished text at once. No model call is made, no process starts, and no
-/// state folder or database is read or written.
+/// The opencode resume screen, headless (OC3): its title and Start text, the summary (OC-O4, decided 2026-11-23: allowed; made only by Make summary), no
+/// target chooser (OC-D18), the Remember tick, the default mode, the cost lines (OC-D9), the preview, and the folder notice. Controls are found by name. The
+/// choices are set in code; Make summary is pressed by raising its click, and the preview callback returns finished text at once. No model call is made,
+/// no process starts, and no state folder or database is read or written.
 /// </summary>
 [Collection(HeadlessCollection.Name)]
 public sealed class OpenCodeResumePromptTests
@@ -74,21 +76,50 @@ public sealed class OpenCodeResumePromptTests
     }
 
     [Fact]
-    public void TheSummaryRadioAndItsButtonAreDisabledAndTheOffTextIsShownBesideThem()
+    public void TheSummaryRadioIsOnAndTheLevelRowAndMakeSummaryAreOnlyOnWhenTheSummaryIsChosen()
     {
         UiThread.Run(() =>
         {
             var prompt = NewPrompt();
-            Assert.False(Named<RadioButton>(prompt, "SummaryChoice").IsEnabled);
+            Assert.True(Named<RadioButton>(prompt, "SummaryChoice").IsEnabled);
+            Assert.False(Named<WrapPanel>(prompt, "LevelRow").IsEnabled);
             Assert.False(Named<Button>(prompt, "MakeSummaryButton").IsEnabled);
-            var note = Named<TextBlock>(prompt, "SummaryOffNote");
-            Assert.Equal("The summary is off until the owner decides where it is written (OC-O4).", note.Text);
-            Assert.Equal(Visibility.Visible, note.Visibility);
+            Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
+            Assert.True(Named<WrapPanel>(prompt, "LevelRow").IsEnabled);
+            Assert.True(Named<Button>(prompt, "MakeSummaryButton").IsEnabled);
         });
     }
 
     [Fact]
-    public void TheSummaryIsNeverPreviewedAndCheckingItStartsNothing()
+    public void TheCostLineOfTheSummaryIsShownBeforeItsCallAndNamesOneModelCallAndTheSessionRow()
+    {
+        UiThread.Run(() =>
+        {
+            var prompt = NewPrompt();
+            Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
+            var cost = Named<TextBlock>(prompt, "CostText").Text;
+            Assert.Equal(
+                "Making the summary is one model call on your opencode login, and opencode writes a session row into your opencode database.", cost);
+            Assert.Equal(OpenCodeResumeRules.SummaryCostLine, cost);
+            Assert.Equal(Visibility.Collapsed, Named<StackPanel>(prompt, "PreviewBlock").Visibility);
+        });
+    }
+
+    [Fact]
+    public void TheLevelRowHasTheThreeLevelsWithTheSharedLabelsAndNormalIsChosen()
+    {
+        UiThread.Run(() =>
+        {
+            var prompt = NewPrompt();
+            Assert.Equal(ProviderResumeRules.LevelLabel(SummaryLevel.Minimal), Named<RadioButton>(prompt, "MinimalLevel").Content);
+            Assert.Equal(ProviderResumeRules.LevelLabel(SummaryLevel.Normal), Named<RadioButton>(prompt, "NormalLevel").Content);
+            Assert.Equal(ProviderResumeRules.LevelLabel(SummaryLevel.Complete), Named<RadioButton>(prompt, "CompleteLevel").Content);
+            Assert.True(Named<RadioButton>(prompt, "NormalLevel").IsChecked == true);
+        });
+    }
+
+    [Fact]
+    public void TheSummaryIsNotPreviewedByChoosingItAndStartStaysOffUntilMakeSummaryIsPressed()
     {
         UiThread.Run(() =>
         {
@@ -97,6 +128,82 @@ public sealed class OpenCodeResumePromptTests
             var countBefore = asked.Count;
             Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
             Assert.DoesNotContain(asked.Skip(countBefore), choice => choice.Mode == OpenCodeResumeMode.Summary);
+            Assert.False(Named<Button>(prompt, "StartButton").IsEnabled);
+        });
+    }
+
+    [Fact]
+    public void MakeSummaryMakesTheSummaryForTheLevelOnScreenAndShowsItsPreviewWithTheStartLine()
+    {
+        UiThread.Run(() =>
+        {
+            var asked = new List<OpenCodeResumeChoice>();
+            var prompt = NewPrompt(asked: asked);
+            Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
+            Named<RadioButton>(prompt, "CompleteLevel").IsChecked = true;
+            var countBefore = asked.Count;
+
+            Named<Button>(prompt, "MakeSummaryButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+            var choice = Assert.Single(asked.Skip(countBefore));
+            Assert.Equal(OpenCodeResumeMode.Summary, choice.Mode);
+            Assert.Equal(SummaryLevel.Complete, choice.Level);
+            Assert.Equal(OpenCodeResumeRules.DefaultTurns, choice.Turns);
+            Assert.Equal(TailText, Named<TextBox>(prompt, "PreviewBox").Text);
+            Assert.True(Named<Button>(prompt, "StartButton").IsEnabled);
+            Assert.True(Named<Button>(prompt, "CopyButton").IsEnabled);
+            Assert.Contains(OpenCodeResumeRules.LastTurnsCostLine, Named<TextBlock>(prompt, "CostText").Text);
+        });
+    }
+
+    [Fact]
+    public void AChangedLevelTakesTheSummaryPreviewAwayUntilMakeSummaryIsPressedAgain()
+    {
+        UiThread.Run(() =>
+        {
+            var asked = new List<OpenCodeResumeChoice>();
+            var prompt = NewPrompt(asked: asked);
+            Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
+            Named<Button>(prompt, "MakeSummaryButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.True(Named<Button>(prompt, "StartButton").IsEnabled);
+
+            Named<RadioButton>(prompt, "MinimalLevel").IsChecked = true;
+
+            Assert.False(Named<Button>(prompt, "StartButton").IsEnabled);
+            Assert.Equal(Visibility.Collapsed, Named<StackPanel>(prompt, "PreviewBlock").Visibility);
+            Assert.Equal(1, asked.Count(choice => choice.Mode == OpenCodeResumeMode.Summary));
+        });
+    }
+
+    [Fact]
+    public void ASummaryWithAnInvalidTurnsNumberCannotBeMade()
+    {
+        UiThread.Run(() =>
+        {
+            var prompt = NewPrompt();
+            Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
+            Named<TextBox>(prompt, "TurnsBox").Text = "many";
+            Assert.False(Named<Button>(prompt, "MakeSummaryButton").IsEnabled);
+            Assert.Contains(OpenCodeResumeRules.TurnsMessage, Named<TextBlock>(prompt, "CostText").Text);
+        });
+    }
+
+    [Fact]
+    public void AStoredSummaryOpensOnTheSummaryRadioAndMakesNothing()
+    {
+        UiThread.Run(() =>
+        {
+            EnsureAppResources();
+            var asked = new List<OpenCodeResumeChoice>();
+            var prompt = new OpenCodeResumePrompt(Heading, Facts, RailPalette.DarkPalette,
+                (choice, ct) =>
+                {
+                    asked.Add(choice);
+                    return Task.FromResult(new OpenCodePreview(TailText));
+                },
+                initialMode: ContinueMode.Summary);
+            Assert.True(Named<RadioButton>(prompt, "SummaryChoice").IsChecked == true);
+            Assert.Empty(asked);
             Assert.False(Named<Button>(prompt, "StartButton").IsEnabled);
         });
     }

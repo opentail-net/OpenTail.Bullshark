@@ -23,8 +23,23 @@ public interface ICliRunner
         string? standardInput = null);
 }
 
+/// <summary>
+/// A runner that can also set environment variables for one call. The opencode summary needs <c>OPENCODE_CONFIG</c>, which names the file that denies
+/// every tool, so the runner must carry it to the process. The variables are added to the ones the process inherits; nothing else changes.
+/// </summary>
+public interface ICliEnvRunner : ICliRunner
+{
+    Task<CliResult> RunAsync(
+        IReadOnlyList<string> arguments,
+        string? workingDirectory,
+        IReadOnlyDictionary<string, string> environment,
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default,
+        string? standardInput = null);
+}
+
 /// <summary>Runs the real `claude` executable with redirected output and no window.</summary>
-public sealed class ProcessCliRunner : ICliRunner
+public sealed class ProcessCliRunner : ICliEnvRunner
 {
     /// <summary>How long the output is waited for once the command has exited or been stopped (see the constructor).</summary>
     public static readonly TimeSpan DefaultOutputDrain = TimeSpan.FromSeconds(2);
@@ -43,12 +58,31 @@ public sealed class ProcessCliRunner : ICliRunner
         _outputDrain = outputDrain ?? DefaultOutputDrain;
     }
 
-    public async Task<CliResult> RunAsync(
+    public Task<CliResult> RunAsync(
         IReadOnlyList<string> arguments,
         string? workingDirectory,
         TimeSpan timeout,
         CancellationToken cancellationToken = default,
-        string? standardInput = null)
+        string? standardInput = null) =>
+        RunCoreAsync(arguments, workingDirectory, environment: null, timeout, cancellationToken, standardInput);
+
+    /// <summary>As the runner's <see cref="ICliRunner"/> call, with these variables set for the command (see <see cref="ICliEnvRunner"/>).</summary>
+    public Task<CliResult> RunAsync(
+        IReadOnlyList<string> arguments,
+        string? workingDirectory,
+        IReadOnlyDictionary<string, string> environment,
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default,
+        string? standardInput = null) =>
+        RunCoreAsync(arguments, workingDirectory, environment, timeout, cancellationToken, standardInput);
+
+    private async Task<CliResult> RunCoreAsync(
+        IReadOnlyList<string> arguments,
+        string? workingDirectory,
+        IReadOnlyDictionary<string, string>? environment,
+        TimeSpan timeout,
+        CancellationToken cancellationToken,
+        string? standardInput)
     {
         var info = new ProcessStartInfo(_executable)
         {
@@ -65,6 +99,9 @@ public sealed class ProcessCliRunner : ICliRunner
         if (standardInput is not null) info.StandardInputEncoding = Encoding.UTF8;
         foreach (var argument in arguments)
             info.ArgumentList.Add(argument);
+        if (environment is not null)
+            foreach (var (name, value) in environment)
+                info.Environment[name] = value;
 
         using var process = Process.Start(info)
             ?? throw new InvalidOperationException($"Could not start '{_executable}'.");

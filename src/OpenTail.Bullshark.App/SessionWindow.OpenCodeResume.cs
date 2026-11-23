@@ -1,6 +1,7 @@
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Continue;
 using OpenTail.Bullshark.Core.OpenCode;
 using OpenTail.Bullshark.Core.Providers;
@@ -12,7 +13,8 @@ namespace OpenTail.Bullshark.App;
 /// The opencode resume screen (OC3, a copy of the Copilot resume partial, OC-D16). "Resume…" on an opencode row opens <see cref="OpenCodeResumePrompt"/>.
 /// In full opens the session's terminal tab (<c>opencode -s &lt;id&gt;</c>, OC-D8). From the last turns, the preview is the transcript tail with the
 /// opencode header (no model call while the preview is built), and Start writes it to a start file that a PowerShell 7 script hands to opencode, which
-/// submits it at once (OC-D9, one model turn). The summary is off (OC-D19): nothing in this partial makes one. Nothing starts before Start.
+/// submits it at once (OC-D9, one model turn). A summary (OC-O4, decided 2026-11-23) is one <c>opencode run</c> call, made by the screen's Make summary
+/// button, in memory only: the app keeps no summary file. Nothing starts before Start.
 /// </summary>
 public partial class SessionWindow
 {
@@ -87,12 +89,11 @@ public partial class SessionWindow
                     ResumeOpenCodeInFull(id, title, folder);
                     break;
                 case OpenCodeResumeMode.LastTurns:
-                    StartOpenCodeFromText(dialog.PreviewText, folder, title);
+                    StartOpenCodeFromText(dialog.PreviewText, folder, title, summary: false);
                     break;
-                default:
-                    // The summary is off (OC-D19, OC-O4): the screen does not offer it, and this refuses it too.
-                    SetStatus("Not started: the opencode summary is off until the owner decides where it is written (OC-O4).");
-                    return;
+                case OpenCodeResumeMode.Summary:
+                    StartOpenCodeFromText(dialog.PreviewText, folder, title, summary: true);
+                    break;
             }
             if (choice.Remember) RememberResumeMode(ProviderId.OpenCode, id, OpenCodeResumeRules.ContinueModeOf(choice.Mode));
         }
@@ -145,11 +146,11 @@ public partial class SessionWindow
     }
 
     /// <summary>
-    /// The last-turns start (OC-D9): the preview's text, as shown, is written to a start file in the opencode Starts folder, and a terminal tab runs PowerShell 7
-    /// with it in the session's folder. Refused, with a status line and no file written, when PowerShell 7 or <c>opencode.ps1</c> is not on PATH. The status line
-    /// after a start says one model turn is made. The log holds no title and no path.
+    /// The last-turns or summary start (OC-D9): the preview's text, as shown, is written to a start file in the opencode Starts folder, and a terminal tab
+    /// runs PowerShell 7 with it in the session's folder. Refused, with a status line and no file written, when PowerShell 7 or <c>opencode.ps1</c> is not
+    /// on PATH. The status line after a start says one model turn is made. The log holds no title and no path.
     /// </summary>
-    private void StartOpenCodeFromText(string? text, string folder, string title)
+    private void StartOpenCodeFromText(string? text, string folder, string title, bool summary)
     {
         if (text is not { Length: > 0 })
         {
@@ -182,21 +183,22 @@ public partial class SessionWindow
         }
 
         OpenCodeTab("new-" + Guid.NewGuid().ToString("N"), "opencode: resume of " + title, command, folder);
-        SetStatus(OpenCodeResumeRules.StartedLine(title));
+        SetStatus(summary ? OpenCodeResumeRules.StartedSummaryLine(title) : OpenCodeResumeRules.StartedLine(title));
     }
 
     /// <summary>
-    /// The last-turns start text of an opencode session (OC-D9), built once for the preview and the start, off the UI thread. The database is opened and
-    /// read read-only (OC-D2) by <see cref="OpenCodeTranscriptReader"/>. The last turns are copied word for word (<see cref="ProviderResumeText.Tail"/>, with
-    /// the opencode label) under the header of <see cref="ProviderResumeText.Compose"/>, with no session line. No model call is made here. A session with no
-    /// messages gives an empty text. A database that cannot be read gives its fixed phrase. A failure is logged by type only and shown in the screen.
-    /// The reader gives the first 5,000 lines only (<c>OpenCodeTranscriptReader.cs</c>), so a longer session is refused here rather than given the wrong turns.
-    /// The summary is not built in this stage: the Summary radio is off (OC-D19, OC-O4). The summary goes in this method's place (OC3 summary): one
-    /// <c>opencode run</c> with the transcript on stdin and an empty scratch <c>--dir</c>, behind its own guard. Nothing here makes one.
+    /// The start text of an opencode session (OC-D9, OC3 summary), built for the preview and the start, off the UI thread. The database is opened and read
+    /// read-only (OC-D2) by <see cref="OpenCodeTranscriptReader"/>. The last turns are copied word for word (<see cref="ProviderResumeText.Tail"/>, with the
+    /// opencode label) under the header of <see cref="ProviderResumeText.Compose"/>, with no session line. A summary (OC-O4, decided 2026-11-23) is first made
+    /// by one <c>opencode run</c> call (<see cref="OpenCodeSummarizer"/>), and the text is the summary, then the last turns. The summary is kept in memory
+    /// only. A session with no messages gives an empty text. A database that cannot be read gives its fixed phrase. A failure is logged by type only and
+    /// shown in the screen. The reader gives the first 5,000 lines only (<c>OpenCodeTranscriptReader.cs</c>), so a longer session is refused here rather
+    /// than given the wrong turns or a summary of part of it.
     /// </summary>
     private async Task<OpenCodePreview> BuildOpenCodeStartTextAsync(SessionSummary session, OpenCodeResumeChoice choice, CancellationToken ct)
     {
         var sessionId = session.Key.SessionId;
+        var summarised = choice.Mode == OpenCodeResumeMode.Summary;
         try
         {
             var location = CurrentOpenCodeLocation();
@@ -213,16 +215,25 @@ public partial class SessionWindow
             if (page.Lines.Count >= OpenCodeTranscriptReader.MaxLines)
             {
                 AppLog.Write($"opencode start text refused: {page.Lines.Count} lines is the reader's cap");
-                return new OpenCodePreview(string.Empty, OpenCodeResumeRules.LongSessionRefusal);
+                return new OpenCodePreview(
+                    string.Empty, summarised ? OpenCodeResumeRules.LongSessionSummaryRefusal : OpenCodeResumeRules.LongSessionRefusal);
             }
             var lines = OpenCodeTranscriptLines(page.Lines);
             AppLog.Write($"opencode start text: {lines.Count} messages read");
             if (lines.Count == 0) return new OpenCodePreview(string.Empty);
 
+            SummaryLevel? level = summarised ? choice.Level ?? SummaryLevel.Normal : null;
+            var summary = summarised ? await MakeOpenCodeSummaryAsync(lines, level ?? SummaryLevel.Normal, ct) : null;
             var tail = ProviderResumeText.Tail(lines, "opencode", choice.Turns);
-            var start = ProviderResumeText.Compose("opencode", summary: null, level: null, tail, choice.Turns);
+            var start = ProviderResumeText.Compose("opencode", summary, level, tail, choice.Turns);
             AppLog.Write($"opencode start text built: {start.Length:N0} characters");
             return new OpenCodePreview(start);
+        }
+        catch (OpenCodeSummaryException ex)
+        {
+            // The summary's message names the reason (a timeout, an exit code, an empty reply): it never carries the transcript or the output.
+            AppLog.Write($"opencode summary not made: {ex.GetType().Name}");
+            return new OpenCodePreview(string.Empty, $"The summary was not made: {ex.Message}.");
         }
         catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or NotSupportedException)
         {
@@ -230,5 +241,17 @@ public partial class SessionWindow
             AppLog.Write($"opencode start text not built: {ex.GetType().Name}");
             return new OpenCodePreview(string.Empty, $"The start text could not be built ({ex.GetType().Name}).");
         }
+    }
+
+    /// <summary>
+    /// Makes the summary of the session's messages at <paramref name="level"/> by one <c>opencode run</c> call (<see cref="OpenCodeSummarizer"/>, which runs
+    /// <c>cmd.exe</c> with the <c>opencode</c> shim). The summary is returned to the caller and kept in memory only: no file is written. The log holds its
+    /// length, not its text. A failure throws <see cref="OpenCodeSummaryException"/>.
+    /// </summary>
+    private async Task<string> MakeOpenCodeSummaryAsync(IReadOnlyList<TranscriptLine> lines, SummaryLevel level, CancellationToken ct)
+    {
+        var made = await new OpenCodeSummarizer().SummariseAsync(_options.StatePath, lines, level, ct);
+        AppLog.Write($"opencode summary made: {made.Length:N0} characters");
+        return made;
     }
 }
