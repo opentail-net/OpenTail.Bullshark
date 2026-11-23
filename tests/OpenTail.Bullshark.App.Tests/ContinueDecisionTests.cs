@@ -187,4 +187,29 @@ public sealed class ContinueDecisionTests
     {
         Assert.Equal(CopilotRailText.NotListed, ContinueDecision.ScreenRefusal(ProviderId.Copilot, copilotListed: false, CopilotRailText.NotListed));
     }
+
+    [Fact]
+    public void TheAllScopeListsEveryProviderInTheDropdownOrderWhenAllAreAvailable()
+    {
+        var providers = ContinueDecision.ProvidersOf(ContinueScope.All, ProviderId.Claude, codexAvailable: true);
+
+        Assert.Equal(new[] { ProviderId.Claude, ProviderId.Codex, ProviderId.Copilot, ProviderId.OpenCode }, providers);
+    }
+
+    [Fact]
+    public void TheAllScopeLeavesOutCodexWhereThisBuildDoesNotOfferIt()
+    {
+        var providers = ContinueDecision.ProvidersOf(ContinueScope.All, ProviderId.Claude, codexAvailable: false);
+
+        Assert.Equal(new[] { ProviderId.Claude, ProviderId.Copilot, ProviderId.OpenCode }, providers);
+    }
+
+    [Fact]
+    public void TheProviderScopeListsOnlyTheActiveProvider()
+    {
+        foreach (var active in new[] { ProviderId.Claude, ProviderId.Codex, ProviderId.Copilot, ProviderId.OpenCode })
+        {
+            Assert.Equal(new[] { active }, ContinueDecision.ProvidersOf(ContinueScope.Provider, active, codexAvailable: true));
+        }
+    }
 }

@@ -158,10 +158,12 @@ public sealed class CopilotResumeRulesTests
     }
 
     [Fact]
-    public void TheNoShimLineNamesCopilotPs1AndSaysTheTextIsInThePreview()
+    public void TheNoShimLineNamesCopilotPs1AndOnlyCopilotExe()
     {
         Assert.Contains("copilot.ps1", CopilotResumeRules.NoShimOnPath);
-        Assert.Contains("preview", CopilotResumeRules.NoShimOnPath);
+        Assert.Equal(
+            "Not started: copilot.ps1 is not on PATH, so a start from text cannot run. Only copilot.exe was found.",
+            CopilotResumeRules.NoShimOnPath);
     }
 
     [Fact]

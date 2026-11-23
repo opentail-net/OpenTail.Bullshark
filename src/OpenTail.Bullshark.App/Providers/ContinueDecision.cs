@@ -42,6 +42,21 @@ public sealed record ContinueDecision(SessionSummary? Session, ContinueMode? Mod
     public static string? ScreenRefusal(ProviderId provider, bool copilotListed, string notListed) =>
         provider == ProviderId.Copilot && !copilotListed ? notListed : null;
 
+    /// <summary>
+    /// The providers whose sessions the scope holds, in the dropdown's order: the active provider alone for the provider scope, or every provider for the
+    /// all scope. Codex is listed only where this build offers it (<paramref name="codexAvailable"/>). opencode has no availability test, so it is always
+    /// listed, as the dropdown always offers it. Pure.
+    /// </summary>
+    /// <param name="scope">The continue scope.</param>
+    /// <param name="activeProvider">The provider the window shows. Only the provider scope reads it.</param>
+    /// <param name="codexAvailable">True when this build offers Codex (<c>CodexProvider.Available</c>).</param>
+    internal static IReadOnlyList<ProviderId> ProvidersOf(ContinueScope scope, ProviderId activeProvider, bool codexAvailable)
+    {
+        if (scope == ContinueScope.Provider) return [activeProvider];
+        if (!codexAvailable) return [ProviderId.Claude, ProviderId.Copilot, ProviderId.OpenCode];
+        return [ProviderId.Claude, ProviderId.Codex, ProviderId.Copilot, ProviderId.OpenCode];
+    }
+
     /// <summary>The provider's name as the status line gives it.</summary>
     public static string NameOf(ProviderId provider) =>
         provider == ProviderId.Claude ? "Claude"

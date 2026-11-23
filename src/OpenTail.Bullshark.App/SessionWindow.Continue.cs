@@ -138,14 +138,9 @@ public partial class SessionWindow
         else if (provider == ProviderId.OpenCode) ShowOpenCodeResume(picked, initialMode: decision.Mode);
     }
 
-    /// <summary>The providers whose sessions the scope holds: the active provider, or every provider (CN-D1). Codex is listed only where this build offers it.</summary>
-    private IReadOnlyList<ProviderId> ContinueProvidersOf(ContinueScope scope)
-    {
-        if (scope == ContinueScope.Provider) return [_activeProvider.Id];
-        return CodexProvider.Available
-            ? [ProviderId.Claude, ProviderId.Codex, ProviderId.Copilot]
-            : [ProviderId.Claude, ProviderId.Copilot];
-    }
+    /// <summary>The providers whose sessions the scope holds: the active provider, or every provider (CN-D1), opencode included. The list is <see cref="ContinueDecision.ProvidersOf"/>.</summary>
+    private IReadOnlyList<ProviderId> ContinueProvidersOf(ContinueScope scope) =>
+        ContinueDecision.ProvidersOf(scope, _activeProvider.Id, CodexProvider.Available);
 
     /// <summary>
     /// The listed sessions of Codex or Copilot, read again by the window's own loader: a fresh read off the UI thread, which also keeps the rail's list

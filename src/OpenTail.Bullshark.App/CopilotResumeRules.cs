@@ -34,11 +34,10 @@ public static class CopilotResumeRules
     public const string SummaryRunning = "A Copilot summary is already being made. Wait for it to finish.";
 
     /// <summary>
-    /// The status line of a start when copilot.ps1 is not on PATH: the start runs the shim, and copilot.exe alone cannot take the text. The text is in the
-    /// preview, so the owner can copy it and start Copilot by hand.
+    /// The status line of a start when copilot.ps1 is not on PATH: the start runs the shim, and copilot.exe alone cannot take the text.
     /// </summary>
     public const string NoShimOnPath =
-        "Not started: copilot.ps1 is not on PATH, so a start from text cannot run. Only copilot.exe was found. The start text is in the preview: use Copy and start Copilot yourself.";
+        "Not started: copilot.ps1 is not on PATH, so a start from text cannot run. Only copilot.exe was found.";
 
     /// <summary>
     /// The line when a summary would be made by a window that does not hold the single-instance guard for the state file. The start-up sweep of the scratch
