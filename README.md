@@ -2,7 +2,13 @@
 
 Bullshark - saves your bytes.
 
-OpenTail.Bullshark is a window for your AI coding sessions. Each Claude Code, OpenAI Codex CLI or GitHub Copilot CLI session shows up as a tab, and the sessions keep running after the window closes. It exists so that work carries on from one day to the next: you can come back to a session and pick up where it stopped, without rebuilding the context or explaining the project again.
+Closing the window shouldn't end the conversation. OpenTail.Bullshark shows each Claude Code, OpenAI Codex CLI or GitHub Copilot CLI session as a tab, and the conversation is kept, so you can come back tomorrow and pick it up, with the project already in its head.
+
+A long-running session? Bullshark can summarise it and carry on from where you left off. Your session data stays on your machine, so you don't start from scratch again.
+
+Ran out of tokens? Start a new session from that summary in another platform.
+
+Need multiple sessions? Sure, you can add each in a new tab.
 
 ## What it is
 
