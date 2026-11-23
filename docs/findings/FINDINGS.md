@@ -34,7 +34,7 @@ Each finding has an ID (F1, F2, ...), the date, what was tested, the evidence, a
 ## F5 `claude attach` runs inside the embedded terminal (verified, P1 core question)
 
 - `claude attach ovc-probe-1` in the embedded terminal shows `Attaching…`, then the full Claude Code screen: colours, the prompt box, the `auto mode on` line, and the session's history.
-- Screenshot: `C:\Users\Dmitri\AppData\Local\Temp\bullshark-spike\attach-probe.png`.
+- Screenshot: `C:\Users\<user>\AppData\Local\Temp\bullshark-spike\attach-probe.png`.
 
 ## F6 Typing into the embedded tab reaches the session (verified, nudge mechanism)
 
@@ -64,7 +64,7 @@ Each finding has an ID (F1, F2, ...), the date, what was tested, the evidence, a
 
 ## F10 Transcript format (verified, one file)
 
-- Location: `~\.claude\projects\<encoded cwd>\<sessionId>.jsonl`. The encoded cwd replaces `:` and `\` with `-` (`C:\Git` becomes `C--Git`, and `C:\Users\Dmitri\AppData\Local\Temp\tmp.4ao6g4mss4` becomes `C--Users-Dmitri-AppData-Local-Temp-tmp-4ao6g4mss4`).
+- Location: `~\.claude\projects\<encoded cwd>\<sessionId>.jsonl`. The encoded cwd replaces `:` and `\` with `-` (`C:\Git` becomes `C--Git`, and `C:\Users\<user>\AppData\Local\Temp\tmp.4ao6g4mss4` becomes `C--Users-<user>-AppData-Local-Temp-tmp-4ao6g4mss4`).
 - One JSON object per line. Records with `type` `user` or `assistant` carry `message.content` blocks. Assistant records include `message.model` and `message.usage` with `input_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens` and `output_tokens`. These fields make a spend estimate possible (P7).
 
 ## F11 Screenshots and overlapping windows (verified, to improve)

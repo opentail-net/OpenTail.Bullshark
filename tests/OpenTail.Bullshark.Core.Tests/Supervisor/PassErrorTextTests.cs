@@ -10,7 +10,7 @@ public sealed class PassErrorTextTests
     [Fact]
     public void AClaudeProcessThatCannotBeStartedGivesTheInstallSentence()
     {
-        var ex = new Win32Exception(2, "An error occurred trying to start process 'claude' with working directory 'C:\\Users\\Dmitri\\work'. The system cannot find the file specified.");
+        var ex = new Win32Exception(2, "An error occurred trying to start process 'claude' with working directory 'C:\\Users\\Sample\\work'. The system cannot find the file specified.");
 
         Assert.Equal(PassErrorText.ClaudeNotStarted, PassErrorText.Of(ex));
     }

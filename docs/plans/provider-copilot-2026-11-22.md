@@ -119,7 +119,7 @@ Copilot sessions get the same features Codex has in the app: a rail of past sess
 
 ## Stages (each ends green on net10.0 and net11.0; commits when its tests pass; no push without approval)
 
-**Build rules (Codex plan, S5):** `--artifacts-path` under `C:\Users\Dmitri\.claude\jobs\8260bd19\tmp\artifacts`; `-nodeReuse:false`; do not stop or touch Visual Studio's processes. Check free RAM first. Measure the test baseline at the start of G1 (the Codex counts are older than the branch).
+**Build rules (Codex plan, S5):** `--artifacts-path` under `C:\Users\<user>\.claude\jobs\8260bd19\tmp\artifacts`; `-nodeReuse:false`; do not stop or touch Visual Studio's processes. Check free RAM first. Measure the test baseline at the start of G1 (the Codex counts are older than the branch).
 
 **Scratch rule for every probe in G0:** the probe's config and log go to a scratch folder we create (`--config-dir`, `--log-dir`), and the probe's sessions are never written to the owner's `~/.copilot/session-state`. A process a probe starts is stopped by the probe, and only that process. Each probe's command and result go in `docs/research/copilot-evidence/README.md` (names and counts only, no session text).
 

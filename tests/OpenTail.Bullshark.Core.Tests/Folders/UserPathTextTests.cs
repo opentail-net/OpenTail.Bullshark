@@ -6,12 +6,12 @@ namespace OpenTail.Bullshark.Core.Tests.Folders;
 /// <summary>The path shown on an empty page: the profile folder as ~ (firstrun batch B8).</summary>
 public sealed class UserPathTextTests
 {
-    private const string Profile = @"C:\Users\Dmitri";
+    private const string Profile = @"C:\Users\Sample";
 
     [Fact]
     public void APathUnderTheProfileStartsWithATilde()
     {
-        Assert.Equal(@"~\.claude\projects", UserPathText.Of(@"C:\Users\Dmitri\.claude\projects", Profile));
+        Assert.Equal(@"~\.claude\projects", UserPathText.Of(@"C:\Users\Sample\.claude\projects", Profile));
     }
 
     [Fact]
@@ -23,19 +23,19 @@ public sealed class UserPathTextTests
     [Fact]
     public void AnotherUserWhoseNameStartsTheSameIsNotShortened()
     {
-        Assert.Equal(@"C:\Users\Dmitriy\x", UserPathText.Of(@"C:\Users\Dmitriy\x", Profile));
+        Assert.Equal(@"C:\Users\Samplez\x", UserPathText.Of(@"C:\Users\Samplez\x", Profile));
     }
 
     [Fact]
     public void ThePrefixIsMatchedWithoutCaseAndForwardSlashesStayAsTheyAre()
     {
-        Assert.Equal("~/.claude/projects", UserPathText.Of("c:/users/dmitri/.claude/projects", "C:/Users/Dmitri"));
+        Assert.Equal("~/.claude/projects", UserPathText.Of("c:/users/sample/.claude/projects", "C:/Users/Sample"));
     }
 
     [Fact]
     public void APathOutsideTheProfileAndAnEmptyProfileAreUnchanged()
     {
         Assert.Equal(@"D:\data\projects", UserPathText.Of(@"D:\data\projects", Profile));
-        Assert.Equal(@"C:\Users\Dmitri\x", UserPathText.Of(@"C:\Users\Dmitri\x", string.Empty));
+        Assert.Equal(@"C:\Users\Sample\x", UserPathText.Of(@"C:\Users\Sample\x", string.Empty));
     }
 }

@@ -61,11 +61,11 @@ public sealed class PassHealthTests
     [Fact]
     public void AFullPathIsCutToItsFileName()
     {
-        var reason = PassHealth.Short(@"C:\Users\Dmitri\AppData\Local\OpenTail.Bullshark\runs.json cannot be read (The process cannot access the file).");
+        var reason = PassHealth.Short(@"C:\Users\Sample\AppData\Local\OpenTail.Bullshark\runs.json cannot be read (The process cannot access the file).");
 
         Assert.Equal("runs.json cannot be read (The process cannot access the file).", reason);
         Assert.DoesNotContain("Users", reason);
-        Assert.DoesNotContain("Dmitri", reason);
+        Assert.DoesNotContain("Sample", reason);
     }
 
     [Fact]
@@ -104,7 +104,7 @@ public sealed class PassHealthTests
     [Theory]
     [InlineData(@"could not read D:\Client Work\Acme\x.cs today", "could not read x.cs today")]
     [InlineData(@"D:\Client Work\Acme Ltd\state.json cannot be read", "state.json cannot be read")]
-    [InlineData(@"gone: C:\Users\Dmitri\My Documents\runs.json:12", "gone: runs.json:12")]
+    [InlineData(@"gone: C:\Users\Sample\My Documents\runs.json:12", "gone: runs.json:12")]
     [InlineData(@"share \\server\Client Share\state.json is gone", "share state.json is gone")]
     public void APathWithSpacesInItsFoldersIsCutToItsFileName(string text, string expected)
     {
@@ -112,21 +112,21 @@ public sealed class PassHealthTests
 
         Assert.Equal(expected, reason);
         Assert.DoesNotContain("Client", reason);
-        Assert.DoesNotContain("Dmitri", reason);
+        Assert.DoesNotContain("Sample", reason);
         Assert.DoesNotContain("Acme", reason);
     }
 
     [Theory]
-    [InlineData("failed at /c/Users/Dmitri/Client Work/x.cs now", "failed at x.cs now")]
-    [InlineData("failed at /mnt/c/Users/Dmitri/notes.md now", "failed at notes.md now")]
-    [InlineData("failed at /home/dmitri/Client Work/a.txt", "failed at a.txt")]
-    [InlineData("failed at /Users/dmitri/secret folder/a.txt", "failed at a.txt")]
+    [InlineData("failed at /c/Users/Sample/Client Work/x.cs now", "failed at x.cs now")]
+    [InlineData("failed at /mnt/c/Users/Sample/notes.md now", "failed at notes.md now")]
+    [InlineData("failed at /home/sample/Client Work/a.txt", "failed at a.txt")]
+    [InlineData("failed at /Users/sample/secret folder/a.txt", "failed at a.txt")]
     public void AGitBashOrUnixPathIsCutToItsFileName(string text, string expected)
     {
         var reason = PassHealth.Short(text);
 
         Assert.Equal(expected, reason);
-        Assert.DoesNotContain("Dmitri", reason, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Sample", reason, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Client", reason);
         Assert.DoesNotContain("secret", reason);
     }

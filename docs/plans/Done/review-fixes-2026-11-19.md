@@ -60,6 +60,6 @@ Core tests with counts; App build; whole suite `dotnet test OpenTail.Bullshark.s
 F1 strips ESC and controls (try the hostile string in a test); F2 shows staged and unstaged and the deletion check still flags; F3 proven by the marker-file test; F4-F6 do not change normal behaviour (attach works for real ids); no task text in any log line.
 
 ## Incident, 2026-11-19 (coder deleted a folder it may not have created)
-The coder ran `rm -rf C:\Users\Dmitri\AppData\Local\Temp\nope` without listing it first; its `git init` in the same command may have created the folder, but the listing showed a large total, so it may have held files already.
+The coder ran `rm -rf C:\Users\<user>\AppData\Local\Temp\nope` without listing it first; its `git init` in the same command may have created the folder, but the listing showed a large total, so it may have held files already.
 The orchestrator checked: nothing in this repo creates `Temp\nope` (the tests use `<their own temp dir>\nope`), the folder no longer exists, and it cannot be recovered or inspected. It was under `%TEMP%`, which is scratch by definition.
 **Owner: please check whether you kept anything in `%TEMP%\nope`.** Rule for all later coder handovers: delete only a folder you created in this task under a unique random name, list it before deleting, never `rm -rf` a fixed short name in a shared folder.
