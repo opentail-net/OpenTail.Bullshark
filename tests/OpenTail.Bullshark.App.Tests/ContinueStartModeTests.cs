@@ -56,7 +56,7 @@ public sealed class ContinueStartModeTests
             RailPalette.DarkPalette,
             "opus",
             "high",
-            (choice, kept, token) =>
+            (choice, kept, _, token) =>
             {
                 if (choice.Level is not null) calls.Add(choice.Mode);
                 return Task.FromResult(new ResumePromptPreview(new ResumePreview(SampleText, 0, true, null)));
@@ -188,7 +188,7 @@ public sealed class ContinueStartModeTests
             "Resume: an example session",
             "2 turns · last active 1 day ago · in C:\\Work\\example",
             RailPalette.DarkPalette,
-            (choice, kept, token) =>
+            (choice, kept, _, token) =>
             {
                 if (choice.Level is not null) calls.Add(choice.Mode);
                 return Task.FromResult(new CodexPreview(SampleText, null));
@@ -309,7 +309,7 @@ public sealed class ContinueStartModeTests
             "Resume: an example session",
             "2 turns · last active 1 day ago · in C:\\Work\\example",
             RailPalette.DarkPalette,
-            (choice, kept, token) =>
+            (choice, kept, _, token) =>
             {
                 if (choice.Level is not null) calls.Add(choice.Mode);
                 return Task.FromResult(new CopilotPreview(SampleText, null));

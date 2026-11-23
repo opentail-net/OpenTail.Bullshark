@@ -52,6 +52,9 @@ public interface IProviderPreview
 
     /// <summary>True when a kept summary was for the setting but not for the transcript the build read: no summary was made, and the screen says it is out of date.</summary>
     bool Stale { get; }
+
+    /// <summary>True when the summary itself was not made (the summariser threw), as opposed to a refusal before any call (RS-D28).</summary>
+    bool SummaryFailed { get; }
 }
 
 /// <summary>
@@ -96,6 +99,7 @@ public sealed record ResumeScreenControls(
     MenuItem TargetCodexItem,
     MenuItem TargetCopilotItem,
     Button MakeSummaryButton,
+    Button WriteByTargetButton,
     CheckBox RememberBox,
     TextBlock CostText,
     TextBlock FolderNotice,
@@ -120,7 +124,7 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
 
     private readonly ResumeScreenControls _c;
     private readonly IProviderResumeScreenHooks<TChoice> _hooks;
-    private readonly Func<TChoice, KeptSummary?, CancellationToken, Task<TPreview>>? _previewAsync;
+    private readonly Func<TChoice, KeptSummary?, bool, CancellationToken, Task<TPreview>>? _previewAsync;
     private readonly Func<int, bool>? _summaryHasLines;
     private readonly string? _folderNotice;
     private readonly bool _blocksStart;
@@ -134,12 +138,18 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
     /// <summary>The transcript's line count the screen holds: the count at open, then the count each build read (RS-D21, FIX 1 of the S6c review).</summary>
     private int? _lines;
 
+    /// <summary>
+    /// True after a source's Make summary failed with a cross-platform target chosen: the screen offers "Make summary with <Target>" (RS-D28). Cleared by any
+    /// change of the choice or the target.
+    /// </summary>
+    private bool _failedOnSource;
+
     /// <summary>The platform the Start menu picks (RS-D3): the provider's own by default, and back to it when the mode leaves a summary.</summary>
     private ProviderId _target;
 
     /// <param name="controls">The window's controls, as the screen uses them.</param>
     /// <param name="hooks">What differs for the provider.</param>
-    /// <param name="previewAsync">Makes the start text for a choice (off the UI thread), given the kept summary; returns the text and the summary it used.</param>
+    /// <param name="previewAsync">Makes the start text for a choice (off the UI thread), given the kept summary and whether the target writes the summary (RS-D28); returns the text and the summary it used.</param>
     /// <param name="summaryHasLines">True when the summary of the session, with the given tail turns, has messages to read (RS-D26). False disables Make summary
     /// with its status line. Null: not known here, so Make summary is on.</param>
     /// <param name="initialMode">The mode the screen opens on. Null keeps the screen's own start: Summary at Zero with the tail (no summary call). A stored
@@ -151,7 +161,7 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
     public ProviderResumeScreen(
         ResumeScreenControls controls,
         IProviderResumeScreenHooks<TChoice> hooks,
-        Func<TChoice, KeptSummary?, CancellationToken, Task<TPreview>>? previewAsync,
+        Func<TChoice, KeptSummary?, bool, CancellationToken, Task<TPreview>>? previewAsync,
         Func<int, bool>? summaryHasLines,
         ContinueMode? initialMode,
         string? folderNotice,
@@ -291,6 +301,7 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
         {
             CancelRequest();
             _busy = false;
+            _failedOnSource = false;
             HidePreview();
         }
         _target = platform;
@@ -327,6 +338,7 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
         if (_c.SummaryChoice.IsChecked != true) _target = _hooks.Provider;
         CancelRequest();
         _busy = false;
+        _failedOnSource = false;
         HidePreview();
         Refresh();
         var choice = Selected(out var turnsValid);
@@ -353,6 +365,8 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
         var hasLines = _summaryHasLines?.Invoke(turns) ?? true;
         var nothingToSummarise = inSummary && level is not null && turnsValid && !hasLines;
         var outOfDate = inSummary && ResumeSummaryState.IsOutOfDate(level, turns, _lines, _kept);
+        // RS-D28: after a failed summary of the source, with another platform chosen, the target can write it instead; the cost line says one call.
+        var writeShown = inSummary && _failedOnSource && level is not null && _target != _hooks.Provider;
 
         // The status line (RS-D21, RS-D25, RS-D26) is shown after the cost line, as the other messages of the screen are.
         var status = zeroRefusal ?? (nothingToSummarise ? ResumeSummaryState.NothingToSummariseLine
@@ -361,6 +375,7 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
             : level is null ? ProviderResumeRules.NoSummaryCallLine
             : _hooks.Wording.SummaryCostLine();
         _c.CostText.Text = costLine + (inSummary && !turnsValid ? " " + ProviderResumeRules.TurnsMessage : string.Empty)
+            + (writeShown ? " " + SummaryWriterRules.OneCallLine(_target) : string.Empty)
             + (status is null ? string.Empty : " " + status);
         _c.FolderNotice.Text = _folderNotice ?? string.Empty;
         _c.FolderNotice.Visibility = _folderNotice is null ? Visibility.Collapsed : Visibility.Visible;
@@ -378,6 +393,10 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
         ShowTargetMenu(free && inSummary);
         var makeAllowed = ResumeSummaryState.MakeSummaryAllowed(level, turnsValid, hasLines);
         Enable(_c.MakeSummaryButton, free && inSummary && makeAllowed);
+        _c.WriteByTargetButton.Content = SummaryWriterRules.ButtonOf(_target);
+        AutomationProperties.SetName(_c.WriteByTargetButton, SummaryWriterRules.ButtonOf(_target));
+        _c.WriteByTargetButton.Visibility = writeShown ? Visibility.Visible : Visibility.Collapsed;
+        Enable(_c.WriteByTargetButton, free && writeShown && turnsValid && hasLines);
         Enable(_c.RememberBox, free);
         Enable(_c.CopyButton, free && previewReady);
         _hooks.RefreshOwnControls(choice, mode, free);
@@ -397,6 +416,18 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
             _ = RunRequestAsync(choice);
     }
 
+    /// <summary>
+    /// The "Make summary with &lt;Target&gt;" button (RS-D28): the target writes the summary after the source's failed. It is offered only then, and only with
+    /// another platform chosen. The target's launch and folder checks run inside the preview, before its call (RS-D13).
+    /// </summary>
+    public void WriteByTarget()
+    {
+        var choice = Selected(out var turnsValid);
+        if (choice is { SharedMode: ProviderResumeMode.Summary, Level: not null } && turnsValid && !_busy && _failedOnSource
+            && (_summaryHasLines?.Invoke(choice.Turns) ?? true))
+            _ = RunRequestAsync(choice, writeByTarget: true);
+    }
+
     /// <summary>For the screenshots only: chooses the summary mode, at the level on screen, and presses Make summary once. Nothing else calls it.</summary>
     public void MakeSummaryForScreenshot()
     {
@@ -412,7 +443,7 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
     /// made. A request replaces the one before it: the older one is cancelled and its result is dropped. A failure is shown in the preview area; a cancel
     /// shows nothing. Never throws: every failure is shown on screen.
     /// </summary>
-    private async Task RunRequestAsync(TChoice choice)
+    private async Task RunRequestAsync(TChoice choice, bool writeByTarget = false)
     {
         if (_previewAsync is null) return;
         CancelRequest();
@@ -421,14 +452,14 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
         var id = _request;
         var makesSummary = choice.SharedMode == ProviderResumeMode.Summary && choice.Level is not null;
         _busy = makesSummary;
-        ShowWorking(makesSummary);
+        ShowWorking(makesSummary, writeByTarget);
         Refresh();
         try
         {
             // The kept summary is given only when it is for this setting on the transcript the screen holds (RS-D21): a Make summary press then reuses it,
             // and a build that finds the transcript changed says so (Stale) rather than making a call for a choice change.
             var kept = choice.Level is not null && ResumeSummaryState.KeptMatches(choice.Level, choice.Turns, _lines, _kept) ? _kept : null;
-            var preview = await _previewAsync(choice, kept, cts.Token);
+            var preview = await _previewAsync(choice, kept, writeByTarget, cts.Token);
             if (id != _request) return;
             if (preview.Lines is { } read) _lines = read;
             if (preview.Stale)
@@ -436,6 +467,7 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
                 HidePreview();
                 return;
             }
+            _failedOnSource = preview.SummaryFailed && !writeByTarget && _target != _hooks.Provider;
             if (preview.KeptSummary is { } made) _kept = made;
             if (preview.Problem is { } problem && preview.Text.Length == 0) ShowFailedSummary(choice, problem);
             else ShowPreview(preview);
@@ -468,9 +500,11 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
     }
 
     /// <summary>Shows that the text is being made. A summary says one call of the provider is made; Zero reads the session only.</summary>
-    private void ShowWorking(bool makesSummary) => ShowMessage(
+    private void ShowWorking(bool makesSummary, bool byTarget) => ShowMessage(
         makesSummary
-            ? $"Making the summary: one {_hooks.Wording.CliName} call. Nothing is sent to a session."
+            ? byTarget
+                ? $"Making the summary: one {ContinueDecision.NameOf(_target)} call. Nothing is sent to a session."
+                : $"Making the summary: one {_hooks.Wording.CliName} call. Nothing is sent to a session."
             : "Reading the session. Nothing is sent to a session.",
         problem: false);
 
@@ -485,7 +519,9 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
             ShowMessage(preview.Problem ?? "This session has no messages to continue from, so Start is off.", problem: preview.Problem is not null);
             return;
         }
-        _preview.Show(preview.Text, ProviderResumeRules.SizeLine(preview.Text.Length));
+        // RS-D28: a summary another platform wrote says so, in the preview's line.
+        var written = preview.KeptSummary?.WrittenBy is { } writer && writer != _hooks.Provider ? " " + SummaryWriterRules.WrittenByLine(writer) : string.Empty;
+        _preview.Show(preview.Text, ProviderResumeRules.SizeLine(preview.Text.Length) + written);
     }
 
     /// <summary>Puts a built preview on screen without a request (the window's test seam: TargetChooserTests). Nothing is built or sent.</summary>

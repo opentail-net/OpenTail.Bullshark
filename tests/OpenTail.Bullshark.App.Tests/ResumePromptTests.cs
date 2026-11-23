@@ -32,7 +32,7 @@ public sealed class ResumePromptTests
 
     /// <summary>A prompt for a large context (a summary is the recommendation, at the Normal level), with the given preview. Made on the WPF thread.</summary>
     private static ResumePrompt NewPrompt(
-        Func<ResumeChoice, KeptSummary?, CancellationToken, Task<ResumePromptPreview>> preview, Func<int, bool>? summaryHasLines = null)
+        Func<ResumeChoice, KeptSummary?, bool, CancellationToken, Task<ResumePromptPreview>> preview, Func<int, bool>? summaryHasLines = null)
     {
         AppResources.Ensure();
         return new ResumePrompt(
@@ -63,7 +63,7 @@ public sealed class ResumePromptTests
     private static void MakeSummary(ResumePrompt prompt) =>
         Named<Button>(prompt, "MakeSummaryButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
-    private static Task<ResumePromptPreview> TailPreview(ResumeChoice choice, KeptSummary? kept, CancellationToken token) =>
+    private static Task<ResumePromptPreview> TailPreview(ResumeChoice choice, KeptSummary? kept, bool writeByTarget, CancellationToken token) =>
         Task.FromResult(new ResumePromptPreview(new ResumePreview(TailText, 0, true, null)));
 
     /// <summary>The summary the fake makes for a choice: the level and the tail the choice holds.</summary>
@@ -90,10 +90,10 @@ public sealed class ResumePromptTests
         UiThread.Run(() =>
         {
             var calls = new List<ResumeChoice>();
-            var prompt = NewPrompt((choice, kept, token) =>
+            var prompt = NewPrompt((choice, kept, _, token) =>
             {
                 calls.Add(choice);
-                return choice.Level is null ? TailPreview(choice, kept, token) : Task.FromResult(SummaryOf(choice));
+                return choice.Level is null ? TailPreview(choice, kept, false, token) : Task.FromResult(SummaryOf(choice));
             });
 
             SummaryAt(prompt, "Zero");
@@ -123,10 +123,10 @@ public sealed class ResumePromptTests
         UiThread.Run(() =>
         {
             var calls = new List<ResumeChoice>();
-            var prompt = NewPrompt((choice, kept, token) =>
+            var prompt = NewPrompt((choice, kept, _, token) =>
             {
                 calls.Add(choice);
-                return TailPreview(choice, kept, token);
+                return TailPreview(choice, kept, false, token);
             });
             SummaryAt(prompt, "Zero");
 
@@ -179,7 +179,7 @@ public sealed class ResumePromptTests
         {
             var seen = new List<KeptSummary?>();
             var calls = 0;
-            var prompt = NewPrompt((choice, kept, token) =>
+            var prompt = NewPrompt((choice, kept, _, token) =>
             {
                 calls++;
                 seen.Add(kept);
@@ -212,7 +212,7 @@ public sealed class ResumePromptTests
     {
         UiThread.Run(() =>
         {
-            var prompt = NewPrompt((choice, kept, token) => Task.FromResult(SummaryOf(choice)));
+            var prompt = NewPrompt((choice, kept, _, token) => Task.FromResult(SummaryOf(choice)));
             SummaryAt(prompt, "Normal");
             MakeSummary(prompt);
             Assert.Equal(Visibility.Visible, Named<StackPanel>(prompt, "PreviewBlock").Visibility);
@@ -231,7 +231,7 @@ public sealed class ResumePromptTests
         UiThread.Run(() =>
         {
             var calls = 0;
-            var prompt = NewPrompt((choice, kept, token) =>
+            var prompt = NewPrompt((choice, kept, _, token) =>
             {
                 calls++;
                 return Task.FromResult(SummaryOf(choice));
@@ -268,7 +268,7 @@ public sealed class ResumePromptTests
     {
         UiThread.Run(() =>
         {
-            var prompt = NewPrompt((choice, kept, token) => Task.FromException<ResumePromptPreview>(new InvalidOperationException("boom")));
+            var prompt = NewPrompt((choice, kept, _, token) => Task.FromException<ResumePromptPreview>(new InvalidOperationException("boom")));
             SummaryAt(prompt, "Normal");
 
             MakeSummary(prompt);
@@ -287,7 +287,7 @@ public sealed class ResumePromptTests
         UiThread.Run(() =>
         {
             const string refusal = "Not started: the sample tool is older than the minimum, the version this build needs.";
-            var prompt = NewPrompt((choice, kept, token) => Task.FromResult(new ResumePromptPreview(null, refusal)));
+            var prompt = NewPrompt((choice, kept, _, token) => Task.FromResult(new ResumePromptPreview(null, refusal)));
             SummaryAt(prompt, "Normal");
 
             MakeSummary(prompt);
@@ -308,7 +308,7 @@ public sealed class ResumePromptTests
     {
         UiThread.Run(() =>
         {
-            var prompt = NewPrompt((choice, kept, token) => Task.FromCanceled<ResumePromptPreview>(new CancellationToken(canceled: true)));
+            var prompt = NewPrompt((choice, kept, _, token) => Task.FromCanceled<ResumePromptPreview>(new CancellationToken(canceled: true)));
             SummaryAt(prompt, "Normal");
 
             MakeSummary(prompt);
@@ -327,7 +327,7 @@ public sealed class ResumePromptTests
 
         UiThread.Run(() =>
         {
-            var prompt = NewPrompt((choice, kept, token) => Task.FromResult(SummaryOf(choice)));
+            var prompt = NewPrompt((choice, kept, _, token) => Task.FromResult(SummaryOf(choice)));
             SummaryAt(prompt, "Normal");
             MakeSummary(prompt);
 

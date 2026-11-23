@@ -43,7 +43,7 @@ public sealed record ResumeChoice(ResumeMode Mode, SummaryLevel? Level, int Turn
 /// What the Claude resume prompt's preview callback gives: the built preview, or, when the launch is refused, null with the refusal in
 /// <see cref="Problem"/>. A refused launch builds no text and makes no summary (R4d), so Preview is null exactly when Problem is set.
 /// </summary>
-public sealed record ResumePromptPreview(ResumePreview? Preview, string? Problem = null);
+public sealed record ResumePromptPreview(ResumePreview? Preview, string? Problem = null, bool SummaryFailed = false);
 
 /// <summary>
 /// The resume prompt (D14, D-S11, RS-D3 to RS-D28). Two ways to continue: Full (the same session, with its whole conversation) and Summary. A summary has
@@ -59,7 +59,13 @@ public partial class ResumePrompt : Window
     private const string ZeroTag = "Zero";
 
     private readonly int _contextTokens;
-    private readonly Func<ResumeChoice, KeptSummary?, CancellationToken, Task<ResumePromptPreview>>? _previewAsync;
+    private readonly Func<ResumeChoice, KeptSummary?, bool, CancellationToken, Task<ResumePromptPreview>>? _previewAsync;
+
+    /// <summary>Claude's usage limit is in force, as the last scan read it (RS-O5). Null: unknown, so no limit is assumed.</summary>
+    private readonly Func<bool>? _sourceAtLimit;
+
+    /// <summary>True after a Make summary of Claude failed with another platform chosen: the dialog offers the target's summary (RS-D28).</summary>
+    private bool _failedOnSource;
     private readonly Func<int, bool>? _summaryHasLines;
 
     /// <summary>The transcript's line count the dialog holds: the lines read when it opened (Claude's summary reads only those, RS-D21, FIX 1 of the S6c review).</summary>
@@ -89,8 +95,8 @@ public partial class ResumePrompt : Window
     /// <param name="folderExists">Whether the folder exists (the screen's folder check, Missing is false). Null: no folder notice is shown.</param>
     /// <param name="summaryHasLines">True when the summary of the session, with the given tail turns, has messages to read (RS-D26). Null: not known, so Make summary is on.</param>
     public ResumePrompt(string heading, string facts, long contextTokens, RailPalette palette, string defaultModel, string defaultEffort,
-        Func<ResumeChoice, KeptSummary?, CancellationToken, Task<ResumePromptPreview>>? previewAsync = null, ContinueMode? initialMode = null,
-        string? folder = null, bool? folderExists = null, Func<int, bool>? summaryHasLines = null, int? lines = null)
+        Func<ResumeChoice, KeptSummary?, bool, CancellationToken, Task<ResumePromptPreview>>? previewAsync = null, ContinueMode? initialMode = null,
+        string? folder = null, bool? folderExists = null, Func<int, bool>? summaryHasLines = null, int? lines = null, Func<bool>? sourceAtLimit = null)
     {
         InitializeComponent();
         // The window grows to the screen's work area at most: the body scrolls and the buttons stay in view (owner, 2026-11-22).
@@ -103,6 +109,7 @@ public partial class ResumePrompt : Window
         _previewAsync = previewAsync;
         _summaryHasLines = summaryHasLines;
         _lines = lines;
+        _sourceAtLimit = sourceAtLimit;
         _folderNotice = folderExists is { } exists ? ResumeFolderNotice.For(folder, exists) : null;
         _blocksStart = ResumeFolderNotice.BlocksStart(folder, folderExists);
         UiTheme.Apply(palette);
@@ -247,7 +254,11 @@ public partial class ResumePrompt : Window
     private void TargetItem_Click(object sender, RoutedEventArgs e)
     {
         if (ResumeTargetMenu.PlatformOf(sender) is not { } platform) return;
-        if (platform != _target) HidePreview();
+        if (platform != _target)
+        {
+            _failedOnSource = false;
+            HidePreview();
+        }
         _target = platform;
         Refresh();
     }
@@ -272,6 +283,7 @@ public partial class ResumePrompt : Window
         // RS-D3: the target goes back to the source when the mode leaves a summary; the Resume menu's platform items are off then.
         if (SummaryChoice.IsChecked != true) _target = ProviderId.Claude;
         _previewCts?.Cancel();
+        _failedOnSource = false;
         HidePreview();
         Refresh();
         var choice = Selected(out var turnsValid);
@@ -313,6 +325,10 @@ public partial class ResumePrompt : Window
         var runs = choice is null ? string.Empty
             : cross ? " " + CrossModelRow.CostLineForCross(choice.Target)
             : $" The new session runs at {choice.Model} {choice.Effort}.";
+        // RS-D28: the target's CLI writes the summary when Claude is at its limit, and the cost line says so before the call. After a failed Claude summary,
+        // with another platform chosen, the button offers the target's summary, and the line says it is one call there.
+        var writesByTarget = choice is not null && level is not null && WritesByTarget(choice);
+        var writeShown = choice is { Mode: ResumeMode.Summary } && level is not null && _failedOnSource && choice.Target != ProviderId.Claude;
         var costLine = choice?.Mode switch
         {
             ResumeMode.Full =>
@@ -320,6 +336,7 @@ public partial class ResumePrompt : Window
                 "A warm cache makes that cheap; a cold one charges it at full price. Nothing runs until you press Resume.",
             ResumeMode.Summary when level is null =>
                 "No summary call. The last turns are copied word for word into a new session.",
+            ResumeMode.Summary when writesByTarget => SummaryWriterRules.AtLimitCostLine(choice!.Target),
             ResumeMode.Summary =>
                 $"One Haiku call (low effort) reads your messages and Claude's replies, not the tool output, up to about " +
                 $"{ResumeText.SummaryInputChars / 4:N0} tokens, and writes the {level.Value.ToString().ToLowerInvariant()} " +
@@ -327,8 +344,8 @@ public partial class ResumePrompt : Window
             _ => "Choose one of the ways to continue.",
         };
         CostText.Text = (_previewing
-            ? (NeedsSummaryCall(choice) ? "Summarising: one model call…" : "Building the prompt…")
-            : costLine) + runs + sizes + (status is null ? string.Empty : " " + status);
+            ? (NeedsSummaryCall(choice) ? (writesByTarget ? SummaryWriterRules.OneCallLine(choice!.Target) : "Summarising: one model call…") : "Building the prompt…")
+            : costLine + (writeShown ? " " + SummaryWriterRules.OneCallLine(choice!.Target) : string.Empty)) + runs + sizes + (status is null ? string.Empty : " " + status);
 
         var free = !_previewing;
         Enable(FullChoice, free);
@@ -339,6 +356,9 @@ public partial class ResumePrompt : Window
         foreach (var segment in LevelRow.Children.OfType<RadioButton>()) Enable(segment, free && summary);
         var makeAllowed = ResumeSummaryState.MakeSummaryAllowed(level, turnsValid, hasLines);
         Enable(MakeSummaryButton, free && summary && makeAllowed);
+        WriteByTargetButton.Content = SummaryWriterRules.ButtonOf(choice?.Target ?? ProviderId.Claude);
+        WriteByTargetButton.Visibility = writeShown ? Visibility.Visible : Visibility.Collapsed;
+        Enable(WriteByTargetButton, free && writeShown && makeAllowed);
         var startAllowed = choice is not null && (!summary
             || ResumeSummaryState.StartAllowed(level, TailOn, turns, turnsValid, previewReady, _lines, KeptSummary));
         ResumeButton.IsEnabled = free && !_refused && !_blocksStart && startAllowed;
@@ -358,6 +378,18 @@ public partial class ResumePrompt : Window
     {
         element.IsEnabled = enabled;
         element.Opacity = enabled ? 1 : 0.5;
+    }
+
+    /// <summary>True when the target writes this summary because Claude is at its limit (RS-D28, RS-O5). The limit state is read when it is asked.</summary>
+    private bool WritesByTarget(ResumeChoice choice) =>
+        SummaryWriterRules.ClaudeAtLimitWritesByTarget(ProviderId.Claude, choice.Target, _sourceAtLimit?.Invoke() == true);
+
+    /// <summary>The "Make summary with &lt;Target&gt;" button (RS-D28): the target writes the summary after the source's failed. Its checks run first.</summary>
+    private async void WriteByTarget_Click(object sender, RoutedEventArgs e)
+    {
+        var choice = Selected(out var turnsValid);
+        if (choice is not { Mode: ResumeMode.Summary, Level: not null } || !turnsValid || _previewing || !_failedOnSource) return;
+        await BuildAsync(choice, writeByTarget: true);
     }
 
     /// <summary>The Make summary button: makes the summary now, once, for the level and tail on screen (RS-D21).</summary>
@@ -380,7 +412,7 @@ public partial class ResumePrompt : Window
     /// dialog stays open. A failed summary of the session's own platform falls back to Full (ResumeDefaults); one that starts in another platform keeps the
     /// summary, and the refusal stays, so Start is off. A build cancelled because the dialog closed shows nothing.
     /// </summary>
-    private async Task BuildAsync(ResumeChoice choice)
+    private async Task BuildAsync(ResumeChoice choice, bool writeByTarget = false)
     {
         if (_previewAsync is null || _previewing) return;
 
@@ -391,10 +423,11 @@ public partial class ResumePrompt : Window
         Refresh();
         try
         {
-            var built = await _previewAsync(choice, KeptSummary, cts.Token);
+            var built = await _previewAsync(choice, KeptSummary, writeByTarget || WritesByTarget(choice), cts.Token);
             if (built.Preview is not { } preview)
             {
                 var problem = built.Problem ?? "The prompt could not be built.";
+                _failedOnSource = built.SummaryFailed && !writeByTarget && choice.Target != ProviderId.Claude;
                 if (choice.Target == ProviderId.Claude && ResumeDefaults.FallBackToFull(choice.Mode == ResumeMode.Summary && choice.Level is not null, cancelled: false))
                     FallBackToFull(problem);
                 else
@@ -404,6 +437,7 @@ public partial class ResumePrompt : Window
                 }
                 return;
             }
+            _failedOnSource = false;
             if (preview.Summary is { } summary) KeptSummary = summary;
             ShowPreview(preview);
         }
@@ -440,7 +474,9 @@ public partial class ResumePrompt : Window
     private void ShowPreview(ResumePreview preview)
     {
         _previewText = preview.Text;
-        PreviewHeader.Text = ResumePreviewText.Header(preview.Text.Length, preview.CutCharacters, preview.Fits);
+        // RS-D28: a summary another platform wrote says so, after the size line.
+        var written = preview.Summary?.WrittenBy is { } writer && writer != ProviderId.Claude ? " " + SummaryWriterRules.WrittenByLine(writer) : string.Empty;
+        PreviewHeader.Text = ResumePreviewText.Header(preview.Text.Length, preview.CutCharacters, preview.Fits) + written;
         PreviewHeader.SetResourceReference(TextBlock.ForegroundProperty, preview.Fits ? "PromptMuted" : "UiDanger");
         PreviewText.Text = preview.Text;
         PreviewText.Visibility = Visibility.Visible;

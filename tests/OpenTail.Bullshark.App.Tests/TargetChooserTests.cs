@@ -51,7 +51,7 @@ public sealed class TargetChooserTests
             "Resume: an example session",
             "2 turns · last active 1 day ago · in C:\\Work\\example",
             RailPalette.DarkPalette,
-            (choice, kept, token) => Task.FromResult(new CodexPreview(TailText, null)),
+            (choice, kept, _, token) => Task.FromResult(new CodexPreview(TailText, null)),
             initialMode: initialMode);
     }
 
@@ -62,7 +62,7 @@ public sealed class TargetChooserTests
             "Resume: an example session",
             "2 turns · last active 1 day ago · in C:\\Work\\example",
             RailPalette.DarkPalette,
-            (choice, kept, token) => Task.FromResult(new CopilotPreview(TailText, null)),
+            (choice, kept, _, token) => Task.FromResult(new CopilotPreview(TailText, null)),
             initialMode: initialMode);
     }
 

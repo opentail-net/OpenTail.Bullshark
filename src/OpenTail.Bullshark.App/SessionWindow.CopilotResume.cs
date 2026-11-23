@@ -2,6 +2,8 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using OpenTail.Bullshark.Core.Activity;
+using OpenTail.Bullshark.Core.Claude;
+using OpenTail.Bullshark.Core.Codex;
 using OpenTail.Bullshark.Core.Continue;
 using OpenTail.Bullshark.Core.Copilot;
 using OpenTail.Bullshark.Core.Providers;
@@ -62,7 +64,7 @@ public partial class SessionWindow
         var copilotProvider = _copilot ??= new CopilotProvider();
         var lines = await TryReadLinesAsync(() => CopilotTranscriptReader.ReadSession(copilotProvider.Paths, id, CancellationToken.None, int.MaxValue));
         var dialog = new CopilotResumePrompt($"Resume: {title}", facts, Palette,
-            (choice, kept, ct) => BuildCopilotStartTextAsync(session, choice, kept, ct, choice.Target), initialMode, folder, FolderExists(folder),
+            (choice, kept, writeByTarget, ct) => BuildCopilotStartTextAsync(session, choice, kept, writeByTarget, ct, choice.Target), initialMode, folder, FolderExists(folder),
             SummaryHasLinesOf(lines, "copilot"), lines: lines?.Count)
         {
             Owner = this,
@@ -149,12 +151,14 @@ public partial class SessionWindow
     /// (S3b-A): the target's checks run before the summary call (RS-D13), and the summary is the one Copilot makes, with its own guards.
     /// </summary>
     private async Task<CopilotPreview> BuildCopilotStartTextAsync(
-        SessionSummary session, CopilotResumeChoice choice, KeptSummary? kept, CancellationToken ct, ProviderId? target = null)
+        SessionSummary session, CopilotResumeChoice choice, KeptSummary? kept, bool writeByTarget, CancellationToken ct, ProviderId? target = null)
     {
         var provider = _copilot ??= new CopilotProvider();
         var sessionId = session.Key.SessionId;
         var to = target ?? ProviderId.Copilot;
         var folder = session.Folder ?? string.Empty;
+        // RS-D28: the target writes the summary when the owner asked it to after the source's failed; Copilot otherwise.
+        var writer = SummaryWriterRules.WriterOf(ProviderId.Copilot, to, writeByTarget);
         try
         {
             if (to != ProviderId.Copilot)
@@ -201,7 +205,9 @@ public partial class SessionWindow
                         SetStatus(CopilotResumeRules.SummaryRunning);
                         return new CopilotPreview(string.Empty, null, CopilotResumeRules.SummaryRunning);
                     }
-                    summary = await MakeCopilotSummaryAsync(session, lines, level, choice.Turns, ct);
+                    summary = writer == ProviderId.Copilot
+                        ? await MakeCopilotSummaryAsync(session, lines, level, choice.Turns, ct)
+                        : await MakeWrittenSummaryAsync(session, lines, writer, level, choice.Turns, folder, ct);
                 }
             }
 
@@ -218,17 +224,33 @@ public partial class SessionWindow
             AppLog.Write($"copilot start text built: {start.Length:N0} characters");
             return new CopilotPreview(start, summary, Lines: lines.Count);
         }
-        catch (Exception ex) when (ex is CopilotSummaryException or ArgumentException or FileNotFoundException or IOException
-                                       or UnauthorizedAccessException or NotSupportedException)
+        catch (Exception ex) when (ex is CopilotSummaryException or ClaudeCliException or CodexSummaryException or ArgumentException or FileNotFoundException
+                                       or IOException or UnauthorizedAccessException or NotSupportedException)
         {
             // The log holds the type only: the message can name the session's folder or file.
             AppLog.Write($"copilot start text not built: {ex.GetType().Name}");
-            var problem = ex is CopilotSummaryException summaryFailure
-                ? $"The summary was not made: {summaryFailure.Message}."
+            var summaryFailed = ex is CopilotSummaryException or ClaudeCliException or CodexSummaryException;
+            var problem = summaryFailed
+                ? $"The summary was not made: {ex.Message}."
                 : $"The start text could not be built ({ex.GetType().Name}).";
             SetStatus($"Not started: {problem}");
-            return new CopilotPreview(string.Empty, null, problem);
+            return new CopilotPreview(string.Empty, null, problem, SummaryFailed: summaryFailed);
         }
+    }
+
+    /// <summary>
+    /// A summary of a Copilot session written by another platform's CLI (RS-D28): the same summary input as Copilot's own, and the target's call (see
+    /// <see cref="WriteSummaryAsync"/>). It is saved as a file, as Copilot's own are, and it says who wrote it (<see cref="KeptSummary.WrittenBy"/>).
+    /// </summary>
+    private async Task<KeptSummary> MakeWrittenSummaryAsync(
+        SessionSummary session, IReadOnlyList<TranscriptLine> lines, ProviderId writer, SummaryLevel level, int turns, string folder, CancellationToken ct)
+    {
+        // The summary reads only the messages before the tail (RS-D20, RS-D23); the tail is the rest.
+        var part = ResumeText.SummaryPart(lines, turns, ResumeText.TailTokenCap, turn => ProviderResumeText.TurnTokens(turn, "copilot"));
+        var made = await WriteSummaryAsync(writer, ProviderId.Copilot, part, null, level, folder, ct);
+        AppLog.Write($"{writer.Value} summary made for a Copilot session: {made.Length:N0} characters");
+        var saved = await SaveCopilotSummaryFileAsync(session, level, made);
+        return new KeptSummary(level, made, Saved: saved, Turns: turns, Lines: lines.Count, WrittenBy: SummaryWriterRules.WrittenByOf(ProviderId.Copilot, writer));
     }
 
     /// <summary>

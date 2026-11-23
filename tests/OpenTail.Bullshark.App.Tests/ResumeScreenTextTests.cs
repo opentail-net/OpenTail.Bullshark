@@ -38,7 +38,7 @@ public sealed class ResumeScreenTextTests
             "Resume: an example session",
             "2 turns · last active 1 day ago · in C:\\Work\\example",
             RailPalette.DarkPalette,
-            (choice, kept, token) => Task.FromResult(new CodexPreview(TailText, null)));
+            (choice, kept, _, token) => Task.FromResult(new CodexPreview(TailText, null)));
     }
 
     private static CopilotResumePrompt NewCopilotPrompt()
@@ -48,7 +48,7 @@ public sealed class ResumeScreenTextTests
             "Resume: an example session",
             "2 turns · last active 1 day ago · in C:\\Work\\example",
             RailPalette.DarkPalette,
-            (choice, kept, token) => Task.FromResult(new CopilotPreview(TailText, null)));
+            (choice, kept, _, token) => Task.FromResult(new CopilotPreview(TailText, null)));
     }
 
     private static T Named<T>(Window window, string name) where T : class =>

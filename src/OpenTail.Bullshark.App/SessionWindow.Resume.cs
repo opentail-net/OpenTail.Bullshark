@@ -1,7 +1,9 @@
 using System.IO;
 using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Claude;
+using OpenTail.Bullshark.Core.Codex;
 using OpenTail.Bullshark.Core.Continue;
+using OpenTail.Bullshark.Core.Copilot;
 using OpenTail.Bullshark.Core.Folders;
 using OpenTail.Bullshark.Core.Providers;
 using OpenTail.Bullshark.Core.Resume;
@@ -87,9 +89,9 @@ public partial class SessionWindow
         var check = FolderCheck.Check(folder, TrustCheck.DefaultClaudeJsonPath);
         var prompt = new ResumePrompt($"Resume: {DisplayTitle(digest)}", facts, digest.ContextTokensAtLastTurn, Palette,
             defaults.PlannerModel, defaults.PlannerEffort,
-            (choice, kept, cancellationToken) => PreviewAsync(digest, folder, lines, choice, kept, cancellationToken), initialMode,
+            (choice, kept, writeByTarget, cancellationToken) => PreviewAsync(digest, folder, lines, choice, kept, writeByTarget, cancellationToken), initialMode,
             folder, folderExists: check.Status != FolderStatus.Missing, summaryHasLines: turns => ResumeText.SummaryHasLines(lines, turns, ResumeText.TurnTokens),
-            lines: lines.Count)
+            lines: lines.Count, sourceAtLimit: ClaudeAtLimitNow)
         {
             Owner = this,
         };
@@ -124,7 +126,8 @@ public partial class SessionWindow
     /// refused too. The start keeps its own check in <see cref="StartRunAsync"/>.
     /// </summary>
     private async Task<ResumePromptPreview> PreviewAsync(
-        SessionDigest digest, string folder, IReadOnlyList<TranscriptLine> lines, ResumeChoice choice, KeptSummary? kept, CancellationToken cancellationToken)
+        SessionDigest digest, string folder, IReadOnlyList<TranscriptLine> lines, ResumeChoice choice, KeptSummary? kept, bool writeByTarget,
+        CancellationToken cancellationToken)
     {
         if (choice.Mode == ResumeMode.Full) throw new InvalidOperationException("A full resume sends no prompt, so there is none to preview.");
         var launch = await ClaudeLaunchCheckAsync(cancellationToken);
@@ -133,7 +136,17 @@ public partial class SessionWindow
             AppLog.Write("claude resume preview: launch refused, no summary");
             return new ResumePromptPreview(null, refusal);
         }
-        var start = await BuildStartTextAsync(digest, folder, lines, choice, kept, cancellationToken, target: choice.Target);
+        StartText start;
+        try
+        {
+            start = await BuildStartTextAsync(digest, folder, lines, choice, kept, cancellationToken, target: choice.Target, writeByTarget: writeByTarget);
+        }
+        catch (Exception ex) when (ex is ClaudeCliException or CodexSummaryException or CopilotSummaryException)
+        {
+            // RS-D28: the summary was not made, by Claude or by the writer that ran it. The dialog offers the target's summary when another platform is chosen.
+            AppLog.Write($"claude resume summary not made: {ex.GetType().Name}");
+            return new ResumePromptPreview(null, $"The summary was not made: {ex.Message}.", SummaryFailed: true);
+        }
         if (start.Refusal is { } targetRefusal)
         {
             AppLog.Write("claude resume preview: target refused, no summary");
@@ -286,7 +299,7 @@ public partial class SessionWindow
     /// </summary>
     private async Task<StartText> BuildStartTextAsync(
         SessionDigest digest, string folder, IReadOnlyList<TranscriptLine> lines, ResumeChoice choice, KeptSummary? kept,
-        CancellationToken cancellationToken = default, ProviderId? target = null)
+        CancellationToken cancellationToken = default, ProviderId? target = null, bool writeByTarget = false)
     {
         var to = target ?? ProviderId.Claude;
         if (to != ProviderId.Claude)
@@ -295,11 +308,13 @@ public partial class SessionWindow
                 ProviderId.Claude, to, RememberChoice.ModeOf(choice.Mode),
                 () => CrossTargetCheckAsync(ProviderId.Claude, to, folder, cancellationToken));
             if (refusal is not null) return new StartText(new ResumeText.FittedStart(string.Empty, 0, Fits: false), null, null, refusal);
-            var crossSummary = await SummaryForAsync(digest, lines, choice, kept, cancellationToken);
+            // RS-D28: the target writes the summary when the owner asked it to, or when Claude is at its limit (RS-O5). Its checks ran above, before its call.
+            var writer = SummaryWriterRules.WriterOf(ProviderId.Claude, to, writeByTarget);
+            var crossSummary = await SummaryForAsync(digest, folder, lines, choice, kept, writer, cancellationToken);
             return new StartText(CrossStartTextFor(ProviderId.Claude, to, folder, crossSummary, choice.Level, lines, choice.Turns), null, crossSummary);
         }
 
-        var summary = await SummaryForAsync(digest, lines, choice, kept, cancellationToken);
+        var summary = await SummaryForAsync(digest, folder, lines, choice, kept, ProviderId.Claude, cancellationToken);
 
         // The start text names the session it continues, on its first line (D-L8). It is fitted to the command line the session is
         // launched with, before the run is written: when the latest turn makes it too long, that turn is cut in its middle.
@@ -324,15 +339,74 @@ public partial class SessionWindow
     /// the tail (RS-D20, RS-D23), and is the one the same-platform start has always made (RS-D9).
     /// </summary>
     private async Task<KeptSummary?> SummaryForAsync(
-        SessionDigest digest, IReadOnlyList<TranscriptLine> lines, ResumeChoice choice, KeptSummary? kept, CancellationToken cancellationToken)
+        SessionDigest digest, string folder, IReadOnlyList<TranscriptLine> lines, ResumeChoice choice, KeptSummary? kept, ProviderId writer,
+        CancellationToken cancellationToken)
     {
         if (choice.Level is not { } level) return null;
         if (kept is not null && kept.MatchesChoice(level, choice.Turns, lines.Count)) return kept;
-        var input = await Task.Run(() => ResumeText.SummaryInput(
-            ResumeText.SummaryPart(lines, choice.Turns, ResumeText.TailTokenCap, ResumeText.TurnTokens), digest.FilesWritten), cancellationToken);
-        var text = await _cli.SummariseAsync(ResumeText.Instructions(level), input, cancellationToken);
+        string text;
+        if (writer == ProviderId.Claude)
+        {
+            var input = await Task.Run(() => ResumeText.SummaryInput(
+                ResumeText.SummaryPart(lines, choice.Turns, ResumeText.TailTokenCap, ResumeText.TurnTokens), digest.FilesWritten), cancellationToken);
+            text = await _cli.SummariseAsync(ResumeText.Instructions(level), input, cancellationToken);
+        }
+        else
+        {
+            // RS-D28: the target's CLI writes it, on the same input the source would have used (WriteSummaryAsync).
+            var part = await Task.Run(() => ResumeText.SummaryPart(lines, choice.Turns, ResumeText.TailTokenCap, ResumeText.TurnTokens), cancellationToken);
+            text = await WriteSummaryAsync(writer, ProviderId.Claude, part, digest.FilesWritten, level, folder, cancellationToken);
+            AppLog.Write($"{writer.Value} summary made for a Claude session: {text.Length:N0} characters");
+        }
         await SaveSummaryFileAsync(digest, level, text);
-        return new KeptSummary(level, text, Saved: true, Turns: choice.Turns, Lines: lines.Count);
+        return new KeptSummary(level, text, Saved: true, Turns: choice.Turns, Lines: lines.Count, WrittenBy: SummaryWriterRules.WrittenByOf(ProviderId.Claude, writer));
+    }
+
+    /// <summary>
+    /// The summary of a session written by <paramref name="writer"/>'s CLI, not the session's own (RS-D9, RS-D28). The input and the instructions are the
+    /// source's own, so the summary asks the same thing: only the CLI that runs it changes. A Codex writer runs <c>SummariseAsync</c> with them (its
+    /// <c>SummariseLinesAsync</c> would label the source's messages as Codex's own). A Copilot writer runs <c>SummariseLinesAsync</c> on the lines
+    /// labelled as Copilot's, with Copilot's own instructions. Nothing is called before the target's checks, which the caller runs.
+    /// </summary>
+    private async Task<string> WriteSummaryAsync(
+        ProviderId writer, ProviderId source, IReadOnlyList<TranscriptLine> part, IReadOnlyList<string>? filesWritten, SummaryLevel level,
+        string folder, CancellationToken cancellationToken)
+    {
+        if (writer == ProviderId.Claude)
+            return await _cli.SummariseAsync(SourceInstructions(source, level), SourceInput(source, part, filesWritten), cancellationToken);
+        if (writer == ProviderId.Codex)
+            return await new CodexSummarizer(new ProcessCliRunner("cmd.exe"))
+                .SummariseAsync(SourceInstructions(source, level), SourceInput(source, part, filesWritten), folder, cancellationToken);
+        // Copilot writes through its scratch folder, which only the window that holds the single-instance guard may use (RS-D28, CopilotResumeRules).
+        if (_supervisor is null) throw new CopilotSummaryException(CopilotResumeRules.SummaryNeedsGuard);
+        var asCopilot = part.Select(line => line.Kind == SourceKind(source) ? line with { Kind = "copilot" } : line).ToList();
+        return await new CopilotSummarizer().SummariseLinesAsync(asCopilot, level, _options.StatePath, cancellationToken);
+    }
+
+    /// <summary>The instructions of a summary of <paramref name="source"/>'s session, as the source's own summariser gives them (RS-D9).</summary>
+    private static string SourceInstructions(ProviderId source, SummaryLevel level) =>
+        source == ProviderId.Codex ? CodexSummaryText.Instructions(level)
+        : source == ProviderId.Copilot ? CopilotSummaryText.Instructions(level)
+        : ResumeText.Instructions(level);
+
+    /// <summary>The input of a summary of <paramref name="source"/>'s session: the one its own summariser makes from the summary part (RS-D20, RS-D23).</summary>
+    private static string SourceInput(ProviderId source, IReadOnlyList<TranscriptLine> part, IReadOnlyList<string>? filesWritten) =>
+        source == ProviderId.Codex ? ProviderResumeText.SummaryInput(part, "codex")
+        : source == ProviderId.Copilot ? CopilotSummaryInput.Build(part)
+        : ResumeText.SummaryInput(part, filesWritten);
+
+    /// <summary>The kind a source's messages carry in the transcript lines (the label the tail and the summary use).</summary>
+    private static string SourceKind(ProviderId source) =>
+        source == ProviderId.Codex ? "codex" : source == ProviderId.Copilot ? "copilot" : "claude";
+
+    /// <summary>
+    /// True while Claude's usage limit is in force, as the last scan of the transcripts read it (RS-O5): the resume screen's source is out of quota, so the
+    /// target writes its summary (RS-D28). The scan runs at most once a minute, so the state can be up to that old.
+    /// </summary>
+    private bool ClaudeAtLimitNow()
+    {
+        var now = DateTimeOffset.Now;
+        return _activeLimits.Any(limit => limit.ResetsAt > now);
     }
 
     /// <summary>

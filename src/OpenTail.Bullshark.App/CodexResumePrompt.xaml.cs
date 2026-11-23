@@ -48,7 +48,7 @@ public sealed record CodexResumeChoice(CodexResumeMode Mode, SummaryLevel? Level
 /// What the screen's preview callback gives: the start text (empty when the session has no messages), the summary it made or reused (null for
 /// none), and the reason no text was made (null when there is text, or when the session has no messages).
 /// </summary>
-public sealed record CodexPreview(string Text, KeptSummary? KeptSummary, string? Problem = null, int? Lines = null, bool Stale = false) : IProviderPreview;
+public sealed record CodexPreview(string Text, KeptSummary? KeptSummary, string? Problem = null, int? Lines = null, bool Stale = false, bool SummaryFailed = false) : IProviderPreview;
 
 /// <summary>
 /// The Codex resume screen (step R5): a copy of Claude's resume prompt for a Codex session, with three ways to continue. Nothing runs until Start.
@@ -71,7 +71,7 @@ public partial class CodexResumePrompt : Window
     /// <param name="folder">The session's folder, for the folder notice. Used only with <paramref name="folderExists"/>.</param>
     /// <param name="folderExists">Whether the folder exists. Null: no folder notice is shown. Start is off only with no folder on record.</param>
     public CodexResumePrompt(string heading, string facts, RailPalette palette,
-        Func<CodexResumeChoice, KeptSummary?, CancellationToken, Task<CodexPreview>>? previewAsync = null,
+        Func<CodexResumeChoice, KeptSummary?, bool, CancellationToken, Task<CodexPreview>>? previewAsync = null,
         Task<CodexModelReading>? models = null, ContinueMode? initialMode = null, string? folder = null, bool? folderExists = null,
         Func<int, bool>? summaryHasLines = null, int? lines = null)
     {
@@ -106,7 +106,7 @@ public partial class CodexResumePrompt : Window
         _screen = new ProviderResumeScreen<CodexResumeChoice, CodexPreview>(
             new ResumeScreenControls(
                 FullChoice, SummaryChoice, LevelBlock, LevelRow, TailBox, TurnsBox, TailBlock, TargetLine, StartButton, TargetMenuButton, TargetMenu,
-                TargetClaudeItem, TargetCodexItem, TargetCopilotItem, MakeSummaryButton, RememberBox, CostText, FolderNotice,
+                TargetClaudeItem, TargetCodexItem, TargetCopilotItem, MakeSummaryButton, WriteByTargetButton, RememberBox, CostText, FolderNotice,
                 PreviewHeader, PreviewBox, PreviewBlock, PreviewNote, CopyButton, (Style)Resources["Segment"]),
             new CodexHooks(this), previewAsync, summaryHasLines, initialMode, folderNotice, blocksStart, Close, lines);
 
@@ -170,6 +170,9 @@ public partial class CodexResumePrompt : Window
     private void TargetMenuButton_Click(object sender, RoutedEventArgs e) => _screen.OpenTargetMenu();
 
     private void MakeSummary_Click(object sender, RoutedEventArgs e) => _screen.MakeSummary();
+
+    /// <summary>The "Make summary with &lt;Target&gt;" button (RS-D28): the chosen platform writes the summary after the source's failed.</summary>
+    private void WriteByTarget_Click(object sender, RoutedEventArgs e) => _screen.WriteByTarget();
 
     private void Copy_Click(object sender, RoutedEventArgs e) => _screen.Copy();
 

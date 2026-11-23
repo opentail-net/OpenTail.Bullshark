@@ -175,6 +175,10 @@
                     <Button x:Name="MakeSummaryButton" Content="Make summary" Click="MakeSummary_Click" HorizontalAlignment="Left"
                             Margin="0,2,0,6"
                             ToolTip="Makes the summary now (one Haiku call) and keeps it for Start. Nothing else makes it." AutomationProperties.Name="Make summary" />
+                    <!-- RS-D28: shown only after a failed summary, with another platform chosen. Its text names that platform (see SummaryWriterRules). -->
+                    <Button x:Name="WriteByTargetButton" Content="Make summary with" Click="WriteByTarget_Click" HorizontalAlignment="Left"
+                            Margin="0,2,0,6" Visibility="Collapsed"
+                            ToolTip="Asks the chosen platform to write the summary (one call there). Nothing else makes it." AutomationProperties.Name="Make summary with" />
                 </StackPanel>
 
                 <!-- The tail (RS-D19): "Include last [N] turns", in Summary only. The summary covers the messages before these turns (RS-D20). -->

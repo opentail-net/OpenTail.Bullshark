@@ -29,7 +29,7 @@ public sealed class ResumeScreenFolderTests
         AppResources.Ensure();
         // A small context: Full is the recommendation, so Start is on at once (a summary waits for Make summary, RS-D21).
         return new ResumePrompt(Heading, Facts, contextTokens: 10_000, RailPalette.DarkPalette, "opus", "high",
-            previewAsync: (choice, kept, token) => Task.FromResult(new ResumePromptPreview(new ResumePreview(TailText, 0, true, null))),
+            previewAsync: (choice, kept, _, token) => Task.FromResult(new ResumePromptPreview(new ResumePreview(TailText, 0, true, null))),
             folder: folder, folderExists: folderExists);
     }
 
@@ -37,7 +37,7 @@ public sealed class ResumeScreenFolderTests
     {
         AppResources.Ensure();
         return new CodexResumePrompt(Heading, Facts, RailPalette.DarkPalette,
-            previewAsync: (choice, kept, token) => Task.FromResult(new CodexPreview(TailText, null)),
+            previewAsync: (choice, kept, _, token) => Task.FromResult(new CodexPreview(TailText, null)),
             folder: folder, folderExists: folderExists);
     }
 
@@ -45,7 +45,7 @@ public sealed class ResumeScreenFolderTests
     {
         AppResources.Ensure();
         return new CopilotResumePrompt(Heading, Facts, RailPalette.DarkPalette,
-            previewAsync: (choice, kept, token) => Task.FromResult(new CopilotPreview(TailText, null)),
+            previewAsync: (choice, kept, _, token) => Task.FromResult(new CopilotPreview(TailText, null)),
             folder: folder, folderExists: folderExists);
     }
 

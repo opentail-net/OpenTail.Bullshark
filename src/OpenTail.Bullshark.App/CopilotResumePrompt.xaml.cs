@@ -46,7 +46,7 @@ public sealed record CopilotResumeChoice(CopilotResumeMode Mode, SummaryLevel? L
 /// What the screen's preview callback gives: the start text (empty when the session has no messages), the summary it made or reused (null for none),
 /// and the reason no text was made (null when there is text, or when the session has no messages).
 /// </summary>
-public sealed record CopilotPreview(string Text, KeptSummary? KeptSummary, string? Problem = null, int? Lines = null, bool Stale = false) : IProviderPreview;
+public sealed record CopilotPreview(string Text, KeptSummary? KeptSummary, string? Problem = null, int? Lines = null, bool Stale = false, bool SummaryFailed = false) : IProviderPreview;
 
 /// <summary>
 /// The Copilot resume screen (step G3.1): a copy of the Codex resume screen for a Copilot session, with three ways to continue. Nothing runs until Start.
@@ -65,7 +65,7 @@ public partial class CopilotResumePrompt : Window
     /// <param name="folder">The session's folder, for the folder notice. Used only with <paramref name="folderExists"/>.</param>
     /// <param name="folderExists">Whether the folder exists. Null: no folder notice is shown. Start is off only with no folder on record.</param>
     public CopilotResumePrompt(string heading, string facts, RailPalette palette,
-        Func<CopilotResumeChoice, KeptSummary?, CancellationToken, Task<CopilotPreview>>? previewAsync = null, ContinueMode? initialMode = null,
+        Func<CopilotResumeChoice, KeptSummary?, bool, CancellationToken, Task<CopilotPreview>>? previewAsync = null, ContinueMode? initialMode = null,
         string? folder = null, bool? folderExists = null, Func<int, bool>? summaryHasLines = null, int? lines = null)
     {
         InitializeComponent();
@@ -99,7 +99,7 @@ public partial class CopilotResumePrompt : Window
         _screen = new ProviderResumeScreen<CopilotResumeChoice, CopilotPreview>(
             new ResumeScreenControls(
                 FullChoice, SummaryChoice, LevelBlock, LevelRow, TailBox, TurnsBox, TailBlock, TargetLine, StartButton, TargetMenuButton, TargetMenu,
-                TargetClaudeItem, TargetCodexItem, TargetCopilotItem, MakeSummaryButton, RememberBox, CostText, FolderNotice,
+                TargetClaudeItem, TargetCodexItem, TargetCopilotItem, MakeSummaryButton, WriteByTargetButton, RememberBox, CostText, FolderNotice,
                 PreviewHeader, PreviewBox, PreviewBlock, PreviewNote, CopyButton, (Style)Resources["Segment"]),
             new CopilotHooks(), previewAsync, summaryHasLines, initialMode, folderNotice, blocksStart, Close, lines);
     }
@@ -121,6 +121,9 @@ public partial class CopilotResumePrompt : Window
     private void TargetMenuButton_Click(object sender, RoutedEventArgs e) => _screen.OpenTargetMenu();
 
     private void MakeSummary_Click(object sender, RoutedEventArgs e) => _screen.MakeSummary();
+
+    /// <summary>The "Make summary with &lt;Target&gt;" button (RS-D28): the chosen platform writes the summary after the source's failed.</summary>
+    private void WriteByTarget_Click(object sender, RoutedEventArgs e) => _screen.WriteByTarget();
 
     private void Copy_Click(object sender, RoutedEventArgs e) => _screen.Copy();
 

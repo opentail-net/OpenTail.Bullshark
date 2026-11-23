@@ -2,8 +2,10 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using OpenTail.Bullshark.Core.Claude;
+using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Codex;
 using OpenTail.Bullshark.Core.Continue;
+using OpenTail.Bullshark.Core.Copilot;
 using OpenTail.Bullshark.Core.Providers;
 using OpenTail.Bullshark.Core.Resume;
 
@@ -75,7 +77,7 @@ public partial class SessionWindow
         var provider = _codex ??= new CodexProvider();
         var lines = await TryReadLinesAsync(() => CodexTurns.ReadSession(provider.Paths, session.Key.SessionId, CancellationToken.None));
         var dialog = new CodexResumePrompt($"Resume: {title}", facts, Palette,
-            (choice, kept, ct) => BuildCodexStartTextAsync(session, folder, choice, kept, ct, choice.Target), CodexModels(), initialMode,
+            (choice, kept, writeByTarget, ct) => BuildCodexStartTextAsync(session, folder, choice, kept, writeByTarget, ct, choice.Target), CodexModels(), initialMode,
             folder, FolderExists(folder), summaryHasLines: SummaryHasLinesOf(lines, "codex"), lines: lines?.Count)
         {
             Owner = this,
@@ -144,11 +146,13 @@ public partial class SessionWindow
     /// before the summary call (RS-D13), and the summary is the one Codex makes, as it does for its own start.
     /// </summary>
     private async Task<CodexPreview> BuildCodexStartTextAsync(
-        SessionSummary session, string folder, CodexResumeChoice choice, KeptSummary? kept, CancellationToken ct, ProviderId? target = null)
+        SessionSummary session, string folder, CodexResumeChoice choice, KeptSummary? kept, bool writeByTarget, CancellationToken ct, ProviderId? target = null)
     {
         var provider = _codex ??= new CodexProvider();
         var sessionId = session.Key.SessionId;
         var to = target ?? ProviderId.Codex;
+        // RS-D28: the target writes the summary when the owner asked it to after the source's failed; Codex otherwise.
+        var writer = SummaryWriterRules.WriterOf(ProviderId.Codex, to, writeByTarget);
         try
         {
             var launch = await CodexLaunchCheckAsync(ct);
@@ -197,11 +201,12 @@ public partial class SessionWindow
                     }
                     // The summary reads only the messages before the tail (RS-D20, RS-D23); the tail is the rest.
                     var part = ResumeText.SummaryPart(lines, choice.Turns, ResumeText.TailTokenCap, turn => ProviderResumeText.TurnTokens(turn, "codex"));
-                    var made = await new CodexSummarizer(new ProcessCliRunner("cmd.exe"))
-                        .SummariseLinesAsync(part, level, folder, ct);
-                    AppLog.Write($"codex summary made: {made.Length:N0} characters");
+                    var made = writer == ProviderId.Codex
+                        ? await new CodexSummarizer(new ProcessCliRunner("cmd.exe")).SummariseLinesAsync(part, level, folder, ct)
+                        : await WriteSummaryAsync(writer, ProviderId.Codex, part, null, level, folder, ct);
+                    AppLog.Write($"{writer.Value} summary made: {made.Length:N0} characters");
                     var saved = await SaveCodexSummaryFileAsync(session, level, made);
-                    summary = new KeptSummary(level, made, Saved: saved, Turns: choice.Turns, Lines: lines.Count);
+                    summary = new KeptSummary(level, made, Saved: saved, Turns: choice.Turns, Lines: lines.Count, WrittenBy: SummaryWriterRules.WrittenByOf(ProviderId.Codex, writer));
                 }
             }
 
@@ -218,15 +223,16 @@ public partial class SessionWindow
             AppLog.Write($"codex start text built: {start.Length:N0} characters");
             return new CodexPreview(start, summary, Lines: lines.Count);
         }
-        catch (Exception ex) when (ex is CodexSummaryException or ArgumentException or FileNotFoundException or IOException
-                                       or UnauthorizedAccessException or NotSupportedException)
+        catch (Exception ex) when (ex is CodexSummaryException or ClaudeCliException or CopilotSummaryException or ArgumentException or FileNotFoundException
+                                       or IOException or UnauthorizedAccessException or NotSupportedException)
         {
             AppLog.Write($"codex start text not built: {ex.GetType().Name}");
-            var problem = ex is CodexSummaryException
+            var summaryFailed = ex is CodexSummaryException or ClaudeCliException or CopilotSummaryException;
+            var problem = summaryFailed
                 ? $"The summary was not made: {ex.Message}."
                 : $"The start text could not be built: {ex.Message}.";
             SetStatus($"Not started: {problem}");
-            return new CodexPreview(string.Empty, null, problem);
+            return new CodexPreview(string.Empty, null, problem, SummaryFailed: summaryFailed);
         }
     }
 

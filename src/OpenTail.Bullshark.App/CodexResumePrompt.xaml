@@ -234,6 +234,9 @@
                 <TextBlock x:Name="CostText" Style="{StaticResource Muted}" Margin="0,14,0,0" />
                 <Button x:Name="MakeSummaryButton" Content="Make summary" Click="MakeSummary_Click" HorizontalAlignment="Right" Margin="0,8,0,0" Style="{StaticResource YellowGo}"
                         ToolTip="Makes the summary now (one Codex call) and keeps it for Start. Nothing else makes it." AutomationProperties.Name="Make summary" />
+                <!-- RS-D28: shown only after a failed summary, with another platform chosen. Its text names that platform (see SummaryWriterRules). -->
+                <Button x:Name="WriteByTargetButton" Content="Make summary with" Click="WriteByTarget_Click" HorizontalAlignment="Right" Margin="0,8,0,0" Style="{StaticResource YellowGo}"
+                        Visibility="Collapsed" ToolTip="Asks the chosen platform to write the summary (one call there). Nothing else makes it." AutomationProperties.Name="Make summary with" />
 
                 <!-- The start text, shown before anything starts. Hidden until a text is made, and hidden again when the choice changes. -->
                 <StackPanel x:Name="PreviewBlock" Visibility="Collapsed" Margin="0,14,0,0">

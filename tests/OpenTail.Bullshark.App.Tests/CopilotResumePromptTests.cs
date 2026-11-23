@@ -17,7 +17,7 @@ public sealed class CopilotResumePromptTests
     private const string TailText = "you: an example message\ncopilot: an example reply";
     private const string SummaryText = "## Summary (normal)\nAn example summary of an example session.";
 
-    private static CopilotResumePrompt NewPrompt(Func<CopilotResumeChoice, KeptSummary?, CancellationToken, Task<CopilotPreview>> preview)
+    private static CopilotResumePrompt NewPrompt(Func<CopilotResumeChoice, KeptSummary?, bool, CancellationToken, Task<CopilotPreview>> preview)
     {
         AppResources.Ensure();
         return new CopilotResumePrompt(
@@ -54,7 +54,7 @@ public sealed class CopilotResumePromptTests
     }
 
     /// <summary>The text of a Zero start: the callback's answer for the choice that has no summary.</summary>
-    private static Task<CopilotPreview> TailPreview(CopilotResumeChoice choice, KeptSummary? kept, CancellationToken token) =>
+    private static Task<CopilotPreview> TailPreview(CopilotResumeChoice choice, KeptSummary? kept, bool writeByTarget, CancellationToken token) =>
         Task.FromResult(new CopilotPreview(TailText, null));
 
     /// <summary>The callback of a summary: the fake makes a summary of the choice's level and tail, and the screen keeps it.</summary>
@@ -67,10 +67,10 @@ public sealed class CopilotResumePromptTests
         UiThread.Run(() =>
         {
             var calls = new List<CopilotResumeChoice>();
-            var prompt = NewPrompt((choice, kept, token) =>
+            var prompt = NewPrompt((choice, kept, _, token) =>
             {
                 calls.Add(choice);
-                return TailPreview(choice, kept, token);
+                return TailPreview(choice, kept, false, token);
             });
 
             Assert.True(Named<RadioButton>(prompt, "SummaryChoice").IsChecked == true);
@@ -106,10 +106,10 @@ public sealed class CopilotResumePromptTests
         UiThread.Run(() =>
         {
             var calls = 0;
-            var prompt = NewPrompt((choice, kept, token) =>
+            var prompt = NewPrompt((choice, kept, _, token) =>
             {
                 calls++;
-                return TailPreview(choice, kept, token);
+                return TailPreview(choice, kept, false, token);
             });
 
             Named<RadioButton>(prompt, "FullChoice").IsChecked = true;
@@ -134,9 +134,9 @@ public sealed class CopilotResumePromptTests
         {
             // A summary is made (the fake counts it) only by Make summary. A kept summary for the setting is a re-render, no model call.
             var made = new List<SummaryLevel>();
-            var prompt = NewPrompt((choice, kept, token) =>
+            var prompt = NewPrompt((choice, kept, _, token) =>
             {
-                if (choice.Level is null || choice.Mode != CopilotResumeMode.Summary) return TailPreview(choice, kept, token);
+                if (choice.Level is null || choice.Mode != CopilotResumeMode.Summary) return TailPreview(choice, kept, false, token);
                 if (kept is not null && kept.MatchesChoice(choice.Level, choice.Turns, kept.Lines)) return Task.FromResult(new CopilotPreview(SummaryText, null));
                 made.Add(choice.Level.Value);
                 return Task.FromResult(SummaryOf(choice));
@@ -163,8 +163,8 @@ public sealed class CopilotResumePromptTests
     {
         UiThread.Run(() =>
         {
-            var prompt = NewPrompt((choice, kept, token) => choice.Level is null
-                ? TailPreview(choice, kept, token)
+            var prompt = NewPrompt((choice, kept, _, token) => choice.Level is null
+                ? TailPreview(choice, kept, false, token)
                 : Task.FromResult(SummaryOf(choice)));
             SummaryAt(prompt, "Normal");
             Click(Named<Button>(prompt, "MakeSummaryButton"));
@@ -206,9 +206,9 @@ public sealed class CopilotResumePromptTests
         UiThread.Run(() =>
         {
             var made = 0;
-            var prompt = NewPrompt((choice, kept, token) =>
+            var prompt = NewPrompt((choice, kept, _, token) =>
             {
-                if (choice.Level is null) return TailPreview(choice, kept, token);
+                if (choice.Level is null) return TailPreview(choice, kept, false, token);
                 made++;
                 return Task.FromResult(SummaryOf(choice));
             });
@@ -231,9 +231,9 @@ public sealed class CopilotResumePromptTests
         UiThread.Run(() =>
         {
             var made = 0;
-            var prompt = NewPrompt((choice, kept, token) =>
+            var prompt = NewPrompt((choice, kept, _, token) =>
             {
-                if (choice.Level is null) return TailPreview(choice, kept, token);
+                if (choice.Level is null) return TailPreview(choice, kept, false, token);
                 if (kept is not null && kept.MatchesChoice(choice.Level, choice.Turns, kept.Lines)) return Task.FromResult(new CopilotPreview(SummaryText + "\n" + choice.Turns, null));
                 made++;
                 return Task.FromResult(SummaryOf(choice));
@@ -265,9 +265,9 @@ public sealed class CopilotResumePromptTests
         UiThread.Run(() =>
         {
             var made = 0;
-            var prompt = NewPrompt((choice, kept, token) =>
+            var prompt = NewPrompt((choice, kept, _, token) =>
             {
-                if (choice.Mode != CopilotResumeMode.Summary || choice.Level is null) return TailPreview(choice, kept, token);
+                if (choice.Mode != CopilotResumeMode.Summary || choice.Level is null) return TailPreview(choice, kept, false, token);
                 if (kept is not null && kept.MatchesChoice(choice.Level, choice.Turns, kept.Lines)) return Task.FromResult(new CopilotPreview(SummaryText, null));
                 made++;
                 return Task.FromResult(SummaryOf(choice));
@@ -292,8 +292,8 @@ public sealed class CopilotResumePromptTests
     {
         UiThread.Run(() =>
         {
-            var prompt = NewPrompt((choice, kept, token) => choice.Level is null
-                ? TailPreview(choice, kept, token)
+            var prompt = NewPrompt((choice, kept, _, token) => choice.Level is null
+                ? TailPreview(choice, kept, false, token)
                 : Task.FromResult(SummaryOf(choice)));
             SummaryAt(prompt, "Normal");
             Click(Named<Button>(prompt, "MakeSummaryButton"));
@@ -329,7 +329,7 @@ public sealed class CopilotResumePromptTests
     {
         UiThread.Run(() =>
         {
-            var prompt = NewPrompt((choice, kept, token) => Task.FromResult(new CopilotPreview(string.Empty, null)));
+            var prompt = NewPrompt((choice, kept, _, token) => Task.FromResult(new CopilotPreview(string.Empty, null)));
 
             Assert.Equal("This session has no messages to continue from, so Start is off.", Named<TextBlock>(prompt, "PreviewHeader").Text);
             Assert.Equal(string.Empty, Named<TextBox>(prompt, "PreviewBox").Text);
@@ -344,8 +344,8 @@ public sealed class CopilotResumePromptTests
         UiThread.Run(() =>
         {
             var problem = "The summary was not made: the summary failed (exit 1).";
-            var prompt = NewPrompt((choice, kept, token) => choice.Level is null
-                ? TailPreview(choice, kept, token)
+            var prompt = NewPrompt((choice, kept, _, token) => choice.Level is null
+                ? TailPreview(choice, kept, false, token)
                 : Task.FromResult(new CopilotPreview(string.Empty, null, problem)));
             SummaryAt(prompt, "Normal");
 
@@ -364,8 +364,8 @@ public sealed class CopilotResumePromptTests
         // falls back to In full.
         UiThread.Run(() =>
         {
-            var prompt = NewPrompt((choice, kept, token) => choice.Level is null
-                ? TailPreview(choice, kept, token)
+            var prompt = NewPrompt((choice, kept, _, token) => choice.Level is null
+                ? TailPreview(choice, kept, false, token)
                 : Task.FromException<CopilotPreview>(new InvalidOperationException("example failure")));
             SummaryAt(prompt, "Normal");
 
