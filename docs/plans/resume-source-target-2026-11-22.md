@@ -94,4 +94,4 @@ A click-through was **not run** in AFK mode, for three reasons: it would start t
 - [ ] What the real Codex and Copilot CLIs do with a long prompt (section 9): neither process was run.
 - [ ] 31 App tests are marked Skip (commit `4128d72`, reason "Automatic builds are off for now"). Check each one's cause before re-enabling it: some may fail for another reason. Their bodies are unchanged.
 - [ ] RS-O6 (Copilot as a target) is still open. The owner's PP-D2 enabled it, so hiding it is the owner's call, not AFK work.
-- [ ] OpenCode resume reads only the first 5,000 lines (`MaxLines`, `SessionWindow.OpenCodeResume.cs`). In a longer session, the summary and the tail come from the start of the session. Not fixed yet; a correctness fault for long sessions.
+- [x] OpenCode resume read only the first 5,000 lines. Fixed in `b8d610a`: the resume reads the whole session (the reader takes a line limit; the transcript view keeps the cap). The resume's long-session refusal is removed with it, since the refusal's reason no longer applies (AFK decision, reversible). Cost grows with session length: the whole session is read on open and on each preview.
