@@ -106,12 +106,8 @@
 
                 <!-- The level row and Make summary: the summary is made only by its button (one model call, OC-O4). Enabled for the summary only. -->
                 <StackPanel x:Name="LevelBlock" Margin="22,0,0,4">
-                    <WrapPanel x:Name="LevelRow" Orientation="Horizontal">
-                        <RadioButton x:Name="ZeroLevel" GroupName="OpenCodeLevel" Margin="0,0,16,6" />
-                        <RadioButton x:Name="MinimalLevel" GroupName="OpenCodeLevel" Margin="0,0,16,6" />
-                        <RadioButton x:Name="NormalLevel" GroupName="OpenCodeLevel" Margin="0,0,16,6" IsChecked="True" />
-                        <RadioButton x:Name="CompleteLevel" GroupName="OpenCodeLevel" Margin="0,0,16,6" />
-                    </WrapPanel>
+                    <ComboBox x:Name="LevelBox" MinWidth="220" Margin="0,0,0,6" HorizontalAlignment="Left" VerticalContentAlignment="Center"
+                              AutomationProperties.Name="Summary level" />
                     <Button x:Name="MakeSummaryButton" Content="Make summary" Click="MakeSummary_Click" IsEnabled="False"
                             HorizontalAlignment="Left" Margin="0,2,0,6" Style="{StaticResource YellowGo}"
                             ToolTip="Makes the summary now: one model call on your opencode login. Nothing is sent until you press it." AutomationProperties.Name="Make summary" />

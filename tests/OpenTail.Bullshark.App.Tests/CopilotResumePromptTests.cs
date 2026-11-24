@@ -43,14 +43,24 @@ public sealed class CopilotResumePromptTests
 
     private static void Click(Button button) => button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
-    private static RadioButton LevelSegment(CopilotResumePrompt prompt, string tag) =>
-        Named<Panel>(prompt, "LevelRow").Children.OfType<RadioButton>().First(radio => (string?)radio.Tag == tag);
+    /// <summary>The level dropdown (S6g). Its items are Zero, Minimal, Normal and Complete, in that order.</summary>
+    private static ComboBox LevelBox(CopilotResumePrompt prompt) => Named<ComboBox>(prompt, "LevelBox");
+
+    /// <summary>The dropdown's index for a level tag: Zero 0, Minimal 1, Normal 2, Complete 3.</summary>
+    private static int LevelIndex(string tag) => tag switch
+    {
+        "Zero" => 0,
+        "Minimal" => 1,
+        "Normal" => 2,
+        "Complete" => 3,
+        _ => throw new ArgumentException($"no level {tag}", nameof(tag)),
+    };
 
     /// <summary>Chooses Summary at a level (a tag: Zero, Minimal, Normal or Complete).</summary>
     private static void SummaryAt(CopilotResumePrompt prompt, string tag)
     {
         Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
-        LevelSegment(prompt, tag).IsChecked = true;
+        LevelBox(prompt).SelectedIndex = LevelIndex(tag);
     }
 
     /// <summary>The text of a Zero start: the callback's answer for the choice that has no summary.</summary>
@@ -75,7 +85,7 @@ public sealed class CopilotResumePromptTests
 
             Assert.True(Named<RadioButton>(prompt, "SummaryChoice").IsChecked == true);
             Assert.True(Named<CheckBox>(prompt, "TailBox").IsChecked == true);
-            Assert.True(LevelSegment(prompt, "Zero").IsChecked == true);
+            Assert.Equal(0, LevelBox(prompt).SelectedIndex);
             var call = Assert.Single(calls);
             Assert.Equal(CopilotResumeMode.Summary, call.Mode);
             Assert.Null(call.Level);
@@ -146,7 +156,7 @@ public sealed class CopilotResumePromptTests
 
             Assert.Empty(made);
             Assert.True(Named<Button>(prompt, "MakeSummaryButton").IsEnabled);
-            Assert.True(Named<Panel>(prompt, "LevelRow").IsEnabled);
+            Assert.True(Named<ComboBox>(prompt, "LevelBox").IsEnabled);
             Assert.False(Named<Button>(prompt, "StartButton").IsEnabled);
             Assert.Equal(CopilotResumeRules.CostLine(CopilotResumeMode.Summary), Named<TextBlock>(prompt, "CostText").Text);
 
@@ -215,7 +225,7 @@ public sealed class CopilotResumePromptTests
             SummaryAt(prompt, "Normal");
             Click(Named<Button>(prompt, "MakeSummaryButton"));
 
-            LevelSegment(prompt, "Minimal").IsChecked = true;
+            LevelBox(prompt).SelectedIndex = 1;
 
             Assert.Equal(1, made);
             Assert.Equal(Visibility.Collapsed, Named<StackPanel>(prompt, "PreviewBlock").Visibility);
@@ -299,7 +309,7 @@ public sealed class CopilotResumePromptTests
             Click(Named<Button>(prompt, "MakeSummaryButton"));
             Assert.True(Named<Button>(prompt, "StartButton").IsEnabled);
 
-            LevelSegment(prompt, "Complete").IsChecked = true;
+            LevelBox(prompt).SelectedIndex = 3;
 
             Assert.False(Named<Button>(prompt, "StartButton").IsEnabled);
             Assert.Equal(Visibility.Collapsed, Named<StackPanel>(prompt, "PreviewBlock").Visibility);

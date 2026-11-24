@@ -74,14 +74,14 @@ public sealed class OpenCodeResumePromptTests
             // builds its text with no call. Make summary reads once a summary level is chosen (RS-D22). Full turns the row and the button off.
             var prompt = NewPrompt();
             Assert.True(Named<RadioButton>(prompt, "SummaryChoice").IsChecked == true);
-            Assert.True(Named<WrapPanel>(prompt, "LevelRow").IsEnabled);
+            Assert.True(Named<ComboBox>(prompt, "LevelBox").IsEnabled);
             Assert.True(Named<Button>(prompt, "MakeSummaryButton").IsEnabled);
             Assert.Equal("Build text", (string?)Named<Button>(prompt, "MakeSummaryButton").Content);
-            Named<RadioButton>(prompt, "NormalLevel").IsChecked = true;
+            Named<ComboBox>(prompt, "LevelBox").SelectedIndex = 2;
             Assert.True(Named<Button>(prompt, "MakeSummaryButton").IsEnabled);
             Assert.Equal("Make summary", (string?)Named<Button>(prompt, "MakeSummaryButton").Content);
             Named<RadioButton>(prompt, "FullChoice").IsChecked = true;
-            Assert.False(Named<WrapPanel>(prompt, "LevelRow").IsEnabled);
+            Assert.False(Named<ComboBox>(prompt, "LevelBox").IsEnabled);
             Assert.False(Named<Button>(prompt, "MakeSummaryButton").IsEnabled);
         });
     }
@@ -93,7 +93,7 @@ public sealed class OpenCodeResumePromptTests
         {
             var prompt = NewPrompt();
             Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
-            Named<RadioButton>(prompt, "NormalLevel").IsChecked = true;
+            Named<ComboBox>(prompt, "LevelBox").SelectedIndex = 2;
             var cost = Named<TextBlock>(prompt, "CostText").Text;
             Assert.Equal(
                 "Making the summary is one model call on your opencode login, and opencode writes a session row into your opencode database.", cost);
@@ -108,11 +108,12 @@ public sealed class OpenCodeResumePromptTests
         UiThread.Run(() =>
         {
             var prompt = NewPrompt();
-            Assert.Equal(ResumeSummaryState.ZeroLabel, Named<RadioButton>(prompt, "ZeroLevel").Content);
-            Assert.Equal(ProviderResumeRules.LevelLabel(SummaryLevel.Minimal), Named<RadioButton>(prompt, "MinimalLevel").Content);
-            Assert.Equal(ProviderResumeRules.LevelLabel(SummaryLevel.Normal), Named<RadioButton>(prompt, "NormalLevel").Content);
-            Assert.Equal(ProviderResumeRules.LevelLabel(SummaryLevel.Complete), Named<RadioButton>(prompt, "CompleteLevel").Content);
-            Assert.True(Named<RadioButton>(prompt, "ZeroLevel").IsChecked == true);
+            var levels = Named<ComboBox>(prompt, "LevelBox");
+            Assert.Equal(ResumeSummaryState.ZeroLabel, ((ComboBoxItem)levels.Items[0]).Content);
+            Assert.Equal(ProviderResumeRules.LevelLabel(SummaryLevel.Minimal), ((ComboBoxItem)levels.Items[1]).Content);
+            Assert.Equal(ProviderResumeRules.LevelLabel(SummaryLevel.Normal), ((ComboBoxItem)levels.Items[2]).Content);
+            Assert.Equal(ProviderResumeRules.LevelLabel(SummaryLevel.Complete), ((ComboBoxItem)levels.Items[3]).Content);
+            Assert.Equal(0, Named<ComboBox>(prompt, "LevelBox").SelectedIndex);
         });
     }
 
@@ -126,7 +127,7 @@ public sealed class OpenCodeResumePromptTests
             var countBefore = asked.Count;
             Named<RadioButton>(prompt, "FullChoice").IsChecked = true;
             Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
-            Named<RadioButton>(prompt, "NormalLevel").IsChecked = true;
+            Named<ComboBox>(prompt, "LevelBox").SelectedIndex = 2;
             Assert.DoesNotContain(asked.Skip(countBefore), choice => choice.Level is not null);
             Assert.False(Named<Button>(prompt, "StartButton").IsEnabled);
         });
@@ -162,7 +163,7 @@ public sealed class OpenCodeResumePromptTests
             var asked = new List<OpenCodeResumeChoice>();
             var prompt = NewPrompt(asked: asked);
             Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
-            Named<RadioButton>(prompt, "CompleteLevel").IsChecked = true;
+            Named<ComboBox>(prompt, "LevelBox").SelectedIndex = 3;
             var countBefore = asked.Count;
 
             Named<Button>(prompt, "MakeSummaryButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -186,11 +187,11 @@ public sealed class OpenCodeResumePromptTests
             var asked = new List<OpenCodeResumeChoice>();
             var prompt = NewPrompt(asked: asked);
             Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
-            Named<RadioButton>(prompt, "NormalLevel").IsChecked = true;
+            Named<ComboBox>(prompt, "LevelBox").SelectedIndex = 2;
             Named<Button>(prompt, "MakeSummaryButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Assert.True(Named<Button>(prompt, "StartButton").IsEnabled);
 
-            Named<RadioButton>(prompt, "MinimalLevel").IsChecked = true;
+            Named<ComboBox>(prompt, "LevelBox").SelectedIndex = 1;
 
             Assert.False(Named<Button>(prompt, "StartButton").IsEnabled);
             Assert.Equal(Visibility.Collapsed, Named<StackPanel>(prompt, "PreviewBlock").Visibility);
@@ -263,7 +264,7 @@ public sealed class OpenCodeResumePromptTests
         {
             var prompt = NewPrompt();
             Assert.True(Named<RadioButton>(prompt, "SummaryChoice").IsChecked == true);
-            Assert.True(Named<RadioButton>(prompt, "ZeroLevel").IsChecked == true);
+            Assert.Equal(0, Named<ComboBox>(prompt, "LevelBox").SelectedIndex);
             Assert.True(Named<CheckBox>(prompt, "TailBox").IsChecked == true);
             Assert.NotEqual(true, Named<RadioButton>(prompt, "FullChoice").IsChecked);
         });

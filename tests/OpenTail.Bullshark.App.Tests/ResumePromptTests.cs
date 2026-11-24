@@ -49,14 +49,24 @@ public sealed class ResumePromptTests
     private static T Named<T>(ResumePrompt prompt, string name) where T : class =>
         prompt.FindName(name) as T ?? throw new InvalidOperationException($"no element named {name}");
 
-    private static RadioButton LevelSegment(ResumePrompt prompt, string tag) =>
-        Named<Panel>(prompt, "LevelRow").Children.OfType<RadioButton>().First(radio => (string?)radio.Tag == tag);
+    /// <summary>The level dropdown (S6g). Its items are Zero, Minimal, Normal and Complete, in that order.</summary>
+    private static ComboBox LevelBox(ResumePrompt prompt) => Named<ComboBox>(prompt, "LevelBox");
+
+    /// <summary>The dropdown's index for a level tag: Zero 0, Minimal 1, Normal 2, Complete 3.</summary>
+    private static int LevelIndex(string tag) => tag switch
+    {
+        "Zero" => 0,
+        "Minimal" => 1,
+        "Normal" => 2,
+        "Complete" => 3,
+        _ => throw new ArgumentException($"no level {tag}", nameof(tag)),
+    };
 
     /// <summary>Chooses Summary at a level (a tag: Zero, Minimal, Normal or Complete).</summary>
     private static void SummaryAt(ResumePrompt prompt, string tag)
     {
         Named<RadioButton>(prompt, "SummaryChoice").IsChecked = true;
-        LevelSegment(prompt, tag).IsChecked = true;
+        LevelBox(prompt).SelectedIndex = LevelIndex(tag);
     }
 
     /// <summary>Presses the Make summary button, the way a click does.</summary>
@@ -106,7 +116,7 @@ public sealed class ResumePromptTests
             Assert.True(Named<MenuItem>(prompt, "CopyItem").IsEnabled);
             Assert.False(Named<Button>(prompt, "MakeSummaryButton").IsEnabled);
 
-            LevelSegment(prompt, "Minimal").IsChecked = true;
+            LevelBox(prompt).SelectedIndex = 1;
             Assert.Single(calls);
             Assert.False(Named<Button>(prompt, "ResumeButton").IsEnabled);
 
@@ -217,7 +227,7 @@ public sealed class ResumePromptTests
             MakeSummary(prompt);
             Assert.Equal(Visibility.Visible, Named<StackPanel>(prompt, "PreviewBlock").Visibility);
 
-            LevelSegment(prompt, "Minimal").IsChecked = true;
+            LevelBox(prompt).SelectedIndex = 1;
 
             Assert.Equal(Visibility.Collapsed, Named<StackPanel>(prompt, "PreviewBlock").Visibility);
             Assert.False(Named<Button>(prompt, "ResumeButton").IsEnabled);

@@ -87,7 +87,7 @@ public sealed record ResumeScreenControls(
     RadioButton FullChoice,
     RadioButton SummaryChoice,
     Panel LevelBlock,
-    Panel LevelRow,
+    ComboBox LevelBox,
     CheckBox TailBox,
     TextBox TurnsBox,
     Panel TailBlock,
@@ -107,8 +107,7 @@ public sealed record ResumeScreenControls(
     TextBox PreviewBox,
     UIElement PreviewBlock,
     TextBlock PreviewNote,
-    Button CopyButton,
-    Style SegmentStyle);
+    Button CopyButton);
 
 /// <summary>
 /// The resume screen's logic, shared by the providers' screens (dedup plan 2026-11-23, D-S4 to D-S6). It holds what the Codex and Copilot screens
@@ -196,14 +195,16 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
         else _c.SummaryChoice.IsChecked = true;
         SummaryLevel? openLevel = atZero ? null : SummaryLevel.Normal;
 
+        // The level is a dropdown (S6g): one item per level, in this order. Its Tag is the level's string, or the Zero tag. The open level is selected
+        // before the handler below is attached, so the first build is not repeated for it.
         foreach (SummaryLevel? level in new SummaryLevel?[] { null, SummaryLevel.Minimal, SummaryLevel.Normal, SummaryLevel.Complete })
         {
             var text = level is { } chosen ? ProviderResumeRules.LevelLabel(chosen) : ResumeSummaryState.ZeroLabel;
-            var segment = Segment(text, $"{hooks.Provider}Level", level == openLevel);
-            segment.Tag = level?.ToString() ?? ZeroTag;
-            segment.Checked += (_, _) => OnChoiceChanged();
-            _c.LevelRow.Children.Add(segment);
+            var item = new ComboBoxItem { Content = text, Tag = level?.ToString() ?? ZeroTag };
+            _c.LevelBox.Items.Add(item);
+            if (level == openLevel) _c.LevelBox.SelectedItem = item;
         }
+        _c.LevelBox.SelectionChanged += (_, _) => OnChoiceChanged();
         foreach (var radio in new[] { _c.FullChoice, _c.SummaryChoice }) radio.Checked += (_, _) => OnChoiceChanged();
         _c.TailBox.Checked += (_, _) => OnChoiceChanged();
         _c.TailBox.Unchecked += (_, _) => OnChoiceChanged();
@@ -224,19 +225,10 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
     /// <summary>The summary the screen holds for the choice that was started, or null when none was made for it. The window does not save it again.</summary>
     public KeptSummary? KeptSummary { get; private set; }
 
-    /// <summary>One option of the level row: a segment that shows as pressed when it is the chosen one.</summary>
-    private RadioButton Segment(string text, string group, bool isChecked) => new()
-    {
-        Content = text,
-        GroupName = group,
-        IsChecked = isChecked,
-        Style = _c.SegmentStyle,
-    };
-
-    /// <summary>The summary level on screen: null for Zero, and Normal when no segment is chosen.</summary>
+    /// <summary>The summary level on screen: null for Zero, and Normal when no item is selected.</summary>
     private SummaryLevel? SelectedLevel()
     {
-        var tag = _c.LevelRow.Children.OfType<RadioButton>().FirstOrDefault(radio => radio.IsChecked == true)?.Tag as string;
+        var tag = (_c.LevelBox.SelectedItem as ComboBoxItem)?.Tag as string;
         if (tag == ZeroTag) return null;
         return Enum.TryParse<SummaryLevel>(tag, out var level) ? level : SummaryLevel.Normal;
     }
@@ -383,7 +375,7 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
         Enable(_c.SummaryChoice, free);
         _c.LevelBlock.Visibility = inSummary ? Visibility.Visible : Visibility.Collapsed;
         _c.TailBlock.Visibility = inSummary ? Visibility.Visible : Visibility.Collapsed;
-        Enable(_c.LevelRow, free && inSummary);
+        Enable(_c.LevelBox, free && inSummary);
         Enable(_c.TailBox, free && inSummary);
         Enable(_c.TurnsBox, free && inSummary && TailOn);
         ShowTarget(choice?.Target ?? _hooks.Provider);

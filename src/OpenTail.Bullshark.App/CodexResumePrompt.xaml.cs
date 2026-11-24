@@ -105,9 +105,9 @@ public partial class CodexResumePrompt : Window
         Facts.Text = facts;
         _screen = new ProviderResumeScreen<CodexResumeChoice, CodexPreview>(
             new ResumeScreenControls(
-                FullChoice, SummaryChoice, LevelBlock, LevelRow, TailBox, TurnsBox, TailBlock, TargetLine, StartButton, TargetMenuButton, TargetMenu,
+                FullChoice, SummaryChoice, LevelBlock, LevelBox, TailBox, TurnsBox, TailBlock, TargetLine, StartButton, TargetMenuButton, TargetMenu,
                 TargetClaudeItem, TargetCodexItem, TargetCopilotItem, MakeSummaryButton, WriteByTargetButton, RememberBox, CostText, FolderNotice,
-                PreviewHeader, PreviewBox, PreviewBlock, PreviewNote, CopyButton, (Style)Resources["Segment"]),
+                PreviewHeader, PreviewBox, PreviewBlock, PreviewNote, CopyButton),
             new CodexHooks(this), previewAsync, summaryHasLines, initialMode, folderNotice, blocksStart, Close, lines);
 
         // The screen's first build runs before the model list is read: the list then turns Start on (or the model box) when it is in.

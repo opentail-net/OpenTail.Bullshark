@@ -98,9 +98,9 @@ public partial class CopilotResumePrompt : Window
         Facts.Text = facts;
         _screen = new ProviderResumeScreen<CopilotResumeChoice, CopilotPreview>(
             new ResumeScreenControls(
-                FullChoice, SummaryChoice, LevelBlock, LevelRow, TailBox, TurnsBox, TailBlock, TargetLine, StartButton, TargetMenuButton, TargetMenu,
+                FullChoice, SummaryChoice, LevelBlock, LevelBox, TailBox, TurnsBox, TailBlock, TargetLine, StartButton, TargetMenuButton, TargetMenu,
                 TargetClaudeItem, TargetCodexItem, TargetCopilotItem, MakeSummaryButton, WriteByTargetButton, RememberBox, CostText, FolderNotice,
-                PreviewHeader, PreviewBox, PreviewBlock, PreviewNote, CopyButton, (Style)Resources["Segment"]),
+                PreviewHeader, PreviewBox, PreviewBlock, PreviewNote, CopyButton),
             new CopilotHooks(), previewAsync, summaryHasLines, initialMode, folderNotice, blocksStart, Close, lines);
     }
 

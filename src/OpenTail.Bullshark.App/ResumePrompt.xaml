@@ -168,7 +168,8 @@
                 <StackPanel x:Name="LevelBlock" Margin="22,0,0,4">
                     <!-- The platform the new session starts in (RS-D3, RS-D4) is picked in the Resume menu, a summary only. The line names both platforms when they differ. -->
                     <TextBlock x:Name="TargetLine" Style="{StaticResource Muted}" Margin="0,0,0,6" />
-                    <WrapPanel x:Name="LevelRow" Orientation="Horizontal" />
+                    <ComboBox x:Name="LevelBox" MinWidth="220" Margin="0,0,0,6" HorizontalAlignment="Left" VerticalContentAlignment="Center"
+                              AutomationProperties.Name="Summary level" />
                     <TextBlock Style="{StaticResource Muted}" Margin="0,0,0,4"
                                Text="Haiku writes it from your messages and Claude's replies. The tool output is left out. Zero makes no summary call." />
                     <!-- The summary is made only here (RS-D21). A change of the level or the tail after it marks it out of date. -->

@@ -100,8 +100,14 @@ public sealed class ResumeWriterTests
     private static void SummaryAt(Window window, string levelTag)
     {
         Named<RadioButton>(window, "SummaryChoice").IsChecked = true;
-        var segment = Named<Panel>(window, "LevelRow").Children.OfType<RadioButton>().Single(radio => (string?)radio.Tag == levelTag);
-        segment.IsChecked = true;
+        Named<ComboBox>(window, "LevelBox").SelectedIndex = levelTag switch
+        {
+            "Zero" => 0,
+            "Minimal" => 1,
+            "Normal" => 2,
+            "Complete" => 3,
+            _ => throw new ArgumentException($"no level {levelTag}", nameof(levelTag)),
+        };
     }
 
     [Fact]

@@ -24,9 +24,19 @@ public sealed class ContinueStartModeTests
     private static T Named<T>(FrameworkElement window, string name) where T : class =>
         window.FindName(name) as T ?? throw new InvalidOperationException($"no element named {name}");
 
-    /// <summary>The level row's segment with the given tag: Zero, Minimal, Normal or Complete.</summary>
-    private static RadioButton Level(FrameworkElement window, string tag) =>
-        Named<Panel>(window, "LevelRow").Children.OfType<RadioButton>().Single(radio => (string?)radio.Tag == tag);
+    /// <summary>True when the level dropdown (S6g) holds the given level: Zero, Minimal, Normal or Complete.</summary>
+    private static bool LevelChosen(FrameworkElement window, string tag) =>
+        Named<ComboBox>(window, "LevelBox").SelectedIndex == LevelIndex(tag);
+
+    /// <summary>The dropdown's index for a level tag: Zero 0, Minimal 1, Normal 2, Complete 3.</summary>
+    private static int LevelIndex(string tag) => tag switch
+    {
+        "Zero" => 0,
+        "Minimal" => 1,
+        "Normal" => 2,
+        "Complete" => 3,
+        _ => throw new ArgumentException($"no level {tag}", nameof(tag)),
+    };
 
     private static void Click(Button button) => button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
@@ -107,7 +117,7 @@ public sealed class ContinueStartModeTests
             Assert.Equal("Summary 👍 (recommended)", Named<RadioButton>(prompt, "SummaryChoice").Content);
             Assert.Equal(Visibility.Visible, Named<UIElement>(prompt, "LevelBlock").Visibility);
             Assert.Equal(Visibility.Visible, Named<UIElement>(prompt, "TailBlock").Visibility);
-            Assert.True(Checked(Level(prompt, "Normal")));
+            Assert.True(LevelChosen(prompt, "Normal"));
             Assert.True(Named<CheckBox>(prompt, "TailBox").IsChecked == true);
             Assert.Equal(ClaudeSummaryCost, Named<TextBlock>(prompt, "CostText").Text);
             Assert.Empty(calls);
@@ -139,7 +149,7 @@ public sealed class ContinueStartModeTests
             // A stored last-turns mode reads as Summary at Zero with the tail on (RS-D27): the Zero text is built at once, and no summary is called.
             Assert.False(Checked(Named<RadioButton>(prompt, "FullChoice")));
             Assert.True(Checked(Named<RadioButton>(prompt, "SummaryChoice")));
-            Assert.True(Checked(Level(prompt, "Zero")));
+            Assert.True(LevelChosen(prompt, "Zero"));
             Assert.True(Named<CheckBox>(prompt, "TailBox").IsChecked == true);
             Assert.Equal("10", Named<TextBox>(prompt, "TurnsBox").Text);
             Assert.True(Named<Button>(prompt, "ResumeButton").IsEnabled);
@@ -157,7 +167,7 @@ public sealed class ContinueStartModeTests
 
             Assert.False(Checked(Named<RadioButton>(prompt, "FullChoice")));
             Assert.True(Checked(Named<RadioButton>(prompt, "SummaryChoice")));
-            Assert.True(Checked(Level(prompt, "Normal")));
+            Assert.True(LevelChosen(prompt, "Normal"));
             Assert.Equal(Visibility.Visible, Named<UIElement>(prompt, "LevelBlock").Visibility);
             Assert.Equal(ClaudeSummaryCost, Named<TextBlock>(prompt, "CostText").Text);
             // The summary is not made at open, so Start waits for Make summary (RS-D21).
@@ -207,7 +217,7 @@ public sealed class ContinueStartModeTests
 
             Assert.True(Checked(Named<RadioButton>(prompt, "SummaryChoice")));
             Assert.False(Checked(Named<RadioButton>(prompt, "FullChoice")));
-            Assert.True(Checked(Level(prompt, "Zero")));
+            Assert.True(LevelChosen(prompt, "Zero"));
             Assert.True(Named<CheckBox>(prompt, "TailBox").IsChecked == true);
             Assert.Empty(calls);
             Assert.True(Named<Button>(prompt, "StartButton").IsEnabled);
@@ -239,7 +249,7 @@ public sealed class ContinueStartModeTests
 
             // A stored last-turns mode reads as Summary at Zero with the tail (RS-D27): nothing is called at open.
             Assert.True(Checked(Named<RadioButton>(prompt, "SummaryChoice")));
-            Assert.True(Checked(Level(prompt, "Zero")));
+            Assert.True(LevelChosen(prompt, "Zero"));
             Assert.Empty(calls);
         });
     }
@@ -253,11 +263,11 @@ public sealed class ContinueStartModeTests
             var prompt = NewCodexPrompt(calls, ContinueMode.Summary);
 
             Assert.True(Checked(Named<RadioButton>(prompt, "SummaryChoice")));
-            Assert.True(Checked(Level(prompt, "Normal")));
+            Assert.True(LevelChosen(prompt, "Normal"));
             Assert.Empty(calls);
             Assert.True(Named<Button>(prompt, "MakeSummaryButton").IsEnabled);
             Assert.False(Named<Button>(prompt, "StartButton").IsEnabled);
-            Assert.True(Named<Panel>(prompt, "LevelRow").IsEnabled);
+            Assert.True(Named<ComboBox>(prompt, "LevelBox").IsEnabled);
             Assert.Equal(CodexResumeRules.CostLine(CodexResumeMode.Summary), Named<TextBlock>(prompt, "CostText").Text);
         });
     }
@@ -327,7 +337,7 @@ public sealed class ContinueStartModeTests
 
             Assert.True(Checked(Named<RadioButton>(prompt, "SummaryChoice")));
             Assert.False(Checked(Named<RadioButton>(prompt, "FullChoice")));
-            Assert.True(Checked(Level(prompt, "Zero")));
+            Assert.True(LevelChosen(prompt, "Zero"));
             Assert.Empty(calls);
         });
     }
@@ -357,7 +367,7 @@ public sealed class ContinueStartModeTests
 
             // A stored last-turns mode reads as Summary at Zero with the tail (RS-D27): nothing is called at open.
             Assert.True(Checked(Named<RadioButton>(prompt, "SummaryChoice")));
-            Assert.True(Checked(Level(prompt, "Zero")));
+            Assert.True(LevelChosen(prompt, "Zero"));
             Assert.Empty(calls);
         });
     }
@@ -371,11 +381,11 @@ public sealed class ContinueStartModeTests
             var prompt = NewCopilotPrompt(calls, ContinueMode.Summary);
 
             Assert.True(Checked(Named<RadioButton>(prompt, "SummaryChoice")));
-            Assert.True(Checked(Level(prompt, "Normal")));
+            Assert.True(LevelChosen(prompt, "Normal"));
             Assert.Empty(calls);
             Assert.True(Named<Button>(prompt, "MakeSummaryButton").IsEnabled);
             Assert.False(Named<Button>(prompt, "StartButton").IsEnabled);
-            Assert.True(Named<Panel>(prompt, "LevelRow").IsEnabled);
+            Assert.True(Named<ComboBox>(prompt, "LevelBox").IsEnabled);
             Assert.Equal(CopilotResumeRules.CostLine(CopilotResumeMode.Summary), Named<TextBlock>(prompt, "CostText").Text);
         });
     }

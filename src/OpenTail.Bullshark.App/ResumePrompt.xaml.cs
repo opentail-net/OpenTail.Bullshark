@@ -147,14 +147,16 @@ public partial class ResumePrompt : Window
         else SummaryChoice.IsChecked = true;
         SummaryLevel? openLevel = ProviderResumeRules.OpensAtZeroWithTail(initialMode) ? null : SummaryLevel.Normal;
 
+        // The level is a dropdown (S6g): one item per level, in this order. Its Tag is the level's string, or the Zero tag. The open level is selected
+        // before the handler below is attached, so the first cost line is not repeated for it.
         foreach (SummaryLevel? level in new SummaryLevel?[] { null, SummaryLevel.Minimal, SummaryLevel.Normal, SummaryLevel.Complete })
         {
             var text = level is { } chosen ? ProviderResumeRules.LevelLabel(chosen) : ResumeSummaryState.ZeroLabel;
-            var segment = Segment(text, "Level", level == openLevel);
-            segment.Tag = level?.ToString() ?? ZeroTag;
-            segment.Checked += (_, _) => UpdateCost();
-            LevelRow.Children.Add(segment);
+            var item = new ComboBoxItem { Content = text, Tag = level?.ToString() ?? ZeroTag };
+            LevelBox.Items.Add(item);
+            if (level == openLevel) LevelBox.SelectedItem = item;
         }
+        LevelBox.SelectionChanged += (_, _) => UpdateCost();
 
         foreach (var radio in new[] { FullChoice, SummaryChoice }) radio.Checked += (_, _) => UpdateCost();
         TailBox.Checked += (_, _) => UpdateCost();
@@ -192,7 +194,7 @@ public partial class ResumePrompt : Window
     /// <summary>The summary level on screen: null for Zero, and Normal when none is chosen.</summary>
     private SummaryLevel? SelectedLevel()
     {
-        var tag = SelectedTag(LevelRow);
+        var tag = (LevelBox.SelectedItem as ComboBoxItem)?.Tag as string;
         if (tag == ZeroTag) return null;
         return Enum.TryParse<SummaryLevel>(tag, out var level) ? level : SummaryLevel.Normal;
     }
@@ -356,7 +358,7 @@ public partial class ResumePrompt : Window
         Enable(TailBox, free && summary);
         Enable(TurnsBox, free && summary && TailOn);
         ShowTargetMenu(free && summary);
-        foreach (var segment in LevelRow.Children.OfType<RadioButton>()) Enable(segment, free && summary);
+        Enable(LevelBox, free && summary);
         var makeAllowed = ResumeSummaryState.MakeSummaryAllowed(level, TailOn, turns, turnsValid, hasLines);
         ShowMakeButton(summary && level is null);
         Enable(MakeSummaryButton, free && summary && makeAllowed);

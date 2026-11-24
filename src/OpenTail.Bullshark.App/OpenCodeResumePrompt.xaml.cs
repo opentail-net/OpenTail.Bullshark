@@ -26,6 +26,9 @@ public partial class OpenCodeResumePrompt : Window
     /// </summary>
     public const string OpenCodeStartText = "Start in opencode";
 
+    /// <summary>The level dropdown's tag of Zero. Zero is no summary, so it has no level (RS-D22).</summary>
+    private const string ZeroTag = "Zero";
+
     private readonly Func<OpenCodeResumeChoice, CancellationToken, Task<OpenCodePreview>>? _previewAsync;
     private readonly Func<int, bool>? _summaryHasLines;
     /// <summary>The Make summary button's tooltip as the XAML sets it: shown again when the choice is a summary level.</summary>
@@ -96,10 +99,6 @@ public partial class OpenCodeResumePrompt : Window
         Facts.Text = facts;
         FullChoice.Content = ResumeSummaryState.FullLabel;
         SummaryChoice.Content = ResumeSummaryState.SummaryLabel;
-        ZeroLevel.Content = ResumeSummaryState.ZeroLabel;
-        MinimalLevel.Content = ProviderResumeRules.LevelLabel(SummaryLevel.Minimal);
-        NormalLevel.Content = ProviderResumeRules.LevelLabel(SummaryLevel.Normal);
-        CompleteLevel.Content = ProviderResumeRules.LevelLabel(SummaryLevel.Complete);
         TailBox.IsChecked = true;
         TurnsBox.Text = OpenCodeResumeRules.DefaultTurns.ToString(CultureInfo.InvariantCulture);
 
@@ -109,10 +108,20 @@ public partial class OpenCodeResumePrompt : Window
         if (start == ProviderResumeMode.Full) FullChoice.IsChecked = true;
         else SummaryChoice.IsChecked = true;
         var atZero = start is null || ProviderResumeRules.OpensAtZeroWithTail(initialMode);
-        (atZero ? ZeroLevel : NormalLevel).IsChecked = true;
+        SummaryLevel? openLevel = atZero ? null : SummaryLevel.Normal;
+
+        // The level is a dropdown (S6g): one item per level, in this order. Its Tag is the level's string, or the Zero tag. The open level is selected
+        // before the handler below is attached.
+        foreach (SummaryLevel? level in new SummaryLevel?[] { null, SummaryLevel.Minimal, SummaryLevel.Normal, SummaryLevel.Complete })
+        {
+            var text = level is { } chosen ? ProviderResumeRules.LevelLabel(chosen) : ResumeSummaryState.ZeroLabel;
+            var item = new ComboBoxItem { Content = text, Tag = level?.ToString() ?? ZeroTag };
+            LevelBox.Items.Add(item);
+            if (level == openLevel) LevelBox.SelectedItem = item;
+        }
 
         foreach (var radio in new[] { FullChoice, SummaryChoice }) radio.Checked += (_, _) => OnChoiceChanged();
-        foreach (var level in new[] { ZeroLevel, MinimalLevel, NormalLevel, CompleteLevel }) level.Checked += (_, _) => OnChoiceChanged();
+        LevelBox.SelectionChanged += (_, _) => OnChoiceChanged();
         TailBox.Checked += (_, _) => OnChoiceChanged();
         TailBox.Unchecked += (_, _) => OnChoiceChanged();
         TurnsBox.TextChanged += (_, _) => OnChoiceChanged();
@@ -152,12 +161,13 @@ public partial class OpenCodeResumePrompt : Window
         return new OpenCodeResumeChoice(OpenCodeResumeMode.Summary, ResumeSummaryState.TurnsOf(TailOn, turns), false, SelectedLevel());
     }
 
-    /// <summary>The summary level on screen: null for Zero, and Normal when none is chosen.</summary>
-    private SummaryLevel? SelectedLevel() =>
-        ZeroLevel.IsChecked == true ? null
-        : MinimalLevel.IsChecked == true ? SummaryLevel.Minimal
-        : CompleteLevel.IsChecked == true ? SummaryLevel.Complete
-        : SummaryLevel.Normal;
+    /// <summary>The summary level on screen: null for Zero, and Normal when no item is selected.</summary>
+    private SummaryLevel? SelectedLevel()
+    {
+        var tag = (LevelBox.SelectedItem as ComboBoxItem)?.Tag as string;
+        if (tag == ZeroTag) return null;
+        return Enum.TryParse<SummaryLevel>(tag, out var level) ? level : SummaryLevel.Normal;
+    }
 
     /// <summary>
     /// Runs when the mode, the level, the tail or its turns change. The preview on screen is for the old choice, so it is taken away. Zero is built at once
@@ -210,7 +220,7 @@ public partial class OpenCodeResumePrompt : Window
 
         LevelBlock.Visibility = inSummary ? Visibility.Visible : Visibility.Collapsed;
         TailBlock.Visibility = inSummary ? Visibility.Visible : Visibility.Collapsed;
-        Enable(LevelRow, inSummary);
+        Enable(LevelBox, inSummary);
         Enable(TailBox, inSummary);
         Enable(TurnsBox, inSummary && TailOn);
         // Make summary is off while a request runs, so one summary call is made at a time in this screen.

@@ -150,32 +150,6 @@
             </Setter>
         </Style>
 
-        <!-- A segment of a row of choices (the summary levels): the chosen one shows pressed. -->
-        <Style x:Key="Segment" TargetType="RadioButton">
-            <Setter Property="Foreground" Value="{DynamicResource PromptText}" />
-            <Setter Property="Margin" Value="0,0,6,6" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="RadioButton">
-                        <Border x:Name="Frame" Background="{DynamicResource PromptPanel}"
-                                BorderBrush="{DynamicResource PromptBorder}" BorderThickness="1" CornerRadius="3" Padding="10,4">
-                            <ContentPresenter VerticalAlignment="Center" />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource PromptMuted}" />
-                            </Trigger>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Frame" Property="Background" Value="{DynamicResource PromptSelection}" />
-                                <Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource PromptText}" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
         <Style x:Key="Section" TargetType="TextBlock">
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Margin" Value="0,14,0,6" />
@@ -205,7 +179,8 @@
                 <StackPanel x:Name="LevelBlock" Margin="22,0,0,4">
                     <!-- The platform the new session starts in (RS-D3, RS-D4) is picked in the Start menu, a summary only. The line names both platforms when they differ. -->
                     <TextBlock x:Name="TargetLine" Style="{StaticResource Muted}" Margin="0,0,0,6" />
-                    <WrapPanel x:Name="LevelRow" Orientation="Horizontal" />
+                    <ComboBox x:Name="LevelBox" MinWidth="220" Margin="0,0,0,6" HorizontalAlignment="Left" VerticalContentAlignment="Center"
+                              AutomationProperties.Name="Summary level" />
                     <TextBlock Style="{StaticResource Muted}" Margin="0,0,0,4"
                                Text="Copilot writes it from this session's messages. Tool calls and their output are left out." />
                 </StackPanel>
