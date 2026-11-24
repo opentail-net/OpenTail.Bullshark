@@ -51,7 +51,7 @@ Each resume screen shows two things: the **source** (the session being resumed) 
 - [ ] **RS-O2** Button wording "Start in <Target>". *Default: as RS-D4.*
 - [ ] **RS-O3** Copilot as a target before G-O5 is settled. *Default: disabled* (RS-D8).
 - [ ] **RS-O4** Claude's title changes from "Resume a session" to "Resume a Claude session". *Default: change* (a visible change to Claude's screen, asked for by the owner).
-- [ ] **RS-O5** How the app knows the source is out of quota (RS-D9). *Default, mine: use the app's limit state for that platform if it has one, and check that at S6; otherwise the source's summary call failing with a limit.* Also open: whether the dialog offers the level row as a dropdown or a row (the row takes one line, so the choice is about width only).
+- [ ] **RS-O5** How the app knows the source is out of quota (RS-D9). *Default, mine: use the app's limit state for that platform if it has one, and check that at S6; otherwise the source's summary call failing with a limit.* Level row: the owner prefers a dropdown (2026-11-24, because the four-segment row is too wide with the Zero label). Built in S6g.
 - [ ] **RS-O6** Copilot as a target. The chooser offers it (PP-D2), but the start route refuses it, because the Copilot start is not built (`CrossStartRoute`, RS-D8). Options: (a) hide Copilot from the chooser until its start is built; (b) build the Copilot start as a stage of its own. *Default, mine: (a), so no option leads to a refusal; (b) when the owner wants it.*
 
 ## 4. Stages and checks
@@ -65,6 +65,8 @@ Stages S0 to S4 are built and committed, and reviewed. Their text (the parity ta
   - [x] **S6c Dialogs.** Built in `d92f8b1`. Open review items are in S6d below. The four resume screens (Claude, Codex, Copilot, OpenCode): radios for Full and Summary; a level row with Zero, Minimal, Normal and Complete; "[v] Include last [N] turns" under Summary only. Zero rebuilds the text at once, with no call. A change of N, the tail or the level after a summary marks it out of date (RS-D21), and Start waits for a new one. Make summary uses the split (RS-D23) and is disabled when the tail covers everything (RS-D26). Tests.
   - [x] **S6d The target writes the summary** (RS-D28). Built in `a575cc0`, with the S6c review fixes in `976a0ba`: the summary is tied to its transcript's line count, dead members are gone, and the Zero label is "Zero · no summary call". Claude at its limit uses its limit state (`_activeLimits`); the other platforms use the button after a failed summary. Writers use the source's instructions and input (`SummaryWriterRules`). Tests: `ResumeWriterTests`.
   - [ ] **S6e Checks.** `scripts/Check-BeforePush.ps1` passes (build, then tests not in Category=Live). Nothing is pushed until it does. Layout on screen is S5, not S6.
+  - [ ] **S6f Zero text by the button (AFK, 2026-11-24).** Automatic builds are off (commit `4128d72`), so Zero had no way to build its text. Make summary builds the Zero text too, with no model call; the button stays the only gate. Built in `4ad40ca` (the button reads "Build text" at Zero); pushed.
+  - [ ] **S6g Level row as a dropdown (owner, 2026-11-24).** Replace the four-segment level row (Zero, Minimal, Normal, Complete) with a dropdown on all four screens. Same choices, same word counts, same rules (RS-D19 to RS-D26). Starts after S6f, because both touch the same screens.
 
 ## 7. Copilot symptoms: diagnosis deferred
 
@@ -90,3 +92,6 @@ A click-through was **not run** in AFK mode, for three reasons: it would start t
 - [ ] Keyboard selection of a disabled ComboBox item (section 10): not verified without a window; check at S5.
 - [ ] 63 log lines in 38 App files write an exception message (section 10). Not fixed here; a separate decision.
 - [ ] What the real Codex and Copilot CLIs do with a long prompt (section 9): neither process was run.
+- [ ] 31 App tests are marked Skip (commit `4128d72`, reason "Automatic builds are off for now"). Check each one's cause before re-enabling it: some may fail for another reason. Their bodies are unchanged.
+- [ ] RS-O6 (Copilot as a target) is still open. The owner's PP-D2 enabled it, so hiding it is the owner's call, not AFK work.
+- [ ] OpenCode resume reads only the first 5,000 lines (`MaxLines`, `SessionWindow.OpenCodeResume.cs`). In a longer session, the summary and the tail come from the start of the session. Not fixed yet; a correctness fault for long sessions.
