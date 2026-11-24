@@ -62,6 +62,7 @@ public sealed record ContinueDecision(SessionSummary? Session, ContinueMode? Mod
         provider == ProviderId.Claude ? "Claude"
         : provider == ProviderId.Codex ? "Codex"
         : provider == ProviderId.Copilot ? "Copilot"
+        : provider == ProviderId.OpenCode ? "OpenCode"
         : provider.Value;
 
     /// <summary>The mode as the status line says it. Summary says that nothing is made until the screen's own button is pressed (CN-D3).</summary>

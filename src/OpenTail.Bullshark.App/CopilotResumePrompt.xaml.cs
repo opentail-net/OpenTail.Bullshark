@@ -99,7 +99,7 @@ public partial class CopilotResumePrompt : Window
         _screen = new ProviderResumeScreen<CopilotResumeChoice, CopilotPreview>(
             new ResumeScreenControls(
                 FullChoice, SummaryChoice, LevelBlock, LevelBox, TailBox, TurnsBox, TailBlock, TargetLine, StartButton, TargetMenuButton, TargetMenu,
-                TargetClaudeItem, TargetCodexItem, TargetCopilotItem, MakeSummaryButton, WriteByTargetButton, RememberBox, CostText, FolderNotice,
+                TargetClaudeItem, TargetCodexItem, TargetCopilotItem, TargetOpenCodeItem, MakeSummaryButton, WriteByTargetButton, RememberBox, CostText, FolderNotice,
                 PreviewHeader, PreviewBox, PreviewBlock, PreviewNote, CopyButton),
             new CopilotHooks(), previewAsync, summaryHasLines, initialMode, folderNotice, blocksStart, Close, lines);
     }

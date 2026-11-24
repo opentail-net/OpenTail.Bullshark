@@ -106,7 +106,7 @@ public partial class CodexResumePrompt : Window
         _screen = new ProviderResumeScreen<CodexResumeChoice, CodexPreview>(
             new ResumeScreenControls(
                 FullChoice, SummaryChoice, LevelBlock, LevelBox, TailBox, TurnsBox, TailBlock, TargetLine, StartButton, TargetMenuButton, TargetMenu,
-                TargetClaudeItem, TargetCodexItem, TargetCopilotItem, MakeSummaryButton, WriteByTargetButton, RememberBox, CostText, FolderNotice,
+                TargetClaudeItem, TargetCodexItem, TargetCopilotItem, TargetOpenCodeItem, MakeSummaryButton, WriteByTargetButton, RememberBox, CostText, FolderNotice,
                 PreviewHeader, PreviewBox, PreviewBlock, PreviewNote, CopyButton),
             new CodexHooks(this), previewAsync, summaryHasLines, initialMode, folderNotice, blocksStart, Close, lines);
 

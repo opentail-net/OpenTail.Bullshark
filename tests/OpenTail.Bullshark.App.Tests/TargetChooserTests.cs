@@ -29,7 +29,7 @@ public sealed class TargetChooserTests
     /// <summary>The tooltip of the narrow part of the Start split button outside a summary (RS-D2).</summary>
     private const string MenuTipOutside = "Switching platform is only for a summary.";
 
-    private static readonly ProviderId[] Platforms = { ProviderId.Claude, ProviderId.Codex, ProviderId.Copilot };
+    private static readonly ProviderId[] Platforms = { ProviderId.Claude, ProviderId.Codex, ProviderId.Copilot, ProviderId.OpenCode };
 
     private static ResumePrompt NewClaudePrompt(ContinueMode? initialMode = null)
     {
@@ -74,7 +74,8 @@ public sealed class TargetChooserTests
     /// button's menu on the Codex and Copilot screens.
     /// </summary>
     private static MenuItem ItemOf(Window window, ProviderId platform) =>
-        Named<MenuItem>(window, platform == ProviderId.Claude ? "TargetClaudeItem" : platform == ProviderId.Codex ? "TargetCodexItem" : "TargetCopilotItem");
+        Named<MenuItem>(window, platform == ProviderId.Claude ? "TargetClaudeItem" : platform == ProviderId.Codex ? "TargetCodexItem"
+            : platform == ProviderId.OpenCode ? "TargetOpenCodeItem" : "TargetCopilotItem");
 
     /// <summary>Picks a platform in the Start menu, as the owner does: the item's Click runs the screen's own handler. Nothing is started.</summary>
     private static void Pick(Window window, ProviderId platform) =>
@@ -121,12 +122,14 @@ public sealed class TargetChooserTests
     }
 
     /// <summary>
-    /// The three platform items, in the order Claude, Codex, Copilot: each is a checkable item with its header (RS-D4), on in a summary where the rule allows
+    /// The four platform items, in the order Claude, Codex, Copilot, OpenCode: each is a checkable item with its header (RS-D4), on in a summary where the rule allows
     /// it. The refused Copilot item carries its reason as its tooltip (RS-D8); an item for the screen's own platform has none.
     /// </summary>
-    private static void AssertThreePlatforms(Window window, ProviderId source)
+    private static void AssertFourPlatforms(Window window, ProviderId source)
     {
-        Assert.Equal(new[] { "Start in Claude", "Start in Codex", "Start in Copilot" }, Platforms.Select(platform => (string?)ItemOf(window, platform).Header).ToArray());
+        Assert.Equal(
+            new[] { "Start in Claude", "Start in Codex", "Start in Copilot", "Start in OpenCode" },
+            Platforms.Select(platform => (string?)ItemOf(window, platform).Header).ToArray());
         foreach (var platform in Platforms)
         {
             var item = ItemOf(window, platform);
@@ -218,20 +221,21 @@ public sealed class TargetChooserTests
         {
             var prompt = NewClaudePrompt(ContinueMode.Summary);
             var menu = Named<ContextMenu>(prompt, "ResumeMenu");
-            // Make summary is a button of the screen now (RS-D21), so the menu holds Copy, a separator and the three platforms.
-            Assert.Equal(5, menu.Items.Count);
+            // Make summary is a button of the screen now (RS-D21), so the menu holds Copy, a separator and the four platforms.
+            Assert.Equal(6, menu.Items.Count);
             Assert.Same(Named<MenuItem>(prompt, "CopyItem"), menu.Items[0]);
             Assert.IsType<Separator>(menu.Items[1]);
             Assert.Same(ItemOf(prompt, ProviderId.Claude), menu.Items[2]);
             Assert.Same(ItemOf(prompt, ProviderId.Codex), menu.Items[3]);
             Assert.Same(ItemOf(prompt, ProviderId.Copilot), menu.Items[4]);
+            Assert.Same(ItemOf(prompt, ProviderId.OpenCode), menu.Items[5]);
         });
     }
 
     [Fact]
-    public void TheClaudeStartMenuOffersTheThreePlatformsAndCopilotIsEnabled()
+    public void TheClaudeStartMenuOffersTheFourPlatformsAndCopilotIsEnabled()
     {
-        UiThread.Run(() => AssertThreePlatforms(NewClaudePrompt(ContinueMode.Summary), ProviderId.Claude));
+        UiThread.Run(() => AssertFourPlatforms(NewClaudePrompt(ContinueMode.Summary), ProviderId.Claude));
     }
 
     [Fact]
@@ -246,6 +250,14 @@ public sealed class TargetChooserTests
         UiThread.Run(() => AssertPickShowsTheLine(
             NewClaudePrompt(ContinueMode.Summary), "ResumeButton", "Start in Claude", ProviderId.Codex,
             "Start in Codex", "Summary of Claude session → new Codex session", ProviderId.Claude));
+    }
+
+    [Fact]
+    public void PickingOpenCodeOnTheClaudeScreenChangesTheButtonAndShowsTheLine()
+    {
+        UiThread.Run(() => AssertPickShowsTheLine(
+            NewClaudePrompt(ContinueMode.Summary), "ResumeButton", "Start in Claude", ProviderId.OpenCode,
+            "Start in OpenCode", "Summary of Claude session → new OpenCode session", ProviderId.Claude));
     }
 
     [Fact]
@@ -272,9 +284,9 @@ public sealed class TargetChooserTests
     }
 
     [Fact]
-    public void TheCodexStartMenuOffersTheThreePlatformsAndCopilotIsEnabled()
+    public void TheCodexStartMenuOffersTheFourPlatformsAndCopilotIsEnabled()
     {
-        UiThread.Run(() => AssertThreePlatforms(NewCodexPrompt(ContinueMode.Summary), ProviderId.Codex));
+        UiThread.Run(() => AssertFourPlatforms(NewCodexPrompt(ContinueMode.Summary), ProviderId.Codex));
     }
 
     [Fact]
@@ -289,6 +301,14 @@ public sealed class TargetChooserTests
         UiThread.Run(() => AssertPickShowsTheLine(
             NewCodexPrompt(ContinueMode.Summary), "StartButton", "Start in Codex", ProviderId.Claude,
             "Start in Claude", "Summary of Codex session → new Claude session", ProviderId.Codex));
+    }
+
+    [Fact]
+    public void PickingOpenCodeOnTheCodexScreenChangesTheButtonAndShowsTheLine()
+    {
+        UiThread.Run(() => AssertPickShowsTheLine(
+            NewCodexPrompt(ContinueMode.Summary), "StartButton", "Start in Codex", ProviderId.OpenCode,
+            "Start in OpenCode", "Summary of Codex session → new OpenCode session", ProviderId.Codex));
     }
 
     [Fact]
@@ -328,9 +348,9 @@ public sealed class TargetChooserTests
     }
 
     [Fact]
-    public void TheCopilotStartMenuOffersTheThreePlatformsWithItsOwnEnabled()
+    public void TheCopilotStartMenuOffersTheFourPlatformsWithItsOwnEnabled()
     {
-        UiThread.Run(() => AssertThreePlatforms(NewCopilotPrompt(ContinueMode.Summary), ProviderId.Copilot));
+        UiThread.Run(() => AssertFourPlatforms(NewCopilotPrompt(ContinueMode.Summary), ProviderId.Copilot));
     }
 
     [Fact]
@@ -345,6 +365,14 @@ public sealed class TargetChooserTests
         UiThread.Run(() => AssertPickShowsTheLine(
             NewCopilotPrompt(ContinueMode.Summary), "StartButton", "Start in Copilot", ProviderId.Codex,
             "Start in Codex", "Summary of Copilot session → new Codex session", ProviderId.Copilot));
+    }
+
+    [Fact]
+    public void PickingOpenCodeOnTheCopilotScreenChangesTheButtonAndShowsTheLine()
+    {
+        UiThread.Run(() => AssertPickShowsTheLine(
+            NewCopilotPrompt(ContinueMode.Summary), "StartButton", "Start in Copilot", ProviderId.OpenCode,
+            "Start in OpenCode", "Summary of Copilot session → new OpenCode session", ProviderId.Copilot));
     }
 
     [Fact]

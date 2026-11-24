@@ -6,6 +6,7 @@ using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Codex;
 using OpenTail.Bullshark.Core.Continue;
 using OpenTail.Bullshark.Core.Copilot;
+using OpenTail.Bullshark.Core.OpenCode;
 using OpenTail.Bullshark.Core.Providers;
 using OpenTail.Bullshark.Core.Resume;
 
@@ -223,11 +224,11 @@ public partial class SessionWindow
             AppLog.Write($"codex start text built: {start.Length:N0} characters");
             return new CodexPreview(start, summary, Lines: lines.Count);
         }
-        catch (Exception ex) when (ex is CodexSummaryException or ClaudeCliException or CopilotSummaryException or ArgumentException or FileNotFoundException
+        catch (Exception ex) when (ex is CodexSummaryException or ClaudeCliException or CopilotSummaryException or OpenCodeSummaryException or ArgumentException or FileNotFoundException
                                        or IOException or UnauthorizedAccessException or NotSupportedException)
         {
             AppLog.Write($"codex start text not built: {ex.GetType().Name}");
-            var summaryFailed = ex is CodexSummaryException or ClaudeCliException or CopilotSummaryException;
+            var summaryFailed = ex is CodexSummaryException or ClaudeCliException or CopilotSummaryException or OpenCodeSummaryException;
             var problem = summaryFailed
                 ? $"The summary was not made: {ex.Message}."
                 : $"The start text could not be built: {ex.Message}.";

@@ -6,6 +6,7 @@ using OpenTail.Bullshark.Core.Claude;
 using OpenTail.Bullshark.Core.Codex;
 using OpenTail.Bullshark.Core.Continue;
 using OpenTail.Bullshark.Core.Copilot;
+using OpenTail.Bullshark.Core.OpenCode;
 using OpenTail.Bullshark.Core.Providers;
 using OpenTail.Bullshark.Core.Resume;
 
@@ -224,12 +225,12 @@ public partial class SessionWindow
             AppLog.Write($"copilot start text built: {start.Length:N0} characters");
             return new CopilotPreview(start, summary, Lines: lines.Count);
         }
-        catch (Exception ex) when (ex is CopilotSummaryException or ClaudeCliException or CodexSummaryException or ArgumentException or FileNotFoundException
+        catch (Exception ex) when (ex is CopilotSummaryException or ClaudeCliException or CodexSummaryException or OpenCodeSummaryException or ArgumentException or FileNotFoundException
                                        or IOException or UnauthorizedAccessException or NotSupportedException)
         {
             // The log holds the type only: the message can name the session's folder or file.
             AppLog.Write($"copilot start text not built: {ex.GetType().Name}");
-            var summaryFailed = ex is CopilotSummaryException or ClaudeCliException or CodexSummaryException;
+            var summaryFailed = ex is CopilotSummaryException or ClaudeCliException or CodexSummaryException or OpenCodeSummaryException;
             var problem = summaryFailed
                 ? $"The summary was not made: {ex.Message}."
                 : $"The start text could not be built ({ex.GetType().Name}).";

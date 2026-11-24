@@ -277,6 +277,7 @@ public partial class ResumePrompt : Window
         ResumeTargetMenu.Apply(TargetClaudeItem, ProviderId.Claude, ProviderId.Claude, _target, menuOn);
         ResumeTargetMenu.Apply(TargetCodexItem, ProviderId.Codex, ProviderId.Claude, _target, menuOn);
         ResumeTargetMenu.Apply(TargetCopilotItem, ProviderId.Copilot, ProviderId.Claude, _target, menuOn);
+        ResumeTargetMenu.Apply(TargetOpenCodeItem, ProviderId.OpenCode, ProviderId.Claude, _target, menuOn);
     }
 
     /// <summary>

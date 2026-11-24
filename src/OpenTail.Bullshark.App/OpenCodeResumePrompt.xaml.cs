@@ -22,7 +22,8 @@ public partial class OpenCodeResumePrompt : Window
     public const string OpenCodeTitle = "Resume an opencode session";
 
     /// <summary>
-    /// The Start button's text. opencode is not a cross-platform target in this version (OC-D18), so the text is not <c>ResumeTarget.ButtonOf</c>.
+    /// The Start button's text. This screen has no target chooser (OC-D18: its own platform only), so the text is not <c>ResumeTarget.ButtonOf</c>. opencode is
+    /// a target of the other resume screens from a summary (S6h).
     /// </summary>
     public const string OpenCodeStartText = "Start in opencode";
 

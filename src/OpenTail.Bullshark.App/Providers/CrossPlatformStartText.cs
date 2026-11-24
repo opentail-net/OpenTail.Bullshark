@@ -24,6 +24,7 @@ public static class CrossPlatformStartText
         platform == ProviderId.Claude ? "Claude Code"
         : platform == ProviderId.Codex ? "Codex CLI"
         : platform == ProviderId.Copilot ? "GitHub Copilot CLI"
+        : platform == ProviderId.OpenCode ? "opencode"
         : throw new ArgumentOutOfRangeException(nameof(platform));
 
     /// <summary>The kind a platform's messages carry in the transcript lines, which the platform's tail keeps.</summary>
@@ -31,6 +32,7 @@ public static class CrossPlatformStartText
         platform == ProviderId.Claude ? "claude"
         : platform == ProviderId.Codex ? "codex"
         : platform == ProviderId.Copilot ? "copilot"
+        : platform == ProviderId.OpenCode ? "opencode"
         : throw new ArgumentOutOfRangeException(nameof(platform));
 
     /// <summary>

@@ -16,7 +16,7 @@ public partial class SessionWindow
 {
     /// <summary>
     /// Starts the cross-platform text in <paramref name="target"/>, for a summary of <paramref name="source"/> in <paramref name="mode"/>. A refusal (the
-    /// route, or the empty text) sets the status line and starts nothing. A start in Codex opens a terminal tab titled
+    /// route, or the empty text) sets the status line and starts nothing. A start in opencode opens a plain terminal tab (S6h). A start in Codex opens a terminal tab titled
     /// <see cref="CrossStartRoute.TabTitleOf"/> in <paramref name="folder"/>, at Codex's own default model (RS-D12). A start in Claude runs the request of
     /// <see cref="CrossClaudeRequest"/> through <see cref="StartRunAsync"/>: a supervised run of the solo pattern, linked to no session (RS-D5, RS-D15).
     /// The status line of a success is <see cref="CrossStartRoute.StartedLine"/> (D-STATUS). The log holds the two provider names only: the text and the
@@ -43,6 +43,14 @@ public partial class SessionWindow
         if (!EnsureSessionFolder(folder, out var folderRefusal))
         {
             SetStatus(folderRefusal!);
+            return;
+        }
+
+        // A start in opencode (S6h-6): the same tab start as the same-platform text start, with the cross text. opencode runs at its own default model.
+        if (route.Kind == CrossStartKind.OpenCode)
+        {
+            if (!StartOpenCodeTabFromText(text, folder, CrossStartRoute.TabTitleOf(target, sourceTitle))) return;
+            SetStatus(CrossStartRoute.StartedLine(source, target));
             return;
         }
 

@@ -40,6 +40,14 @@ public sealed class CrossModelRowTests
     }
 
     [Fact]
+    public void CostLineForCross_NamesOpenCodeAndItsOneModelTurn()
+    {
+        Assert.Equal(
+            "The new OpenCode session starts at its own default model and effort. Start makes one model turn on your opencode login: opencode submits the prompt at once. Nothing else is sent.",
+            CrossModelRow.CostLineForCross(ProviderId.OpenCode));
+    }
+
+    [Fact]
     public void CostLineForCross_NamesCopilotAndItsDefault()
     {
         Assert.Equal(

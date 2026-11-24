@@ -1,3 +1,4 @@
+using OpenTail.Bullshark.Core.Activity;
 using OpenTail.Bullshark.Core.Continue;
 using OpenTail.Bullshark.Core.Resume;
 
@@ -108,6 +109,22 @@ public static class OpenCodeResumeRules
     /// <summary>The status line after a summary start: the summary and the last turns, and one model turn (the start itself).</summary>
     public static string StartedSummaryLine(string title) =>
         $"Started opencode with the summary and the last turns of {title} (one model turn).";
+
+    /// <summary>
+    /// The refusal of a start from text that cannot run for want of a tool, or null when both are there (OC-D9, S6h-5). PowerShell 7 is named first, then
+    /// <c>opencode.ps1</c>. Pure: the callers look the two up (<c>OpenCodeStartLauncher.FindPwsh</c> and <c>OpenCodeStartLauncher.FindShim</c>).
+    /// </summary>
+    public static string? ToolRefusal(bool pwshOnPath, bool shimOnPath) =>
+        !pwshOnPath ? NoPwshOnPath : !shimOnPath ? NoShimOnPath : null;
+
+    /// <summary>
+    /// The lines an opencode summary reads when opencode is the writer of another platform's summary (RS-D28, S6h-8): the source's messages keep their words,
+    /// and their kind becomes opencode's, so the call labels them <c>opencode:</c> as its own messages. The owner's messages stay <c>you</c>. Pure.
+    /// </summary>
+    /// <param name="part">The summary part of the source's transcript (RS-D23).</param>
+    /// <param name="sourceKind">The kind the source's messages carry: <c>claude</c>, <c>codex</c> or <c>copilot</c>.</param>
+    public static IReadOnlyList<TranscriptLine> SummaryLines(IReadOnlyList<TranscriptLine> part, string sourceKind) =>
+        part.Select(line => line.Kind == sourceKind ? line with { Kind = "opencode" } : line).ToList();
 
     /// <summary>The status line after a session is opened in a terminal tab (In full).</summary>
     public static string OpenedLine(string title) => $"Opened {title} in opencode.";

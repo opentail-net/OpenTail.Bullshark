@@ -98,6 +98,7 @@ public sealed record ResumeScreenControls(
     MenuItem TargetClaudeItem,
     MenuItem TargetCodexItem,
     MenuItem TargetCopilotItem,
+    MenuItem TargetOpenCodeItem,
     Button MakeSummaryButton,
     Button WriteByTargetButton,
     CheckBox RememberBox,
@@ -320,6 +321,7 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
         ResumeTargetMenu.Apply(_c.TargetClaudeItem, ProviderId.Claude, source, _target, menuOn);
         ResumeTargetMenu.Apply(_c.TargetCodexItem, ProviderId.Codex, source, _target, menuOn);
         ResumeTargetMenu.Apply(_c.TargetCopilotItem, ProviderId.Copilot, source, _target, menuOn);
+        ResumeTargetMenu.Apply(_c.TargetOpenCodeItem, ProviderId.OpenCode, source, _target, menuOn);
     }
 
     /// <summary>
@@ -365,7 +367,9 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
         var costLine = !inSummary ? ProviderResumeRules.CostLine(mode, _hooks.Wording)
             : level is null ? ProviderResumeRules.NoSummaryCallLine
             : _hooks.Wording.SummaryCostLine();
+        // An opencode start submits its text at once, so its line names that one model turn (OC-O5, S6h-7). The other cross starts show no line here, as before.
         _c.CostText.Text = costLine + (inSummary && !turnsValid ? " " + ProviderResumeRules.TurnsMessage : string.Empty)
+            + (inSummary && _target == ProviderId.OpenCode ? " " + CrossModelRow.CostLineForCross(_target) : string.Empty)
             + (writeShown ? " " + SummaryWriterRules.OneCallLine(_target) : string.Empty)
             + (status is null ? string.Empty : " " + status);
         _c.FolderNotice.Text = _folderNotice ?? string.Empty;

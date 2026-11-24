@@ -182,27 +182,33 @@ public partial class SessionWindow
     }
 
     /// <summary>
-    /// The last-turns or summary start (OC-D9): the preview's text, as shown, is written to a start file in the opencode Starts folder, and a terminal tab
-    /// runs PowerShell 7 with it in the session's folder. Refused, with a status line and no file written, when PowerShell 7 or <c>opencode.ps1</c> is not
-    /// on PATH. The status line after a start says one model turn is made. The log holds no title and no path.
+    /// The last-turns or summary start (OC-D9): the preview's text, as shown, starts in a new opencode terminal tab (<see cref="StartOpenCodeTabFromText"/>).
+    /// The status line after a start says one model turn is made. The log holds no title and no path.
     /// </summary>
     private void StartOpenCodeFromText(string? text, string folder, string title, bool summary)
+    {
+        if (!StartOpenCodeTabFromText(text, folder, "opencode: resume of " + title)) return;
+        SetStatus(summary ? OpenCodeResumeRules.StartedSummaryLine(title) : OpenCodeResumeRules.StartedLine(title));
+    }
+
+    /// <summary>
+    /// The shared start of a text in a new opencode terminal tab (OC-D9, S6h-6): the text is written to a start file in the opencode Starts folder, and the tab
+    /// runs PowerShell 7 with that file in <paramref name="folder"/>, which submits the text at once. Refused, with a status line and no file written, when the
+    /// text is empty, PowerShell 7 is not on PATH, or <c>opencode.ps1</c> is not on PATH (<see cref="OpenCodeResumeRules.ToolRefusal"/>). Returns true when the
+    /// tab was opened; the caller sets the success status line. The same-platform text start and the cross-platform start both use it, so there is one way to start.
+    /// </summary>
+    private bool StartOpenCodeTabFromText(string? text, string folder, string tabTitle)
     {
         if (text is not { Length: > 0 })
         {
             SetStatus("Not started: there is no start text to send.");
-            return;
+            return false;
         }
-        if (OpenCodeStartLauncher.FindPwsh() is null)
+        // The start runs opencode.ps1 (the script finds it with Get-Command). The file is not written when either tool is missing.
+        if (OpenCodeResumeRules.ToolRefusal(OpenCodeStartLauncher.FindPwsh() is not null, OpenCodeStartLauncher.FindShim() is not null) is { } refusal)
         {
-            SetStatus(OpenCodeResumeRules.NoPwshOnPath);
-            return;
-        }
-        // The start runs opencode.ps1 (the script finds it with Get-Command). The file is not written when that shim is missing.
-        if (OpenCodeStartLauncher.FindShim() is null)
-        {
-            SetStatus(OpenCodeResumeRules.NoShimOnPath);
-            return;
+            SetStatus(refusal);
+            return false;
         }
 
         string command;
@@ -215,11 +221,11 @@ public partial class SessionWindow
         {
             AppLog.Write($"opencode start file not written: {ex.GetType().Name}");
             SetStatus($"Not started: the start text could not be written ({ex.GetType().Name}).");
-            return;
+            return false;
         }
 
-        OpenCodeTab("new-" + Guid.NewGuid().ToString("N"), "opencode: resume of " + title, command, folder);
-        SetStatus(summary ? OpenCodeResumeRules.StartedSummaryLine(title) : OpenCodeResumeRules.StartedLine(title));
+        OpenCodeTab("new-" + Guid.NewGuid().ToString("N"), tabTitle, command, folder);
+        return true;
     }
 
     /// <summary>

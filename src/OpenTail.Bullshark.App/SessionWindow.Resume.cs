@@ -5,6 +5,7 @@ using OpenTail.Bullshark.Core.Codex;
 using OpenTail.Bullshark.Core.Continue;
 using OpenTail.Bullshark.Core.Copilot;
 using OpenTail.Bullshark.Core.Folders;
+using OpenTail.Bullshark.Core.OpenCode;
 using OpenTail.Bullshark.Core.Providers;
 using OpenTail.Bullshark.Core.Resume;
 using OpenTail.Bullshark.Core.Setup;
@@ -141,7 +142,7 @@ public partial class SessionWindow
         {
             start = await BuildStartTextAsync(digest, folder, lines, choice, kept, cancellationToken, target: choice.Target, writeByTarget: writeByTarget);
         }
-        catch (Exception ex) when (ex is ClaudeCliException or CodexSummaryException or CopilotSummaryException)
+        catch (Exception ex) when (ex is ClaudeCliException or CodexSummaryException or CopilotSummaryException or OpenCodeSummaryException)
         {
             // RS-D28: the summary was not made, by Claude or by the writer that ran it. The dialog offers the target's summary when another platform is chosen.
             AppLog.Write($"claude resume summary not made: {ex.GetType().Name}");
@@ -377,6 +378,9 @@ public partial class SessionWindow
         if (writer == ProviderId.Codex)
             return await new CodexSummarizer(new ProcessCliRunner("cmd.exe"))
                 .SummariseAsync(SourceInstructions(source, level), SourceInput(source, part, filesWritten), folder, cancellationToken);
+        // The opencode writer (RS-D28, S6h-8): opencode's own summariser, with the source's messages under opencode's label. Its scratch folders sit beside the state file.
+        if (writer == ProviderId.OpenCode)
+            return await new OpenCodeSummarizer().SummariseAsync(_options.StatePath, OpenCodeResumeRules.SummaryLines(part, SourceKind(source)), level, cancellationToken);
         // Copilot writes through its scratch folder, which only the window that holds the single-instance guard may use (RS-D28, CopilotResumeRules).
         if (_supervisor is null) throw new CopilotSummaryException(CopilotResumeRules.SummaryNeedsGuard);
         var asCopilot = part.Select(line => line.Kind == SourceKind(source) ? line with { Kind = "copilot" } : line).ToList();
@@ -452,7 +456,7 @@ public partial class SessionWindow
     /// <summary>
     /// The target's checks for a cross-platform start, run before the summary call (RS-D5, RS-D13), with the checks the target's own start makes. A
     /// missing folder refuses. A Claude target: the folder's trust (<see cref="FolderCheck"/>, Missing and NotTrusted refuse) and the launch check. A Codex
-    /// target: PowerShell 7 and the shim, then the launch check. A Copilot target has no launch check here yet (RS-D8): it is refused with
+    /// target: PowerShell 7 and the shim, then the launch check. An OpenCode target: PowerShell 7 and opencode.ps1, with no launch check (S6h-5). A Copilot target has no launch check here yet (RS-D8): it is refused with
     /// <see cref="ResumeTarget"/>'s reason, even if the enabling constant were turned on. Returns the refusal, or null when the start may go on.
     /// </summary>
     private async Task<string?> CrossTargetCheckAsync(ProviderId source, ProviderId target, string folder, CancellationToken cancellationToken)
@@ -471,6 +475,9 @@ public partial class SessionWindow
         }
         if (target == ProviderId.Codex)
             return CodexStartToolRefusal() ?? (await CodexLaunchCheckAsync(cancellationToken)).Refusal;
+        // opencode (S6h-5): PowerShell 7, then opencode.ps1, both on PATH, before any model call. opencode has no version check here.
+        if (target == ProviderId.OpenCode)
+            return OpenCodeResumeRules.ToolRefusal(OpenCodeStartLauncher.FindPwsh() is not null, OpenCodeStartLauncher.FindShim() is not null);
         return ResumeTarget.RefusalReason(source, ContinueMode.Summary, target, copilotEnabled: false);
     }
 

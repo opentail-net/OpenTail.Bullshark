@@ -3,7 +3,7 @@ using OpenTail.Bullshark.Core.Providers;
 
 namespace OpenTail.Bullshark.App;
 
-/// <summary>Where a cross-platform start goes: refused, or started in Claude or in Codex (resume source and target plan, S3b-B1).</summary>
+/// <summary>Where a cross-platform start goes: refused, or started in Claude, in Codex or in OpenCode (resume source and target plan, S3b-B1, S6h).</summary>
 public enum CrossStartKind
 {
     /// <summary>Nothing starts. The reason is in <see cref="CrossStartRoute.Refusal"/>.</summary>
@@ -14,6 +14,9 @@ public enum CrossStartKind
 
     /// <summary>A start in Codex, through its terminal tab.</summary>
     Codex,
+
+    /// <summary>A start in opencode, through a plain terminal tab that runs opencode.ps1 with the start file (S6h, OC-D9).</summary>
+    OpenCode,
 }
 
 /// <summary>
@@ -29,7 +32,7 @@ public sealed record CrossStartRoute(CrossStartKind Kind, string? Refusal = null
     /// <summary>
     /// The route of a start from <paramref name="source"/> in <paramref name="mode"/> into <paramref name="target"/>. The source's own platform is refused:
     /// it is not a start in another platform. Another platform is refused when <see cref="ResumeTarget.RefusalReason"/> refuses it (the mode first, then
-    /// a disabled Copilot), and a Copilot target is refused in every case. Otherwise the route is Claude or Codex.
+    /// a disabled Copilot), and a Copilot target is refused in every case. Otherwise the route is Claude, Codex or OpenCode.
     /// </summary>
     public static CrossStartRoute For(
         ProviderId source, ProviderId target, ContinueMode mode, bool copilotEnabled = ResumeTarget.CopilotTargetEnabled)
@@ -39,7 +42,10 @@ public sealed record CrossStartRoute(CrossStartKind Kind, string? Refusal = null
         if (refusal is not null) return Refuse(refusal);
         if (target == ProviderId.Copilot)
             return Refuse(ResumeTarget.RefusalReason(source, mode, target, copilotEnabled: false) ?? "Copilot cannot be the target yet.");
-        return new CrossStartRoute(target == ProviderId.Claude ? CrossStartKind.Claude : CrossStartKind.Codex);
+        var kind = target == ProviderId.Claude ? CrossStartKind.Claude
+            : target == ProviderId.OpenCode ? CrossStartKind.OpenCode
+            : CrossStartKind.Codex;
+        return new CrossStartRoute(kind);
     }
 
     /// <summary>

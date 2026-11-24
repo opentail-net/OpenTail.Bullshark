@@ -159,6 +159,7 @@ public sealed class ContinueDecisionTests
         Assert.Equal("Claude", ContinueDecision.NameOf(ProviderId.Claude));
         Assert.Equal("Codex", ContinueDecision.NameOf(ProviderId.Codex));
         Assert.Equal("Copilot", ContinueDecision.NameOf(ProviderId.Copilot));
+        Assert.Equal("OpenCode", ContinueDecision.NameOf(ProviderId.OpenCode));
     }
 
     [Fact]

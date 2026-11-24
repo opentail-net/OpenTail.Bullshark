@@ -7,7 +7,7 @@ namespace OpenTail.Bullshark.App;
 
 /// <summary>
 /// The platform items of the Start menu of the three resume screens (resume source and target plan, RS-D2, RS-D3, RS-D8): one checkable item per
-/// platform, in the order Claude, Codex, Copilot. The checked item is the pick. An item is on only in a summary, and only where
+/// platform, in the order Claude, Codex, Copilot, OpenCode. The checked item is the pick. An item is on only in a summary, and only where
 /// <see cref="ResumeTarget.Allowed"/> says so for a summary; a disabled item carries <see cref="ResumeTarget.RefusalReason"/> as its tooltip. The screens
 /// keep the pick; this sets the items, and reads the platform a click names.
 /// </summary>

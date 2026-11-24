@@ -230,6 +230,7 @@
                             <MenuItem x:Name="TargetClaudeItem" Click="TargetItem_Click" IsCheckable="True" ToolTipService.ShowOnDisabled="True" />
                             <MenuItem x:Name="TargetCodexItem" Click="TargetItem_Click" IsCheckable="True" ToolTipService.ShowOnDisabled="True" />
                             <MenuItem x:Name="TargetCopilotItem" Click="TargetItem_Click" IsCheckable="True" ToolTipService.ShowOnDisabled="True" />
+                            <MenuItem x:Name="TargetOpenCodeItem" Click="TargetItem_Click" IsCheckable="True" ToolTipService.ShowOnDisabled="True" />
                         </ContextMenu>
                     </Button.ContextMenu>
                 </Button>

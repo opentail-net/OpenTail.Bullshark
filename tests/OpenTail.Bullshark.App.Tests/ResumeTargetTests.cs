@@ -132,6 +132,34 @@ public sealed class ResumeTargetTests
             ResumeTarget.RefusalReason(ProviderId.Claude, ContinueMode.Full, ProviderId.Copilot, copilotEnabled: false));
     }
 
+    [Theory]
+    [InlineData(ContinueMode.Full, false)]
+    [InlineData(ContinueMode.LastTurns, false)]
+    [InlineData(ContinueMode.Summary, true)]
+    public void AnOpenCodeTargetIsAllowedFromASummaryOnly(ContinueMode mode, bool expected)
+    {
+        // S6h-2: opencode is a target like Claude and Codex (RS-D2), whichever Copilot switch is set and whichever platform the source is.
+        Assert.Equal(expected, ResumeTarget.Allowed(ProviderId.Claude, mode, ProviderId.OpenCode, copilotEnabled: false));
+        Assert.Equal(expected, ResumeTarget.Allowed(ProviderId.Codex, mode, ProviderId.OpenCode, copilotEnabled: true));
+        Assert.Equal(expected, ResumeTarget.Allowed(ProviderId.Copilot, mode, ProviderId.OpenCode));
+        Assert.Equal(expected, ResumeTarget.RefusalReason(ProviderId.Claude, mode, ProviderId.OpenCode) is null);
+    }
+
+    [Fact]
+    public void AFullOpenCodeStartIsRefusedWithTheCrossPlatformReason()
+    {
+        Assert.Equal(
+            "Only a summary can start in another platform. A full resume stays in Claude.",
+            ResumeTarget.RefusalReason(ProviderId.Claude, ContinueMode.Full, ProviderId.OpenCode));
+    }
+
+    [Fact]
+    public void TheOpenCodeButtonAndTheSummaryLineNameOpenCode()
+    {
+        Assert.Equal("Start in OpenCode", ResumeTarget.ButtonOf(ProviderId.OpenCode));
+        Assert.Equal("Summary of Claude session → new OpenCode session", ResumeTarget.SummaryLine(ProviderId.Claude, ProviderId.OpenCode));
+    }
+
     [Fact]
     public void TheDefaultTargetIsTheSourceForEachProvider()
     {

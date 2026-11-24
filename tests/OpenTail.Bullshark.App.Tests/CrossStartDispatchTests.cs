@@ -109,6 +109,37 @@ public sealed class CrossStartDispatchTests
     };
 
     [Theory]
+    [InlineData(Platform.Claude, false)]
+    [InlineData(Platform.Claude, true)]
+    [InlineData(Platform.Codex, false)]
+    [InlineData(Platform.Codex, true)]
+    [InlineData(Platform.Copilot, false)]
+    [InlineData(Platform.Copilot, true)]
+    public void AnOpenCodeTargetFromASummaryRoutesToOpenCodeWhateverTheCopilotSwitch(Platform source, bool copilotEnabled)
+    {
+        var route = CrossStartRoute.For(Of(source), ProviderId.OpenCode, ContinueMode.Summary, copilotEnabled);
+        Assert.Equal(CrossStartKind.OpenCode, route.Kind);
+        Assert.Null(route.Refusal);
+    }
+
+    [Theory]
+    [InlineData(ContinueMode.Full)]
+    [InlineData(ContinueMode.LastTurns)]
+    public void AnOpenCodeTargetOutsideASummaryIsRefusedWithItsReason(ContinueMode mode)
+    {
+        var route = CrossStartRoute.For(ProviderId.Claude, ProviderId.OpenCode, mode);
+        Assert.Equal(CrossStartKind.Refused, route.Kind);
+        Assert.Equal("Only a summary can start in another platform. A full resume stays in Claude.", route.Refusal);
+    }
+
+    [Fact]
+    public void TheOpenCodeTabAndTheStartedLineNameOpenCode()
+    {
+        Assert.Equal("OpenCode: summary of An example session", CrossStartRoute.TabTitleOf(ProviderId.OpenCode, "An example session"));
+        Assert.Equal("Started OpenCode from a summary of the Claude session.", CrossStartRoute.StartedLine(ProviderId.Claude, ProviderId.OpenCode));
+    }
+
+    [Theory]
     [MemberData(nameof(Cases))]
     public void TheRouteMatchesTheTable(Platform source, Platform target, ContinueMode mode, bool copilotEnabled, CrossStartKind expected)
     {
