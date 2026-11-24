@@ -126,6 +126,8 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
     private readonly IProviderResumeScreenHooks<TChoice> _hooks;
     private readonly Func<TChoice, KeptSummary?, bool, CancellationToken, Task<TPreview>>? _previewAsync;
     private readonly Func<int, bool>? _summaryHasLines;
+    /// <summary>The Make summary button's tooltip as the platform's XAML sets it: shown again when the choice is a summary level.</summary>
+    private readonly string? _makeSummaryTip;
     private readonly string? _folderNotice;
     private readonly bool _blocksStart;
     private readonly Action _close;
@@ -170,6 +172,7 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
         int? lines = null)
     {
         _c = controls;
+        _makeSummaryTip = controls.MakeSummaryButton.ToolTip as string;
         _hooks = hooks;
         _previewAsync = previewAsync;
         _summaryHasLines = summaryHasLines;
@@ -387,7 +390,8 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
         Enable(_c.TargetMenuButton, free && inSummary);
         _c.TargetMenuButton.ToolTip = inSummary ? TargetMenuTip : TargetMenuOffTip;
         ShowTargetMenu(free && inSummary);
-        var makeAllowed = ResumeSummaryState.MakeSummaryAllowed(level, turnsValid, hasLines);
+        var makeAllowed = ResumeSummaryState.MakeSummaryAllowed(level, TailOn, turns, turnsValid, hasLines);
+        ShowMakeButton(inSummary && level is null);
         Enable(_c.MakeSummaryButton, free && inSummary && makeAllowed);
         _c.WriteByTargetButton.Content = SummaryWriterRules.ButtonOf(_target);
         AutomationProperties.SetName(_c.WriteByTargetButton, SummaryWriterRules.ButtonOf(_target));
@@ -403,12 +407,27 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
 
     private static void Enable(UIElement element, bool enabled) => ResumeScreenElements.Enable(element, enabled);
 
-    /// <summary>The Make summary button: makes the summary now, once, for the level and tail on screen (RS-D21). Zero makes none.</summary>
+    /// <summary>
+    /// Sets the Make summary button's text and tooltip: Zero builds its text with no call, so it reads "Build text"; a summary level keeps the platform's
+    /// own tooltip, which names its one call.
+    /// </summary>
+    private void ShowMakeButton(bool zero)
+    {
+        var label = ResumeSummaryState.MakeButtonLabelOf(zero);
+        _c.MakeSummaryButton.Content = label;
+        AutomationProperties.SetName(_c.MakeSummaryButton, label);
+        _c.MakeSummaryButton.ToolTip = zero ? ResumeSummaryState.BuildTextTip : _makeSummaryTip;
+    }
+
+    /// <summary>
+    /// The Make summary button: makes the summary now, once, for the level and tail on screen (RS-D21). Zero builds its text with no summary call, from the
+    /// transcript the screen holds (the Build text button).
+    /// </summary>
     public void MakeSummary()
     {
         var choice = Selected(out var turnsValid);
-        if (choice is { SharedMode: ProviderResumeMode.Summary, Level: not null } && turnsValid && !_busy
-            && (_summaryHasLines?.Invoke(choice.Turns) ?? true))
+        if (choice is { SharedMode: ProviderResumeMode.Summary } && !_busy
+            && ResumeSummaryState.MakeSummaryAllowed(choice.Level, TailOn, choice.Turns, turnsValid, _summaryHasLines?.Invoke(choice.Turns) ?? true))
             _ = RunRequestAsync(choice);
     }
 

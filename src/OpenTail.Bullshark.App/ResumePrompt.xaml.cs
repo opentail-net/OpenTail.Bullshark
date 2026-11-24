@@ -67,6 +67,8 @@ public partial class ResumePrompt : Window
     /// <summary>True after a Make summary of Claude failed with another platform chosen: the dialog offers the target's summary (RS-D28).</summary>
     private bool _failedOnSource;
     private readonly Func<int, bool>? _summaryHasLines;
+    /// <summary>The Make summary button's tooltip as the XAML sets it: shown again when the choice is a summary level.</summary>
+    private readonly string? _makeSummaryTip;
 
     /// <summary>The transcript's line count the dialog holds: the lines read when it opened (Claude's summary reads only those, RS-D21, FIX 1 of the S6c review).</summary>
     private readonly int? _lines;
@@ -107,6 +109,7 @@ public partial class ResumePrompt : Window
         ResumeButton.Content = startLabel;
         AutomationProperties.SetName(ResumeButton, startLabel);
         _previewAsync = previewAsync;
+        _makeSummaryTip = MakeSummaryButton.ToolTip as string;
         _summaryHasLines = summaryHasLines;
         _lines = lines;
         _sourceAtLimit = sourceAtLimit;
@@ -354,7 +357,8 @@ public partial class ResumePrompt : Window
         Enable(TurnsBox, free && summary && TailOn);
         ShowTargetMenu(free && summary);
         foreach (var segment in LevelRow.Children.OfType<RadioButton>()) Enable(segment, free && summary);
-        var makeAllowed = ResumeSummaryState.MakeSummaryAllowed(level, turnsValid, hasLines);
+        var makeAllowed = ResumeSummaryState.MakeSummaryAllowed(level, TailOn, turns, turnsValid, hasLines);
+        ShowMakeButton(summary && level is null);
         Enable(MakeSummaryButton, free && summary && makeAllowed);
         WriteByTargetButton.Content = SummaryWriterRules.ButtonOf(choice?.Target ?? ProviderId.Claude);
         WriteByTargetButton.Visibility = writeShown ? Visibility.Visible : Visibility.Collapsed;
@@ -367,12 +371,24 @@ public partial class ResumePrompt : Window
         CopyItem.IsEnabled = free && !_refused && previewReady;
         CopyItem.ToolTip = previewReady
             ? "Copies the start text shown above to the clipboard. Nothing is sent to a session."
-            : "Makes a start text first: Zero, or Make summary.";
+            : "Makes a start text first: Build text (Zero), or Make summary.";
     }
 
     /// <summary>True when the choice needs a model call that has not been made yet: a summary (a level), and no kept summary for its setting.</summary>
     private bool NeedsSummaryCall(ResumeChoice? choice) =>
         choice?.Mode == ResumeMode.Summary && choice.Level is not null && !ResumeSummaryState.KeptMatches(choice.Level, choice.Turns, _lines, KeptSummary);
+
+    /// <summary>
+    /// Sets the Make summary button's text and tooltip: Zero builds its text with no call, so it reads "Build text"; a summary level keeps the XAML tooltip,
+    /// which names its one call.
+    /// </summary>
+    private void ShowMakeButton(bool zero)
+    {
+        var label = ResumeSummaryState.MakeButtonLabelOf(zero);
+        MakeSummaryButton.Content = label;
+        AutomationProperties.SetName(MakeSummaryButton, label);
+        MakeSummaryButton.ToolTip = zero ? ResumeSummaryState.BuildTextTip : _makeSummaryTip;
+    }
 
     private static void Enable(UIElement element, bool enabled)
     {
@@ -392,11 +408,15 @@ public partial class ResumePrompt : Window
         await BuildAsync(choice, writeByTarget: true);
     }
 
-    /// <summary>The Make summary button: makes the summary now, once, for the level and tail on screen (RS-D21).</summary>
+    /// <summary>
+    /// The Make summary button: makes the summary now, once, for the level and tail on screen (RS-D21). Zero builds its text with no summary call (Build
+    /// text), when the tail keeps turns.
+    /// </summary>
     private async void MakeSummary_Click(object sender, RoutedEventArgs e)
     {
         var choice = Selected(out var turnsValid);
-        if (choice is not { Mode: ResumeMode.Summary, Level: not null } || !turnsValid || _previewing) return;
+        if (choice is not { Mode: ResumeMode.Summary } || _previewing) return;
+        if (!ResumeSummaryState.MakeSummaryAllowed(choice.Level, TailOn, choice.Turns, turnsValid, _summaryHasLines?.Invoke(choice.Turns) ?? true)) return;
         await BuildAsync(choice);
     }
 

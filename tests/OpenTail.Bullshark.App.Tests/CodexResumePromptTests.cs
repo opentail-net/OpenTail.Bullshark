@@ -104,6 +104,30 @@ public sealed class CodexResumePromptTests
     }
 
     [Fact]
+    public void BuildTextAtZeroIsMadeByMakeSummaryWithNoSummaryCall()
+    {
+        UiThread.Run(() =>
+        {
+            // Zero is the default: Make summary reads Build text and is on, and the Zero text is built only by its press. The callback sees no level.
+            var levels = new List<SummaryLevel?>();
+            var prompt = NewPrompt((choice, kept, _, token) =>
+            {
+                levels.Add(choice.Level);
+                return TailPreview(choice, kept, false, token);
+            });
+
+            Assert.True(Named<Button>(prompt, "MakeSummaryButton").IsEnabled);
+            Assert.Equal("Build text", (string?)Named<Button>(prompt, "MakeSummaryButton").Content);
+            Assert.Empty(levels);
+
+            Click(Named<Button>(prompt, "MakeSummaryButton"));
+
+            Assert.Equal(new SummaryLevel?[] { null }, levels);
+            Assert.Equal(Visibility.Visible, Named<StackPanel>(prompt, "PreviewBlock").Visibility);
+        });
+    }
+
+    [Fact]
     public void ASummaryIsMadeOnlyByTheMakeSummaryButton()
     {
         UiThread.Run(() =>

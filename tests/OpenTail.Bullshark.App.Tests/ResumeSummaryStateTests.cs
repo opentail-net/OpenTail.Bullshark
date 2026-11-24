@@ -48,12 +48,34 @@ public sealed class ResumeSummaryStateTests
     }
 
     [Fact]
-    public void MakeSummaryNeedsALevelValidTurnsAndLinesToRead()
+    public void MakeSummaryForALevelNeedsValidTurnsAndLinesToRead()
     {
-        Assert.False(ResumeSummaryState.MakeSummaryAllowed(null, turnsValid: true, summaryHasLines: true));
-        Assert.False(ResumeSummaryState.MakeSummaryAllowed(SummaryLevel.Normal, turnsValid: false, summaryHasLines: true));
-        Assert.False(ResumeSummaryState.MakeSummaryAllowed(SummaryLevel.Normal, turnsValid: true, summaryHasLines: false));
-        Assert.True(ResumeSummaryState.MakeSummaryAllowed(SummaryLevel.Normal, turnsValid: true, summaryHasLines: true));
+        Assert.False(ResumeSummaryState.MakeSummaryAllowed(SummaryLevel.Normal, tailOn: true, turns: 10, turnsValid: false, summaryHasLines: true));
+        Assert.False(ResumeSummaryState.MakeSummaryAllowed(SummaryLevel.Normal, tailOn: true, turns: 10, turnsValid: true, summaryHasLines: false));
+        Assert.True(ResumeSummaryState.MakeSummaryAllowed(SummaryLevel.Normal, tailOn: true, turns: 10, turnsValid: true, summaryHasLines: true));
+    }
+
+    [Fact]
+    public void MakeSummaryBuildsZeroWhenTheTailOnKeepsTurns()
+    {
+        // Zero builds its text with no summary call (the Build text button), so it needs no summary part with lines: only the tail and valid turns.
+        Assert.True(ResumeSummaryState.MakeSummaryAllowed(null, tailOn: true, turns: 10, turnsValid: true, summaryHasLines: true));
+        Assert.True(ResumeSummaryState.MakeSummaryAllowed(null, tailOn: true, turns: 10, turnsValid: true, summaryHasLines: false));
+    }
+
+    [Fact]
+    public void MakeSummaryIsOffForZeroWithTheTailOffEmptyOrInvalid()
+    {
+        Assert.False(ResumeSummaryState.MakeSummaryAllowed(null, tailOn: false, turns: 0, turnsValid: true, summaryHasLines: true));
+        Assert.False(ResumeSummaryState.MakeSummaryAllowed(null, tailOn: true, turns: 0, turnsValid: true, summaryHasLines: true));
+        Assert.False(ResumeSummaryState.MakeSummaryAllowed(null, tailOn: true, turns: 10, turnsValid: false, summaryHasLines: true));
+    }
+
+    [Fact]
+    public void TheMakeSummaryButtonReadsBuildTextAtZeroAndMakeSummaryAtALevel()
+    {
+        Assert.Equal("Build text", ResumeSummaryState.MakeButtonLabelOf(zero: true));
+        Assert.Equal("Make summary", ResumeSummaryState.MakeButtonLabelOf(zero: false));
     }
 
     [Fact]

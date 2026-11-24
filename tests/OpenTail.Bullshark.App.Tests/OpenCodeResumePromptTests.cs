@@ -70,13 +70,16 @@ public sealed class OpenCodeResumePromptTests
     {
         UiThread.Run(() =>
         {
-            // The screen opens on Summary at Zero (no call): the level row is on, and Make summary is off until a summary level is chosen (RS-D22).
+            // The screen opens on Summary at Zero with the tail on (no call): the level row is on, and Build text (Make summary at Zero) is on, since Zero
+            // builds its text with no call. Make summary reads once a summary level is chosen (RS-D22). Full turns the row and the button off.
             var prompt = NewPrompt();
             Assert.True(Named<RadioButton>(prompt, "SummaryChoice").IsChecked == true);
             Assert.True(Named<WrapPanel>(prompt, "LevelRow").IsEnabled);
-            Assert.False(Named<Button>(prompt, "MakeSummaryButton").IsEnabled);
+            Assert.True(Named<Button>(prompt, "MakeSummaryButton").IsEnabled);
+            Assert.Equal("Build text", (string?)Named<Button>(prompt, "MakeSummaryButton").Content);
             Named<RadioButton>(prompt, "NormalLevel").IsChecked = true;
             Assert.True(Named<Button>(prompt, "MakeSummaryButton").IsEnabled);
+            Assert.Equal("Make summary", (string?)Named<Button>(prompt, "MakeSummaryButton").Content);
             Named<RadioButton>(prompt, "FullChoice").IsChecked = true;
             Assert.False(Named<WrapPanel>(prompt, "LevelRow").IsEnabled);
             Assert.False(Named<Button>(prompt, "MakeSummaryButton").IsEnabled);
@@ -126,6 +129,28 @@ public sealed class OpenCodeResumePromptTests
             Named<RadioButton>(prompt, "NormalLevel").IsChecked = true;
             Assert.DoesNotContain(asked.Skip(countBefore), choice => choice.Level is not null);
             Assert.False(Named<Button>(prompt, "StartButton").IsEnabled);
+        });
+    }
+
+    [Fact]
+    public void BuildTextAtZeroIsMadeByMakeSummaryWithNoSummaryCall()
+    {
+        UiThread.Run(() =>
+        {
+            // Zero is the default with the tail on. Its text is built only by the button, and the callback sees no level: no summary is asked for.
+            var asked = new List<OpenCodeResumeChoice>();
+            var prompt = NewPrompt(asked: asked);
+            var countBefore = asked.Count;
+            Assert.Equal("Build text", (string?)Named<Button>(prompt, "MakeSummaryButton").Content);
+            Assert.Empty(asked.Skip(countBefore));
+
+            Named<Button>(prompt, "MakeSummaryButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+            var choice = Assert.Single(asked.Skip(countBefore));
+            Assert.Equal(OpenCodeResumeMode.Summary, choice.Mode);
+            Assert.Null(choice.Level);
+            Assert.Equal(TailText, Named<TextBox>(prompt, "PreviewBox").Text);
+            Assert.True(Named<Button>(prompt, "StartButton").IsEnabled);
         });
     }
 

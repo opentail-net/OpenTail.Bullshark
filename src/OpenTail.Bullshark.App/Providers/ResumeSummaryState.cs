@@ -40,12 +40,25 @@ public static class ResumeSummaryState
     public static string? ZeroRefusal(SummaryLevel? level, bool tailOn, int turns) =>
         level is null && !TailKeepsTurns(tailOn, turns) ? NothingToStartLine : null;
 
+    /// <summary>The Make summary button's text for a summary level (RS-D21).</summary>
+    public const string MakeSummaryLabel = "Make summary";
+
+    /// <summary>The Make summary button's text for Zero: it builds the text with no summary call (the button is the only gate, 2026-11-24).</summary>
+    public const string BuildTextLabel = "Build text";
+
+    /// <summary>The Make summary button's tooltip for Zero: the text is built from the transcript the screen holds, with no model call.</summary>
+    public const string BuildTextTip = "Builds the start text from the last turns, word for word. No model call. Nothing is sent to a session.";
+
+    /// <summary>The Make summary button's text: "Build text" for Zero, else "Make summary".</summary>
+    public static string MakeButtonLabelOf(bool zero) => zero ? BuildTextLabel : MakeSummaryLabel;
+
     /// <summary>
-    /// True when Make summary may be pressed (RS-D26): a level other than Zero, the turns valid, and a summary part with lines to read.
-    /// <paramref name="summaryHasLines"/> is false when the tail keeps every turn of the session.
+    /// True when Make summary may be pressed (RS-D26). Zero (level null) builds its text with no call, so it needs the tail to keep turns
+    /// (<see cref="TailKeepsTurns"/>) and valid turns. A summary level needs valid turns and a summary part with lines to read
+    /// (<paramref name="summaryHasLines"/> is false when the tail keeps every turn of the session).
     /// </summary>
-    public static bool MakeSummaryAllowed(SummaryLevel? level, bool turnsValid, bool summaryHasLines) =>
-        level is not null && turnsValid && summaryHasLines;
+    public static bool MakeSummaryAllowed(SummaryLevel? level, bool tailOn, int turns, bool turnsValid, bool summaryHasLines) =>
+        turnsValid && (level is null ? TailKeepsTurns(tailOn, turns) : summaryHasLines);
 
     /// <summary>
     /// True when the summary the screen holds is the one for the setting on screen. Zero has no summary to keep, so it always matches. A level matches

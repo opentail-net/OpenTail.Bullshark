@@ -264,6 +264,52 @@ public sealed class ResumePromptTests
     }
 
     [Fact]
+    public void TheZeroTextIsBuiltByMakeSummaryWithNoSummaryCall()
+    {
+        UiThread.Run(() =>
+        {
+            // Build text (Make summary at Zero): the preview callback sees no level, so it makes no summary; the text is shown and Start is on.
+            var levels = new List<SummaryLevel?>();
+            var prompt = NewPrompt((choice, kept, _, token) =>
+            {
+                levels.Add(choice.Level);
+                return Task.FromResult(new ResumePromptPreview(new ResumePreview(TailText, 0, true, null)));
+            });
+            SummaryAt(prompt, "Zero");
+
+            Assert.True(Named<Button>(prompt, "MakeSummaryButton").IsEnabled);
+            Assert.Equal("Build text", (string?)Named<Button>(prompt, "MakeSummaryButton").Content);
+            Assert.Empty(levels);
+
+            MakeSummary(prompt);
+
+            Assert.Equal(new SummaryLevel?[] { null }, levels);
+            Assert.Null(prompt.KeptSummary);
+            Assert.Equal(Visibility.Visible, Named<StackPanel>(prompt, "PreviewBlock").Visibility);
+            Assert.True(Named<Button>(prompt, "ResumeButton").IsEnabled);
+        });
+    }
+
+    [Fact]
+    public void ZeroHasNoBuildTextWithTheTailOffAndTheButtonReadsMakeSummaryAtALevel()
+    {
+        UiThread.Run(() =>
+        {
+            var prompt = NewPrompt(TailPreview);
+            SummaryAt(prompt, "Zero");
+            Named<CheckBox>(prompt, "TailBox").IsChecked = false;
+
+            Assert.False(Named<Button>(prompt, "MakeSummaryButton").IsEnabled);
+
+            Named<CheckBox>(prompt, "TailBox").IsChecked = true;
+            SummaryAt(prompt, "Normal");
+
+            Assert.True(Named<Button>(prompt, "MakeSummaryButton").IsEnabled);
+            Assert.Equal("Make summary", (string?)Named<Button>(prompt, "MakeSummaryButton").Content);
+        });
+    }
+
+    [Fact]
     public void AFailedPreviewShowsItsMessageAndTheDialogStaysOpen()
     {
         UiThread.Run(() =>

@@ -28,6 +28,8 @@ public partial class OpenCodeResumePrompt : Window
 
     private readonly Func<OpenCodeResumeChoice, CancellationToken, Task<OpenCodePreview>>? _previewAsync;
     private readonly Func<int, bool>? _summaryHasLines;
+    /// <summary>The Make summary button's tooltip as the XAML sets it: shown again when the choice is a summary level.</summary>
+    private readonly string? _makeSummaryTip;
     private CancellationTokenSource? _cts;
     private int _request;
     private readonly ResumePreviewPane _preview;
@@ -70,6 +72,7 @@ public partial class OpenCodeResumePrompt : Window
         StartButton.Content = OpenCodeStartText;
         AutomationProperties.SetName(StartButton, OpenCodeStartText);
         _previewAsync = previewAsync;
+        _makeSummaryTip = MakeSummaryButton.ToolTip as string;
         _summaryHasLines = summaryHasLines;
         _folderNotice = folderExists is { } exists ? ResumeFolderNotice.For(folder, exists) : null;
         _blocksStart = ResumeFolderNotice.BlocksStart(folder, folderExists);
@@ -211,7 +214,8 @@ public partial class OpenCodeResumePrompt : Window
         Enable(TailBox, inSummary);
         Enable(TurnsBox, inSummary && TailOn);
         // Make summary is off while a request runs, so one summary call is made at a time in this screen.
-        var makeAllowed = ResumeSummaryState.MakeSummaryAllowed(level, turnsValid, hasLines);
+        var makeAllowed = ResumeSummaryState.MakeSummaryAllowed(level, TailOn, turns, turnsValid, hasLines);
+        ShowMakeButton(inSummary && level is null);
         Enable(MakeSummaryButton, inSummary && makeAllowed && _cts is null);
         Enable(CopyButton, previewReady);
         var startAllowed = choice is not null && (!inSummary
@@ -220,6 +224,18 @@ public partial class OpenCodeResumePrompt : Window
     }
 
     private static void Enable(UIElement element, bool enabled) => ResumeScreenElements.Enable(element, enabled);
+
+    /// <summary>
+    /// Sets the Make summary button's text and tooltip: Zero builds its text with no call, so it reads "Build text"; a summary level keeps the XAML tooltip,
+    /// which names its one call.
+    /// </summary>
+    private void ShowMakeButton(bool zero)
+    {
+        var label = ResumeSummaryState.MakeButtonLabelOf(zero);
+        MakeSummaryButton.Content = label;
+        AutomationProperties.SetName(MakeSummaryButton, label);
+        MakeSummaryButton.ToolTip = zero ? ResumeSummaryState.BuildTextTip : _makeSummaryTip;
+    }
 
     /// <summary>
     /// Makes the start text of the choice, off the UI thread, and shows it. A request replaces the one before it: the older one is cancelled and its result is
@@ -294,14 +310,14 @@ public partial class OpenCodeResumePrompt : Window
     private void Copy_Click(object sender, RoutedEventArgs e) => _preview.Copy();
 
     /// <summary>
-    /// Make summary: makes the summary now, once, for the level and the tail on screen (RS-D21). It is the only way a summary is made. The shown text is the
-    /// summary and then the tail; nothing is saved by the dialog.
+    /// Make summary: makes the summary now, once, for the level and the tail on screen (RS-D21). It is the only way a summary is made, and the only way the
+    /// Zero text is built (Build text, no summary call). The shown text is the summary and then the tail; nothing is saved by the dialog.
     /// </summary>
     private void MakeSummary_Click(object sender, RoutedEventArgs e)
     {
         var choice = Selected(out var turnsValid);
-        if (choice is not { Mode: OpenCodeResumeMode.Summary, Level: not null } || !turnsValid) return;
-        if (_summaryHasLines?.Invoke(choice.Turns) == false) return;
+        if (choice is not { Mode: OpenCodeResumeMode.Summary } || !turnsValid) return;
+        if (!ResumeSummaryState.MakeSummaryAllowed(choice.Level, TailOn, choice.Turns, turnsValid, _summaryHasLines?.Invoke(choice.Turns) ?? true)) return;
         _ = RunRequestAsync(choice);
     }
 
