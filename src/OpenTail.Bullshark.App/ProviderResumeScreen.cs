@@ -329,8 +329,7 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
 
     /// <summary>
     /// Runs when the mode, the level, the tail or its turns change. The preview on screen is for the old choice, so it is taken away, and the summary
-    /// kept for another setting is out of date (RS-D21): Start waits for Make summary. The preview is built again at once when it needs no model call:
-    /// Zero with the tail on, or a summary kept for the setting on screen.
+    /// kept for another setting is out of date (RS-D21): Start waits for Make summary. No preview is built here for now (see the note in the body).
     /// </summary>
     private void OnChoiceChanged()
     {
@@ -341,10 +340,7 @@ public sealed class ProviderResumeScreen<TChoice, TPreview>
         _failedOnSource = false;
         HidePreview();
         Refresh();
-        var choice = Selected(out var turnsValid);
-        if (choice is null || !turnsValid || choice.SharedMode != ProviderResumeMode.Summary) return;
-        if (ResumeSummaryState.ZeroRefusal(choice.Level, TailOn, choice.Turns) is not null) return;
-        if (ResumeSummaryState.RunsAtOnce(choice.Level, choice.Turns, _lines, _kept)) _ = RunRequestAsync(choice);
+        // No build on a change for now: a change of setting reads no transcript and starts no preview. Make summary and the target's button still build.
     }
 
     /// <summary>

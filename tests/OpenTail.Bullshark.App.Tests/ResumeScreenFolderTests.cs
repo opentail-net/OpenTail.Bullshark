@@ -79,7 +79,7 @@ public sealed class ResumeScreenFolderTests
         });
     }
 
-    [Fact]
+    [Fact(Skip = "Automatic builds are off for now (OnChoiceChanged builds nothing on a change). Re-enable with them.")]
     public void CodexAMissingFolderShowsItsNoticeAndStartStaysOn()
     {
         UiThread.Run(() =>
@@ -100,7 +100,7 @@ public sealed class ResumeScreenFolderTests
         });
     }
 
-    [Fact]
+    [Fact(Skip = "Automatic builds are off for now (OnChoiceChanged builds nothing on a change). Re-enable with them.")]
     public void CodexAnExistingFolderShowsNoNoticeAndStartIsOn()
     {
         UiThread.Run(() =>
@@ -122,7 +122,7 @@ public sealed class ResumeScreenFolderTests
         });
     }
 
-    [Fact]
+    [Fact(Skip = "Automatic builds are off for now (OnChoiceChanged builds nothing on a change). Re-enable with them.")]
     public void CopilotAMissingFolderShowsItsNoticeAndStartStaysOn()
     {
         UiThread.Run(() =>
@@ -142,7 +142,7 @@ public sealed class ResumeScreenFolderTests
         });
     }
 
-    [Fact]
+    [Fact(Skip = "Automatic builds are off for now (OnChoiceChanged builds nothing on a change). Re-enable with them.")]
     public void CopilotAnExistingFolderShowsNoNoticeAndStartIsOn()
     {
         UiThread.Run(() =>

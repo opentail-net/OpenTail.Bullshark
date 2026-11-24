@@ -286,7 +286,7 @@ public sealed class OpenCodeResumePromptTests
         });
     }
 
-    [Fact]
+    [Fact(Skip = "Automatic builds are off for now (OnChoiceChanged builds nothing on a change). Re-enable with them.")]
     public void TheZeroPreviewIsBuiltForTheDefaultChoiceAndShownBeforeStart()
     {
         UiThread.Run(() =>
@@ -303,7 +303,7 @@ public sealed class OpenCodeResumePromptTests
         });
     }
 
-    [Fact]
+    [Fact(Skip = "Automatic builds are off for now (OnChoiceChanged builds nothing on a change). Re-enable with them.")]
     public void AMissingFolderShowsTheNoticeAndStartStaysEnabled()
     {
         UiThread.Run(() =>
@@ -330,7 +330,7 @@ public sealed class OpenCodeResumePromptTests
         });
     }
 
-    [Fact]
+    [Fact(Skip = "Automatic builds are off for now (OnChoiceChanged builds nothing on a change). Re-enable with them.")]
     public void AnExistingFolderShowsNoNotice()
     {
         UiThread.Run(() =>

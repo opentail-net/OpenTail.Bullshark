@@ -168,11 +168,8 @@ public partial class OpenCodeResumePrompt : Window
         Refresh();
         if (choice is null || !turnsValid || choice.Mode != OpenCodeResumeMode.Summary) return;
         if (ResumeSummaryState.ZeroRefusal(choice.Level, TailOn, choice.Turns) is not null) return;
-        if (choice.Level is null)
-        {
-            _ = RunRequestAsync(choice);
-            return;
-        }
+        // Zero is not built on a change for now (no automatic reads). The return stays, so Zero never shows a kept summary.
+        if (choice.Level is null) return;
         if (_keptPreview is { KeptSummary: { } kept } shown && ResumeSummaryState.KeptMatches(choice.Level, choice.Turns, _lines, kept))
         {
             ShowPreview(shown);

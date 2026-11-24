@@ -289,7 +289,7 @@ public partial class ResumePrompt : Window
         var choice = Selected(out var turnsValid);
         if (choice is null || !turnsValid || choice.Mode != ResumeMode.Summary) return;
         if (ResumeSummaryState.ZeroRefusal(choice.Level, TailOn, choice.Turns) is not null) return;
-        if (ResumeSummaryState.RunsAtOnce(choice.Level, choice.Turns, _lines, KeptSummary)) _ = BuildAsync(choice);
+        // No build on a change for now (no automatic reads). Make summary still builds.
     }
 
     /// <summary>

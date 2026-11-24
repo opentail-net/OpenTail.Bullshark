@@ -147,7 +147,7 @@ public sealed class ResumeScreenTextTests
         });
     }
 
-    [Fact]
+    [Fact(Skip = "Automatic builds are off for now (OnChoiceChanged builds nothing on a change). Re-enable with them.")]
     public void TheCodexStartGivesAChoiceWhoseTargetIsCodex()
     {
         UiThread.Run(() =>
@@ -160,7 +160,7 @@ public sealed class ResumeScreenTextTests
         });
     }
 
-    [Fact]
+    [Fact(Skip = "Automatic builds are off for now (OnChoiceChanged builds nothing on a change). Re-enable with them.")]
     public void TheCopilotStartGivesAChoiceWhoseTargetIsCopilot()
     {
         UiThread.Run(() =>
