@@ -1,5 +1,4 @@
 using OpenTail.Bullshark.Core.Continue;
-using OpenTail.Bullshark.Core.OpenCode;
 using OpenTail.Bullshark.Core.Resume;
 
 namespace OpenTail.Bullshark.App;
@@ -64,13 +63,6 @@ public static class OpenCodeResumeRules
     public const string SummaryRunningLine = "Making the summary. This is one model call on your opencode login.";
 
     /// <summary>
-    /// The refusal of a summary for a session with more messages than the transcript reader gives (5,000): the summary would read only the first ones.
-    /// In full resumes such a session, as it needs no text.
-    /// </summary>
-    public static string LongSessionSummaryRefusal =>
-        $"Not made: this session has more messages than the reader gives ({OpenCodeTranscriptReader.MaxLines:N0}), so its summary cannot read all of it. In full resumes it.";
-
-    /// <summary>
     /// The status line when <c>opencode.ps1</c> is not on PATH. The screen is closed by Start, so the text is not offered again: nothing is written, and the
     /// session is started again once the shim is on PATH.
     /// </summary>
@@ -80,13 +72,6 @@ public static class OpenCodeResumeRules
     /// <summary>The status line when PowerShell 7 (<c>pwsh.exe</c>) is not on PATH, which the start tab needs. Nothing is written.</summary>
     public const string NoPwshOnPath =
         "Not started: PowerShell 7 (pwsh.exe) is not on PATH, so a start from text cannot run. Nothing was written. Put pwsh.exe on PATH, then start the session again.";
-
-    /// <summary>
-    /// The refusal of Last turns for a session with more messages than the transcript reader gives (5,000): the reader returns the first ones only, so the
-    /// newest turns cannot be read. In full resumes such a session, as it needs no text.
-    /// </summary>
-    public static string LongSessionRefusal =>
-        $"Not started: this session has more messages than the reader gives ({OpenCodeTranscriptReader.MaxLines:N0}), so its last turns cannot be read. In full resumes it.";
 
     /// <summary>
     /// The cost line of a mode (<see cref="FullCostLine"/>, <see cref="LastTurnsCostLine"/>, <see cref="SummaryCostLine"/>). The summary's line is shown

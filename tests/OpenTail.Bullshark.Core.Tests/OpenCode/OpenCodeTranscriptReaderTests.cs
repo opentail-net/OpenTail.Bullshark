@@ -128,6 +128,49 @@ public sealed class OpenCodeTranscriptReaderTests : IDisposable
         Assert.Equal($"you: fixture part {TranscriptLimits.MaxMessages}", page.Lines[^1]);
     }
 
+    [Fact]
+    public async Task TheResumeReadGivesEveryLineOfALongSessionInOrder()
+    {
+        _fixture.CreateStandard();
+        const int total = TranscriptLimits.MaxMessages + 3;
+        _fixture.AddLongSession(total);
+
+        var page = await new OpenCodeTranscriptReader(_fixture.Location, int.MaxValue)
+            .ReadPageAsync(OpenCodeFixture.CapRoot, 0, int.MaxValue, CancellationToken.None);
+
+        Assert.Equal(total, page.Lines.Count);
+        Assert.Equal(Enumerable.Range(1, total).Select(i => $"you: fixture part {i}"), page.Lines);
+    }
+
+    [Fact]
+    public async Task TheResumeReadsLastLineIsTheSessionsLastMessage()
+    {
+        _fixture.CreateStandard();
+        const int total = TranscriptLimits.MaxMessages + 3;
+        _fixture.AddLongSession(total);
+
+        var page = await new OpenCodeTranscriptReader(_fixture.Location, int.MaxValue)
+            .ReadPageAsync(OpenCodeFixture.CapRoot, 0, int.MaxValue, CancellationToken.None);
+
+        Assert.Equal($"you: fixture part {total}", page.Lines[^1]);
+    }
+
+    [Fact]
+    public async Task TheViewReaderStillStopsAtTheSharedLimitOnTheSameSession()
+    {
+        _fixture.CreateStandard();
+        const int total = TranscriptLimits.MaxMessages + 3;
+        _fixture.AddLongSession(total);
+
+        var view = await Reader().ReadPageAsync(OpenCodeFixture.CapRoot, 0, int.MaxValue, CancellationToken.None);
+        var resume = await new OpenCodeTranscriptReader(_fixture.Location, int.MaxValue)
+            .ReadPageAsync(OpenCodeFixture.CapRoot, 0, int.MaxValue, CancellationToken.None);
+
+        Assert.Equal(TranscriptLimits.MaxMessages, view.Lines.Count);
+        Assert.Equal($"you: fixture part {TranscriptLimits.MaxMessages}", view.Lines[^1]);
+        Assert.Equal(total, resume.Lines.Count);
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("ses_not-a-valid-id")]

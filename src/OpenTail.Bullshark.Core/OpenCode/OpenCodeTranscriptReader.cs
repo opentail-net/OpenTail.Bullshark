@@ -6,11 +6,12 @@ namespace OpenTail.Bullshark.Core.OpenCode;
 /// <summary>
 /// The lines of an opencode session, in order (OC-D5): one line per text part of a user message (<c>you: text</c>) or of an assistant message
 /// (<c>opencode: text</c>). A synthetic part is left out; an ignored part is kept; tool and other parts are left out. The transcript shows at most
-/// <see cref="MaxLines"/> lines, the first ones, as the Copilot reader does. An invalid id, a missing or wrong database, or a database error gives an
+/// <see cref="MaxLines"/> lines, the first ones, as the Copilot reader does. A reader made with another line limit reads that many: the resume passes
+/// <c>int.MaxValue</c>, so its summary and tail come from the whole session. An invalid id, a missing or wrong database, or a database error gives an
 /// empty page; the id is checked before the database is opened. A message or part row whose data is not valid JSON is left out (json_valid), and the rest
 /// of the transcript is read.
 /// </summary>
-public sealed class OpenCodeTranscriptReader(DatabasePath location) : ITranscriptReader, IMessageTextSource
+public sealed class OpenCodeTranscriptReader(DatabasePath location, int lineLimit = TranscriptLimits.MaxMessages) : ITranscriptReader, IMessageTextSource
 {
     /// <summary>The most lines a transcript shows: the shared cap (<see cref="TranscriptLimits.MaxMessages"/>).</summary>
     public const int MaxLines = TranscriptLimits.MaxMessages;
@@ -71,7 +72,7 @@ public sealed class OpenCodeTranscriptReader(DatabasePath location) : ITranscrip
 
     private static TranscriptPage EmptyPage() => new([], 0, null);
 
-    /// <summary>The session's lines, at most <see cref="MaxLines"/>. Empty when the database is not read (its status is not Ok) or a read fails.</summary>
+    /// <summary>The session's lines, at most the reader's line limit (<see cref="MaxLines"/> unless given). Empty when the database is not read (its status is not Ok) or a read fails.</summary>
     private List<string> ReadLines(string sessionId, CancellationToken ct)
     {
         var (_, connection) = OpenCodeDatabase.Open(location);
@@ -89,7 +90,7 @@ public sealed class OpenCodeTranscriptReader(DatabasePath location) : ITranscrip
                     if (kind is null || !textParts.TryGetValue(messageId, out var parts)) continue;
                     foreach (var text in parts)
                     {
-                        if (lines.Count >= MaxLines) return lines;
+                        if (lines.Count >= lineLimit) return lines;
                         lines.Add(kind + ": " + text);
                     }
                 }

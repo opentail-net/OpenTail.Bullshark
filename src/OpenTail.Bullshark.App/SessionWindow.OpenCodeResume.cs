@@ -228,8 +228,7 @@ public partial class SessionWindow
     /// opencode label) under the header of <see cref="ProviderResumeText.Compose"/>, with no session line. A summary (OC-O4, decided 2026-11-23) is first made
     /// by one <c>opencode run</c> call (<see cref="OpenCodeSummarizer"/>), and the text is the summary, then the last turns. The summary is kept in memory
     /// only. A session with no messages gives an empty text. A database that cannot be read gives its fixed phrase. A failure is logged by type only and
-    /// shown in the screen. The reader gives the first 5,000 lines only (<c>OpenCodeTranscriptReader.cs</c>), so a longer session is refused here rather
-    /// than given the wrong turns or a summary of part of it.
+    /// shown in the screen. The whole session is read, with no cap, so the summary and the tail come from its end at any length.
     /// </summary>
     private async Task<OpenCodePreview> BuildOpenCodeStartTextAsync(SessionSummary session, OpenCodeResumeChoice choice, CancellationToken ct)
     {
@@ -247,13 +246,8 @@ public partial class SessionWindow
                 return new OpenCodePreview(string.Empty, OpenCodeHistorySource.TextOf(status));
             }
 
-            var page = await new OpenCodeTranscriptReader(location).ReadPageAsync(sessionId, 0, OpenCodeTranscriptReader.MaxLines, ct);
-            if (page.Lines.Count >= OpenCodeTranscriptReader.MaxLines)
-            {
-                AppLog.Write($"opencode start text refused: {page.Lines.Count} lines is the reader's cap");
-                return new OpenCodePreview(
-                    string.Empty, summarised ? OpenCodeResumeRules.LongSessionSummaryRefusal : OpenCodeResumeRules.LongSessionRefusal);
-            }
+            // The whole session is read, with no cap: the summary and the tail come from its end, so a longer session is not refused.
+            var page = await new OpenCodeTranscriptReader(location, int.MaxValue).ReadPageAsync(sessionId, 0, int.MaxValue, ct);
             var lines = OpenCodeTranscriptLines(page.Lines);
             AppLog.Write($"opencode start text: {lines.Count} messages read");
             if (lines.Count == 0) return new OpenCodePreview(string.Empty, Lines: lines.Count);
@@ -299,16 +293,16 @@ public partial class SessionWindow
     }
 
     /// <summary>
-    /// The session's messages, read when the opencode resume screen opens, for its Make summary check (RS-D26). Null when they cannot be read, or when the
-    /// session is longer than the reader's cap (the screen then refuses it at its own read): the check is then not made. Read-only; a failure is logged by type.
+    /// The session's messages, read when the opencode resume screen opens, for its Make summary check (RS-D26). The whole session is read, as the preview
+    /// reads it. Null when they cannot be read: the check is then not made. Read-only; a failure is logged by type.
     /// </summary>
     private async Task<IReadOnlyList<TranscriptLine>?> TryReadOpenCodeLinesAsync(SessionSummary session)
     {
         try
         {
-            var page = await new OpenCodeTranscriptReader(CurrentOpenCodeLocation())
-                .ReadPageAsync(session.Key.SessionId, 0, OpenCodeTranscriptReader.MaxLines, CancellationToken.None);
-            return page.Lines.Count >= OpenCodeTranscriptReader.MaxLines ? null : OpenCodeTranscriptLines(page.Lines);
+            var page = await new OpenCodeTranscriptReader(CurrentOpenCodeLocation(), int.MaxValue)
+                .ReadPageAsync(session.Key.SessionId, 0, int.MaxValue, CancellationToken.None);
+            return OpenCodeTranscriptLines(page.Lines);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

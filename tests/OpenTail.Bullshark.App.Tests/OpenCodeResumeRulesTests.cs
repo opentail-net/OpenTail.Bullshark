@@ -104,21 +104,6 @@ public sealed class OpenCodeResumeRulesTests
     }
 
     [Fact]
-    public void TheLongSessionRefusalNamesTheReaderCapAndPointsAtInFull()
-    {
-        Assert.Contains("5,000", OpenCodeResumeRules.LongSessionRefusal);
-        Assert.Contains("In full", OpenCodeResumeRules.LongSessionRefusal);
-    }
-
-    [Fact]
-    public void TheLongSessionSummaryRefusalNamesTheReaderCapAndSaysTheSummaryCannotReadAllOfIt()
-    {
-        Assert.Contains("5,000", OpenCodeResumeRules.LongSessionSummaryRefusal);
-        Assert.Contains("summary", OpenCodeResumeRules.LongSessionSummaryRefusal);
-        Assert.Contains("In full", OpenCodeResumeRules.LongSessionSummaryRefusal);
-    }
-
-    [Fact]
     public void TheFinalCallRunsTheShimWithTheFolderAndThePromptVariable()
     {
         Assert.Equal("& $shim.Source 'C:\\Work\\Fixture' --prompt $prompt", OpenCodeStartLauncher.FinalCall("C:\\Work\\Fixture"));
