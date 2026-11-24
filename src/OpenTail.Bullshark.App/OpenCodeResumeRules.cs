@@ -117,15 +117,6 @@ public static class OpenCodeResumeRules
     public static string? ToolRefusal(bool pwshOnPath, bool shimOnPath) =>
         !pwshOnPath ? NoPwshOnPath : !shimOnPath ? NoShimOnPath : null;
 
-    /// <summary>
-    /// The lines an opencode summary reads when opencode is the writer of another platform's summary (RS-D28, S6h-8): the source's messages keep their words,
-    /// and their kind becomes opencode's, so the call labels them <c>opencode:</c> as its own messages. The owner's messages stay <c>you</c>. Pure.
-    /// </summary>
-    /// <param name="part">The summary part of the source's transcript (RS-D23).</param>
-    /// <param name="sourceKind">The kind the source's messages carry: <c>claude</c>, <c>codex</c> or <c>copilot</c>.</param>
-    public static IReadOnlyList<TranscriptLine> SummaryLines(IReadOnlyList<TranscriptLine> part, string sourceKind) =>
-        part.Select(line => line.Kind == sourceKind ? line with { Kind = "opencode" } : line).ToList();
-
     /// <summary>The status line after a session is opened in a terminal tab (In full).</summary>
     public static string OpenedLine(string title) => $"Opened {title} in opencode.";
 }

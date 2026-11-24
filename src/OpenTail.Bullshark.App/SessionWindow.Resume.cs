@@ -366,8 +366,9 @@ public partial class SessionWindow
     /// <summary>
     /// The summary of a session written by <paramref name="writer"/>'s CLI, not the session's own (RS-D9, RS-D28). The input and the instructions are the
     /// source's own, so the summary asks the same thing: only the CLI that runs it changes. A Codex writer runs <c>SummariseAsync</c> with them (its
-    /// <c>SummariseLinesAsync</c> would label the source's messages as Codex's own). A Copilot writer runs <c>SummariseLinesAsync</c> on the lines
-    /// labelled as Copilot's, with Copilot's own instructions. Nothing is called before the target's checks, which the caller runs.
+    /// <c>SummariseLinesAsync</c> would label the source's messages as Codex's own), and so does an opencode writer (<see cref="WriteOpenCodeSummaryAsync"/>).
+    /// A Copilot writer runs <c>SummariseLinesAsync</c> on the lines labelled as Copilot's, with Copilot's own instructions. Nothing is called before the
+    /// target's checks, which the caller runs.
     /// </summary>
     private async Task<string> WriteSummaryAsync(
         ProviderId writer, ProviderId source, IReadOnlyList<TranscriptLine> part, IReadOnlyList<string>? filesWritten, SummaryLevel level,
@@ -378,9 +379,9 @@ public partial class SessionWindow
         if (writer == ProviderId.Codex)
             return await new CodexSummarizer(new ProcessCliRunner("cmd.exe"))
                 .SummariseAsync(SourceInstructions(source, level), SourceInput(source, part, filesWritten), folder, cancellationToken);
-        // The opencode writer (RS-D28, S6h-8): opencode's own summariser, with the source's messages under opencode's label. Its scratch folders sit beside the state file.
+        // The opencode writer (RS-D28, S6h-8): opencode's own summariser, on the source's instructions and input. Its scratch folders sit beside the state file.
         if (writer == ProviderId.OpenCode)
-            return await new OpenCodeSummarizer().SummariseAsync(_options.StatePath, OpenCodeResumeRules.SummaryLines(part, SourceKind(source)), level, cancellationToken);
+            return await WriteOpenCodeSummaryAsync(new OpenCodeSummarizer(), _options.StatePath, source, part, filesWritten, level, cancellationToken);
         // Copilot writes through its scratch folder, which only the window that holds the single-instance guard may use (RS-D28, CopilotResumeRules).
         if (_supervisor is null) throw new CopilotSummaryException(CopilotResumeRules.SummaryNeedsGuard);
         var asCopilot = part.Select(line => line.Kind == SourceKind(source) ? line with { Kind = "copilot" } : line).ToList();
@@ -398,6 +399,15 @@ public partial class SessionWindow
         source == ProviderId.Codex ? ProviderResumeText.SummaryInput(part, "codex")
         : source == ProviderId.Copilot ? CopilotSummaryInput.Build(part)
         : ResumeText.SummaryInput(part, filesWritten);
+
+    /// <summary>
+    /// The opencode writer's summary (RS-D28, S6h-8): <paramref name="summarizer"/> runs the source's instructions on the source's input, with the
+    /// files-written list, as the other writers do. Internal, so a test can pass a summarizer with a fake runner; the window passes the app's own.
+    /// </summary>
+    internal static Task<string> WriteOpenCodeSummaryAsync(
+        OpenCodeSummarizer summarizer, string statePath, ProviderId source, IReadOnlyList<TranscriptLine> part, IReadOnlyList<string>? filesWritten,
+        SummaryLevel level, CancellationToken ct) =>
+        summarizer.SummariseAsync(statePath, SourceInstructions(source, level), SourceInput(source, part, filesWritten), ct);
 
     /// <summary>The kind a source's messages carry in the transcript lines (the label the tail and the summary use).</summary>
     private static string SourceKind(ProviderId source) =>

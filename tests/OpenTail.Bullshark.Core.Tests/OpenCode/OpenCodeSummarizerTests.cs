@@ -197,6 +197,21 @@ public sealed class OpenCodeSummarizerTests : IDisposable
         Assert.DoesNotContain("read Parser.cs", commandLine);
     }
 
+    [Fact]
+    public async Task ASourcesInstructionsAndTranscriptGoOnStandardInputAfterTheDataLineAndNotOpencodesOwn()
+    {
+        // RS-D28: another platform's summary, written by opencode's CLI, is worded by that platform's instructions and reads its own input.
+        var runner = new FakeEnvRunner();
+        const string instructions = "Summarise this Claude Code session in at most 400 words.";
+        const string transcript = "you: an example question\n\nclaude: an example answer";
+
+        await new OpenCodeSummarizer(runner).SummariseAsync(_state, instructions, transcript, CancellationToken.None);
+
+        var input = Assert.Single(runner.Calls).StandardInput!;
+        Assert.Equal(instructions + "\n\n" + OpenCodeSummaryInput.DataLine + "\n\n" + transcript, input);
+        Assert.DoesNotContain("opencode session", input);
+    }
+
     [Theory]
     [InlineData(SummaryLevel.Minimal, "at most 120 words")]
     [InlineData(SummaryLevel.Normal, "at most 400 words")]

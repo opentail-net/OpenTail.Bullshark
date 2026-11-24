@@ -97,19 +97,7 @@ public sealed class OpenCodeCrossStartTests
     }
 
     [Fact]
-    public void TheWriterLabelsTheSourceMessagesAsOpenCodesAndKeepsTheOwnersAndTheWords()
-    {
-        var part = new List<TranscriptLine> { Line(1, "you", "question"), Line(2, "codex", "answer"), Line(3, "copilot", "other") };
-
-        var labelled = OpenCodeResumeRules.SummaryLines(part, "codex");
-
-        Assert.Equal(new[] { "you", "opencode", "copilot" }, labelled.Select(line => line.Kind).ToArray());
-        Assert.Equal(new[] { "question", "answer", "other" }, labelled.Select(line => line.Text).ToArray());
-        Assert.Equal("codex", part[1].Kind);
-    }
-
-    [Fact]
-    public async Task TheOpenCodeWriterReadsTheSourceMessagesUnderOpenCodesLabelInOneCall()
+    public async Task TheOpenCodeWriterRunsTheSourceInstructionsAndInputInOneCall()
     {
         var root = Path.Combine(Path.GetTempPath(), "opentail-s6h-" + Guid.NewGuid().ToString("N"));
         try
@@ -117,14 +105,20 @@ public sealed class OpenCodeCrossStartTests
             var part = new List<TranscriptLine> { Line(1, "you", "an example question"), Line(2, "claude", "an example answer") };
             var runner = new FakeEnvRunner("An example summary.");
 
-            var summary = await new OpenCodeSummarizer(runner).SummariseAsync(
-                Path.Combine(root, "state.json"), OpenCodeResumeRules.SummaryLines(part, "claude"), SummaryLevel.Minimal, CancellationToken.None);
+            var summary = await SessionWindow.WriteOpenCodeSummaryAsync(
+                new OpenCodeSummarizer(runner), Path.Combine(root, "state.json"), ProviderId.Claude, part, ["example.cs"], SummaryLevel.Minimal,
+                CancellationToken.None);
 
             Assert.Equal("An example summary.", summary);
             Assert.Equal(1, runner.Calls);
-            Assert.Contains("you: an example question", runner.StandardInput ?? string.Empty);
-            Assert.Contains("opencode: an example answer", runner.StandardInput ?? string.Empty);
-            Assert.DoesNotContain("claude: an example answer", runner.StandardInput ?? string.Empty);
+            // RS-D28: the source's instructions (Claude's, not opencode's), then the source's input with its files-written list and its own labels.
+            var input = runner.StandardInput ?? string.Empty;
+            Assert.StartsWith(ResumeText.Instructions(SummaryLevel.Minimal), input);
+            Assert.DoesNotContain("opencode session", input);
+            Assert.Contains("Files written in this session: example.cs", input);
+            Assert.Contains("you: an example question", input);
+            Assert.Contains("claude: an example answer", input);
+            Assert.DoesNotContain("opencode: an example answer", input);
         }
         finally
         {
